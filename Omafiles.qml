@@ -436,7 +436,7 @@ Item {
     var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
     return lines.map(function (l) {
       var parts = l.split("\t")
-      return { type: parts[0], name: parts[1], size: Number(parts[2] || 0), mtime: Number(parts[3] || 0) }
+      return { type: parts[0], name: parts[1], size: Number(parts[2] || 0), mtime: Number(parts[3] || 0), link: parts[4] || "" }
     })
   }
 
@@ -628,6 +628,7 @@ Item {
   // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
   // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
   function metaFor(entry) {
+    if (entry.link === "broken") return "Broken link"
     var parts = []
     if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
     var rel = root.relativeTime(entry.mtime)
@@ -2372,6 +2373,7 @@ Item {
                     readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                     readonly property bool isDir: modelData.type === "dir"
                     readonly property bool hasThumb: root.isImage(modelData) || (isVid && vidThumb !== "")
+                    readonly property bool isBroken: modelData.link === "broken"
                     // Mismo ancho que los botones de casita/subir de navRow
                     // (Style.spacing.controlHeight), para que el icono quede
                     // centrado en la misma columna que ellos.
@@ -2395,7 +2397,7 @@ Item {
 
                     OpticalGlyph {
                       anchors.fill: parent
-                      visible: thumbSlot.isDir
+                      visible: thumbSlot.isDir && !thumbSlot.isBroken
                       text: "󰉋"
                       fontFamily: Style.font.family
                       fontSize: Style.font.iconLarge
@@ -2404,11 +2406,24 @@ Item {
 
                     OpticalGlyph {
                       anchors.fill: parent
-                      visible: !thumbSlot.isDir && !thumbSlot.hasThumb
+                      visible: !thumbSlot.isDir && !thumbSlot.hasThumb && !thumbSlot.isBroken
                       text: root.iconFor(modelData)
                       fontFamily: Style.font.family
                       fontSize: Style.font.iconLarge
                       color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
+                    }
+
+                    // Enlace simbólico roto (md-link_variant_off, verificado
+                    // contra el cmap real de la fuente) -- antes se veía como
+                    // un fichero normal de 0 bytes fechado en 1970, sin
+                    // ningún indicio de que el destino ya no existe.
+                    OpticalGlyph {
+                      anchors.fill: parent
+                      visible: thumbSlot.isBroken
+                      text: "\u{F033A}"
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.iconLarge
+                      color: Color.urgent
                     }
                   }
 
@@ -2449,7 +2464,8 @@ Item {
                       text: modelData.name + (modelData.type === "dir" ? "/" : "")
                       font.pixelSize: Style.font.title
                       font.family: Style.font.family
-                      color: root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
+                      color: modelData.link === "broken" ? Color.urgent
+                        : root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
                         ? Qt.darker(Color.menu.text, 1.6)
                         : (rowSurface.current ? Color.menu.selectedText : Color.menu.text)
                       elide: Text.ElideRight

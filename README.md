@@ -21,6 +21,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
 - Recursive search, "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
+- Broken symlinks are flagged clearly (distinct icon, red name, "Broken link" instead of a fake size/date) instead of looking like an ordinary 0-byte file from 1970; valid symlinks show their real target's size.
 - Registers itself as the system's default file manager on first load — no manual setup (see below).
 - Drag and drop: drag files out to other apps, drag files in from other apps to copy them here, or drag between folders/bookmarks/drives inside Omafiles to move them — with the same overwrite/skip conflict handling as copy/paste.
 - Rubber-band selection: click and drag over empty space (including the margins around the sidebar and each row) to select multiple items, Ctrl adds to the existing selection instead of replacing it, auto-scrolls when dragged to a list edge with more items than fit on screen.
