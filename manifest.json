@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.percius04.omafiles",
   "name": "Omafiles",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "author": "Percius04",
   "description": "File manager: browse, search, sort, mount drives, rename, delete, copy/cut/paste, drag & drop, properties",
   "kinds": [

@@ -29,6 +29,10 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property bool loaded: false
+  // Mensaje si list-dir.sh no pudo listar currentPath (permisos, carpeta
+  // borrada entre navegar y listar...) -- vacío = sin error, carpeta
+  // realmente vacía o listado en curso.
+  property string currentPathError: ""
   // Nombre de entrada a resaltar en cuanto termine el próximo listado --
   // lo usa open() cuando el payload pide "abre esta carpeta y selecciona
   // este fichero" (caso ShowItems de org.freedesktop.FileManager1).
@@ -345,6 +349,7 @@ Item {
   }
 
   function refresh() {
+    root.currentPathError = ""
     listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
     listProc.running = true
   }
@@ -1280,6 +1285,15 @@ Item {
         if (foundIndex >= 0) root.selectOnly(foundIndex)
         else if (root.selectedIndex >= root.visibleEntries.length) root.selectedIndex = root.visibleEntries.length - 1
       }
+    }
+    // stdout ya deja entries vacío (list-dir.sh no imprime nada si falla);
+    // esto solo añade el porqué, según el código de salida documentado en
+    // list-dir.sh.
+    onExited: function (exitCode, exitStatus) {
+      if (exitCode === 2) root.currentPathError = "Permission denied"
+      else if (exitCode === 3) root.currentPathError = "This folder no longer exists"
+      else if (exitCode === 4) root.currentPathError = "Not a folder"
+      else if (exitCode !== 0) root.currentPathError = "Couldn't open this folder"
     }
   }
 
@@ -2574,6 +2588,20 @@ Item {
                   onCanceled: root.endMarquee()
                 }
               }
+            }
+
+            // Aviso cuando list-dir.sh no ha podido listar currentPath --
+            // antes esto se veía igual que una carpeta vacía de verdad, sin
+            // ningún indicio de que el problema era de permisos.
+            Text {
+              visible: root.currentPathError !== ""
+              anchors.top: parent.top
+              anchors.topMargin: Style.spacing.lg
+              anchors.left: parent.left
+              text: root.currentPathError
+              font.family: Style.font.family
+              font.pixelSize: Style.font.subtitle
+              color: Color.urgent
             }
 
             // Rectángulo visual del lazo -- después de la ListView en el

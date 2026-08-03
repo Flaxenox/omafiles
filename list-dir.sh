@@ -7,6 +7,14 @@
 
 dir="$1"
 show_hidden="${2:-0}"
+
+# Códigos de salida distintos para que QML pueda avisar de verdad en vez de
+# enseñar "0 items" tanto si la carpeta está vacía como si no se puede leer
+# -- antes cd fallaba en silencio (2>/dev/null) y las dos situaciones eran
+# indistinguibles para quien mira la lista.
+[[ -e "$dir" ]] || exit 3
+[[ -d "$dir" ]] || exit 4
+[[ -r "$dir" && -x "$dir" ]] || exit 2
 cd "$dir" 2>/dev/null || exit 1
 
 shopt -s nullglob
