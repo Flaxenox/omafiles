@@ -120,14 +120,14 @@ Item {
   property var mounts: []
 
   readonly property var defaultBookmarks: [
-    { label: "Home", path: root.homeDir, icon: "🏠" },
-    { label: "Documents", path: root.homeDir + "/Documents", icon: "📁" },
-    { label: "Downloads", path: root.homeDir + "/Downloads", icon: "📁" },
-    { label: "Pictures", path: root.homeDir + "/Pictures", icon: "🖼️" },
-    { label: "Videos", path: root.homeDir + "/Videos", icon: "🎬" },
-    { label: "Music", path: root.homeDir + "/Music", icon: "🎵" },
-    { label: "Projects", path: root.homeDir + "/Projects", icon: "📁" },
-    { label: "Trash", path: root.homeDir + "/.local/share/Trash/files", icon: "🗑️" }
+    { label: "Home", path: root.homeDir },
+    { label: "Documents", path: root.homeDir + "/Documents" },
+    { label: "Downloads", path: root.homeDir + "/Downloads" },
+    { label: "Pictures", path: root.homeDir + "/Pictures" },
+    { label: "Videos", path: root.homeDir + "/Videos" },
+    { label: "Music", path: root.homeDir + "/Music" },
+    { label: "Projects", path: root.homeDir + "/Projects" },
+    { label: "Trash", path: root.homeDir + "/.local/share/Trash/files" }
   ]
 
   property var bookmarks: []
@@ -278,10 +278,25 @@ Item {
     root.saveBookmarks()
   }
 
-  function addBookmark(path, label, icon) {
+  function addBookmark(path, label) {
     if (root.bookmarks.some(function (b) { return b.path === path })) return
-    root.bookmarks = root.bookmarks.concat([{ label: label, path: path, icon: icon || "📁" }])
+    root.bookmarks = root.bookmarks.concat([{ label: label, path: path }])
     root.saveBookmarks()
+  }
+
+  // Icono de la barra lateral -- Home/Trash por ruta especial, Imágenes/
+  // Vídeos/Música reutilizan el mismo glyph que ya usa iconFor() para esos
+  // tipos de fichero (así no hay que mantener dos catálogos de icono), y
+  // cualquier otra carpeta (Documents, Downloads, Projects, Almacén,
+  // marcadores añadidos a mano...) cae en la carpeta genérica.
+  function iconForBookmark(modelData) {
+    if (modelData.path === root.homeDir) return "\u{F015}"
+    if (modelData.path === root.trashDir) return "\u{F0A7A}"
+    var label = modelData.label.toLowerCase()
+    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return root.iconFor({ name: "x.jpg" })
+    if (label.indexOf("video") >= 0) return root.iconFor({ name: "x.mp4" })
+    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return root.iconFor({ name: "x.mp3" })
+    return "\u{F024B}"
   }
 
   function isBookmarked(path) {
@@ -766,7 +781,7 @@ Item {
     if (entry && entry.type === "dir") {
       var fullPath = root.joinPath(root.currentPath, entry.name)
       if (!root.isBookmarked(fullPath)) {
-        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name, "📁") } })
+        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name) } })
       }
     }
     return cmds
@@ -969,7 +984,7 @@ Item {
       if (entries[0].type === "dir") {
         var fullPath = root.joinPath(root.currentPath, entries[0].name)
         if (!root.isBookmarked(fullPath)) {
-          actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, "📁") } })
+          actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name) } })
         }
       }
       if (root.isArchive(entries[0])) {
@@ -1017,7 +1032,7 @@ Item {
     }
     var actions = [{ label: "Open", action: function () { root.navigateTo(mount.path) } }]
     if (!root.isBookmarked(mount.path)) {
-      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label, "💾") } })
+      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label) } })
     }
     if (mount.removable) {
       actions.push({ label: "Eject", destructive: true, action: function () { root.ejectMount(mount) } })
@@ -1327,16 +1342,29 @@ Item {
               hasCursor: bookmarkMouse.containsMouse
               current: isCurrent
 
-              Text {
+              OpticalGlyph {
+                id: bookmarkIcon
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
                 anchors.leftMargin: Style.spacing.sm
+                width: Style.font.title
+                height: Style.font.title
+                text: root.iconForBookmark(parent.modelData)
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: bookmarkIcon.right
+                anchors.leftMargin: Style.spacing.xs
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
                 color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
                 elide: Text.ElideRight
-                width: sidebar.width - Style.spacing.sm * 2
+                width: sidebar.width - Style.spacing.sm * 2 - bookmarkIcon.width - Style.spacing.xs
               }
 
               MouseArea {
