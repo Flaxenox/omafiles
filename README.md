@@ -2,7 +2,7 @@
 
 A keyboard-first file manager for [Omarchy](https://omarchy.org), built as a native Quickshell plugin — not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either. It's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
-![Omafiles screenshot](screenshot.png)
+![Omafiles screenshot](preview.png)
 
 ## Why
 
@@ -49,17 +49,21 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 
 ## Installation
 
-Clone into your Omarchy plugins directory:
+```bash
+omarchy plugin add https://github.com/Percius04/omafiles --enable
+```
+
+Or clone it manually:
 
 ```bash
 git clone https://github.com/Percius04/omafiles ~/.config/omarchy/plugins/omafiles
-omarchy plugin enable local.omafiles
+omarchy plugin enable io.github.percius04.omafiles
 ```
 
 Then bind a key in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + F", "Omafiles (file manager)", "omarchy-shell shell toggle local.omafiles '{}'")
+o.bind("SUPER + ALT + F", "Omafiles (file manager)", "omarchy-shell shell toggle io.github.percius04.omafiles '{}'")
 ```
 
 ## Requirements
