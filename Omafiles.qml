@@ -29,6 +29,10 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property bool loaded: false
+  // Nombre de entrada a resaltar en cuanto termine el próximo listado --
+  // lo usa open() cuando el payload pide "abre esta carpeta y selecciona
+  // este fichero" (caso ShowItems de org.freedesktop.FileManager1).
+  property string pendingSelectName: ""
 
   // ---------- Deshacer (Ctrl+Z) ----------
   // Pila simple de acciones reversibles: renombrar, nueva carpeta, borrar
@@ -437,10 +441,35 @@ Item {
   }
 
   // Host-initiated open/close (`shell toggle`/`shell summon`/`shell hide`).
+  // `payload` es "<ruta>" o "<ruta>\n<nombre-a-seleccionar>" en texto
+  // plano (o "" / "{}" si no hay ninguna) -- la manda `scripts/open-path.sh`
+  // (xdg-open/.desktop, sin selección) o `scripts/dbus-filemanager1.py`
+  // (interfaz org.freedesktop.FileManager1, con selección para ShowItems).
   function open(payload) {
     root.opened = true
     panel.visible = true
-    if (!root.loaded) root.refresh()
+
+    var nlIdx = payload ? payload.indexOf("\n") : -1
+    var folderPart = nlIdx >= 0 ? payload.substring(0, nlIdx) : payload
+    var selectName = nlIdx >= 0 ? payload.substring(nlIdx + 1) : ""
+    var targetPath = (folderPart && folderPart.charAt(0) === "/") ? folderPart : ""
+
+    if (targetPath) root.pendingSelectName = selectName
+
+    if (!root.loaded) {
+      if (targetPath) {
+        root.currentPath = targetPath
+        root.tabs = [{ path: targetPath }]
+      }
+      root.refresh()
+    } else if (targetPath) {
+      // Ya estaba cargado antes (uso normal previo): abre en pestaña
+      // nueva para no perder la ubicación en la que ya estaba el usuario.
+      root.newTab()
+      root.navigateTo(targetPath)
+      root.saveActiveTab()
+    }
+
     if (!root.bookmarksLoaded) root.loadBookmarks()
     root.refreshMounts()
   }
@@ -1008,6 +1037,21 @@ Item {
     return segs
   }
 
+  // Autoregistro como gestor de archivos del sistema (MimeType inode/
+  // directory + org.freedesktop.FileManager1) -- se lanza una vez al
+  // cargar el plugin, sin esperar a que el usuario abra la ventana ni
+  // tenga que ejecutar nada a mano. El script es idempotente (ver
+  // scripts/install-integrations.sh), así que llamarlo en cada arranque
+  // del shell es barato y seguro.
+  Component.onCompleted: {
+    installIntegrationsProc.command = [root.pluginDir + "/scripts/install-integrations.sh"]
+    installIntegrationsProc.running = true
+  }
+
+  Process {
+    id: installIntegrationsProc
+  }
+
   Process {
     id: listProc
     stdout: StdioCollector {
@@ -1015,7 +1059,16 @@ Item {
       onStreamFinished: {
         root.entries = root.sortEntries(root.parseEntries(text))
         root.loaded = true
-        if (root.selectedIndex >= root.visibleEntries.length) root.selectedIndex = root.visibleEntries.length - 1
+        var selectName = root.pendingSelectName
+        root.pendingSelectName = ""
+        var foundIndex = -1
+        if (selectName) {
+          for (var i = 0; i < root.visibleEntries.length; i++) {
+            if (root.visibleEntries[i].name === selectName) { foundIndex = i; break }
+          }
+        }
+        if (foundIndex >= 0) root.selectOnly(foundIndex)
+        else if (root.selectedIndex >= root.visibleEntries.length) root.selectedIndex = root.visibleEntries.length - 1
       }
     }
   }

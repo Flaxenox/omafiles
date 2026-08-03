@@ -21,6 +21,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
 - Recursive search, "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
+- Registers itself as the system's default file manager on first load — no manual setup (see below).
 
 ## Keyboard shortcuts
 
@@ -65,6 +66,15 @@ Then bind a key in `~/.config/hypr/bindings.lua`:
 ```lua
 o.bind("SUPER + ALT + F", "Omafiles (file manager)", "omarchy-shell shell toggle io.github.percius04.omafiles '{}'")
 ```
+
+## Default file manager
+
+Enabling the plugin sets Omafiles as the system's default file manager automatically — nothing to run by hand. On first load it registers both handoff mechanisms Linux apps use for "the" file manager:
+
+- **Opening directories** (`xdg-open`, "Open folder" actions): a `~/.local/share/applications/omafiles.desktop` with `MimeType=inode/directory`, set via `xdg-mime default`.
+- **"Show in file manager"** (Firefox downloads, GTK/Qt "reveal in folder"): these go over the `org.freedesktop.FileManager1` D-Bus interface, not `.desktop`/`xdg-mime`, and Nautilus normally owns it. Omafiles ships a user-level service file for the same bus name (`~/.local/share/dbus-1/services/`), which takes priority over Nautilus's system one, backed by `scripts/dbus-filemanager1.py` (needs `python-gobject`/`Gio` — already a dependency of most GTK-based desktops).
+
+This is idempotent and only runs once (tracked in `~/.local/state/omafiles/integrations-version`), so it won't fight you if you later switch the default back by hand. If you ever want to undo it: `xdg-mime default nautilus.desktop inode/directory`, then remove the two files above.
 
 ## Requirements
 
