@@ -60,6 +60,16 @@ Item {
   property int anchorIndex: -1
   property bool showHidden: false
 
+  // ---------- Lazo de selección (arrastrar sobre hueco vacío) ----------
+  // Coordenadas en el espacio de contenido de la ListView (independientes
+  // del scroll), no del viewport -- así el rectángulo sigue correcto si
+  // el usuario arrastra hacia dentro de la zona con scroll.
+  property bool marqueeActive: false
+  property real marqueeStartX: 0
+  property real marqueeStartY: 0
+  property real marqueeCurrentX: 0
+  property real marqueeCurrentY: 0
+
   readonly property var sortKeys: ["name", "size", "mtime", "type"]
   readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
   property string sortKey: "name"
@@ -258,6 +268,30 @@ Item {
     for (var i = from; i <= to; i++) next.push(i)
     root.selectedIndices = next
     root.selectedIndex = index
+  }
+
+  // Recalcula la selección a partir del rectángulo del lazo (marqueeStartY/
+  // marqueeCurrentY, en coordenadas de contenido). Filas de altura uniforme
+  // (nombres/metadatos no hacen wrap, siempre una línea) -- basta con
+  // dividir por la altura media en vez de inspeccionar los delegados reales
+  // de la ListView, más simple y ajeno a la virtualización.
+  function updateMarqueeSelection(additive, base) {
+    var total = root.visibleEntries.length
+    if (total === 0 || list.contentHeight <= 0) return
+    var rowH = list.contentHeight / total
+    var top = Math.min(root.marqueeStartY, root.marqueeCurrentY)
+    var bottom = Math.max(root.marqueeStartY, root.marqueeCurrentY)
+    var picked = []
+    if (bottom > 0 && top < list.contentHeight) {
+      var firstIdx = Math.max(0, Math.floor(top / rowH))
+      var lastIdx = Math.min(total - 1, Math.ceil(bottom / rowH) - 1)
+      for (var i = firstIdx; i <= lastIdx; i++) picked.push(i)
+    }
+    var next = additive
+      ? base.concat(picked.filter(function (i) { return base.indexOf(i) < 0 }))
+      : picked
+    root.selectedIndices = next
+    root.selectedIndex = next.length > 0 ? next[next.length - 1] : -1
   }
 
   function selectedEntries() {
@@ -1970,15 +2004,63 @@ Item {
               }
             }
 
+            // Detrás de la lista: pulsar y arrastrar sobre hueco vacío
+            // dibuja un lazo de selección (como Nautilus/cualquier gestor de
+            // iconos) -- Ctrl mantiene pulsado suma a la selección previa en
+            // vez de reemplazarla. Solo recibe el gesto si el clic empieza
+            // en hueco vacío: una fila ya cubierta por su propio MouseArea
+            // (por encima, en la ListView) se queda con el press primero.
+            MouseArea {
+              id: marqueeArea
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              acceptedButtons: Qt.LeftButton
+              property bool additive: false
+              property var baseSelection: []
+              onPressed: function (mouse) {
+                additive = (mouse.modifiers & Qt.ControlModifier) !== 0
+                baseSelection = additive ? root.selectedIndices.slice() : []
+                if (!additive) root.selectOnly(-1)
+                root.marqueeStartX = mouse.x
+                root.marqueeCurrentX = mouse.x
+                root.marqueeStartY = mouse.y - list.y + list.contentY
+                root.marqueeCurrentY = root.marqueeStartY
+                root.marqueeActive = true
+              }
+              onPositionChanged: function (mouse) {
+                if (!root.marqueeActive) return
+                root.marqueeCurrentX = mouse.x
+                root.marqueeCurrentY = mouse.y - list.y + list.contentY
+                root.updateMarqueeSelection(additive, baseSelection)
+              }
+              onReleased: root.marqueeActive = false
+              onCanceled: root.marqueeActive = false
+            }
+
             ListView {
               id: list
               anchors.top: parent.top
+              // Hueco reservado encima de la primera fila -- sin esto no hay
+              // ningún píxel "vacío" por encima donde arrancar el lazo, la
+              // fila 0 empezaría justo en el borde. Solo desplaza la
+              // ListView, marqueeArea/DropArea de detrás siguen llegando
+              // hasta el borde real, así que ese hueco cae en ellos.
+              anchors.topMargin: Style.spacing.sm
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: root.previewOpen ? parent.width * 0.55 : parent.width
               clip: true
               model: root.visibleEntries
               focus: root.opened
+              // Sin esto, el propio Flickable de ListView se queda con
+              // cualquier press+arrastre en hueco vacío (para su scroll por
+              // arrastre) antes de que llegue a marqueeArea, por debajo --
+              // ningún gestor de archivos arrastra la lista así, esa zona es
+              // para el lazo de selección. La rueda del ratón sigue
+              // funcionando igual (no depende de interactive).
+              interactive: false
 
               Keys.onPressed: function (event) {
                 if (root.paletteOpen) return
@@ -2248,7 +2330,17 @@ Item {
 
                 MouseArea {
                   id: mouseArea
-                  anchors.fill: parent
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  anchors.right: parent.right
+                  anchors.left: parent.left
+                  // Hueco sin cubrir a la izquierda (el contenido visual --
+                  // icono, texto -- no se mueve, solo se reduce el área
+                  // interactiva) para poder arrancar el lazo de selección
+                  // pegado al borde izquierdo de la lista. Style.spacing.xs
+                  // (3px) resultó demasiado fino para acertar con el ratón
+                  // -- probado en vivo, hacía falta algo mucho más ancho.
+                  anchors.leftMargin: 14
                   hoverEnabled: true
                   visible: root.renamingIndex !== index
                   acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -2302,6 +2394,21 @@ Item {
                   Drag.mimeData: root.dragMimeDataFor(index)
                 }
               }
+            }
+
+            // Rectángulo visual del lazo -- después de la ListView en el
+            // fichero para quedar por encima al pintar (visible incluso
+            // cuando el lazo crece sobre filas ya dibujadas).
+            Rectangle {
+              visible: root.marqueeActive
+              x: Math.min(root.marqueeStartX, root.marqueeCurrentX)
+              y: Math.min(root.marqueeStartY, root.marqueeCurrentY) - list.contentY + list.y
+              width: Math.abs(root.marqueeCurrentX - root.marqueeStartX)
+              height: Math.abs(root.marqueeCurrentY - root.marqueeStartY)
+              color: Util.alpha(Color.accent, 0.12)
+              border.color: Color.accent
+              border.width: 1
+              z: 5
             }
 
             // ---------- Vista previa (Espacio) ----------
