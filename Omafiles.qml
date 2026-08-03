@@ -69,6 +69,18 @@ Item {
   property real marqueeStartY: 0
   property real marqueeCurrentX: 0
   property real marqueeCurrentY: 0
+  property bool marqueeAdditive: false
+  property var marqueeBaseSelection: []
+  // Posición del cursor relativa al viewport de `list` (0 = arriba del
+  // todo, list.height = abajo del todo) -- para el auto-scroll cuando el
+  // lazo llega a un borde con más filas de las que caben en pantalla.
+  property real marqueeViewportY: 0
+  // Altura real medida de una fila (todas iguales, ver updateMarqueeSelection).
+  // Sirve para calcular la altura del footer sin pasar por
+  // list.contentHeight -- que en esta versión de Qt incluye al propio
+  // footer, y usarlo ahí sería una propiedad que depende de sí misma
+  // (confirmado en vivo: "Binding loop detected for property height").
+  property real measuredRowHeight: 0
 
   readonly property var sortKeys: ["name", "size", "mtime", "type"]
   readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
@@ -270,6 +282,37 @@ Item {
     root.selectedIndex = index
   }
 
+  // Arranca/mueve/termina el lazo -- compartido por todos los catchers que
+  // pueden recibir el press inicial (huecos de arriba/abajo/izquierda,
+  // gutters de cada fila) para no duplicar la lógica. `contentY` es la
+  // posición dentro de list.contentItem (mapToItem ya la da corregida por
+  // scroll); `viewportY` es la posición dentro de `list` sin corregir,
+  // para detectar si el cursor está pegado a un borde y hace falta
+  // auto-scroll.
+  function startMarquee(x, contentY, viewportY, ctrlHeld) {
+    root.marqueeAdditive = ctrlHeld
+    root.marqueeBaseSelection = ctrlHeld ? root.selectedIndices.slice() : []
+    if (!ctrlHeld) root.selectOnly(-1)
+    root.marqueeStartX = x
+    root.marqueeCurrentX = x
+    root.marqueeStartY = contentY
+    root.marqueeCurrentY = contentY
+    root.marqueeViewportY = viewportY
+    root.marqueeActive = true
+  }
+
+  function moveMarquee(x, contentY, viewportY) {
+    if (!root.marqueeActive) return
+    root.marqueeCurrentX = x
+    root.marqueeCurrentY = contentY
+    root.marqueeViewportY = viewportY
+    root.updateMarqueeSelection(root.marqueeAdditive, root.marqueeBaseSelection)
+  }
+
+  function endMarquee() {
+    root.marqueeActive = false
+  }
+
   // Recalcula la selección a partir del rectángulo del lazo (marqueeStartY/
   // marqueeCurrentY, en coordenadas de contenido). Filas de altura uniforme
   // (nombres/metadatos no hacen wrap, siempre una línea) -- basta con
@@ -277,12 +320,13 @@ Item {
   // de la ListView, más simple y ajeno a la virtualización.
   function updateMarqueeSelection(additive, base) {
     var total = root.visibleEntries.length
-    if (total === 0 || list.contentHeight <= 0) return
-    var rowH = list.contentHeight / total
+    if (total === 0 || root.measuredRowHeight <= 0) return
+    var rowH = root.measuredRowHeight
+    var contentEnd = total * rowH
     var top = Math.min(root.marqueeStartY, root.marqueeCurrentY)
     var bottom = Math.max(root.marqueeStartY, root.marqueeCurrentY)
     var picked = []
-    if (bottom > 0 && top < list.contentHeight) {
+    if (bottom > 0 && top < contentEnd) {
       var firstIdx = Math.max(0, Math.floor(top / rowH))
       var lastIdx = Math.min(total - 1, Math.ceil(bottom / rowH) - 1)
       for (var i = firstIdx; i <= lastIdx; i++) picked.push(i)
@@ -2004,39 +2048,54 @@ Item {
               }
             }
 
-            // Detrás de la lista: pulsar y arrastrar sobre hueco vacío
-            // dibuja un lazo de selección (como Nautilus/cualquier gestor de
-            // iconos) -- Ctrl mantiene pulsado suma a la selección previa en
-            // vez de reemplazarla. Solo recibe el gesto si el clic empieza
-            // en hueco vacío: una fila ya cubierta por su propio MouseArea
-            // (por encima, en la ListView) se queda con el press primero.
+            // Rueda del ratón: con `list.interactive` a false (para que
+            // arrastrar nunca haga scroll, solo dibuje el lazo), Flickable
+            // deja de procesar también la rueda -- se reimplementa aquí a
+            // mano. Sin onPressed/onClicked, así que un MouseArea sin
+            // control de wheel (ninguno de filas/footer/marqueeArea lo
+            // implementa) deja pasar el evento hasta este, detrás de todo;
+            // por eso uno solo, cubriendo toda la zona, basta para filas y
+            // huecos vacíos por igual.
             MouseArea {
-              id: marqueeArea
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: root.previewOpen ? parent.width * 0.55 : parent.width
+              property real wheelAccumulator: 0
+              onWheel: function (wheel) {
+                var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
+                wheelAccumulator = step.remainder
+                if (step.steps === 0) return
+                var maxY = Math.max(0, list.contentHeight - list.height)
+                list.contentY = Math.max(0, Math.min(maxY, list.contentY - step.steps * 60))
+              }
+            }
+
+            // Detrás de la ListView, solo el hueco de arriba (fuera de sus
+            // bounds, por el topMargin de `list` -- lo de abajo lo cubre el
+            // footer, dentro de la propia ListView, ver más abajo). Pulsar y
+            // arrastrar aquí dibuja un lazo de selección (como Nautilus/
+            // cualquier gestor de iconos) -- Ctrl mantenido pulsado suma a
+            // la selección previa en vez de reemplazarla.
+            MouseArea {
+              id: marqueeArea
+              anchors.top: parent.top
+              height: list.y
+              anchors.left: parent.left
+              width: root.previewOpen ? parent.width * 0.55 : parent.width
               acceptedButtons: Qt.LeftButton
-              property bool additive: false
-              property var baseSelection: []
               onPressed: function (mouse) {
-                additive = (mouse.modifiers & Qt.ControlModifier) !== 0
-                baseSelection = additive ? root.selectedIndices.slice() : []
-                if (!additive) root.selectOnly(-1)
-                root.marqueeStartX = mouse.x
-                root.marqueeCurrentX = mouse.x
-                root.marqueeStartY = mouse.y - list.y + list.contentY
-                root.marqueeCurrentY = root.marqueeStartY
-                root.marqueeActive = true
+                var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                var vp = mapToItem(list, mouse.x, mouse.y)
+                root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
               }
               onPositionChanged: function (mouse) {
-                if (!root.marqueeActive) return
-                root.marqueeCurrentX = mouse.x
-                root.marqueeCurrentY = mouse.y - list.y + list.contentY
-                root.updateMarqueeSelection(additive, baseSelection)
+                var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                var vp = mapToItem(list, mouse.x, mouse.y)
+                root.moveMarquee(p.x, p.y, vp.y)
               }
-              onReleased: root.marqueeActive = false
-              onCanceled: root.marqueeActive = false
+              onReleased: root.endMarquee()
+              onCanceled: root.endMarquee()
             }
 
             ListView {
@@ -2054,13 +2113,80 @@ Item {
               clip: true
               model: root.visibleEntries
               focus: root.opened
-              // Sin esto, el propio Flickable de ListView se queda con
-              // cualquier press+arrastre en hueco vacío (para su scroll por
-              // arrastre) antes de que llegue a marqueeArea, por debajo --
-              // ningún gestor de archivos arrastra la lista así, esa zona es
-              // para el lazo de selección. La rueda del ratón sigue
-              // funcionando igual (no depende de interactive).
+              // Sin esto, arrastrar con el click (botón izquierdo pulsado)
+              // hace scroll de la lista -- el mismo gesto que queremos
+              // libre por completo para el lazo de selección. Solo debe
+              // poder hacer scroll la rueda, nunca el arrastre. Como
+              // Flickable ata la rueda a esta misma propiedad, hay que
+              // reimplementarla a mano (ver wheelArea más abajo).
               interactive: false
+
+              // Hueco de abajo para el lazo. Un MouseArea suelto detrás de
+              // la ListView (como el de arriba) NO sirve aquí: al ser
+              // Flickable, ListView se queda con cualquier press+arrastre en
+              // TODO su rectángulo -- incluido el hueco bajo la última fila,
+              // aunque ahí no haya ningún delegado -- antes de que le llegue
+              // a nada por detrás (y si se desactiva `interactive` para
+              // evitarlo, se pierde también el scroll con la rueda, que
+              // depende de la misma propiedad). La solución real es un
+              // footer: al ser contenido propio de la ListView (como las
+              // filas), gana el press igual que ellas.
+              footer: Item {
+                id: listFooter
+                width: list.width
+                // Rellena justo el hueco que quede bajo la última fila, a
+                // partir de root.measuredRowHeight (no de list.contentHeight
+                // -- confirmado bucle de binding real con eso, ver arriba).
+                // Sin medida todavía (carpeta vacía, primer frame): llena
+                // toda la vista, que es lo correcto para 0 ficheros.
+                height: root.measuredRowHeight > 0
+                  ? Math.max(0, list.height - root.visibleEntries.length * root.measuredRowHeight)
+                  : list.height
+
+                MouseArea {
+                  anchors.fill: parent
+                  acceptedButtons: Qt.LeftButton
+                  onPressed: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                  }
+                  onPositionChanged: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.moveMarquee(p.x, p.y, vp.y)
+                  }
+                  onReleased: root.endMarquee()
+                  onCanceled: root.endMarquee()
+                }
+              }
+
+              // Auto-scroll del lazo: si el cursor se queda pegado a un
+              // borde de la lista mientras se arrastra y hay más filas de
+              // las que caben en el viewport, hace scroll solo para poder
+              // seguir seleccionando más allá de lo visible -- como
+              // Nautilus/cualquier gestor con lazo. marqueeViewportY llega
+              // ya actualizado (vía mapToItem(list, ...)) desde cualquier
+              // catcher del lazo, así que esto no depende de dónde arrancó
+              // el arrastre.
+              Timer {
+                interval: 16
+                repeat: true
+                running: root.marqueeActive && list.contentHeight > list.height
+                  && (root.marqueeViewportY < 32 || root.marqueeViewportY > list.height - 32)
+                onTriggered: {
+                  var maxY = Math.max(0, list.contentHeight - list.height)
+                  var step = 18
+                  if (root.marqueeViewportY < 32) {
+                    list.contentY = Math.max(0, list.contentY - step)
+                    root.marqueeCurrentY = list.contentY
+                  } else {
+                    list.contentY = Math.min(maxY, list.contentY + step)
+                    root.marqueeCurrentY = list.contentY + list.height
+                  }
+                  root.updateMarqueeSelection(root.marqueeAdditive, root.marqueeBaseSelection)
+                }
+              }
 
               Keys.onPressed: function (event) {
                 if (root.paletteOpen) return
@@ -2190,6 +2316,7 @@ Item {
                 required property int index
                 width: list.width
                 implicitHeight: rowContent.implicitHeight + Style.spacing.sm * 2
+                onHeightChanged: root.measuredRowHeight = height
                 foreground: Color.menu.text
                 accent: Color.accent
                 hasCursor: mouseArea.containsMouse
@@ -2334,13 +2461,17 @@ Item {
                   anchors.bottom: parent.bottom
                   anchors.right: parent.right
                   anchors.left: parent.left
-                  // Hueco sin cubrir a la izquierda (el contenido visual --
+                  // Huecos sin cubrir a los dos lados (el contenido visual --
                   // icono, texto -- no se mueve, solo se reduce el área
-                  // interactiva) para poder arrancar el lazo de selección
-                  // pegado al borde izquierdo de la lista. Style.spacing.xs
-                  // (3px) resultó demasiado fino para acertar con el ratón
-                  // -- probado en vivo, hacía falta algo mucho más ancho.
-                  anchors.leftMargin: 14
+                  // interactiva) para que los MouseArea de gutter de abajo
+                  // puedan quedarse con el press ahí en vez de competir por
+                  // hover con este. Izquierda subida de 14 a 24 -- josema
+                  // probándolo en vivo dijo que sobraba distancia sin usar
+                  // entre el icono y la barra separadora. Derecha iguala
+                  // rowContent.anchors.rightMargin (rowPaddingX), que ya
+                  // deja ese hueco sin contenido visual.
+                  anchors.leftMargin: 24
+                  anchors.rightMargin: Style.spacing.rowPaddingX
                   hoverEnabled: true
                   visible: root.renamingIndex !== index
                   acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -2392,6 +2523,55 @@ Item {
                   Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
                   Drag.proposedAction: Qt.MoveAction
                   Drag.mimeData: root.dragMimeDataFor(index)
+                }
+
+                // Gutters del lazo a los dos lados de la fila -- implementan
+                // el arranque/arrastre directamente (no confían en que el
+                // press "caiga" a algo detrás: en la franja izquierda, antes
+                // de este cambio, no había nada detrás salvo el MouseArea de
+                // la rueda, que se queda con cualquier click de todos modos
+                // aunque solo tenga onWheel). anchors.leftMargin de
+                // `mouseArea` (24) y anchors.rightMargin de `rowContent`
+                // (Style.spacing.rowPaddingX) dejan estos huecos libres de
+                // contenido visual, así que no roban nada al icono/texto.
+                MouseArea {
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  anchors.left: parent.left
+                  width: 24
+                  acceptedButtons: Qt.LeftButton
+                  onPressed: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                  }
+                  onPositionChanged: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.moveMarquee(p.x, p.y, vp.y)
+                  }
+                  onReleased: root.endMarquee()
+                  onCanceled: root.endMarquee()
+                }
+
+                MouseArea {
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  anchors.right: parent.right
+                  width: Style.spacing.rowPaddingX
+                  acceptedButtons: Qt.LeftButton
+                  onPressed: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                  }
+                  onPositionChanged: function (mouse) {
+                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+                    var vp = mapToItem(list, mouse.x, mouse.y)
+                    root.moveMarquee(p.x, p.y, vp.y)
+                  }
+                  onReleased: root.endMarquee()
+                  onCanceled: root.endMarquee()
                 }
               }
             }
@@ -2531,6 +2711,34 @@ Item {
             opacity: 0.55
           }
         }
+      }
+
+      // El lazo de selección también debe poder arrancar en el hueco entre
+      // la barra lateral y el contenido -- `cardRow` es un Row con
+      // `spacing: Style.spacing.panelGap` a cada lado del separador
+      // vertical, y ese espaciado no pertenece a ningún hijo (ni sidebar ni
+      // mainColumn lo cubren), así que ningún MouseArea dentro de
+      // `listContainer` llega hasta ahí por mucho z-order que se ajuste.
+      // `mapToItem` en vez de aritmética manual con list.y/contentY --
+      // ya nos hemos equivocado antes a mano con esas cuentas.
+      MouseArea {
+        x: cardRow.x + sidebar.width
+        y: cardRow.y
+        width: 2 * Style.spacing.panelGap + 1
+        height: cardRow.height
+        acceptedButtons: Qt.LeftButton
+        onPressed: function (mouse) {
+          var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+          var vp = mapToItem(list, mouse.x, mouse.y)
+          root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+        }
+        onPositionChanged: function (mouse) {
+          var p = mapToItem(list.contentItem, mouse.x, mouse.y)
+          var vp = mapToItem(list, mouse.x, mouse.y)
+          root.moveMarquee(p.x, p.y, vp.y)
+        }
+        onReleased: root.endMarquee()
+        onCanceled: root.endMarquee()
       }
 
       // ---------- Renombrar en lote ----------

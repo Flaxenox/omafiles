@@ -23,7 +23,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
 - Registers itself as the system's default file manager on first load — no manual setup (see below).
 - Drag and drop: drag files out to other apps, drag files in from other apps to copy them here, or drag between folders/bookmarks/drives inside Omafiles to move them — with the same overwrite/skip conflict handling as copy/paste.
-- Rubber-band selection: click and drag over empty space to select multiple items, Ctrl adds to the existing selection instead of replacing it.
+- Rubber-band selection: click and drag over empty space (including the margins around the sidebar and each row) to select multiple items, Ctrl adds to the existing selection instead of replacing it, auto-scrolls when dragged to a list edge with more items than fit on screen.
 
 ## Keyboard shortcuts
 
