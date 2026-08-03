@@ -80,6 +80,19 @@ Item {
   property var pasteConflictNames: []
   property bool pasteConflictOpen: false
 
+  // ---------- Arrastrar y soltar ----------
+  // Deliberadamente separado del portapapeles de Ctrl+C/X/V (clipboardPaths/
+  // clipboardMode) -- un drag no debe pisar lo que el usuario tenga copiado
+  // a mano. Interno (misma app) = mover; desde fuera (otra app) = copiar,
+  // decidido por DragEvent.source (null si el drag viene de fuera).
+  property var dropPendingSources: []
+  property string dropTargetDir: ""
+  property bool dropIsMove: false
+  property var dropConflictNames: []
+  property bool dropConflictOpen: false
+  property int dropHoverIndex: -1
+  property string dropHoverPath: ""
+
   property bool contextMenuOpen: false
   property real contextMenuX: 0
   property real contextMenuY: 0
@@ -700,6 +713,110 @@ Item {
     root.pasteConflictNames = []
   }
 
+  // ---------- Arrastrar y soltar ----------
+  function urlToPath(url) {
+    var s = String(url)
+    if (s.indexOf("file://") === 0) s = s.substring(7)
+    try { return decodeURIComponent(s) } catch (e) { return s }
+  }
+
+  // MimeData del/los ficheros que arranca a arrastrar la fila `index` --
+  // si esa fila ya forma parte de una selección múltiple, arrastra toda la
+  // selección (igual que Nautilus); si no, solo esa fila.
+  function dragMimeDataFor(index) {
+    var indices = (root.isSelected(index) && root.selectedIndices.length > 1) ? root.selectedIndices : [index]
+    var paths = indices
+      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
+      .map(function (i) { return root.joinPath(root.currentPath, root.visibleEntries[i].name) })
+    var data = {}
+    data["text/uri-list"] = paths.map(function (p) { return Util.fileUrl(p) }).join("\r\n")
+    return data
+  }
+
+  // Ficheros soltados sobre `destDir` (una fila de carpeta, un marcador,
+  // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
+  // `isMove` viene de DragEvent.source !== null (arrastre interno) --
+  // arrastres que vienen de fuera siempre copian, nunca mueven el origen.
+  function startDropInto(destDir, sourcePaths, isMove) {
+    if (!destDir) return
+    sourcePaths = sourcePaths.filter(function (src) {
+      var srcDir = src.substring(0, src.lastIndexOf("/"))
+      // Evita soltar sobre la propia carpeta de origen (no-op) o dentro de
+      // sí mismo si el fichero arrastrado es en realidad una carpeta.
+      return src !== destDir && srcDir !== destDir && (destDir + "/").indexOf(src + "/") !== 0
+    })
+    if (sourcePaths.length === 0) return
+    root.dropPendingSources = sourcePaths
+    root.dropTargetDir = destDir
+    root.dropIsMove = isMove
+    var destPaths = sourcePaths.map(function (src) {
+      return root.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
+    })
+    var checkCmd = destPaths.map(function (p) {
+      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
+    }).join("; ")
+    dropCheckProc.command = ["bash", "-c", checkCmd]
+    dropCheckProc.running = true
+  }
+
+  // mode: "all" (sin conflictos) | "overwrite" | "skip"
+  function runDrop(mode) {
+    var conflictSet = {}
+    root.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
+    var sources = root.dropPendingSources.filter(function (src) {
+      if (mode !== "skip") return true
+      var name = src.substring(src.lastIndexOf("/") + 1)
+      return !conflictSet[name]
+    })
+    root.dropConflictOpen = false
+    root.dropConflictNames = []
+    if (sources.length > 0) {
+      var noClobber = mode !== "overwrite"
+      var destDir = root.dropTargetDir
+      var isMove = root.dropIsMove
+      var pairs = sources.map(function (src) {
+        var name = src.substring(src.lastIndexOf("/") + 1)
+        return { src: src, dest: root.joinPath(destDir, name) }
+      })
+      var cmds = pairs.map(function (p) {
+        var verb = isMove ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
+        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
+      })
+      runAction(cmds.join(" && "))
+      if (isMove) {
+        var label = pairs.length === 1
+          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+          : "move " + pairs.length + " items"
+        root.pushUndo(label, function () {
+          var undoCmds = pairs.map(function (p) {
+            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
+          })
+          root.runAction(undoCmds.join(" && "))
+        })
+      }
+    }
+    root.dropPendingSources = []
+    root.dropTargetDir = ""
+  }
+
+  function cancelDropConflict() {
+    root.dropConflictOpen = false
+    root.dropConflictNames = []
+    root.dropPendingSources = []
+    root.dropTargetDir = ""
+  }
+
+  // Llamado desde cada DropArea (fila de carpeta, marcador, unidad, fondo
+  // de la lista) con el DragEvent real y la carpeta destino ya resuelta.
+  function handleFilesDropped(drop, destDir) {
+    if (!drop.hasUrls) { drop.accepted = false; return }
+    var paths = drop.urls.map(function (u) { return root.urlToPath(u) }).filter(function (p) { return p.length > 0 })
+    if (paths.length === 0) { drop.accepted = false; return }
+    var isMove = drop.source !== null && drop.source !== undefined
+    drop.accept(isMove ? Qt.MoveAction : Qt.CopyAction)
+    root.startDropInto(destDir, paths, isMove)
+  }
+
   function toggleHidden() {
     root.showHidden = !root.showHidden
     root.refresh()
@@ -1210,6 +1327,22 @@ Item {
   }
 
   Process {
+    id: dropCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        if (conflicts.length === 0) {
+          root.runDrop("all")
+        } else {
+          root.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+          root.dropConflictOpen = true
+        }
+      }
+    }
+  }
+
+  Process {
     id: previewProc
     stdout: StdioCollector {
       waitForEnd: true
@@ -1340,7 +1473,21 @@ Item {
               foreground: Color.menu.text
               accent: Color.accent
               hasCursor: bookmarkMouse.containsMouse
-              current: isCurrent
+              current: isCurrent || root.dropHoverPath === modelData.path
+
+              DropArea {
+                anchors.fill: parent
+                keys: ["text/uri-list"]
+                onEntered: function (drag) {
+                  if (!drag.hasUrls) { drag.accepted = false; return }
+                  root.dropHoverPath = modelData.path
+                }
+                onExited: if (root.dropHoverPath === modelData.path) root.dropHoverPath = ""
+                onDropped: function (drop) {
+                  root.dropHoverPath = ""
+                  root.handleFilesDropped(drop, modelData.path)
+                }
+              }
 
               OpticalGlyph {
                 id: bookmarkIcon
@@ -1422,7 +1569,24 @@ Item {
               foreground: Color.menu.text
               accent: Color.accent
               hasCursor: mountMouse.containsMouse
-              current: isCurrent
+              current: isCurrent || root.dropHoverPath === modelData.path
+
+              DropArea {
+                // Solo unidades ya montadas -- soltar en una sin montar no
+                // tiene destino real todavía.
+                anchors.fill: parent
+                enabled: modelData.mounted
+                keys: ["text/uri-list"]
+                onEntered: function (drag) {
+                  if (!drag.hasUrls) { drag.accepted = false; return }
+                  root.dropHoverPath = modelData.path
+                }
+                onExited: if (root.dropHoverPath === modelData.path) root.dropHoverPath = ""
+                onDropped: function (drop) {
+                  root.dropHoverPath = ""
+                  root.handleFilesDropped(drop, modelData.path)
+                }
+              }
 
               OpticalGlyph {
                 id: mountIcon
@@ -1788,6 +1952,24 @@ Item {
               }
             }
 
+            // Detrás de la lista: soltar aquí (desde otra app, o un arrastre
+            // interno sobre hueco vacío en vez de encima de una fila) mete
+            // los ficheros en la carpeta abierta ahora mismo. Al ir ANTES
+            // que la ListView en el fichero, queda por debajo en el orden de
+            // pintado -- el DropArea de cada fila de carpeta, por encima,
+            // gana cuando el cursor está sobre ella.
+            DropArea {
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              keys: ["text/uri-list"]
+              onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
+              onDropped: function (drop) {
+                root.handleFilesDropped(drop, root.currentPath)
+              }
+            }
+
             ListView {
               id: list
               anchors.top: parent.top
@@ -1818,6 +2000,10 @@ Item {
                 }
                 if (root.pasteConflictOpen) {
                   if (event.key === Qt.Key_Escape) { root.cancelPasteConflict(); event.accepted = true }
+                  return
+                }
+                if (root.dropConflictOpen) {
+                  if (event.key === Qt.Key_Escape) { root.cancelDropConflict(); event.accepted = true }
                   return
                 }
                 if (root.propertiesOpen) {
@@ -1925,7 +2111,24 @@ Item {
                 foreground: Color.menu.text
                 accent: Color.accent
                 hasCursor: mouseArea.containsMouse
-                current: root.isSelected(index)
+                current: root.isSelected(index) || root.dropHoverIndex === index
+
+                DropArea {
+                  // Solo las carpetas son destino válido de un drop --
+                  // soltar sobre un fichero suelto no tiene sentido.
+                  anchors.fill: parent
+                  enabled: thumbSlot.isDir
+                  keys: ["text/uri-list"]
+                  onEntered: function (drag) {
+                    if (!drag.hasUrls) { drag.accepted = false; return }
+                    root.dropHoverIndex = index
+                  }
+                  onExited: if (root.dropHoverIndex === index) root.dropHoverIndex = -1
+                  onDropped: function (drop) {
+                    root.dropHoverIndex = -1
+                    root.handleFilesDropped(drop, root.joinPath(root.currentPath, modelData.name))
+                  }
+                }
 
                 Item {
                   id: rowContent
@@ -2050,6 +2253,26 @@ Item {
                   visible: root.renamingIndex !== index
                   acceptedButtons: Qt.LeftButton | Qt.RightButton
                   cursorShape: Qt.PointingHandCursor
+                  drag.target: dragProxy
+                  drag.axis: Drag.XAndYAxis
+                  onPressed: function (mouse) {
+                    // Empezar a arrastrar un fichero que no formaba parte de
+                    // la selección debe arrastrar solo ese fichero (como
+                    // Nautilus) -- pero solo en clic simple: Ctrl/Shift+clic
+                    // siguen decidiendo la selección en onClicked, sin tocar
+                    // aquí el ancla de rango (selectRange).
+                    if (mouse.button === Qt.LeftButton && mouse.modifiers === Qt.NoModifier && !root.isSelected(index)) {
+                      root.selectOnly(index)
+                    }
+                    // Miniatura del arrastre: capturada aquí (no en
+                    // Drag.onActiveChanged) para que le dé tiempo a
+                    // completarse -- grabToImage es async (un frame) y para
+                    // cuando el movimiento supera el umbral de drag ya casi
+                    // siempre está lista.
+                    if (mouse.button === Qt.LeftButton) {
+                      rowContent.grabToImage(function (result) { dragProxy.Drag.imageSource = result.url })
+                    }
+                  }
                   onClicked: function (mouse) {
                     if (mouse.button === Qt.RightButton) {
                       if (!root.isSelected(index)) root.selectOnly(index)
@@ -2062,6 +2285,21 @@ Item {
                     else root.selectOnly(index)
                   }
                   onDoubleClicked: root.enter(modelData)
+                }
+
+                // Proxy invisible que MouseArea.drag mueve -- lo único que
+                // importa de verdad es su Drag.active, que arranca el drag
+                // real (interno o hacia otra app) en cuanto se supera el
+                // umbral de movimiento.
+                Item {
+                  id: dragProxy
+                  width: 1
+                  height: 1
+                  Drag.active: mouseArea.drag.active
+                  Drag.dragType: Drag.Automatic
+                  Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+                  Drag.proposedAction: Qt.MoveAction
+                  Drag.mimeData: root.dragMimeDataFor(index)
                 }
               }
             }
@@ -2653,6 +2891,60 @@ Item {
             Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; onClicked: root.runPaste("overwrite") }
             Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; onClicked: root.runPaste("skip") }
             Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; onClicked: root.cancelPasteConflict() }
+          }
+        }
+      }
+
+      // ---------- Conflicto al soltar (drag & drop) ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.dropConflictOpen
+        z: 15
+        onClicked: root.cancelDropConflict()
+      }
+
+      BorderSurface {
+        id: dropConflictCard
+        visible: root.dropConflictOpen
+        width: Math.min(parent.width - 80, 360)
+        height: dropConflictColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: dropConflictColumn
+          anchors.fill: parent
+          anchors.topMargin: dropConflictCard.contentTopInset
+          anchors.rightMargin: dropConflictCard.contentRightInset
+          anchors.bottomMargin: dropConflictCard.contentBottomInset
+          anchors.leftMargin: dropConflictCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            width: parent.width
+            text: root.dropConflictNames.length === 1
+              ? "\"" + root.dropConflictNames[0] + "\" already exists here."
+              : root.dropConflictNames.length + " items already exist here."
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+            wrapMode: Text.Wrap
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.spacing.xs
+
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; onClicked: root.runDrop("overwrite") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; onClicked: root.runDrop("skip") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; onClicked: root.cancelDropConflict() }
           }
         }
       }

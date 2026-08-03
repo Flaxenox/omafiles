@@ -22,6 +22,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Recursive search, "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
 - Registers itself as the system's default file manager on first load — no manual setup (see below).
+- Drag and drop: drag files out to other apps, drag files in from other apps to copy them here, or drag between folders/bookmarks/drives inside Omafiles to move them — with the same overwrite/skip conflict handling as copy/paste.
 
 ## Keyboard shortcuts
 
