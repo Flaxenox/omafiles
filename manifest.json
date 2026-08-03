@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "local.omafiles",
+  "name": "Omafiles",
+  "version": "0.6.0",
+  "author": "Percius04",
+  "description": "Explorador de archivos: navegar, buscar, ordenar, montar unidades, renombrar, borrar, copiar/cortar/pegar, propiedades",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Omafiles.qml"
+  }
+}

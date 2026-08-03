@@ -1,0 +1,2675 @@
+import Quickshell
+import Quickshell.Io
+import QtQuick
+import qs.Commons
+import qs.Ui
+
+// Omafiles v0.5 -- explorador de archivos para Omarchy.
+// Ventana normal (FloatingWindow, tileable en Hyprland como cualquier otra
+// app), no un overlay modal. Barra lateral con accesos y unidades (montar/
+// expulsar), ruta editable a mano, orden por nombre/tamaño/fecha/tipo
+// (tecla "s"/"S"), menú contextual y paleta de comandos (Ctrl+P) para todas
+// las acciones de fichero, avisos de conflicto al copiar/pegar/renombrar,
+// propiedades. Sin drag&drop todavía.
+Item {
+  id: root
+
+  property string homeDir: Quickshell.env("HOME")
+  property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
+  property string currentPath: homeDir
+  property var tabs: [{ path: homeDir }]
+  property int activeTabIndex: 0
+  property var entries: []
+  property bool searching: false
+  property string deepSearchRoot: ""
+  property string searchQuery: ""
+  readonly property var visibleEntries: root.searchQuery
+    ? root.entries.filter(function (e) { return e.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) >= 0 })
+    : root.entries
+  property bool opened: false
+  property bool closingFromHost: false
+  property bool loaded: false
+
+  // ---------- Deshacer (Ctrl+Z) ----------
+  // Pila simple de acciones reversibles: renombrar, nueva carpeta, borrar
+  // (a la papelera) y mover (cortar+pegar). Copiar/comprimir/chmod/renombrado
+  // en lote se quedan fuera a propósito -- deshacerlos es más ambiguo o
+  // menos crítico que perder por error un fichero renombrado/movido/borrado.
+  property var undoStack: []
+
+  function pushUndo(label, undoFn) {
+    root.undoStack = root.undoStack.concat([{ label: label, undo: undoFn }]).slice(-20)
+  }
+
+  function undoLast() {
+    if (root.undoStack.length === 0) return
+    var entry = root.undoStack[root.undoStack.length - 1]
+    root.undoStack = root.undoStack.slice(0, -1)
+    entry.undo()
+    Quickshell.execDetached(["notify-send", "Omafiles", "Deshecho: " + entry.label])
+  }
+
+  // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
+  property var shell: null
+  property int selectedIndex: -1
+  property var selectedIndices: []
+  property int anchorIndex: -1
+  property bool showHidden: false
+
+  readonly property var sortKeys: ["name", "size", "mtime", "type"]
+  readonly property var sortKeyLabels: ({ name: "Nombre", size: "Tamaño", mtime: "Fecha", type: "Tipo" })
+  property string sortKey: "name"
+  property bool sortDesc: false
+
+  property int renamingIndex: -1
+  property bool creatingFolder: false
+  property bool editingPath: false
+
+  property var clipboardPaths: []
+  property string clipboardMode: "" // "copy" | "cut"
+
+  property var pendingDeleteNames: []
+
+  property var pendingRename: null // { oldPath, newPath }
+  property bool renameConflictOpen: false
+
+  property var pasteConflictNames: []
+  property bool pasteConflictOpen: false
+
+  property bool contextMenuOpen: false
+  property real contextMenuX: 0
+  property real contextMenuY: 0
+  property var contextMenuActions: []
+
+  property bool gPending: false
+
+  property bool paletteOpen: false
+  property string paletteQuery: ""
+  property int paletteIndex: 0
+
+  property bool previewOpen: false
+  property bool openWithOpen: false
+  property var openWithApps: []
+  property var openWithEntry: null
+
+  property bool bulkRenameOpen: false
+  property string bulkRenamePattern: "{name}{ext}"
+
+  property bool chmodOpen: false
+  property string chmodEntry: ""
+  property string chmodMode: ""
+
+  property bool propertiesOpen: false
+  property var propertiesEntry: null
+  property string propertiesSize: ""
+  property bool propertiesSizeLoading: false
+  property string propertiesPerms: ""
+  property string propertiesOwner: ""
+  property string propertiesMtime: ""
+
+  readonly property var tarExt: ["tar", "gz", "tgz", "bz2", "tbz", "xz", "txz"]
+  property var previewEntry: null
+  property string previewText: ""
+  property bool previewIsText: false
+
+  property string trashDir: root.homeDir + "/.local/share/Trash/files"
+  property var mounts: []
+
+  readonly property var defaultBookmarks: [
+    { label: "Inicio", path: root.homeDir, icon: "🏠" },
+    { label: "Documentos", path: root.homeDir + "/Documentos", icon: "📁" },
+    { label: "Descargas", path: root.homeDir + "/Descargas", icon: "📁" },
+    { label: "Imágenes", path: root.homeDir + "/Imágenes", icon: "🖼️" },
+    { label: "Vídeos", path: root.homeDir + "/Vídeos", icon: "🎬" },
+    { label: "Música", path: root.homeDir + "/Música", icon: "🎵" },
+    { label: "Proyectos", path: root.homeDir + "/Proyectos", icon: "📁" },
+    { label: "Papelera", path: root.homeDir + "/.local/share/Trash/files", icon: "🗑️" }
+  ]
+
+  property var bookmarks: []
+  property string bookmarksFile: root.homeDir + "/.local/state/omafiles/bookmarks.json"
+  property bool bookmarksLoaded: false
+
+  readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
+  readonly property var videoExt: ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]
+  readonly property var audioExt: ["mp3", "flac", "wav", "ogg", "m4a", "opus"]
+  readonly property var archiveExt: ["zip", "tar", "gz", "xz", "rar", "7z", "bz2", "zst"]
+  readonly property var codeExt: ["js", "ts", "py", "lua", "sh", "c", "cpp", "h", "rs", "go", "html", "css", "json", "qml", "md", "yml", "yaml", "toml"]
+
+  function extOf(name) {
+    var idx = name.lastIndexOf(".")
+    return idx > 0 ? name.substring(idx + 1).toLowerCase() : ""
+  }
+
+  function iconFor(entry) {
+    var ext = extOf(entry.name)
+    if (ext === "iso") return "󰗮"
+    if (imageExt.indexOf(ext) >= 0) return "󰺰"
+    if (videoExt.indexOf(ext) >= 0) return "󰸬"
+    if (audioExt.indexOf(ext) >= 0) return "󰸪"
+    if (archiveExt.indexOf(ext) >= 0) return "󰗄"
+    if (ext === "pdf") return "󰈦"
+    if (codeExt.indexOf(ext) >= 0) return "󱀫"
+    return "󰈤"
+  }
+
+  function isImage(entry) {
+    return entry.type === "file" && imageExt.indexOf(extOf(entry.name)) >= 0
+  }
+
+  function isVideo(entry) {
+    return entry.type === "file" && videoExt.indexOf(extOf(entry.name)) >= 0
+  }
+
+  // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
+  property string thumbCacheDir: root.homeDir + "/.cache/omafiles/thumbnails"
+  property var videoThumbReady: ({}) // "ruta|mtime" -> fichero .jpg local
+  property var thumbQueue: []
+  property bool thumbBusy: false
+
+  // Hash simple y estable solo para nombrar el fichero de caché -- no hace
+  // falta criptográfico, solo evitar colisiones razonables sin depender de
+  // md5sum externo.
+  function simpleHash(str) {
+    var h = 0
+    for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0
+    return (h >>> 0).toString(36)
+  }
+
+  function thumbKeyFor(entry) {
+    return root.joinPath(root.currentPath, entry.name) + "|" + entry.mtime
+  }
+
+  function videoThumbPath(entry) {
+    return root.thumbCacheDir + "/" + root.simpleHash(root.thumbKeyFor(entry)) + ".jpg"
+  }
+
+  function requestVideoThumb(entry) {
+    var key = root.thumbKeyFor(entry)
+    if (root.videoThumbReady[key]) return
+    if (root.thumbQueue.some(function (e) { return root.thumbKeyFor(e) === key })) return
+    root.thumbQueue = root.thumbQueue.concat([entry])
+    root.processThumbQueue()
+  }
+
+  function processThumbQueue() {
+    if (root.thumbBusy || root.thumbQueue.length === 0) return
+    root.thumbBusy = true
+    var next = root.thumbQueue.slice()
+    var entry = next.shift()
+    root.thumbQueue = next
+    var src = root.joinPath(root.currentPath, entry.name)
+    var dest = root.videoThumbPath(entry)
+    thumbProc.currentKey = root.thumbKeyFor(entry)
+    thumbProc.currentDest = dest
+    thumbProc.command = ["bash", root.pluginDir + "/thumbnail-video.sh", src, dest]
+    thumbProc.running = true
+  }
+
+  function isSelected(index) {
+    return root.selectedIndices.indexOf(index) >= 0
+  }
+
+  function selectOnly(index) {
+    root.selectedIndex = index
+    root.anchorIndex = index
+    root.selectedIndices = index >= 0 ? [index] : []
+    if (root.previewOpen) {
+      if (index >= 0 && index < root.visibleEntries.length && root.visibleEntries[index].type !== "dir") {
+        root.loadPreview(root.visibleEntries[index])
+      } else {
+        root.previewOpen = false
+      }
+    }
+  }
+
+  function toggleSelect(index) {
+    var next = root.selectedIndices.slice()
+    var pos = next.indexOf(index)
+    if (pos >= 0) next.splice(pos, 1)
+    else next.push(index)
+    root.selectedIndices = next
+    root.selectedIndex = index
+    root.anchorIndex = index
+  }
+
+  function selectRange(index) {
+    var start = root.anchorIndex >= 0 ? root.anchorIndex : index
+    var from = Math.min(start, index)
+    var to = Math.max(start, index)
+    var next = []
+    for (var i = from; i <= to; i++) next.push(i)
+    root.selectedIndices = next
+    root.selectedIndex = index
+  }
+
+  function selectedEntries() {
+    return root.selectedIndices
+      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
+      .map(function (i) { return root.visibleEntries[i] })
+  }
+
+  function refresh() {
+    listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
+    listProc.running = true
+  }
+
+  function refreshMounts() {
+    mountsProc.running = true
+  }
+
+  function loadBookmarks() {
+    loadBookmarksProc.running = true
+  }
+
+  function saveBookmarks() {
+    var dir = root.bookmarksFile.substring(0, root.bookmarksFile.lastIndexOf("/"))
+    var json = JSON.stringify(root.bookmarks)
+    saveBookmarksProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bookmarksFile)]
+    saveBookmarksProc.running = true
+  }
+
+  function removeBookmark(path) {
+    root.bookmarks = root.bookmarks.filter(function (b) { return b.path !== path })
+    root.saveBookmarks()
+  }
+
+  function addBookmark(path, label, icon) {
+    if (root.bookmarks.some(function (b) { return b.path === path })) return
+    root.bookmarks = root.bookmarks.concat([{ label: label, path: path, icon: icon || "📁" }])
+    root.saveBookmarks()
+  }
+
+  function isBookmarked(path) {
+    return root.bookmarks.some(function (b) { return b.path === path })
+  }
+
+  function parseMounts(text) {
+    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+    return lines.map(function (l) {
+      var parts = l.split("\t")
+      return { label: parts[0], path: parts[1], device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
+    })
+  }
+
+  function iconForMount(mount) {
+    if (mount.fstype === "iso9660") return root.iconFor({ type: "file", name: "x.iso" })
+    return mount.removable ? "\u{F0553}" : "\u{F02CA}"
+  }
+
+  function ejectMount(mount) {
+    var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
+    ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
+    ejectProc.mountPath = mount.path
+    ejectProc.wasInside = wasInside
+    ejectProc.running = true
+  }
+
+  // udisksctl imprime "Mounted /dev/sdX at /run/media/user/Label." -- se
+  // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
+  // es la unidad recién montada.
+  function mountDevice(mount) {
+    mountProc.command = ["udisksctl", "mount", "-b", mount.device]
+    mountProc.running = true
+  }
+
+  function emptyTrash() {
+    runAction("gio trash --empty --force")
+  }
+
+  function parseEntries(text) {
+    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+    return lines.map(function (l) {
+      var parts = l.split("\t")
+      return { type: parts[0], name: parts[1], size: Number(parts[2] || 0), mtime: Number(parts[3] || 0) }
+    })
+  }
+
+  function compareEntries(a, b) {
+    var result = 0
+    if (root.sortKey === "size") {
+      result = a.size - b.size
+    } else if (root.sortKey === "mtime") {
+      result = a.mtime - b.mtime
+    } else if (root.sortKey === "type") {
+      var ea = root.extOf(a.name), eb = root.extOf(b.name)
+      result = ea < eb ? -1 : (ea > eb ? 1 : 0)
+    }
+    if (result === 0) {
+      var na = a.name.toLowerCase(), nb = b.name.toLowerCase()
+      result = na < nb ? -1 : (na > nb ? 1 : 0)
+    }
+    return root.sortDesc ? -result : result
+  }
+
+  // Las carpetas siempre van antes que los ficheros -- el criterio de orden
+  // elegido solo decide cómo se ordena cada grupo entre sí.
+  function sortEntries(list) {
+    var dirs = list.filter(function (e) { return e.type === "dir" })
+    var files = list.filter(function (e) { return e.type !== "dir" })
+    dirs.sort(root.compareEntries)
+    files.sort(root.compareEntries)
+    return dirs.concat(files)
+  }
+
+  function sortLabel() {
+    return root.sortKeyLabels[root.sortKey] + (root.sortDesc ? " ↓" : " ↑")
+  }
+
+  function setSort(key) {
+    root.sortKey = key
+    root.entries = root.sortEntries(root.entries)
+  }
+
+  function cycleSort() {
+    var idx = root.sortKeys.indexOf(root.sortKey)
+    root.setSort(root.sortKeys[(idx + 1) % root.sortKeys.length])
+  }
+
+  function reverseSort() {
+    root.sortDesc = !root.sortDesc
+    root.entries = root.sortEntries(root.entries)
+  }
+
+  function joinPath(base, name) {
+    return base === "/" ? "/" + name : base + "/" + name
+  }
+
+  function navigateTo(path) {
+    if (!path) return
+    // Normaliza barras finales/dobles básicas sin depender de un proceso externo.
+    path = path.replace(/\/+$/, "") || "/"
+    root.currentPath = path
+    root.selectOnly(-1)
+    root.renamingIndex = -1
+    root.creatingFolder = false
+    root.editingPath = false
+    root.refresh()
+  }
+
+  function saveActiveTab() {
+    var next = root.tabs.slice()
+    next[root.activeTabIndex] = { path: root.currentPath }
+    root.tabs = next
+  }
+
+  function switchToTab(index) {
+    if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
+    root.saveActiveTab()
+    root.activeTabIndex = index
+    root.navigateTo(root.tabs[index].path)
+  }
+
+  function newTab() {
+    root.saveActiveTab()
+    root.tabs = root.tabs.concat([{ path: root.currentPath }])
+    root.activeTabIndex = root.tabs.length - 1
+  }
+
+  function closeTab() {
+    if (root.tabs.length <= 1) { root.requestClose(); return }
+    var next = root.tabs.slice()
+    next.splice(root.activeTabIndex, 1)
+    root.tabs = next
+    var newIndex = Math.min(root.activeTabIndex, next.length - 1)
+    root.activeTabIndex = newIndex
+    root.navigateTo(root.tabs[newIndex].path)
+  }
+
+  function nextTab() {
+    root.switchToTab((root.activeTabIndex + 1) % root.tabs.length)
+  }
+
+  function enter(entry) {
+    if (!entry) return
+    if (entry.type === "dir") {
+      navigateTo(root.joinPath(root.currentPath, entry.name))
+    } else {
+      openProc.command = ["xdg-open", root.joinPath(root.currentPath, entry.name)]
+      openProc.running = true
+    }
+  }
+
+  function goUp() {
+    if (root.currentPath === "/") return
+    var idx = root.currentPath.lastIndexOf("/")
+    navigateTo(idx > 0 ? root.currentPath.substring(0, idx) : "/")
+  }
+
+  // Host-initiated open/close (`shell toggle`/`shell summon`/`shell hide`).
+  function open(payload) {
+    root.opened = true
+    panel.visible = true
+    if (!root.loaded) root.refresh()
+    if (!root.bookmarksLoaded) root.loadBookmarks()
+    root.refreshMounts()
+  }
+
+  function close() {
+    root.closingFromHost = true
+    root.opened = false
+    panel.visible = false
+    root.closingFromHost = false
+    root.renamingIndex = -1
+    root.creatingFolder = false
+    root.editingPath = false
+    root.pendingDeleteNames = []
+    root.contextMenuOpen = false
+  }
+
+  // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
+  // la ventana). Avisa al shell para que su mapa de paneles abiertos quede
+  // consistente y el próximo `toggle` funcione bien -- mismo patrón que
+  // dev-gallery/GalleryPanel.qml.
+  function requestClose() {
+    if (root.shell && typeof root.shell.hide === "function") root.shell.hide("local.omafiles")
+    else root.close()
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B"
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " K"
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " M"
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + " G"
+  }
+
+  function relativeTime(epochSeconds) {
+    if (!epochSeconds) return ""
+    var diff = Math.floor(Date.now() / 1000) - epochSeconds
+    if (diff < 60) return "justo ahora"
+    if (diff < 3600) return "hace " + Math.floor(diff / 60) + " min"
+    if (diff < 86400) return "hace " + Math.floor(diff / 3600) + " h"
+    if (diff < 86400 * 30) return "hace " + Math.floor(diff / 86400) + " d"
+    if (diff < 86400 * 365) return "hace " + Math.floor(diff / (86400 * 30)) + " meses"
+    return "hace " + Math.floor(diff / (86400 * 365)) + " años"
+  }
+
+  // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
+  // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
+  // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
+  function metaFor(entry) {
+    var parts = []
+    if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
+    var rel = root.relativeTime(entry.mtime)
+    if (rel) parts.push(rel)
+    return parts.join(" · ")
+  }
+
+  function runAction(cmd) {
+    actionProc.command = ["bash", "-c", cmd]
+    actionProc.running = true
+  }
+
+  function startRename(index) {
+    if (index < 0 || index >= root.visibleEntries.length) return
+    root.creatingFolder = false
+    root.renamingIndex = index
+  }
+
+  function commitRename(newName) {
+    var index = root.renamingIndex
+    root.renamingIndex = -1
+    if (index < 0 || index >= root.visibleEntries.length) return
+    var oldName = root.visibleEntries[index].name
+    newName = newName.trim()
+    if (!newName || newName === oldName) return
+    var oldPath = root.joinPath(root.currentPath, oldName)
+    var newPath = root.joinPath(root.currentPath, newName)
+    root.pendingRename = { oldPath: oldPath, newPath: newPath }
+    renameCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"]
+    renameCheckProc.running = true
+  }
+
+  function runPendingRename(overwrite) {
+    var r = root.pendingRename
+    root.pendingRename = null
+    root.renameConflictOpen = false
+    if (!r) return
+    runAction("mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath))
+    var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
+    root.pushUndo("renombrar a \"" + oldName + "\"", function () {
+      root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
+    })
+  }
+
+  function cancelPendingRename() {
+    root.pendingRename = null
+    root.renameConflictOpen = false
+  }
+
+  function startNewFolder() {
+    root.renamingIndex = -1
+    root.searching = false
+    root.creatingFolder = true
+  }
+
+  function commitNewFolder(name) {
+    root.creatingFolder = false
+    name = name.trim()
+    if (!name) return
+    var path = root.joinPath(root.currentPath, name)
+    runAction("mkdir -p -- " + Util.shellQuote(path))
+    // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
+    // deshacer, falla en vez de borrar contenido a lo tonto.
+    root.pushUndo("nueva carpeta \"" + name + "\"", function () {
+      root.runAction("rmdir -- " + Util.shellQuote(path))
+    })
+  }
+
+  function requestDelete() {
+    var names = root.selectedEntries().map(function (e) { return e.name })
+    if (names.length === 0) return
+    root.pendingDeleteNames = names
+  }
+
+  function confirmDelete() {
+    var names = root.pendingDeleteNames
+    root.pendingDeleteNames = []
+    if (names.length === 0) return
+    var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(root.currentPath, n)) }).join(" ")
+    if (root.currentPath === root.trashDir) {
+      // Borrado permanente -- no hay undo posible.
+      runAction("rm -rf -- " + quoted)
+    } else {
+      runAction("gio trash -- " + quoted)
+      var label = names.length === 1 ? "borrar \"" + names[0] + "\"" : "borrar " + names.length + " elementos"
+      root.pushUndo(label, function () {
+        var cmds = names.map(function (n) {
+          var uri = "trash:///" + n.split("/").map(encodeURIComponent).join("/")
+          return "gio trash --restore -- " + Util.shellQuote(uri)
+        })
+        root.runAction(cmds.join(" && "))
+      })
+    }
+  }
+
+  function copySelected() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return
+    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    root.clipboardMode = "copy"
+  }
+
+  function cutSelected() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return
+    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    root.clipboardMode = "cut"
+  }
+
+  function paste() {
+    if (root.clipboardPaths.length === 0) return
+    var destPaths = root.clipboardPaths.map(function (src) {
+      var name = src.substring(src.lastIndexOf("/") + 1)
+      return root.joinPath(root.currentPath, name)
+    })
+    var checkCmd = destPaths.map(function (p) {
+      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
+    }).join("; ")
+    pasteCheckProc.command = ["bash", "-c", checkCmd]
+    pasteCheckProc.running = true
+  }
+
+  // mode: "all" (sin conflictos, tal cual) | "overwrite" | "skip"
+  function runPaste(mode) {
+    var conflictSet = {}
+    root.pasteConflictNames.forEach(function (n) { conflictSet[n] = true })
+    var sources = root.clipboardPaths.filter(function (src) {
+      if (mode !== "skip") return true
+      var name = src.substring(src.lastIndexOf("/") + 1)
+      return !conflictSet[name]
+    })
+    root.pasteConflictOpen = false
+    root.pasteConflictNames = []
+    if (sources.length > 0) {
+      var noClobber = mode !== "overwrite"
+      var isCut = root.clipboardMode === "cut"
+      var pairs = sources.map(function (src) {
+        var name = src.substring(src.lastIndexOf("/") + 1)
+        return { src: src, dest: root.joinPath(root.currentPath, name) }
+      })
+      var cmds = pairs.map(function (p) {
+        var verb = isCut ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
+        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
+      })
+      runAction(cmds.join(" && "))
+      if (isCut) {
+        var label = pairs.length === 1
+          ? "mover \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+          : "mover " + pairs.length + " elementos"
+        root.pushUndo(label, function () {
+          var undoCmds = pairs.map(function (p) {
+            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
+          })
+          root.runAction(undoCmds.join(" && "))
+        })
+      }
+    }
+    if (root.clipboardMode === "cut") {
+      root.clipboardPaths = []
+      root.clipboardMode = ""
+    }
+  }
+
+  function cancelPasteConflict() {
+    root.pasteConflictOpen = false
+    root.pasteConflictNames = []
+  }
+
+  function toggleHidden() {
+    root.showHidden = !root.showHidden
+    root.refresh()
+  }
+
+  function startEditPath() {
+    root.editingPath = true
+  }
+
+  function startSearch() {
+    root.creatingFolder = false
+    root.searching = true
+    root.searchQuery = ""
+  }
+
+  function exitSearch() {
+    root.searching = false
+    root.searchQuery = ""
+    root.deepSearchRoot = ""
+    root.refresh()
+    root.selectOnly(-1)
+  }
+
+  function runDeepSearch() {
+    if (!root.searchQuery) return
+    root.deepSearchRoot = root.currentPath
+    deepSearchProc.command = [root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"]
+    deepSearchProc.running = true
+  }
+
+  function goTop() {
+    if (root.visibleEntries.length > 0) root.selectOnly(0)
+  }
+
+  function goBottom() {
+    if (root.visibleEntries.length > 0) root.selectOnly(root.visibleEntries.length - 1)
+  }
+
+  function openTerminalHere() {
+    openProc.command = ["xdg-terminal-exec", "--dir=" + root.currentPath]
+    openProc.running = true
+  }
+
+  function paletteCommands() {
+    var hasSelection = root.selectedIndices.length > 0
+    var entry = root.selectedIndices.length === 1 ? root.visibleEntries[root.selectedIndex] : null
+    var cmds = [
+      { label: "Nueva carpeta", run: function () { root.startNewFolder() } },
+      { label: "Renombrar", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
+      { label: "Copiar", enabled: hasSelection, run: function () { root.copySelected() } },
+      { label: "Cortar", enabled: hasSelection, run: function () { root.cutSelected() } },
+      { label: "Pegar", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
+      { label: "Borrar", enabled: hasSelection, run: function () { root.requestDelete() } },
+      { label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", run: function () { root.toggleHidden() } },
+      { label: "Refrescar", run: function () { root.refresh(); root.refreshMounts() } },
+      { label: "Ordenar por nombre", run: function () { root.setSort("name") } },
+      { label: "Ordenar por tamaño", run: function () { root.setSort("size") } },
+      { label: "Ordenar por fecha", run: function () { root.setSort("mtime") } },
+      { label: "Ordenar por tipo", run: function () { root.setSort("type") } },
+      { label: "Invertir orden", run: function () { root.reverseSort() } },
+      { label: root.undoStack.length > 0 ? "Deshacer: " + root.undoStack[root.undoStack.length - 1].label : "Deshacer",
+        enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
+      { label: "Terminal aquí", run: function () { root.openTerminalHere() } },
+      { label: "Ir a Inicio", run: function () { root.navigateTo(root.homeDir) } },
+      { label: "Editar ruta", run: function () { root.startEditPath() } },
+      { label: "Buscar", run: function () { root.startSearch() } },
+      { label: "Comprimir a .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
+      { label: "Renombrar en lote...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
+      { label: "Permisos...", enabled: !!entry, run: function () { if (entry) root.startChmod(entry) } },
+      { label: "Propiedades", enabled: !!entry, run: function () { if (entry) root.showProperties(entry) } }
+    ]
+    if (root.currentPath === root.trashDir) {
+      cmds.push({ label: "Vaciar papelera", run: function () { root.emptyTrash() } })
+      cmds.push({ label: "Restaurar", enabled: hasSelection, run: function () { root.restoreFromTrash() } })
+    }
+    if (entry && entry.type !== "dir" && root.isArchive(entry)) {
+      cmds.push({ label: "Extraer aquí", run: function () { root.extractHere(entry) } })
+    }
+    if (entry && entry.type === "dir") {
+      var fullPath = root.joinPath(root.currentPath, entry.name)
+      if (!root.isBookmarked(fullPath)) {
+        cmds.push({ label: "Añadir a marcadores", run: function () { root.addBookmark(fullPath, entry.name, "📁") } })
+      }
+    }
+    return cmds
+  }
+
+  function filteredPaletteCommands() {
+    var all = root.paletteCommands()
+    if (!root.paletteQuery) return all
+    var q = root.paletteQuery.toLowerCase()
+    return all.filter(function (c) { return c.label.toLowerCase().indexOf(q) >= 0 })
+  }
+
+  function openPalette() {
+    root.paletteQuery = ""
+    root.paletteIndex = 0
+    root.paletteOpen = true
+  }
+
+  function closePalette() {
+    root.paletteOpen = false
+  }
+
+  function runPaletteCommand(index) {
+    var cmds = root.filteredPaletteCommands()
+    if (index < 0 || index >= cmds.length) return
+    var cmd = cmds[index]
+    if (cmd.enabled === false) return
+    root.closePalette()
+    cmd.run()
+  }
+
+  function togglePreview() {
+    if (root.previewOpen) {
+      root.previewOpen = false
+      return
+    }
+    if (root.selectedIndex < 0 || root.selectedIndex >= root.visibleEntries.length) return
+    root.loadPreview(root.visibleEntries[root.selectedIndex])
+  }
+
+  function loadPreview(entry) {
+    if (!entry || entry.type === "dir") return
+    root.previewEntry = entry
+    root.previewOpen = true
+    root.previewText = ""
+    var ext = root.extOf(entry.name)
+    root.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
+    if (root.previewIsText && !root.isImage(entry)) {
+      previewProc.command = ["head", "-c", "4000", root.joinPath(root.currentPath, entry.name)]
+      previewProc.running = true
+    }
+    if (root.isVideo(entry)) root.requestVideoThumb(entry)
+  }
+
+  function showOpenWith(entry) {
+    if (!entry || entry.type === "dir") return
+    root.openWithEntry = entry
+    root.openWithApps = []
+    openWithProc.command = [root.pluginDir + "/open-with-list.sh", root.joinPath(root.currentPath, entry.name)]
+    openWithProc.running = true
+    root.openWithOpen = true
+  }
+
+  function launchWith(desktopId) {
+    if (root.openWithEntry) {
+      Quickshell.execDetached(["gtk-launch", desktopId, root.joinPath(root.currentPath, root.openWithEntry.name)])
+    }
+    root.openWithOpen = false
+    root.openWithEntry = null
+  }
+
+  function parseOpenWithApps(text) {
+    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+    return lines.map(function (l) {
+      var parts = l.split("\t")
+      return { name: parts[0], id: parts[1] }
+    })
+  }
+
+  function compressSelected() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return
+    var archiveName = entries.length === 1
+      ? entries[0].name.replace(/\/$/, "") + ".zip"
+      : "archivos-seleccionados.zip"
+    var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
+    runAction("cd -- " + Util.shellQuote(root.currentPath) + " && zip -r -q " + Util.shellQuote(archiveName) + " " + names)
+  }
+
+  function isArchive(entry) {
+    if (entry.type === "dir") return false
+    var ext = root.extOf(entry.name)
+    return ext === "zip" || ext === "7z" || ext === "rar" || root.tarExt.indexOf(ext) >= 0
+  }
+
+  function extractHere(entry) {
+    var ext = root.extOf(entry.name)
+    var path = Util.shellQuote(root.joinPath(root.currentPath, entry.name))
+    var dir = Util.shellQuote(root.currentPath)
+    var cmd
+    if (ext === "zip") cmd = "unzip -o -q " + path + " -d " + dir
+    else if (ext === "7z") cmd = "7z x -y " + path + " -o" + dir
+    else if (ext === "rar") cmd = "unrar x -o+ " + path + " " + dir + "/"
+    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + path + " -C " + dir
+    else return
+    runAction(cmd)
+  }
+
+  function startBulkRename() {
+    root.bulkRenamePattern = "{name}{ext}"
+    root.bulkRenameOpen = true
+  }
+
+  function commitBulkRename() {
+    var entries = root.selectedEntries()
+    root.bulkRenameOpen = false
+    if (entries.length === 0) return
+    var pattern = root.bulkRenamePattern
+    var cmds = entries.map(function (e, i) {
+      var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
+      var base = ext ? e.name.slice(0, -ext.length) : e.name
+      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
+      var oldPath = root.joinPath(root.currentPath, e.name)
+      var newPath = root.joinPath(root.currentPath, newName)
+      return "mv -n -- " + Util.shellQuote(oldPath) + " " + Util.shellQuote(newPath)
+    })
+    runAction(cmds.join(" && "))
+  }
+
+  function startChmod(entry) {
+    root.chmodEntry = entry.name
+    root.chmodMode = ""
+    chmodStatProc.command = ["stat", "-c%a", root.joinPath(root.currentPath, entry.name)]
+    chmodStatProc.running = true
+    root.chmodOpen = true
+  }
+
+  function commitChmod(mode) {
+    root.chmodOpen = false
+    mode = mode.trim()
+    if (!/^[0-7]{3,4}$/.test(mode) || !root.chmodEntry) return
+    runAction("chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, root.chmodEntry)))
+  }
+
+  function showProperties(entry) {
+    if (!entry) return
+    var path = root.joinPath(root.currentPath, entry.name)
+    root.propertiesEntry = entry
+    root.propertiesSize = entry.type === "dir" ? "" : root.formatSize(entry.size)
+    root.propertiesSizeLoading = entry.type === "dir"
+    root.propertiesPerms = ""
+    root.propertiesOwner = ""
+    root.propertiesMtime = ""
+    root.propertiesOpen = true
+    propertiesStatProc.command = ["stat", "-c", "%A %a\t%U:%G\t%y", "--", path]
+    propertiesStatProc.running = true
+    if (entry.type === "dir") {
+      propertiesDuProc.command = ["du", "-sh", "--", path]
+      propertiesDuProc.running = true
+    }
+  }
+
+  function restoreFromTrash() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return
+    var cmds = entries.map(function (e) {
+      var uri = "trash:///" + e.name.split("/").map(encodeURIComponent).join("/")
+      return "gio trash --restore -- " + Util.shellQuote(uri)
+    })
+    runAction(cmds.join(" && "))
+  }
+
+  function openContextMenu(x, y, actions) {
+    root.contextMenuActions = actions
+    root.contextMenuX = Math.min(x, 680)
+    root.contextMenuY = y
+    root.contextMenuOpen = true
+  }
+
+  function itemActions() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return []
+    var multi = entries.length > 1
+    var suffix = multi ? " (" + entries.length + ")" : ""
+    var inTrash = root.currentPath === root.trashDir
+    var actions = []
+
+    if (inTrash) {
+      actions.push({ label: "Restaurar" + suffix, action: function () { root.restoreFromTrash() } })
+      actions.push({ label: "Borrar definitivamente" + suffix, destructive: true, action: function () { root.requestDelete() } })
+      return actions
+    }
+
+    if (!multi) {
+      actions.push({ label: "Abrir", action: function () { root.enter(entries[0]) } })
+      if (entries[0].type !== "dir") {
+        actions.push({ label: "Abrir con...", action: function () { root.showOpenWith(entries[0]) } })
+      }
+      actions.push({ label: "Renombrar", action: function () { root.startRename(root.selectedIndex) } })
+      if (entries[0].type === "dir") {
+        var fullPath = root.joinPath(root.currentPath, entries[0].name)
+        if (!root.isBookmarked(fullPath)) {
+          actions.push({ label: "Añadir a marcadores", action: function () { root.addBookmark(fullPath, entries[0].name, "📁") } })
+        }
+      }
+      if (root.isArchive(entries[0])) {
+        actions.push({ label: "Extraer aquí", action: function () { root.extractHere(entries[0]) } })
+      }
+      actions.push({ label: "Permisos...", action: function () { root.startChmod(entries[0]) } })
+      actions.push({ label: "Propiedades", action: function () { root.showProperties(entries[0]) } })
+    } else {
+      actions.push({ label: "Renombrar en lote...", action: function () { root.startBulkRename() } })
+    }
+    actions.push({ label: "Copiar" + suffix, action: function () { root.copySelected() } })
+    actions.push({ label: "Cortar" + suffix, action: function () { root.cutSelected() } })
+    if (root.clipboardPaths.length > 0) actions.push({ label: "Pegar aquí", action: function () { root.paste() } })
+    actions.push({ label: "Comprimir a .zip", action: function () { root.compressSelected() } })
+    actions.push({ label: "Borrar" + suffix, destructive: true, action: function () { root.requestDelete() } })
+    actions.push({ label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", action: function () { root.toggleHidden() } })
+    return actions
+  }
+
+  function emptyAreaActions() {
+    var actions = []
+    if (root.currentPath === root.trashDir) {
+      actions.push({ label: "Vaciar papelera", destructive: true, action: function () { root.emptyTrash() } })
+    } else {
+      actions.push({ label: "Nueva carpeta", action: function () { root.startNewFolder() } })
+      actions.push({ label: "Pegar", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
+    }
+    actions.push({ label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", action: function () { root.toggleHidden() } })
+    actions.push({ label: "Refrescar", action: function () { root.refresh(); root.refreshMounts() } })
+    return actions
+  }
+
+  function bookmarkActions(bookmark) {
+    var actions = [{ label: "Abrir", action: function () { root.navigateTo(bookmark.path) } }]
+    if (bookmark.path === root.trashDir) {
+      actions.push({ label: "Vaciar papelera", destructive: true, action: function () { root.emptyTrash() } })
+    }
+    actions.push({ label: "Quitar marcador", destructive: true, action: function () { root.removeBookmark(bookmark.path) } })
+    return actions
+  }
+
+  function mountActions(mount) {
+    if (!mount.mounted) {
+      return [{ label: "Montar", action: function () { root.mountDevice(mount) } }]
+    }
+    var actions = [{ label: "Abrir", action: function () { root.navigateTo(mount.path) } }]
+    if (!root.isBookmarked(mount.path)) {
+      actions.push({ label: "Añadir a marcadores", action: function () { root.addBookmark(mount.path, mount.label, "💾") } })
+    }
+    if (mount.removable) {
+      actions.push({ label: "Expulsar", destructive: true, action: function () { root.ejectMount(mount) } })
+    }
+    return actions
+  }
+
+  function pathSegments() {
+    if (root.currentPath === "/") return [{ label: "/", path: "/" }]
+    var parts = root.currentPath.split("/").filter(function (p) { return p.length > 0 })
+    var acc = ""
+    var segs = [{ label: "/", path: "/" }]
+    for (var i = 0; i < parts.length; i++) {
+      acc += "/" + parts[i]
+      segs.push({ label: parts[i], path: acc })
+    }
+    return segs
+  }
+
+  Process {
+    id: listProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.entries = root.sortEntries(root.parseEntries(text))
+        root.loaded = true
+        if (root.selectedIndex >= root.visibleEntries.length) root.selectedIndex = root.visibleEntries.length - 1
+      }
+    }
+  }
+
+  Process {
+    id: deepSearchProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.entries = root.sortEntries(root.parseEntries(text))
+        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+      }
+    }
+  }
+
+  Process {
+    id: openProc
+  }
+
+  Process {
+    id: mountsProc
+    command: [root.pluginDir + "/list-mounts.sh"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.mounts = root.parseMounts(text)
+    }
+  }
+
+  Process {
+    id: ejectProc
+    property string mountPath: ""
+    property bool wasInside: false
+    property string errorText: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: ejectProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      if (exitCode === 0) {
+        if (ejectProc.wasInside) root.navigateTo(root.homeDir)
+        root.refreshMounts()
+      } else {
+        Quickshell.execDetached(["notify-send", "Omafiles", "No se pudo expulsar: " + (ejectProc.errorText || "unidad ocupada")])
+      }
+    }
+  }
+
+  Process {
+    id: mountProc
+    property string outputText: ""
+    property string errorText: ""
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: mountProc.outputText = text
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: mountProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      root.refreshMounts()
+      if (exitCode === 0) {
+        var match = mountProc.outputText.match(/ at (\/[^\s.]+)/)
+        if (match) root.navigateTo(match[1])
+      } else {
+        Quickshell.execDetached(["notify-send", "Omafiles", "No se pudo montar: " + (mountProc.errorText || "error desconocido")])
+      }
+    }
+  }
+
+  Process {
+    id: loadBookmarksProc
+    command: ["cat", root.bookmarksFile]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.bookmarksLoaded = true
+        var parsed = null
+        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          root.bookmarks = parsed
+        } else {
+          root.bookmarks = root.defaultBookmarks
+          root.saveBookmarks()
+        }
+      }
+    }
+  }
+
+  Process {
+    id: saveBookmarksProc
+  }
+
+  Process {
+    id: actionProc
+    onExited: root.refresh()
+  }
+
+  Process {
+    id: renameCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text.trim() === "1") root.renameConflictOpen = true
+        else root.runPendingRename(false)
+      }
+    }
+  }
+
+  Process {
+    id: pasteCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        if (conflicts.length === 0) {
+          root.runPaste("all")
+        } else {
+          root.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+          root.pasteConflictOpen = true
+        }
+      }
+    }
+  }
+
+  Process {
+    id: previewProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.previewText = text
+    }
+  }
+
+  Process {
+    id: openWithProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.openWithApps = root.parseOpenWithApps(text)
+    }
+  }
+
+  Process {
+    id: chmodStatProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.chmodMode = text.trim()
+    }
+  }
+
+  Process {
+    id: thumbProc
+    property string currentKey: ""
+    property string currentDest: ""
+    onExited: {
+      var ready = Object.assign({}, root.videoThumbReady)
+      ready[thumbProc.currentKey] = thumbProc.currentDest
+      root.videoThumbReady = ready
+      root.thumbBusy = false
+      root.processThumbQueue()
+    }
+  }
+
+  Process {
+    id: propertiesStatProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parts = String(text || "").trim().split("\t")
+        root.propertiesPerms = parts[0] || ""
+        root.propertiesOwner = parts[1] || ""
+        root.propertiesMtime = parts[2] || ""
+      }
+    }
+  }
+
+  Process {
+    id: propertiesDuProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.propertiesSize = String(text || "").split("\t")[0] || ""
+        root.propertiesSizeLoading = false
+      }
+    }
+  }
+
+  Timer {
+    id: gTimer
+    interval: 600
+    onTriggered: root.gPending = false
+  }
+
+  FloatingWindow {
+    id: panel
+
+    // Los Window de QtQuick nacen visible:true por defecto -- sin esto se
+    // abriría solo con keepLoaded, antes de que open() lo pida.
+    visible: false
+    title: "Omafiles"
+    color: Color.menu.background
+    implicitWidth: 900
+    implicitHeight: 620
+    minimumSize: Qt.size(560, 380)
+
+    onVisibleChanged: {
+      // Cierre externo (botón de cerrar de la ventana, gestor de ventanas)
+      // que no pasó por close()/requestClose() -- avisa al shell para que
+      // su mapa de paneles abiertos no quede desincronizado. Mismo patrón
+      // que dev-gallery/GalleryPanel.qml.
+      if (!visible && !root.closingFromHost && root.opened) {
+        root.opened = false
+        if (root.shell && typeof root.shell.hide === "function") root.shell.hide("local.omafiles")
+      }
+    }
+
+    BorderSurface {
+      id: card
+      anchors.fill: parent
+      color: Color.menu.background
+      // Sin borde propio: Hyprland ya dibuja el borde de ventana activa/
+      // inactiva alrededor de toda la ventana (como en el resto de apps del
+      // sistema) -- un BorderSurface aquí dibujaría un segundo borde, con
+      // su propio color, pegado al de Hyprland. Eso sí hace falta en los
+      // popups reales de Omarchy (audio, red...) porque son layer-shell y
+      // Hyprland nunca los decora; Omafiles ya es una ventana normal.
+      borderSpec: Border.none()
+      radius: Style.cornerRadius
+      padding: Style.spacing.panelPadding
+
+      Row {
+        id: cardRow
+        anchors.fill: parent
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
+        spacing: Style.spacing.panelGap
+
+        // ---------- Barra lateral: accesos anclados ----------
+        Column {
+          id: sidebar
+          width: 160
+          height: parent.height
+          spacing: Style.spacing.sm
+
+          Repeater {
+            model: root.bookmarks
+
+            CursorSurface {
+              required property var modelData
+              readonly property bool isCurrent: root.currentPath === modelData.path
+              width: sidebar.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: bookmarkMouse.containsMouse
+              current: isCurrent
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+                elide: Text.ElideRight
+                width: sidebar.width - Style.spacing.sm * 2
+              }
+
+              MouseArea {
+                id: bookmarkMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function (mouse) {
+                  if (mouse.button === Qt.RightButton) {
+                    var pos = mapToItem(card, mouse.x, mouse.y)
+                    root.openContextMenu(pos.x, pos.y, root.bookmarkActions(modelData))
+                    return
+                  }
+                  root.navigateTo(modelData.path)
+                }
+              }
+            }
+          }
+
+          Item {
+            visible: root.mounts.length > 0
+            width: 1
+            height: Style.spacing.sm
+          }
+
+          PanelSeparator {
+            visible: root.mounts.length > 0
+            foreground: Color.menu.text
+            strength: 0.15
+          }
+
+          Item {
+            visible: root.mounts.length > 0
+            width: 1
+            height: Style.spacing.xs
+          }
+
+          PanelSectionHeader {
+            visible: root.mounts.length > 0
+            text: "DISPOSITIVOS"
+            foreground: Color.menu.text
+            fontFamily: Style.font.family
+            fontSize: Style.font.subtitle
+          }
+
+          Repeater {
+            model: root.mounts
+
+            CursorSurface {
+              required property var modelData
+              readonly property bool isCurrent: root.currentPath === modelData.path
+              width: sidebar.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: mountMouse.containsMouse
+              current: isCurrent
+
+              OpticalGlyph {
+                id: mountIcon
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                width: Style.font.title
+                height: Style.font.title
+                opacity: parent.modelData.mounted ? 1.0 : 0.5
+                text: root.iconForMount(parent.modelData)
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: mountIcon.right
+                anchors.leftMargin: Style.spacing.xs
+                opacity: parent.modelData.mounted ? 1.0 : 0.5
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+                elide: Text.ElideRight
+                width: sidebar.width - Style.spacing.sm * 2 - mountIcon.width - Style.spacing.xs
+              }
+
+              PanelToolTip {
+                visible: mountMouse.containsMouse && !parent.modelData.mounted
+                text: "Sin montar -- clic para montar"
+              }
+
+              MouseArea {
+                id: mountMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function (mouse) {
+                  if (mouse.button === Qt.RightButton) {
+                    var pos = mapToItem(card, mouse.x, mouse.y)
+                    root.openContextMenu(pos.x, pos.y, root.mountActions(modelData))
+                    return
+                  }
+                  if (!modelData.mounted) root.mountDevice(modelData)
+                  else root.navigateTo(modelData.path)
+                }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          width: 1
+          height: parent.height
+          color: Color.menu.border
+          opacity: 0.3
+        }
+
+        // ---------- Contenido principal ----------
+        Column {
+          id: mainColumn
+          width: parent.width - sidebar.width - 1 - parent.spacing * 2
+          height: parent.height
+          spacing: Style.spacing.rowGap
+
+          Row {
+            id: tabBar
+            visible: root.tabs.length > 1
+            width: parent.width
+            height: Style.spacing.controlHeight
+            spacing: Style.spacing.xs
+
+            Repeater {
+              model: root.tabs
+
+              CursorSurface {
+                required property var modelData
+                required property int index
+                implicitHeight: tabBar.height
+                width: Math.min(140, tabLabel.implicitWidth + 34)
+                foreground: Color.menu.text
+                accent: Color.accent
+                hasCursor: tabMouse.containsMouse
+                current: index === root.activeTabIndex
+
+                MouseArea {
+                  id: tabMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.switchToTab(index)
+                }
+
+                Row {
+                  anchors.fill: parent
+                  anchors.margins: Style.spacing.xs
+                  spacing: Style.spacing.xs
+
+                  Text {
+                    id: tabLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.path === root.homeDir ? "Inicio" : modelData.path.substring(modelData.path.lastIndexOf("/") + 1)
+                    font.pixelSize: Style.font.subtitle
+                    font.family: Style.font.family
+                    color: index === root.activeTabIndex ? Color.menu.selectedText : Color.menu.text
+                    elide: Text.ElideRight
+                    width: parent.width - 44
+                  }
+
+                  Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "×"
+                    font.pixelSize: Style.font.subtitle
+                    font.family: Style.font.family
+                    color: Color.menu.text
+                    opacity: 0.6
+
+                    MouseArea {
+                      anchors.fill: parent
+                      anchors.margins: -4
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: { root.activeTabIndex = index; root.closeTab() }
+                    }
+                  }
+                }
+              }
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "+"
+              font.pixelSize: Style.font.title
+              font.family: Style.font.family
+              color: Color.menu.text
+              opacity: 0.7
+
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -6
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.newTab()
+              }
+            }
+          }
+
+          Row {
+            id: navRow
+            width: parent.width
+            height: Style.spacing.controlHeight
+            spacing: Style.spacing.controlGap
+
+            Button {
+              width: Style.spacing.controlHeight
+              height: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.navigateTo(root.homeDir)
+
+              OpticalGlyph {
+                anchors.centerIn: parent
+                text: ""
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.foreground
+              }
+            }
+
+            Button {
+              width: Style.spacing.controlHeight
+              height: Style.spacing.controlHeight
+              anchors.verticalCenter: parent.verticalCenter
+              foreground: root.currentPath === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+              onClicked: root.goUp()
+
+              OpticalGlyph {
+                anchors.centerIn: parent
+                text: "󰅃"
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.foreground
+              }
+            }
+
+            Item {
+              id: pathArea
+              width: parent.width - 2 * (Style.spacing.controlHeight + Style.spacing.controlGap)
+              height: parent.height
+
+              MouseArea {
+                // Detrás de las migas de pan: clic en hueco vacío -> editar ruta a mano.
+                anchors.fill: parent
+                visible: !root.editingPath
+                cursorShape: Qt.IBeamCursor
+                onClicked: root.startEditPath()
+              }
+
+              Row {
+                id: breadcrumbRow
+                visible: !root.editingPath
+                anchors.fill: parent
+                spacing: Style.spacing.xs
+                clip: true
+
+                Repeater {
+                  model: root.pathSegments()
+
+                  Row {
+                    required property var modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.spacing.xs
+
+                    Text {
+                      text: modelData.label
+                      font.pixelSize: Style.font.title
+                      font.family: Style.font.family
+                      font.bold: modelData.path === root.currentPath
+                      color: Color.menu.text
+                      opacity: modelData.path === root.currentPath ? 1.0 : 0.65
+
+                      MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.navigateTo(modelData.path)
+                      }
+                    }
+
+                    Text {
+                      visible: modelData.path !== root.currentPath
+                      text: "›"
+                      font.pixelSize: Style.font.title
+                      font.family: Style.font.family
+                      color: Color.menu.text
+                      opacity: 0.4
+                    }
+                  }
+                }
+              }
+
+              TextField {
+                id: pathField
+                visible: root.editingPath
+                anchors.fill: parent
+                verticalPadding: 2
+                onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() }
+                Keys.onPressed: function (event) {
+                  if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.navigateTo(text)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Escape) {
+                    root.editingPath = false
+                    event.accepted = true
+                  }
+                }
+              }
+            }
+          }
+
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          Row {
+            id: newFolderRow
+            visible: root.creatingFolder
+            width: parent.width
+            height: Style.spacing.controlHeight
+            spacing: Style.spacing.controlGap
+
+            TextField {
+              id: newFolderField
+              width: parent.width - 160
+              anchors.verticalCenter: parent.verticalCenter
+              placeholderText: "Nombre de la nueva carpeta…"
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              Keys.onPressed: function (event) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                  root.commitNewFolder(text)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Escape) {
+                  root.creatingFolder = false
+                  event.accepted = true
+                }
+              }
+            }
+
+            Button {
+              text: "Crear"
+              bordered: true
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.commitNewFolder(newFolderField.text)
+            }
+          }
+
+          Row {
+            id: searchRow
+            visible: root.searching
+            width: parent.width
+            height: Style.spacing.controlHeight
+            spacing: Style.spacing.controlGap
+
+            // Mismo sangrado que pathArea en navRow (dos botones cuadrados +
+            // sus huecos), para que el campo de búsqueda quede alineado bajo
+            // la ruta en vez de arrancar en el borde izquierdo.
+            Item {
+              width: 2 * Style.spacing.controlHeight + Style.spacing.controlGap
+              height: 1
+            }
+
+            Text {
+              text: "/"
+              anchors.verticalCenter: parent.verticalCenter
+              font.pixelSize: Style.font.title
+              font.family: Style.font.family
+              color: Color.menu.text
+              opacity: 0.6
+            }
+
+            TextField {
+              id: searchField
+              width: parent.width - 30
+              anchors.verticalCenter: parent.verticalCenter
+              verticalPadding: 2
+              placeholderText: "Buscar aquí… (Ctrl+Enter busca en subcarpetas)"
+              text: root.searchQuery
+              onTextChanged: root.searchQuery = text
+              onVisibleChanged: if (visible) forceActiveFocus()
+              Keys.onPressed: function (event) {
+                if (event.key === Qt.Key_Escape) {
+                  root.exitSearch()
+                  event.accepted = true
+                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
+                  root.runDeepSearch()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                  root.searching = false
+                  root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+                  event.accepted = true
+                }
+              }
+            }
+          }
+
+          Item {
+            id: listContainer
+            width: parent.width
+            height: parent.height - navRow.height - Style.spacing.hairline
+              - (tabBar.visible ? tabBar.height + mainColumn.spacing : 0)
+              - (root.creatingFolder ? newFolderRow.height + mainColumn.spacing : 0)
+              - (root.searching ? searchRow.height + mainColumn.spacing : 0)
+              - statusText.height - mainColumn.spacing * (3 + (tabBar.visible ? 1 : 0) + (root.creatingFolder || root.searching ? 1 : 0))
+
+            MouseArea {
+              // Detrás de la lista: clic derecho en hueco vacío -> menú contextual general.
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              acceptedButtons: Qt.RightButton
+              onClicked: function (mouse) {
+                var pos = mapToItem(card, mouse.x, mouse.y)
+                root.openContextMenu(pos.x, pos.y, root.emptyAreaActions())
+              }
+            }
+
+            ListView {
+              id: list
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              clip: true
+              model: root.visibleEntries
+              focus: root.opened
+
+              Keys.onPressed: function (event) {
+                if (root.paletteOpen) return
+                if (root.openWithOpen) {
+                  if (event.key === Qt.Key_Escape) { root.openWithOpen = false; event.accepted = true }
+                  return
+                }
+                if (root.contextMenuOpen) {
+                  if (event.key === Qt.Key_Escape) { root.contextMenuOpen = false; event.accepted = true }
+                  return
+                }
+                if (root.pendingDeleteNames.length > 0) {
+                  if (deleteConfirm.handleKey(event)) event.accepted = true
+                  return
+                }
+                if (root.renameConflictOpen) {
+                  if (renameConflictConfirm.handleKey(event)) event.accepted = true
+                  return
+                }
+                if (root.pasteConflictOpen) {
+                  if (event.key === Qt.Key_Escape) { root.cancelPasteConflict(); event.accepted = true }
+                  return
+                }
+                if (root.propertiesOpen) {
+                  if (event.key === Qt.Key_Escape) { root.propertiesOpen = false; event.accepted = true }
+                  return
+                }
+                if (root.creatingFolder || root.renamingIndex >= 0 || root.editingPath || root.searching) return
+
+                var extend = (event.modifiers & Qt.ShiftModifier) !== 0
+
+                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
+                  root.openTerminalHere()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Escape) {
+                  if (root.previewOpen) root.previewOpen = false
+                  else root.requestClose()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
+                  root.goUp()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
+                  if (root.selectedIndex >= 0) root.enter(root.visibleEntries[root.selectedIndex])
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Space) {
+                  root.togglePreview()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Slash) {
+                  root.startSearch()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
+                  root.openPalette()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
+                  root.goBottom()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_G && event.modifiers === Qt.NoModifier) {
+                  if (root.gPending) { root.goTop(); root.gPending = false }
+                  else { root.gPending = true; gTimer.restart() }
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
+                  var down = Math.min(root.visibleEntries.length - 1, root.selectedIndex + 1)
+                  if (extend) root.selectRange(down); else root.selectOnly(down)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && event.modifiers === Qt.NoModifier)) {
+                  var up = Math.max(0, root.selectedIndex - 1)
+                  if (extend) root.selectRange(up); else root.selectOnly(up)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
+                  root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i })
+                  event.accepted = true
+                } else if (event.key === Qt.Key_F2) {
+                  root.startRename(root.selectedIndex)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Delete) {
+                  root.requestDelete()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_F5) {
+                  root.refresh()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
+                  root.reverseSort()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
+                  root.cycleSort()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
+                  root.startEditPath()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                  root.startNewFolder()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
+                  root.newTab()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_W && (event.modifiers & Qt.ControlModifier)) {
+                  root.closeTab()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)) {
+                  root.nextTab()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier)) {
+                  root.toggleHidden()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) {
+                  root.copySelected()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
+                  root.cutSelected()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
+                  root.paste()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
+                  root.undoLast()
+                  event.accepted = true
+                }
+              }
+
+              delegate: CursorSurface {
+                id: rowSurface
+                required property var modelData
+                required property int index
+                width: list.width
+                implicitHeight: rowContent.implicitHeight + Style.spacing.sm * 2
+                foreground: Color.menu.text
+                accent: Color.accent
+                hasCursor: mouseArea.containsMouse
+                current: root.isSelected(index)
+
+                Item {
+                  id: rowContent
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  anchors.leftMargin: 0
+                  anchors.rightMargin: Style.spacing.rowPaddingX
+                  implicitHeight: Math.max(thumbSlot.height, nameCol.implicitHeight)
+
+                  Item {
+                    id: thumbSlot
+                    // Miniatura real si la hay (imagen/vídeo); si no, icono
+                    // de carpeta o de tipo de fichero -- mismo glyph/fuente
+                    // que usa el menú de Omarchy.
+                    readonly property bool isVid: root.isVideo(modelData)
+                    readonly property string vidKey: isVid ? root.thumbKeyFor(modelData) : ""
+                    readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
+                    readonly property bool isDir: modelData.type === "dir"
+                    readonly property bool hasThumb: root.isImage(modelData) || (isVid && vidThumb !== "")
+                    // Mismo ancho que los botones de casita/subir de navRow
+                    // (Style.spacing.controlHeight), para que el icono quede
+                    // centrado en la misma columna que ellos.
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Style.spacing.controlHeight
+                    height: Style.spacing.controlHeight
+
+                    Component.onCompleted: if (isVid) root.requestVideoThumb(modelData)
+
+                    Image {
+                      anchors.fill: parent
+                      visible: status === Image.Ready
+                      source: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
+                        : (thumbSlot.vidThumb ? Util.fileUrl(thumbSlot.vidThumb) : "")
+                      fillMode: Image.PreserveAspectCrop
+                      asynchronous: true
+                      sourceSize.width: 32
+                      sourceSize.height: 32
+                    }
+
+                    OpticalGlyph {
+                      anchors.fill: parent
+                      visible: thumbSlot.isDir
+                      text: "󰉋"
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.iconLarge
+                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
+                    }
+
+                    OpticalGlyph {
+                      anchors.fill: parent
+                      visible: !thumbSlot.isDir && !thumbSlot.hasThumb
+                      text: root.iconFor(modelData)
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.iconLarge
+                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
+                    }
+                  }
+
+                  TextField {
+                    id: renameField
+                    visible: root.renamingIndex === index
+                    anchors.left: thumbSlot.right
+                    anchors.leftMargin: Style.spacing.rowGap
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    verticalPadding: 2
+                    onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() }
+                    Keys.onPressed: function (event) {
+                      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                        root.commitRename(text)
+                        event.accepted = true
+                      } else if (event.key === Qt.Key_Escape) {
+                        root.renamingIndex = -1
+                        event.accepted = true
+                      }
+                    }
+                  }
+
+                  // Fila de dos líneas (nombre + tamaño/fecha relativa) --
+                  // mismo patrón que el ejemplo real de fila compuesta de
+                  // Omarchy (icono + Column de título/subtítulo).
+                  Column {
+                    id: nameCol
+                    visible: root.renamingIndex !== index
+                    anchors.left: thumbSlot.right
+                    anchors.leftMargin: Style.spacing.rowGap
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.spacing.hairline
+
+                    Text {
+                      width: parent.width
+                      text: modelData.name + (modelData.type === "dir" ? "/" : "")
+                      font.pixelSize: Style.font.title
+                      font.family: Style.font.family
+                      color: root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
+                        ? Qt.darker(Color.menu.text, 1.6)
+                        : (rowSurface.current ? Color.menu.selectedText : Color.menu.text)
+                      elide: Text.ElideRight
+                    }
+
+                    Text {
+                      readonly property string meta: root.metaFor(modelData)
+                      visible: meta.length > 0
+                      width: parent.width
+                      text: meta
+                      font.pixelSize: Style.font.bodySmall
+                      font.family: Style.font.family
+                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
+                      opacity: 0.6
+                      elide: Text.ElideRight
+                    }
+                  }
+                }
+
+                MouseArea {
+                  id: mouseArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  visible: root.renamingIndex !== index
+                  acceptedButtons: Qt.LeftButton | Qt.RightButton
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: function (mouse) {
+                    if (mouse.button === Qt.RightButton) {
+                      if (!root.isSelected(index)) root.selectOnly(index)
+                      var pos = mapToItem(card, mouse.x, mouse.y)
+                      root.openContextMenu(pos.x, pos.y, root.itemActions())
+                      return
+                    }
+                    if (mouse.modifiers & Qt.ControlModifier) root.toggleSelect(index)
+                    else if (mouse.modifiers & Qt.ShiftModifier) root.selectRange(index)
+                    else root.selectOnly(index)
+                  }
+                  onDoubleClicked: root.enter(modelData)
+                }
+              }
+            }
+
+            // ---------- Vista previa (Espacio) ----------
+            BorderSurface {
+              id: previewPanel
+              visible: root.previewOpen
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.right: parent.right
+              width: parent.width * 0.45 - Style.spacing.rowGap
+              radius: Style.cornerRadius
+              color: Color.menu.selectedBackground
+              borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+              padding: Style.spacing.sm
+
+              MouseArea { anchors.fill: parent; onClicked: {} }
+
+              Column {
+                anchors.fill: parent
+                anchors.topMargin: previewPanel.contentTopInset
+                anchors.rightMargin: previewPanel.contentRightInset
+                anchors.bottomMargin: previewPanel.contentBottomInset
+                anchors.leftMargin: previewPanel.contentLeftInset
+                spacing: Style.spacing.sm
+
+                Text {
+                  width: parent.width
+                  text: root.previewEntry ? root.previewEntry.name : ""
+                  font.pixelSize: Style.font.title
+                  font.family: Style.font.family
+                  font.bold: true
+                  color: Color.menu.text
+                  elide: Text.ElideMiddle
+                }
+
+                PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+                Image {
+                  visible: root.previewEntry && root.isImage(root.previewEntry)
+                  width: parent.width
+                  height: parent.height - 60
+                  fillMode: Image.PreserveAspectFit
+                  asynchronous: true
+                  source: root.previewEntry && root.isImage(root.previewEntry)
+                    ? Util.fileUrl(root.joinPath(root.currentPath, root.previewEntry.name)) : ""
+                }
+
+                readonly property string previewVideoThumb: root.previewEntry && root.isVideo(root.previewEntry)
+                  ? (root.videoThumbReady[root.thumbKeyFor(root.previewEntry)] || "") : ""
+
+                Image {
+                  visible: root.previewEntry && root.isVideo(root.previewEntry) && parent.previewVideoThumb !== ""
+                  width: parent.width
+                  height: parent.height - 60
+                  fillMode: Image.PreserveAspectFit
+                  asynchronous: true
+                  source: parent.previewVideoThumb ? Util.fileUrl(parent.previewVideoThumb) : ""
+                }
+
+                Flickable {
+                  visible: root.previewEntry && !root.isImage(root.previewEntry) && root.previewIsText
+                  width: parent.width
+                  height: parent.height - 60
+                  clip: true
+                  contentWidth: width
+                  contentHeight: previewTextItem.implicitHeight
+
+                  Text {
+                    id: previewTextItem
+                    width: parent.width
+                    text: root.previewText || "(vacío)"
+                    font.pixelSize: Style.font.subtitle
+                    font.family: "monospace"
+                    color: Color.menu.text
+                    wrapMode: Text.Wrap
+                  }
+                }
+
+                Column {
+                  visible: root.previewEntry && !root.isImage(root.previewEntry) && !root.previewIsText
+                    && !(root.isVideo(root.previewEntry) && root.videoThumbReady[root.thumbKeyFor(root.previewEntry)])
+                  width: parent.width
+                  spacing: Style.spacing.sm
+
+                  Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Sin vista previa"
+                    font.pixelSize: Style.font.title
+                    font.family: Style.font.family
+                    color: Color.menu.text
+                    opacity: 0.5
+                  }
+
+                  Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: root.previewEntry ? root.formatSize(root.previewEntry.size) : ""
+                    font.pixelSize: Style.font.title
+                    font.family: Style.font.family
+                    color: Color.menu.text
+                    opacity: 0.6
+                  }
+                }
+              }
+            }
+          }
+
+          // ---------- Barra de estado ----------
+          Text {
+            id: statusText
+            text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " elemento" : " elementos")
+              + (root.searchQuery ? " de " + root.entries.length : "")
+              + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " seleccionados" : "")
+              + (root.clipboardPaths.length > 0 ? " · portapapeles: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " elemento" : " elementos") + (root.clipboardMode === "cut" ? " (cortado)" : " (copiado)") : "")
+              + " · orden: " + root.sortLabel()
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            opacity: 0.55
+          }
+        }
+      }
+
+      // ---------- Renombrar en lote ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.bulkRenameOpen
+        z: 15
+        onClicked: root.bulkRenameOpen = false
+      }
+
+      BorderSurface {
+        id: bulkRenameCard
+        visible: root.bulkRenameOpen
+        width: Math.min(parent.width - 80, 380)
+        height: bulkRenameColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: bulkRenameColumn
+          anchors.fill: parent
+          anchors.topMargin: bulkRenameCard.contentTopInset
+          anchors.rightMargin: bulkRenameCard.contentRightInset
+          anchors.bottomMargin: bulkRenameCard.contentBottomInset
+          anchors.leftMargin: bulkRenameCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            width: parent.width
+            text: "Renombrar " + root.selectedIndices.length + " elementos"
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+          }
+
+          Text {
+            width: parent.width
+            text: "Usa {name}, {ext}, {n} (número secuencial)"
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            opacity: 0.6
+            wrapMode: Text.Wrap
+          }
+
+          TextField {
+            id: bulkRenameField
+            width: parent.width
+            text: root.bulkRenamePattern
+            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() }
+            Keys.onPressed: function (event) {
+              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.bulkRenamePattern = text
+                root.commitBulkRename()
+                event.accepted = true
+              } else if (event.key === Qt.Key_Escape) {
+                root.bulkRenameOpen = false
+                event.accepted = true
+              }
+            }
+          }
+
+          Button {
+            text: "Renombrar"
+            bordered: true
+            onClicked: { root.bulkRenamePattern = bulkRenameField.text; root.commitBulkRename() }
+          }
+        }
+      }
+
+      // ---------- Permisos (chmod) ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.chmodOpen
+        z: 15
+        onClicked: root.chmodOpen = false
+      }
+
+      BorderSurface {
+        id: chmodCard
+        visible: root.chmodOpen
+        width: Math.min(parent.width - 80, 300)
+        height: chmodColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: chmodColumn
+          anchors.fill: parent
+          anchors.topMargin: chmodCard.contentTopInset
+          anchors.rightMargin: chmodCard.contentRightInset
+          anchors.bottomMargin: chmodCard.contentBottomInset
+          anchors.leftMargin: chmodCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            width: parent.width
+            text: "Permisos de \"" + root.chmodEntry + "\""
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+            elide: Text.ElideMiddle
+          }
+
+          TextField {
+            id: chmodField
+            width: parent.width
+            text: root.chmodMode
+            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() }
+            Keys.onPressed: function (event) {
+              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.commitChmod(text)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Escape) {
+                root.chmodOpen = false
+                event.accepted = true
+              }
+            }
+          }
+
+          Button {
+            text: "Aplicar"
+            bordered: true
+            onClicked: root.commitChmod(chmodField.text)
+          }
+        }
+      }
+
+      // ---------- Propiedades ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.propertiesOpen
+        z: 15
+        onClicked: root.propertiesOpen = false
+      }
+
+      BorderSurface {
+        id: propertiesCard
+        visible: root.propertiesOpen
+        width: Math.min(parent.width - 80, 360)
+        height: propertiesColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: propertiesColumn
+          anchors.fill: parent
+          anchors.topMargin: propertiesCard.contentTopInset
+          anchors.rightMargin: propertiesCard.contentRightInset
+          anchors.bottomMargin: propertiesCard.contentBottomInset
+          anchors.leftMargin: propertiesCard.contentLeftInset
+          spacing: Style.spacing.xs
+
+          Text {
+            width: parent.width
+            text: root.propertiesEntry ? root.propertiesEntry.name : ""
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+            elide: Text.ElideMiddle
+          }
+
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          Repeater {
+            model: [
+              { label: "Tipo", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Carpeta" : "Fichero") : "" },
+              { label: "Tamaño", value: root.propertiesSizeLoading ? "Calculando…" : root.propertiesSize },
+              { label: "Permisos", value: root.propertiesPerms },
+              { label: "Propietario", value: root.propertiesOwner },
+              { label: "Modificado", value: root.propertiesMtime }
+            ]
+
+            Row {
+              required property var modelData
+              width: propertiesColumn.width
+              spacing: Style.spacing.sm
+
+              Text {
+                width: 84
+                text: parent.modelData.label
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+                opacity: 0.6
+              }
+
+              Text {
+                width: parent.width - 84 - Style.spacing.sm
+                text: parent.modelData.value
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+                elide: Text.ElideRight
+              }
+            }
+          }
+
+          Button {
+            text: "Cerrar"
+            bordered: true
+            onClicked: root.propertiesOpen = false
+          }
+        }
+      }
+
+      // ---------- Abrir con... ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.openWithOpen
+        z: 15
+        onClicked: root.openWithOpen = false
+      }
+
+      BorderSurface {
+        id: openWithCard
+        visible: root.openWithOpen
+        width: Math.min(parent.width - 80, 320)
+        height: openWithColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: openWithColumn
+          anchors.fill: parent
+          anchors.topMargin: openWithCard.contentTopInset
+          anchors.rightMargin: openWithCard.contentRightInset
+          anchors.bottomMargin: openWithCard.contentBottomInset
+          anchors.leftMargin: openWithCard.contentLeftInset
+          spacing: Style.spacing.xs
+
+          Text {
+            width: parent.width
+            text: "Abrir \"" + (root.openWithEntry ? root.openWithEntry.name : "") + "\" con:"
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+            elide: Text.ElideMiddle
+          }
+
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          Text {
+            visible: root.openWithApps.length === 0
+            width: parent.width
+            text: "Sin aplicaciones registradas para este tipo de fichero."
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            color: Color.menu.text
+            opacity: 0.6
+            wrapMode: Text.Wrap
+          }
+
+          Repeater {
+            model: root.openWithApps
+
+            CursorSurface {
+              required property var modelData
+              width: openWithColumn.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: appMouse.containsMouse
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                text: parent.modelData.name
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: Color.menu.text
+              }
+
+              MouseArea {
+                id: appMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.launchWith(modelData.id)
+              }
+            }
+          }
+        }
+      }
+
+      // ---------- Menú contextual ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.contextMenuOpen
+        z: 15
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: root.contextMenuOpen = false
+      }
+
+      BorderSurface {
+        id: contextMenu
+        visible: root.contextMenuOpen
+        x: root.contextMenuX
+        y: root.contextMenuY
+        width: 200
+        height: contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        Column {
+          id: contextMenuColumn
+          anchors.fill: parent
+          anchors.topMargin: contextMenu.contentTopInset
+          anchors.rightMargin: contextMenu.contentRightInset
+          anchors.bottomMargin: contextMenu.contentBottomInset
+          anchors.leftMargin: contextMenu.contentLeftInset
+          spacing: Style.spacing.xxs
+
+          Repeater {
+            model: root.contextMenuActions
+
+            CursorSurface {
+              required property var modelData
+              readonly property bool actionEnabled: modelData.enabled !== false
+              width: contextMenuColumn.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: itemMouse.containsMouse && actionEnabled
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: parent.modelData.destructive ? Color.urgent : (parent.actionEnabled ? Color.menu.text : Qt.darker(Color.menu.text, 1.8))
+              }
+
+              MouseArea {
+                id: itemMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: parent.actionEnabled
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.contextMenuOpen = false
+                  parent.modelData.action()
+                }
+              }
+            }
+          }
+        }
+      }
+
+      ConfirmDialog {
+        id: deleteConfirm
+        anchors.fill: parent
+        z: 10
+        opened: root.pendingDeleteNames.length > 0
+        message: root.currentPath === root.trashDir
+          ? (root.pendingDeleteNames.length === 1
+            ? "¿Borrar \"" + root.pendingDeleteNames[0] + "\" DEFINITIVAMENTE? No se puede deshacer."
+            : "¿Borrar " + root.pendingDeleteNames.length + " elementos DEFINITIVAMENTE? No se puede deshacer.")
+          : (root.pendingDeleteNames.length === 1
+            ? "¿Enviar \"" + root.pendingDeleteNames[0] + "\" a la papelera?"
+            : "¿Enviar " + root.pendingDeleteNames.length + " elementos a la papelera?")
+        confirmText: "Borrar"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: root.pendingDeleteNames = []
+        onConfirmed: root.confirmDelete()
+      }
+
+      ConfirmDialog {
+        id: renameConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: root.renameConflictOpen
+        message: root.pendingRename
+          ? "Ya existe \"" + root.pendingRename.newPath.substring(root.pendingRename.newPath.lastIndexOf("/") + 1) + "\" aquí. ¿Sobrescribir?"
+          : ""
+        confirmText: "Sobrescribir"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: root.cancelPendingRename()
+        onConfirmed: root.runPendingRename(true)
+      }
+
+      // ---------- Conflicto al pegar ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.pasteConflictOpen
+        z: 15
+        onClicked: root.cancelPasteConflict()
+      }
+
+      BorderSurface {
+        id: pasteConflictCard
+        visible: root.pasteConflictOpen
+        width: Math.min(parent.width - 80, 360)
+        height: pasteConflictColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: pasteConflictColumn
+          anchors.fill: parent
+          anchors.topMargin: pasteConflictCard.contentTopInset
+          anchors.rightMargin: pasteConflictCard.contentRightInset
+          anchors.bottomMargin: pasteConflictCard.contentBottomInset
+          anchors.leftMargin: pasteConflictCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            width: parent.width
+            text: root.pasteConflictNames.length === 1
+              ? "\"" + root.pasteConflictNames[0] + "\" ya existe aquí."
+              : root.pasteConflictNames.length + " elementos ya existen aquí."
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+            wrapMode: Text.Wrap
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.spacing.xs
+
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Sobrescribir todo"; onClicked: root.runPaste("overwrite") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Omitir existentes"; onClicked: root.runPaste("skip") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancelar"; onClicked: root.cancelPasteConflict() }
+          }
+        }
+      }
+
+      // ---------- Paleta de comandos (: o Ctrl+P) ----------
+      MouseArea {
+        anchors.fill: parent
+        visible: root.paletteOpen
+        z: 25
+        onClicked: root.closePalette()
+      }
+
+      BorderSurface {
+        id: palette
+        visible: root.paletteOpen
+        width: Math.min(parent.width - 80, 420)
+        height: Math.min(paletteColumn.implicitHeight + contentTopInset + contentBottomInset, 320)
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: Style.spacing.huge
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 30
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: paletteColumn
+          anchors.fill: parent
+          anchors.topMargin: palette.contentTopInset
+          anchors.rightMargin: palette.contentRightInset
+          anchors.bottomMargin: palette.contentBottomInset
+          anchors.leftMargin: palette.contentLeftInset
+          spacing: Style.spacing.xs
+
+          TextField {
+            id: paletteField
+            width: parent.width
+            placeholderText: "Escribe un comando…"
+            text: root.paletteQuery
+            onTextChanged: { root.paletteQuery = text; root.paletteIndex = 0 }
+            onVisibleChanged: if (visible) forceActiveFocus()
+            Keys.onPressed: function (event) {
+              var cmds = root.filteredPaletteCommands()
+              if (event.key === Qt.Key_Escape) {
+                root.closePalette()
+                event.accepted = true
+              } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.runPaletteCommand(root.paletteIndex)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Down) {
+                root.paletteIndex = Math.min(cmds.length - 1, root.paletteIndex + 1)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Up) {
+                root.paletteIndex = Math.max(0, root.paletteIndex - 1)
+                event.accepted = true
+              }
+            }
+          }
+
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          Repeater {
+            model: root.paletteOpen ? root.filteredPaletteCommands() : []
+
+            CursorSurface {
+              required property var modelData
+              required property int index
+              readonly property bool cmdEnabled: modelData.enabled !== false
+              width: paletteColumn.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: index === root.paletteIndex && cmdEnabled
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: parent.cmdEnabled ? (index === root.paletteIndex ? Color.menu.selectedText : Color.menu.text) : Qt.darker(Color.menu.text, 1.8)
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: parent.cmdEnabled
+                cursorShape: Qt.PointingHandCursor
+                onEntered: root.paletteIndex = index
+                onClicked: root.runPaletteCommand(index)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
