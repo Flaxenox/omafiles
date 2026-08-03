@@ -4,7 +4,7 @@
   "name": "Omafiles",
   "version": "0.6.0",
   "author": "Percius04",
-  "description": "Explorador de archivos: navegar, buscar, ordenar, montar unidades, renombrar, borrar, copiar/cortar/pegar, propiedades",
+  "description": "File manager: browse, search, sort, mount drives, rename, delete, copy/cut/paste, properties",
   "kinds": [
     "overlay"
   ],

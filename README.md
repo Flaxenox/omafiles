@@ -74,7 +74,7 @@ o.bind("SUPER + ALT + F", "Omafiles (file manager)", "omarchy-shell shell toggle
 
 ## Status
 
-The UI is currently Spanish-only. Under active development — feedback and issues welcome.
+Under active development — feedback and issues welcome.
 
 ## License
 

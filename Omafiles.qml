@@ -46,7 +46,7 @@ Item {
     var entry = root.undoStack[root.undoStack.length - 1]
     root.undoStack = root.undoStack.slice(0, -1)
     entry.undo()
-    Quickshell.execDetached(["notify-send", "Omafiles", "Deshecho: " + entry.label])
+    Quickshell.execDetached(["notify-send", "Omafiles", "Undone: " + entry.label])
   }
 
   // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
@@ -57,7 +57,7 @@ Item {
   property bool showHidden: false
 
   readonly property var sortKeys: ["name", "size", "mtime", "type"]
-  readonly property var sortKeyLabels: ({ name: "Nombre", size: "Tamaño", mtime: "Fecha", type: "Tipo" })
+  readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
   property string sortKey: "name"
   property bool sortDesc: false
 
@@ -116,14 +116,14 @@ Item {
   property var mounts: []
 
   readonly property var defaultBookmarks: [
-    { label: "Inicio", path: root.homeDir, icon: "🏠" },
-    { label: "Documentos", path: root.homeDir + "/Documentos", icon: "📁" },
-    { label: "Descargas", path: root.homeDir + "/Descargas", icon: "📁" },
-    { label: "Imágenes", path: root.homeDir + "/Imágenes", icon: "🖼️" },
-    { label: "Vídeos", path: root.homeDir + "/Vídeos", icon: "🎬" },
-    { label: "Música", path: root.homeDir + "/Música", icon: "🎵" },
-    { label: "Proyectos", path: root.homeDir + "/Proyectos", icon: "📁" },
-    { label: "Papelera", path: root.homeDir + "/.local/share/Trash/files", icon: "🗑️" }
+    { label: "Home", path: root.homeDir, icon: "🏠" },
+    { label: "Documents", path: root.homeDir + "/Documents", icon: "📁" },
+    { label: "Downloads", path: root.homeDir + "/Downloads", icon: "📁" },
+    { label: "Pictures", path: root.homeDir + "/Pictures", icon: "🖼️" },
+    { label: "Videos", path: root.homeDir + "/Videos", icon: "🎬" },
+    { label: "Music", path: root.homeDir + "/Music", icon: "🎵" },
+    { label: "Projects", path: root.homeDir + "/Projects", icon: "📁" },
+    { label: "Trash", path: root.homeDir + "/.local/share/Trash/files", icon: "🗑️" }
   ]
 
   property var bookmarks: []
@@ -462,7 +462,7 @@ Item {
   // consistente y el próximo `toggle` funcione bien -- mismo patrón que
   // dev-gallery/GalleryPanel.qml.
   function requestClose() {
-    if (root.shell && typeof root.shell.hide === "function") root.shell.hide("local.omafiles")
+    if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.percius04.omafiles")
     else root.close()
   }
 
@@ -476,12 +476,12 @@ Item {
   function relativeTime(epochSeconds) {
     if (!epochSeconds) return ""
     var diff = Math.floor(Date.now() / 1000) - epochSeconds
-    if (diff < 60) return "justo ahora"
-    if (diff < 3600) return "hace " + Math.floor(diff / 60) + " min"
-    if (diff < 86400) return "hace " + Math.floor(diff / 3600) + " h"
-    if (diff < 86400 * 30) return "hace " + Math.floor(diff / 86400) + " d"
-    if (diff < 86400 * 365) return "hace " + Math.floor(diff / (86400 * 30)) + " meses"
-    return "hace " + Math.floor(diff / (86400 * 365)) + " años"
+    if (diff < 60) return "just now"
+    if (diff < 3600) return Math.floor(diff / 60) + " min ago"
+    if (diff < 86400) return Math.floor(diff / 3600) + " h ago"
+    if (diff < 86400 * 30) return Math.floor(diff / 86400) + " d ago"
+    if (diff < 86400 * 365) return Math.floor(diff / (86400 * 30)) + " mo ago"
+    return Math.floor(diff / (86400 * 365)) + " yr ago"
   }
 
   // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
@@ -527,7 +527,7 @@ Item {
     if (!r) return
     runAction("mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath))
     var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
-    root.pushUndo("renombrar a \"" + oldName + "\"", function () {
+    root.pushUndo("rename to \"" + oldName + "\"", function () {
       root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
     })
   }
@@ -551,7 +551,7 @@ Item {
     runAction("mkdir -p -- " + Util.shellQuote(path))
     // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
     // deshacer, falla en vez de borrar contenido a lo tonto.
-    root.pushUndo("nueva carpeta \"" + name + "\"", function () {
+    root.pushUndo("new folder \"" + name + "\"", function () {
       root.runAction("rmdir -- " + Util.shellQuote(path))
     })
   }
@@ -572,7 +572,7 @@ Item {
       runAction("rm -rf -- " + quoted)
     } else {
       runAction("gio trash -- " + quoted)
-      var label = names.length === 1 ? "borrar \"" + names[0] + "\"" : "borrar " + names.length + " elementos"
+      var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
       root.pushUndo(label, function () {
         var cmds = names.map(function (n) {
           var uri = "trash:///" + n.split("/").map(encodeURIComponent).join("/")
@@ -635,8 +635,8 @@ Item {
       runAction(cmds.join(" && "))
       if (isCut) {
         var label = pairs.length === 1
-          ? "mover \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-          : "mover " + pairs.length + " elementos"
+          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+          : "move " + pairs.length + " items"
         root.pushUndo(label, function () {
           var undoCmds = pairs.map(function (p) {
             return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
@@ -703,41 +703,41 @@ Item {
     var hasSelection = root.selectedIndices.length > 0
     var entry = root.selectedIndices.length === 1 ? root.visibleEntries[root.selectedIndex] : null
     var cmds = [
-      { label: "Nueva carpeta", run: function () { root.startNewFolder() } },
-      { label: "Renombrar", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
-      { label: "Copiar", enabled: hasSelection, run: function () { root.copySelected() } },
-      { label: "Cortar", enabled: hasSelection, run: function () { root.cutSelected() } },
-      { label: "Pegar", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
-      { label: "Borrar", enabled: hasSelection, run: function () { root.requestDelete() } },
-      { label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", run: function () { root.toggleHidden() } },
-      { label: "Refrescar", run: function () { root.refresh(); root.refreshMounts() } },
-      { label: "Ordenar por nombre", run: function () { root.setSort("name") } },
-      { label: "Ordenar por tamaño", run: function () { root.setSort("size") } },
-      { label: "Ordenar por fecha", run: function () { root.setSort("mtime") } },
-      { label: "Ordenar por tipo", run: function () { root.setSort("type") } },
-      { label: "Invertir orden", run: function () { root.reverseSort() } },
-      { label: root.undoStack.length > 0 ? "Deshacer: " + root.undoStack[root.undoStack.length - 1].label : "Deshacer",
+      { label: "New folder", run: function () { root.startNewFolder() } },
+      { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
+      { label: "Copy", enabled: hasSelection, run: function () { root.copySelected() } },
+      { label: "Cut", enabled: hasSelection, run: function () { root.cutSelected() } },
+      { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
+      { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
+      { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { root.toggleHidden() } },
+      { label: "Refresh", run: function () { root.refresh(); root.refreshMounts() } },
+      { label: "Sort by name", run: function () { root.setSort("name") } },
+      { label: "Sort by size", run: function () { root.setSort("size") } },
+      { label: "Sort by date", run: function () { root.setSort("mtime") } },
+      { label: "Sort by type", run: function () { root.setSort("type") } },
+      { label: "Reverse order", run: function () { root.reverseSort() } },
+      { label: root.undoStack.length > 0 ? "Undo: " + root.undoStack[root.undoStack.length - 1].label : "Undo",
         enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
-      { label: "Terminal aquí", run: function () { root.openTerminalHere() } },
-      { label: "Ir a Inicio", run: function () { root.navigateTo(root.homeDir) } },
-      { label: "Editar ruta", run: function () { root.startEditPath() } },
-      { label: "Buscar", run: function () { root.startSearch() } },
-      { label: "Comprimir a .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
-      { label: "Renombrar en lote...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
-      { label: "Permisos...", enabled: !!entry, run: function () { if (entry) root.startChmod(entry) } },
-      { label: "Propiedades", enabled: !!entry, run: function () { if (entry) root.showProperties(entry) } }
+      { label: "Terminal here", run: function () { root.openTerminalHere() } },
+      { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
+      { label: "Edit path", run: function () { root.startEditPath() } },
+      { label: "Search", run: function () { root.startSearch() } },
+      { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
+      { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
+      { label: "Permissions...", enabled: !!entry, run: function () { if (entry) root.startChmod(entry) } },
+      { label: "Properties", enabled: !!entry, run: function () { if (entry) root.showProperties(entry) } }
     ]
     if (root.currentPath === root.trashDir) {
-      cmds.push({ label: "Vaciar papelera", run: function () { root.emptyTrash() } })
-      cmds.push({ label: "Restaurar", enabled: hasSelection, run: function () { root.restoreFromTrash() } })
+      cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
+      cmds.push({ label: "Restore", enabled: hasSelection, run: function () { root.restoreFromTrash() } })
     }
     if (entry && entry.type !== "dir" && root.isArchive(entry)) {
-      cmds.push({ label: "Extraer aquí", run: function () { root.extractHere(entry) } })
+      cmds.push({ label: "Extract here", run: function () { root.extractHere(entry) } })
     }
     if (entry && entry.type === "dir") {
       var fullPath = root.joinPath(root.currentPath, entry.name)
       if (!root.isBookmarked(fullPath)) {
-        cmds.push({ label: "Añadir a marcadores", run: function () { root.addBookmark(fullPath, entry.name, "📁") } })
+        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name, "📁") } })
       }
     }
     return cmds
@@ -822,7 +822,7 @@ Item {
     if (entries.length === 0) return
     var archiveName = entries.length === 1
       ? entries[0].name.replace(/\/$/, "") + ".zip"
-      : "archivos-seleccionados.zip"
+      : "selected-files.zip"
     var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
     runAction("cd -- " + Util.shellQuote(root.currentPath) + " && zip -r -q " + Util.shellQuote(archiveName) + " " + names)
   }
@@ -926,72 +926,72 @@ Item {
     var actions = []
 
     if (inTrash) {
-      actions.push({ label: "Restaurar" + suffix, action: function () { root.restoreFromTrash() } })
-      actions.push({ label: "Borrar definitivamente" + suffix, destructive: true, action: function () { root.requestDelete() } })
+      actions.push({ label: "Restore" + suffix, action: function () { root.restoreFromTrash() } })
+      actions.push({ label: "Delete permanently" + suffix, destructive: true, action: function () { root.requestDelete() } })
       return actions
     }
 
     if (!multi) {
-      actions.push({ label: "Abrir", action: function () { root.enter(entries[0]) } })
+      actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
       if (entries[0].type !== "dir") {
-        actions.push({ label: "Abrir con...", action: function () { root.showOpenWith(entries[0]) } })
+        actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
       }
-      actions.push({ label: "Renombrar", action: function () { root.startRename(root.selectedIndex) } })
+      actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
       if (entries[0].type === "dir") {
         var fullPath = root.joinPath(root.currentPath, entries[0].name)
         if (!root.isBookmarked(fullPath)) {
-          actions.push({ label: "Añadir a marcadores", action: function () { root.addBookmark(fullPath, entries[0].name, "📁") } })
+          actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, "📁") } })
         }
       }
       if (root.isArchive(entries[0])) {
-        actions.push({ label: "Extraer aquí", action: function () { root.extractHere(entries[0]) } })
+        actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
       }
-      actions.push({ label: "Permisos...", action: function () { root.startChmod(entries[0]) } })
-      actions.push({ label: "Propiedades", action: function () { root.showProperties(entries[0]) } })
+      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries[0]) } })
+      actions.push({ label: "Properties", action: function () { root.showProperties(entries[0]) } })
     } else {
-      actions.push({ label: "Renombrar en lote...", action: function () { root.startBulkRename() } })
+      actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
     }
-    actions.push({ label: "Copiar" + suffix, action: function () { root.copySelected() } })
-    actions.push({ label: "Cortar" + suffix, action: function () { root.cutSelected() } })
-    if (root.clipboardPaths.length > 0) actions.push({ label: "Pegar aquí", action: function () { root.paste() } })
-    actions.push({ label: "Comprimir a .zip", action: function () { root.compressSelected() } })
-    actions.push({ label: "Borrar" + suffix, destructive: true, action: function () { root.requestDelete() } })
-    actions.push({ label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", action: function () { root.toggleHidden() } })
+    actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
+    actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
+    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
+    actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
+    actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
+    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
     return actions
   }
 
   function emptyAreaActions() {
     var actions = []
     if (root.currentPath === root.trashDir) {
-      actions.push({ label: "Vaciar papelera", destructive: true, action: function () { root.emptyTrash() } })
+      actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else {
-      actions.push({ label: "Nueva carpeta", action: function () { root.startNewFolder() } })
-      actions.push({ label: "Pegar", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
+      actions.push({ label: "New folder", action: function () { root.startNewFolder() } })
+      actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
     }
-    actions.push({ label: root.showHidden ? "Ocultar dotfiles" : "Ver dotfiles", action: function () { root.toggleHidden() } })
-    actions.push({ label: "Refrescar", action: function () { root.refresh(); root.refreshMounts() } })
+    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
+    actions.push({ label: "Refresh", action: function () { root.refresh(); root.refreshMounts() } })
     return actions
   }
 
   function bookmarkActions(bookmark) {
-    var actions = [{ label: "Abrir", action: function () { root.navigateTo(bookmark.path) } }]
+    var actions = [{ label: "Open", action: function () { root.navigateTo(bookmark.path) } }]
     if (bookmark.path === root.trashDir) {
-      actions.push({ label: "Vaciar papelera", destructive: true, action: function () { root.emptyTrash() } })
+      actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     }
-    actions.push({ label: "Quitar marcador", destructive: true, action: function () { root.removeBookmark(bookmark.path) } })
+    actions.push({ label: "Remove bookmark", destructive: true, action: function () { root.removeBookmark(bookmark.path) } })
     return actions
   }
 
   function mountActions(mount) {
     if (!mount.mounted) {
-      return [{ label: "Montar", action: function () { root.mountDevice(mount) } }]
+      return [{ label: "Mount", action: function () { root.mountDevice(mount) } }]
     }
-    var actions = [{ label: "Abrir", action: function () { root.navigateTo(mount.path) } }]
+    var actions = [{ label: "Open", action: function () { root.navigateTo(mount.path) } }]
     if (!root.isBookmarked(mount.path)) {
-      actions.push({ label: "Añadir a marcadores", action: function () { root.addBookmark(mount.path, mount.label, "💾") } })
+      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label, "💾") } })
     }
     if (mount.removable) {
-      actions.push({ label: "Expulsar", destructive: true, action: function () { root.ejectMount(mount) } })
+      actions.push({ label: "Eject", destructive: true, action: function () { root.ejectMount(mount) } })
     }
     return actions
   }
@@ -1058,7 +1058,7 @@ Item {
         if (ejectProc.wasInside) root.navigateTo(root.homeDir)
         root.refreshMounts()
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "No se pudo expulsar: " + (ejectProc.errorText || "unidad ocupada")])
+        Quickshell.execDetached(["notify-send", "Omafiles", "Could not eject: " + (ejectProc.errorText || "device busy")])
       }
     }
   }
@@ -1081,7 +1081,7 @@ Item {
         var match = mountProc.outputText.match(/ at (\/[^\s.]+)/)
         if (match) root.navigateTo(match[1])
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "No se pudo montar: " + (mountProc.errorText || "error desconocido")])
+        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
       }
     }
   }
@@ -1227,7 +1227,7 @@ Item {
       // que dev-gallery/GalleryPanel.qml.
       if (!visible && !root.closingFromHost && root.opened) {
         root.opened = false
-        if (root.shell && typeof root.shell.hide === "function") root.shell.hide("local.omafiles")
+        if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.percius04.omafiles")
       }
     }
 
@@ -1324,7 +1324,7 @@ Item {
 
           PanelSectionHeader {
             visible: root.mounts.length > 0
-            text: "DISPOSITIVOS"
+            text: "DEVICES"
             foreground: Color.menu.text
             fontFamily: Style.font.family
             fontSize: Style.font.subtitle
@@ -1372,7 +1372,7 @@ Item {
 
               PanelToolTip {
                 visible: mountMouse.containsMouse && !parent.modelData.mounted
-                text: "Sin montar -- clic para montar"
+                text: "Not mounted -- click to mount"
               }
 
               MouseArea {
@@ -1445,7 +1445,7 @@ Item {
                   Text {
                     id: tabLabel
                     anchors.verticalCenter: parent.verticalCenter
-                    text: modelData.path === root.homeDir ? "Inicio" : modelData.path.substring(modelData.path.lastIndexOf("/") + 1)
+                    text: modelData.path === root.homeDir ? "Home" : modelData.path.substring(modelData.path.lastIndexOf("/") + 1)
                     font.pixelSize: Style.font.subtitle
                     font.family: Style.font.family
                     color: index === root.activeTabIndex ? Color.menu.selectedText : Color.menu.text
@@ -1615,7 +1615,7 @@ Item {
               id: newFolderField
               width: parent.width - 160
               anchors.verticalCenter: parent.verticalCenter
-              placeholderText: "Nombre de la nueva carpeta…"
+              placeholderText: "New folder name…"
               onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -1629,7 +1629,7 @@ Item {
             }
 
             Button {
-              text: "Crear"
+              text: "Create"
               bordered: true
               anchors.verticalCenter: parent.verticalCenter
               onClicked: root.commitNewFolder(newFolderField.text)
@@ -1665,7 +1665,7 @@ Item {
               width: parent.width - 30
               anchors.verticalCenter: parent.verticalCenter
               verticalPadding: 2
-              placeholderText: "Buscar aquí… (Ctrl+Enter busca en subcarpetas)"
+              placeholderText: "Search here… (Ctrl+Enter searches subfolders)"
               text: root.searchQuery
               onTextChanged: root.searchQuery = text
               onVisibleChanged: if (visible) forceActiveFocus()
@@ -2053,7 +2053,7 @@ Item {
                   Text {
                     id: previewTextItem
                     width: parent.width
-                    text: root.previewText || "(vacío)"
+                    text: root.previewText || "(empty)"
                     font.pixelSize: Style.font.subtitle
                     font.family: "monospace"
                     color: Color.menu.text
@@ -2070,7 +2070,7 @@ Item {
                   Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Sin vista previa"
+                    text: "No preview"
                     font.pixelSize: Style.font.title
                     font.family: Style.font.family
                     color: Color.menu.text
@@ -2094,11 +2094,11 @@ Item {
           // ---------- Barra de estado ----------
           Text {
             id: statusText
-            text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " elemento" : " elementos")
-              + (root.searchQuery ? " de " + root.entries.length : "")
-              + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " seleccionados" : "")
-              + (root.clipboardPaths.length > 0 ? " · portapapeles: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " elemento" : " elementos") + (root.clipboardMode === "cut" ? " (cortado)" : " (copiado)") : "")
-              + " · orden: " + root.sortLabel()
+            text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
+              + (root.searchQuery ? " of " + root.entries.length : "")
+              + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
+              + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
+              + " · sort: " + root.sortLabel()
             font.pixelSize: Style.font.subtitle
             font.family: Style.font.family
             color: Color.menu.text
@@ -2140,7 +2140,7 @@ Item {
 
           Text {
             width: parent.width
-            text: "Renombrar " + root.selectedIndices.length + " elementos"
+            text: "Rename " + root.selectedIndices.length + " items"
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
@@ -2149,7 +2149,7 @@ Item {
 
           Text {
             width: parent.width
-            text: "Usa {name}, {ext}, {n} (número secuencial)"
+            text: "Use {name}, {ext}, {n} (sequence number)"
             font.pixelSize: Style.font.subtitle
             font.family: Style.font.family
             color: Color.menu.text
@@ -2175,7 +2175,7 @@ Item {
           }
 
           Button {
-            text: "Renombrar"
+            text: "Rename"
             bordered: true
             onClicked: { root.bulkRenamePattern = bulkRenameField.text; root.commitBulkRename() }
           }
@@ -2215,7 +2215,7 @@ Item {
 
           Text {
             width: parent.width
-            text: "Permisos de \"" + root.chmodEntry + "\""
+            text: "Permissions for \"" + root.chmodEntry + "\""
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
@@ -2240,7 +2240,7 @@ Item {
           }
 
           Button {
-            text: "Aplicar"
+            text: "Apply"
             bordered: true
             onClicked: root.commitChmod(chmodField.text)
           }
@@ -2292,11 +2292,11 @@ Item {
 
           Repeater {
             model: [
-              { label: "Tipo", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Carpeta" : "Fichero") : "" },
-              { label: "Tamaño", value: root.propertiesSizeLoading ? "Calculando…" : root.propertiesSize },
-              { label: "Permisos", value: root.propertiesPerms },
-              { label: "Propietario", value: root.propertiesOwner },
-              { label: "Modificado", value: root.propertiesMtime }
+              { label: "Type", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Folder" : "File") : "" },
+              { label: "Size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize },
+              { label: "Permissions", value: root.propertiesPerms },
+              { label: "Owner", value: root.propertiesOwner },
+              { label: "Modified", value: root.propertiesMtime }
             ]
 
             Row {
@@ -2325,7 +2325,7 @@ Item {
           }
 
           Button {
-            text: "Cerrar"
+            text: "Close"
             bordered: true
             onClicked: root.propertiesOpen = false
           }
@@ -2365,7 +2365,7 @@ Item {
 
           Text {
             width: parent.width
-            text: "Abrir \"" + (root.openWithEntry ? root.openWithEntry.name : "") + "\" con:"
+            text: "Open \"" + (root.openWithEntry ? root.openWithEntry.name : "") + "\" with:"
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
@@ -2378,7 +2378,7 @@ Item {
           Text {
             visible: root.openWithApps.length === 0
             width: parent.width
-            text: "Sin aplicaciones registradas para este tipo de fichero."
+            text: "No registered applications for this file type."
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             color: Color.menu.text
@@ -2495,12 +2495,12 @@ Item {
         opened: root.pendingDeleteNames.length > 0
         message: root.currentPath === root.trashDir
           ? (root.pendingDeleteNames.length === 1
-            ? "¿Borrar \"" + root.pendingDeleteNames[0] + "\" DEFINITIVAMENTE? No se puede deshacer."
-            : "¿Borrar " + root.pendingDeleteNames.length + " elementos DEFINITIVAMENTE? No se puede deshacer.")
+            ? "Delete \"" + root.pendingDeleteNames[0] + "\" PERMANENTLY? This cannot be undone."
+            : "Delete " + root.pendingDeleteNames.length + " items PERMANENTLY? This cannot be undone.")
           : (root.pendingDeleteNames.length === 1
-            ? "¿Enviar \"" + root.pendingDeleteNames[0] + "\" a la papelera?"
-            : "¿Enviar " + root.pendingDeleteNames.length + " elementos a la papelera?")
-        confirmText: "Borrar"
+            ? "Send \"" + root.pendingDeleteNames[0] + "\" to trash?"
+            : "Send " + root.pendingDeleteNames.length + " items to trash?")
+        confirmText: "Delete"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: root.pendingDeleteNames = []
@@ -2513,9 +2513,9 @@ Item {
         z: 10
         opened: root.renameConflictOpen
         message: root.pendingRename
-          ? "Ya existe \"" + root.pendingRename.newPath.substring(root.pendingRename.newPath.lastIndexOf("/") + 1) + "\" aquí. ¿Sobrescribir?"
+          ? "\"" + root.pendingRename.newPath.substring(root.pendingRename.newPath.lastIndexOf("/") + 1) + "\" already exists here. Overwrite?"
           : ""
-        confirmText: "Sobrescribir"
+        confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: root.cancelPendingRename()
@@ -2556,8 +2556,8 @@ Item {
           Text {
             width: parent.width
             text: root.pasteConflictNames.length === 1
-              ? "\"" + root.pasteConflictNames[0] + "\" ya existe aquí."
-              : root.pasteConflictNames.length + " elementos ya existen aquí."
+              ? "\"" + root.pasteConflictNames[0] + "\" already exists here."
+              : root.pasteConflictNames.length + " items already exist here."
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
@@ -2569,9 +2569,9 @@ Item {
             width: parent.width
             spacing: Style.spacing.xs
 
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Sobrescribir todo"; onClicked: root.runPaste("overwrite") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Omitir existentes"; onClicked: root.runPaste("skip") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancelar"; onClicked: root.cancelPasteConflict() }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; onClicked: root.runPaste("overwrite") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; onClicked: root.runPaste("skip") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; onClicked: root.cancelPasteConflict() }
           }
         }
       }
@@ -2611,7 +2611,7 @@ Item {
           TextField {
             id: paletteField
             width: parent.width
-            placeholderText: "Escribe un comando…"
+            placeholderText: "Type a command…"
             text: root.paletteQuery
             onTextChanged: { root.paletteQuery = text; root.paletteIndex = 0 }
             onVisibleChanged: if (visible) forceActiveFocus()
