@@ -314,6 +314,16 @@ Item {
   // no compartir el mecanismo de acciones de fichero normal.
   property bool networkConnecting: false
 
+  // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- root.currentPath
+  // NUNCA cambia mientras esto está activo (sigue siendo la carpeta real
+  // que contiene el archivo); root.entries pasa a venir de list-archive.sh
+  // en vez de list-dir.sh. Deliberadamente de solo lectura: sin selección
+  // múltiple/menú contextual/renombrar/borrar/chmod/arrastrar -- ver los
+  // guards "if (root.inArchive) return" en cada acción que muta disco.
+  property bool inArchive: false
+  property string archivePath: ""
+  property string archiveSubPath: ""
+
   readonly property var defaultBookmarks: [
     { label: "Home", path: root.homeDir },
     { label: "Documents", path: root.homeDir + "/Documents" },
@@ -513,6 +523,11 @@ Item {
   }
 
   function refresh() {
+    // Centralizado aquí para que TODO lo que ya llama a refresh() (toggle
+    // de ocultos, el "Refresh" de la paleta, el onExited de las acciones
+    // de fichero...) recargue lo correcto sin tener que acordarse de
+    // comprobar inArchive en cada sitio.
+    if (root.inArchive) { root.refreshArchiveListing(); return }
     root.currentPathError = ""
     listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
     listProc.running = true
@@ -781,6 +796,12 @@ Item {
   // pestaña, que ya deciden ellos mismos la entrada de historial correcta y
   // no quieren que ésta se vuelva a tocar).
   function _goToPath(path) {
+    // Cualquier navegación real (bookmark, atrás/adelante, cambio de
+    // pestaña, editar la ruta a mano...) sale del modo "dentro de un
+    // comprimido" -- currentPath nunca cambia mientras se navega DENTRO
+    // del archivo (ver enter()/goUp()/inArchive), así que si esto se
+    // ejecuta es que el usuario se fue a otro sitio de verdad.
+    if (root.inArchive) { root.inArchive = false; root.archivePath = ""; root.archiveSubPath = "" }
     root.currentPath = path
     root.selectOnly(-1)
     root.renamingIndex = -1
@@ -902,15 +923,76 @@ Item {
 
   function enter(entry) {
     if (!entry) return
+    if (root.inArchive) {
+      if (entry.type === "dir") {
+        root.archiveSubPath = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
+        root.refreshArchiveListing()
+      } else {
+        root.openFileInArchive(entry)
+      }
+      return
+    }
     if (entry.type === "dir") {
       navigateTo(root.joinPath(root.currentPath, entry.name))
+    } else if (root.isArchive(entry)) {
+      root.enterArchive(root.joinPath(root.currentPath, entry.name))
     } else {
       openProc.command = ["xdg-open", root.joinPath(root.currentPath, entry.name)]
       openProc.running = true
     }
   }
 
+  function enterArchive(path) {
+    root.selectOnly(-1)
+    root.inArchive = true
+    root.archivePath = path
+    root.archiveSubPath = ""
+    root.refreshArchiveListing()
+  }
+
+  function exitArchive() {
+    root.inArchive = false
+    root.archivePath = ""
+    root.archiveSubPath = ""
+    root.refresh()
+  }
+
+  function refreshArchiveListing() {
+    root.selectOnly(-1)
+    list.contentY = list.originY
+    archiveListProc.command = [root.pluginDir + "/list-archive.sh", root.archivePath, root.archiveSubPath]
+    archiveListProc.running = true
+  }
+
+  // Extrae SOLO ese fichero a una caché temporal (no todo el archivo) y lo
+  // abre con la app por defecto -- "unzip -p"/"tar xO"/etc. vuelcan un
+  // único miembro a stdout sin tocar disco más que ese archivo de salida,
+  // igual de eficiente que abrir un fichero normal aunque el .zip sea
+  // enorme.
+  function openFileInArchive(entry) {
+    var full = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
+    var ext = root.extOf(root.archivePath)
+    var out = root.homeDir + "/.cache/omafiles/archive-open/" + root.simpleHash(root.archivePath + "|" + full) + "/" + entry.name
+    var outDir = out.substring(0, out.lastIndexOf("/"))
+    var cmd
+    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
+    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(root.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    else return
+    archiveOpenProc.outPath = out
+    archiveOpenProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd]
+    archiveOpenProc.running = true
+  }
+
   function goUp() {
+    if (root.inArchive) {
+      if (root.archiveSubPath === "") { root.exitArchive(); return }
+      var slash = root.archiveSubPath.lastIndexOf("/")
+      root.archiveSubPath = slash > 0 ? root.archiveSubPath.substring(0, slash) : ""
+      root.refreshArchiveListing()
+      return
+    }
     if (root.currentPath === "/") return
     var idx = root.currentPath.lastIndexOf("/")
     navigateTo(idx > 0 ? root.currentPath.substring(0, idx) : "/")
@@ -1118,6 +1200,7 @@ Item {
   }
 
   function startRename(index) {
+    if (root.inArchive) return
     if (index < 0 || index >= root.visibleEntries.length) return
     root.creatingFolder = false
     root.creatingFile = false
@@ -1161,6 +1244,7 @@ Item {
   }
 
   function startNewFolder() {
+    if (root.inArchive) return
     root.renamingIndex = -1
     root.searching = false
     root.creatingFile = false
@@ -1168,6 +1252,7 @@ Item {
   }
 
   function startNewFile() {
+    if (root.inArchive) return
     root.renamingIndex = -1
     root.searching = false
     root.creatingFolder = false
@@ -1206,6 +1291,7 @@ Item {
   }
 
   function requestDelete() {
+    if (root.inArchive) return
     var names = root.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
     root.pendingDeleteNames = names
@@ -1238,6 +1324,7 @@ Item {
   }
 
   function copySelected() {
+    if (root.inArchive) return
     var entries = root.selectedEntries()
     if (entries.length === 0) return
     root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
@@ -1245,6 +1332,7 @@ Item {
   }
 
   function cutSelected() {
+    if (root.inArchive) return
     var entries = root.selectedEntries()
     if (entries.length === 0) return
     root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
@@ -1252,6 +1340,7 @@ Item {
   }
 
   function paste() {
+    if (root.inArchive) return
     if (root.clipboardPaths.length === 0) return
     var destPaths = root.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
@@ -1414,6 +1503,7 @@ Item {
   // Llamado desde cada DropArea (fila de carpeta, marcador, unidad, fondo
   // de la lista) con el DragEvent real y la carpeta destino ya resuelta.
   function handleFilesDropped(drop, destDir) {
+    if (root.inArchive) { drop.accepted = false; return }
     if (!drop.hasUrls) { drop.accepted = false; return }
     var paths = drop.urls.map(function (u) { return root.urlToPath(u) }).filter(function (p) { return p.length > 0 })
     if (paths.length === 0) { drop.accepted = false; return }
@@ -1434,6 +1524,7 @@ Item {
   }
 
   function startSearch() {
+    if (root.inArchive) return
     root.creatingFolder = false
     root.creatingFile = false
     root.searching = true
@@ -1600,6 +1691,7 @@ Item {
   }
 
   function compressSelected() {
+    if (root.inArchive) return
     var entries = root.selectedEntries()
     if (entries.length === 0) return
     var archiveName = entries.length === 1
@@ -1655,7 +1747,15 @@ Item {
     if (ext === "zip") { cmd = "unzip -o -q " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
     else if (ext === "7z") { cmd = "7z x -y " + path + " -o" + dir; listCmd = "7z l -ba -slt -- " + path + " | grep '^Path = ' | sed 's/^Path = //'" }
     else if (ext === "rar") { cmd = "unrar x -o+ " + path + " " + dir + "/"; listCmd = "unrar lb -- " + path }
-    else if (root.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf -- " + path }
+    // Sin "--" a propósito, a diferencia de las otras tres -- con "tf"
+    // (forma corta agrupada de -t -f) tar toma el token SIGUIENTE como
+    // argumento directo de -f, así que un "--" ahí se interpreta como el
+    // propio nombre de fichero a abrir y tar falla con "--: No such file
+    // or directory". Bug real: esto hacía que la comprobación de
+    // conflictos SIEMPRE fallara en silencio para tar/tar.gz/tar.bz2/
+    // tar.xz (listCmd no devolvía nada -> 0 conflictos detectados
+    // siempre), aunque zip/7z/rar no se vieran afectados.
+    else if (root.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
     else return
     // Antes esto sobrescribía sin preguntar, a diferencia de pegar/soltar/
     // renombrar (que sí comprueban conflictos). Antes de extraer, se lista
@@ -1682,6 +1782,7 @@ Item {
   }
 
   function startBulkRename() {
+    if (root.inArchive) return
     root.bulkRenamePattern = "{name}{ext}"
     root.bulkRenameOpen = true
   }
@@ -1741,6 +1842,7 @@ Item {
   }
 
   function startChmod(entries) {
+    if (root.inArchive) return
     if (!entries || entries.length === 0) return
     root.chmodNames = entries.map(function (e) { return e.name })
     root.chmodMode = ""
@@ -1785,6 +1887,13 @@ Item {
   }
 
   function showPropertiesForSelection() {
+    // root.currentPath sigue siendo la carpeta real que contiene el
+    // archivo mientras se navega dentro de él -- sin este guard,
+    // Properties intentaría hacer stat/du de "carpeta-real/nombre-dentro-
+    // del-zip", que no existe (o, peor, podría coincidir por casualidad
+    // con un fichero real de ese nombre en la carpeta contenedora y
+    // enseñar datos de OTRO fichero sin que se note el error).
+    if (root.inArchive) return
     var entries = root.selectedEntries()
     if (entries.length === 0) return
     if (entries.length === 1) { root.showProperties(entries[0]); return }
@@ -1807,6 +1916,7 @@ Item {
   }
 
   function makeLinkFor(entry) {
+    if (root.inArchive) return
     if (!entry) return
     var target = root.joinPath(root.currentPath, entry.name)
     var linkName = "Link to " + entry.name
@@ -1870,6 +1980,13 @@ Item {
   function itemActions() {
     var entries = root.selectedEntries()
     if (entries.length === 0) return []
+    // Dentro de un comprimido solo se navega/abre -- nada de lo demás
+    // (renombrar/borrar/chmod/comprimir/copiar/enlazar/marcador) tiene
+    // sentido sobre una ruta que no existe de verdad en disco.
+    if (root.inArchive) {
+      if (entries.length !== 1) return []
+      return [{ label: entries[0].type === "dir" ? "Open" : "Open (extracts a temp copy)", action: function () { root.enter(entries[0]) } }]
+    }
     var multi = entries.length > 1
     var suffix = multi ? " (" + entries.length + ")" : ""
     var inTrash = root.currentPath === root.trashDir
@@ -1959,8 +2076,24 @@ Item {
     return actions
   }
 
+  // Dentro de un comprimido, la ruta real (root.currentPath) no cambia --
+  // solo se navega en archiveSubPath (ver enter()/goUp()/inArchive) -- así
+  // que el breadcrumb tiene que construirse aparte para reflejarlo. Nadie
+  // hace clic en un segmento individual (ver el Repeater real más abajo,
+  // sin MouseArea propio a propósito), así que basta con que el ÚLTIMO
+  // segmento tenga path === root.currentPath -- es lo único que usa la
+  // plantilla compartida para decidir cuál pintar en negrita.
   function pathSegments() {
-    return root.pathSegmentsFor(root.currentPath)
+    if (!root.inArchive) return root.pathSegmentsFor(root.currentPath)
+    var segs = root.pathSegmentsFor(root.currentPath)
+    var archiveName = root.archivePath.substring(root.archivePath.lastIndexOf("/") + 1)
+    var parts = root.archiveSubPath ? root.archiveSubPath.split("/") : []
+    var isLast = parts.length === 0
+    segs.push({ label: archiveName, path: isLast ? root.currentPath : "" })
+    for (var i = 0; i < parts.length; i++) {
+      segs.push({ label: parts[i], path: (i === parts.length - 1) ? root.currentPath : "" })
+    }
+    return segs
   }
 
   function pathSegmentsFor(targetPath) {
@@ -2038,6 +2171,43 @@ Item {
       else if (exitCode === 3) root.currentPathError = "This folder no longer exists"
       else if (exitCode === 4) root.currentPathError = "Not a folder"
       else if (exitCode !== 0) root.currentPathError = "Couldn't open this folder"
+    }
+  }
+
+  Process {
+    id: archiveListProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var s = String(text || "")
+        var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
+        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+        var parsed = []
+        for (var i = 0; i + 1 < fields.length; i += 2) {
+          parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
+        }
+        root.entries = root.sortEntries(parsed)
+        list.positionViewAtBeginning()
+        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+      }
+    }
+  }
+
+  Process {
+    id: archiveOpenProc
+    property string outPath: ""
+    property string errorText: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: archiveOpenProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      if (exitCode !== 0) {
+        Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't open file from archive: " + (archiveOpenProc.errorText.trim() || "unknown error")])
+        return
+      }
+      openProc.command = ["xdg-open", archiveOpenProc.outPath]
+      openProc.running = true
     }
   }
 
