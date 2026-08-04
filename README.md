@@ -13,7 +13,8 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Tiled, real window (`FloatingWindow`) — not a modal overlay, not layer-shell. Lives alongside your terminal/editor like a normal app.
 - Vim-style keyboard navigation (`j`/`k`, `gg`/`G`, `h`/`l`), plus arrow keys.
 - Command palette (`:` or `Ctrl+P`) for every action, fuzzy-searchable.
-- Tabs, editable bookmarks, mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
+- Tabs shown as side-by-side panels — every open tab is visible at once, separated by a hairline divider, not a one-at-a-time switcher. Whichever panel has the mouse over it is the active one: that's where keyboard shortcuts, selection, and the context menu apply.
+- Editable bookmarks, mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
 - Sort by name/size/date/type — a key cycles it, no dropdown.
 - Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing) and a "still working" indicator with Cancel for copy/move.
 - Undo (`Ctrl+Z`) for rename, new folder, new file, make link, delete, and move.
@@ -25,6 +26,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Registers itself as the system's default file manager on first load — no manual setup (see below).
 - Drag and drop: drag files out to other apps, drag files in from other apps to copy them here, or drag between folders/bookmarks/drives inside Omafiles to move them — with the same overwrite/skip conflict handling as copy/paste.
 - Rubber-band selection: click and drag over empty space (including the margins around the sidebar and each row) to select multiple items, Ctrl adds to the existing selection instead of replacing it, auto-scrolls when dragged to a list edge with more items than fit on screen.
+- Back/forward navigation history (`Alt+←`/`Alt+→`) and preview state, independent per tab.
 
 ## Keyboard shortcuts
 
@@ -32,6 +34,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | --- | --- |
 | `j` / `k` / `↓` / `↑` | Move down / up |
 | `h` / `Backspace` | Go up a directory |
+| `Alt+←` / `Alt+→` | Back / forward |
 | `l` / `Enter` | Open (enter directory / launch file) |
 | `gg` / `Shift+G` | Jump to top / bottom |
 | `Space` | Toggle preview |
@@ -45,7 +48,8 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | `s` / `Shift+S` | Cycle sort field / reverse order |
 | `Ctrl+L` | Edit path directly |
 | `Ctrl+Shift+N` | New folder |
-| `Ctrl+T` / `Ctrl+W` / `Ctrl+Tab` | New tab / close tab / next tab |
+| `Ctrl+T` / `Ctrl+\` | New tab (new panel) |
+| `Ctrl+W` / `Ctrl+Tab` | Close tab / next tab |
 | `Ctrl+H` | Toggle hidden files |
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |

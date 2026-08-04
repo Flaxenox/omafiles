@@ -4,22 +4,32 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Omafiles v0.5 -- explorador de archivos para Omarchy.
+// Omafiles -- explorador de archivos para Omarchy.
 // Ventana normal (FloatingWindow, tileable en Hyprland como cualquier otra
 // app), no un overlay modal. Barra lateral con accesos y unidades (montar/
 // expulsar), ruta editable a mano, orden por nombre/tamaño/fecha/tipo
 // (tecla "s"/"S"), menú contextual y paleta de comandos (Ctrl+P) para todas
 // las acciones de fichero, avisos de conflicto al copiar/pegar/renombrar,
-// propiedades. Sin drag&drop todavía.
+// propiedades, drag & drop (dentro y con otras apps), lazo de selección,
+// panel dividido opcional.
 Item {
   id: root
 
   property string homeDir: Quickshell.env("HOME")
   property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
   property string currentPath: homeDir
-  property var tabs: [{ path: homeDir }]
+  property var tabs: [{ path: homeDir, history: [homeDir], historyIndex: 0 }]
   property int activeTabIndex: 0
+  // Historial atrás/adelante de la pestaña ACTIVA -- cada pestaña guarda el
+  // suyo propio en su objeto (campos history/historyIndex de arriba) y este
+  // par de propiedades es solo la "vista en curso" de esa pestaña, que se
+  // intercambia al cambiar de pestaña (ver switchToTab/newTab/etc.).
+  property var navHistory: [homeDir]
+  property int navHistoryIndex: 0
   property var entries: []
+  // Caché de listados por ruta, alimentada por los paneles de fondo cada
+  // vez que refrescan -- ver _goToPath().
+  property var tabEntriesCache: ({})
   property bool searching: false
   property string deepSearchRoot: ""
   property string searchQuery: ""
@@ -37,6 +47,71 @@ Item {
   // lo usa open() cuando el payload pide "abre esta carpeta y selecciona
   // este fichero" (caso ShowItems de org.freedesktop.FileManager1).
   property string pendingSelectName: ""
+
+  // ---------- Paneles ----------
+  // Cada pestaña abierta se ve a la vez como un panel propio, lado a lado
+  // (sustituye a la vista dividida de antes, que era un segundo panel fijo
+  // aparte -- ahora cualquier pestaña ES ya un panel visible). Solo el panel
+  // ACTIVO tiene la lista/navegación completa de toda la vida (root.entries,
+  // marquee, menú contextual...); el resto son paneles sencillos (solo
+  // navegar con doble clic y arrastrar), cada uno con su propio listado.
+  property int refreshTick: 0
+
+  // Cierra la pestaña/panel en `index`, sea o no la activa (la × de cada
+  // panel puede estar en uno que no es el que tiene el foco ahora mismo).
+  function closeTabAt(index) {
+    if (root.tabs.length <= 1) { root.requestClose(); return }
+    if (index === root.activeTabIndex) { root.closeTab(); return }
+    var next = root.tabs.slice()
+    next.splice(index, 1)
+    root.tabs = next
+    if (root.activeTabIndex > index) root.activeTabIndex -= 1
+  }
+
+  // Navegar DENTRO de un panel que no es el activo -- no toca
+  // root.currentPath/root.entries (esos son solo del panel activo), solo el
+  // propio objeto de esa pestaña. Mantiene su historial igual que
+  // navigateTo mantiene el de la pestaña activa.
+  function navigateTabTo(index, path) {
+    if (!path || index < 0 || index >= root.tabs.length) return
+    path = path.replace(/\/+$/, "") || "/"
+    if (index === root.activeTabIndex) { root.navigateTo(path); return }
+    var next = root.tabs.slice()
+    var tab = next[index]
+    if (path === tab.path) return
+    var h = (tab.history || [tab.path]).slice(0, (tab.historyIndex !== undefined ? tab.historyIndex : 0) + 1)
+    h.push(path)
+    next[index] = { path: path, history: h, historyIndex: h.length - 1 }
+    root.tabs = next
+  }
+
+  // Atrás/adelante para un panel que no es el activo -- mismo concepto que
+  // navBack/navForward, pero leyendo/escribiendo el historial guardado en
+  // ese objeto de pestaña en concreto en vez de root.navHistory (que es
+  // solo el de la activa).
+  function navTabBack(index) {
+    if (index === root.activeTabIndex) { root.navBack(); return }
+    if (index < 0 || index >= root.tabs.length) return
+    var tab = root.tabs[index]
+    var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
+    if (hIdx <= 0) return
+    var hist = tab.history || [tab.path]
+    var next = root.tabs.slice()
+    next[index] = { path: hist[hIdx - 1], history: hist, historyIndex: hIdx - 1 }
+    root.tabs = next
+  }
+
+  function navTabForward(index) {
+    if (index === root.activeTabIndex) { root.navForward(); return }
+    if (index < 0 || index >= root.tabs.length) return
+    var tab = root.tabs[index]
+    var hist = tab.history || [tab.path]
+    var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
+    if (hIdx >= hist.length - 1) return
+    var next = root.tabs.slice()
+    next[index] = { path: hist[hIdx + 1], history: hist, historyIndex: hIdx + 1 }
+    root.tabs = next
+  }
 
   // ---------- Deshacer (Ctrl+Z) ----------
   // Pila simple de acciones reversibles: renombrar, nueva carpeta, borrar
@@ -231,19 +306,25 @@ Item {
     return (h >>> 0).toString(36)
   }
 
-  function thumbKeyFor(entry) {
-    return root.joinPath(root.currentPath, entry.name) + "|" + entry.mtime
+  // `basePath` es opcional (por defecto root.currentPath, la carpeta del
+  // panel activo) -- los paneles de fondo pasan la suya propia
+  // (bgPanel.modelData.path), que NO tiene por qué ser la misma. Sin esto,
+  // pedir la miniatura de un vídeo desde un panel de fondo generaba el
+  // thumbnail a partir de un fichero de la carpeta EQUIVOCADA (la del panel
+  // activo en ese momento).
+  function thumbKeyFor(entry, basePath) {
+    return root.joinPath(basePath || root.currentPath, entry.name) + "|" + entry.mtime
   }
 
-  function videoThumbPath(entry) {
-    return root.thumbCacheDir + "/" + root.simpleHash(root.thumbKeyFor(entry)) + ".jpg"
+  function videoThumbPath(entry, basePath) {
+    return root.thumbCacheDir + "/" + root.simpleHash(root.thumbKeyFor(entry, basePath)) + ".jpg"
   }
 
-  function requestVideoThumb(entry) {
-    var key = root.thumbKeyFor(entry)
+  function requestVideoThumb(entry, basePath) {
+    var key = root.thumbKeyFor(entry, basePath)
     if (root.videoThumbReady[key]) return
-    if (root.thumbQueue.some(function (e) { return root.thumbKeyFor(e) === key })) return
-    root.thumbQueue = root.thumbQueue.concat([entry])
+    if (root.thumbQueue.some(function (q) { return root.thumbKeyFor(q.entry, q.basePath) === key })) return
+    root.thumbQueue = root.thumbQueue.concat([{ entry: entry, basePath: basePath || root.currentPath }])
     root.processThumbQueue()
   }
 
@@ -251,11 +332,13 @@ Item {
     if (root.thumbBusy || root.thumbQueue.length === 0) return
     root.thumbBusy = true
     var next = root.thumbQueue.slice()
-    var entry = next.shift()
+    var queued = next.shift()
     root.thumbQueue = next
-    var src = root.joinPath(root.currentPath, entry.name)
-    var dest = root.videoThumbPath(entry)
-    thumbProc.currentKey = root.thumbKeyFor(entry)
+    var entry = queued.entry
+    var basePath = queued.basePath
+    var src = root.joinPath(basePath, entry.name)
+    var dest = root.videoThumbPath(entry, basePath)
+    thumbProc.currentKey = root.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
     thumbProc.command = ["bash", root.pluginDir + "/thumbnail-video.sh", src, dest]
     thumbProc.running = true
@@ -441,7 +524,7 @@ Item {
   }
 
   function emptyTrash() {
-    runAction("gio trash --empty --force")
+    runAction("gio trash --empty --force", "Emptying trash…")
   }
 
   function parseEntries(text) {
@@ -506,6 +589,14 @@ Item {
     if (!path) return
     // Normaliza barras finales/dobles básicas sin depender de un proceso externo.
     path = path.replace(/\/+$/, "") || "/"
+    root._pushHistory(path)
+    root._goToPath(path)
+  }
+
+  // La navegación real (usada por navigateTo Y por atrás/adelante/cambio de
+  // pestaña, que ya deciden ellos mismos la entrada de historial correcta y
+  // no quieren que ésta se vuelva a tocar).
+  function _goToPath(path) {
     root.currentPath = path
     root.selectOnly(-1)
     root.renamingIndex = -1
@@ -517,26 +608,96 @@ Item {
     // el listado nuevo no tenga nada ahí -- se ve como un hueco vacío
     // arriba del todo en vez de las primeras filas.
     list.contentY = list.originY
+    // Si esta ruta ya estaba cargada en un panel de fondo (típico al
+    // cambiar de pestaña pasando el cursor), se pinta con esos datos al
+    // instante en vez de esperar a que listProc arranque -- sin esto se
+    // veía un parpadeo con el listado de la pestaña anterior durante esos
+    // milisegundos. refresh() de todas formas trae una copia fresca por
+    // detrás enseguida, sustituyéndola sin que se note.
+    if (root.tabEntriesCache[path]) root.entries = root.tabEntriesCache[path]
     root.refresh()
+  }
+
+  function _pushHistory(path) {
+    if (root.navHistory[root.navHistoryIndex] === path) return
+    // Trunca cualquier "adelante" antes de añadir -- mismo comportamiento
+    // que el historial de cualquier navegador.
+    var h = root.navHistory.slice(0, root.navHistoryIndex + 1)
+    h.push(path)
+    root.navHistory = h
+    root.navHistoryIndex = h.length - 1
+  }
+
+  function navBack() {
+    if (root.navHistoryIndex <= 0) return
+    root.navHistoryIndex -= 1
+    root._goToPath(root.navHistory[root.navHistoryIndex])
+  }
+
+  function navForward() {
+    if (root.navHistoryIndex >= root.navHistory.length - 1) return
+    root.navHistoryIndex += 1
+    root._goToPath(root.navHistory[root.navHistoryIndex])
   }
 
   function saveActiveTab() {
     var next = root.tabs.slice()
-    next[root.activeTabIndex] = { path: root.currentPath }
+    next[root.activeTabIndex] = {
+      path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
+      previewOpen: root.previewOpen, previewEntry: root.previewEntry
+    }
     root.tabs = next
+  }
+
+  // Restaura el historial atrás/adelante propio de `tab` como el "en curso"
+  // -- usado por switchToTab/closeTab al aterrizar en una pestaña que no es
+  // la que se acaba de crear (esa ya trae su historial propio desde cero).
+  function _restoreTabHistory(tab) {
+    root.navHistory = tab.history || [tab.path]
+    root.navHistoryIndex = tab.historyIndex !== undefined ? tab.historyIndex : 0
+  }
+
+  // La preview (foto/vídeo/texto) es del panel activo, y _goToPath la
+  // cierra siempre (selectOnly(-1) al navegar) -- sin esto, cambiar de
+  // pestaña se veía como si la preview se perdiera aunque la pestaña
+  // original la siguiera teniendo abierta. Se llama DESPUÉS de _goToPath,
+  // que ya dejó currentPath listo para que loadPreview lea el fichero
+  // correcto si es de texto.
+  function _restoreTabPreview(tab) {
+    if (tab.previewOpen && tab.previewEntry) {
+      root.loadPreview(tab.previewEntry)
+    } else {
+      root.previewOpen = false
+    }
   }
 
   function switchToTab(index) {
     if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
     root.saveActiveTab()
     root.activeTabIndex = index
-    root.navigateTo(root.tabs[index].path)
+    root._restoreTabHistory(root.tabs[index])
+    root._goToPath(root.tabs[index].path)
+    root._restoreTabPreview(root.tabs[index])
   }
 
   function newTab() {
     root.saveActiveTab()
-    root.tabs = root.tabs.concat([{ path: root.currentPath }])
+    root.tabs = root.tabs.concat([{ path: root.currentPath, history: [root.currentPath], historyIndex: 0 }])
     root.activeTabIndex = root.tabs.length - 1
+    root.navHistory = [root.currentPath]
+    root.navHistoryIndex = 0
+  }
+
+  // Para quien no use Ctrl+T -- una pestaña nueva ya apuntando a `path` (una
+  // fila de carpeta, un marcador, una unidad), no a la carpeta actual.
+  function openInNewTab(path) {
+    if (!path) return
+    root.saveActiveTab()
+    root.tabs = root.tabs.concat([{ path: path, history: [path], historyIndex: 0 }])
+    root.activeTabIndex = root.tabs.length - 1
+    root.navHistory = [path]
+    root.navHistoryIndex = 0
+    root._goToPath(path)
   }
 
   function closeTab() {
@@ -546,7 +707,9 @@ Item {
     root.tabs = next
     var newIndex = Math.min(root.activeTabIndex, next.length - 1)
     root.activeTabIndex = newIndex
-    root.navigateTo(root.tabs[newIndex].path)
+    root._restoreTabHistory(root.tabs[newIndex])
+    root._goToPath(root.tabs[newIndex].path)
+    root._restoreTabPreview(root.tabs[newIndex])
   }
 
   function nextTab() {
@@ -588,7 +751,9 @@ Item {
     if (!root.loaded) {
       if (targetPath) {
         root.currentPath = targetPath
-        root.tabs = [{ path: targetPath }]
+        root.tabs = [{ path: targetPath, history: [targetPath], historyIndex: 0 }]
+        root.navHistory = [targetPath]
+        root.navHistoryIndex = 0
       }
       root.refresh()
     } else if (targetPath) {
@@ -614,6 +779,19 @@ Item {
     root.editingPath = false
     root.pendingDeleteNames = []
     root.contextMenuOpen = false
+    // keepLoaded:true mantiene vivo el componente entre cierres -- sin
+    // resetear esto, la próxima vez que se abra la ventana aparecería el
+    // mismo diálogo/panel todavía abierto de la sesión anterior.
+    root.propertiesOpen = false
+    root.chmodOpen = false
+    root.openWithOpen = false
+    root.bulkRenameOpen = false
+    root.previewOpen = false
+    root.searching = false
+    root.paletteOpen = false
+    root.renameConflictOpen = false
+    root.pasteConflictOpen = false
+    root.dropConflictOpen = false
   }
 
   // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
@@ -656,6 +834,13 @@ Item {
   }
 
   function runAction(cmd, busyLabel) {
+    // actionProc es un único proceso compartido por todas las acciones de
+    // fichero (renombrar, borrar, copiar/mover, comprimir...). Sin esta
+    // guardia, una segunda llamada mientras la primera sigue en marcha
+    // (doble clic, o una tecla de más durante una operación larga) le
+    // cambiaba el comando y lo reiniciaba, cortando la operación en curso
+    // a media copia sin ningún aviso.
+    if (actionProc.running) return
     root.actionLabel = busyLabel || ""
     root.actionBusy = !!busyLabel
     actionProc.command = ["bash", "-c", cmd]
@@ -667,6 +852,7 @@ Item {
     root.actionBusy = false
     root.actionLabel = ""
     root.refresh()
+    root.refreshTick += 1
   }
 
   function startRename(index) {
@@ -964,6 +1150,7 @@ Item {
     root.showHidden = !root.showHidden
     list.contentY = list.originY
     root.refresh()
+    root.refreshTick += 1
   }
 
   function startEditPath() {
@@ -1030,6 +1217,10 @@ Item {
         enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
+      { label: "New panel", run: function () { root.newTab() } },
+      { label: "Close this panel", enabled: root.tabs.length > 1, run: function () { root.closeTab() } },
+      { label: "Back", enabled: root.navHistoryIndex > 0, run: function () { root.navBack() } },
+      { label: "Forward", enabled: root.navHistoryIndex < root.navHistory.length - 1, run: function () { root.navForward() } },
       { label: "Edit path", run: function () { root.startEditPath() } },
       { label: "Search", run: function () { root.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
@@ -1050,6 +1241,7 @@ Item {
       if (!root.isBookmarked(fullPath)) {
         cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name) } })
       }
+      cmds.push({ label: "Open in new tab", run: function () { root.openInNewTab(fullPath) } })
     }
     return cmds
   }
@@ -1135,7 +1327,8 @@ Item {
       ? entries[0].name.replace(/\/$/, "") + ".zip"
       : "selected-files.zip"
     var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
-    runAction("cd -- " + Util.shellQuote(root.currentPath) + " && zip -r -q " + Util.shellQuote(archiveName) + " " + names)
+    runAction("cd -- " + Util.shellQuote(root.currentPath) + " && zip -r -q " + Util.shellQuote(archiveName) + " " + names,
+      "Compressing to \"" + archiveName + "\"…")
   }
 
   function isArchive(entry) {
@@ -1154,7 +1347,7 @@ Item {
     else if (ext === "rar") cmd = "unrar x -o+ " + path + " " + dir + "/"
     else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + path + " -C " + dir
     else return
-    runAction(cmd)
+    runAction(cmd, "Extracting \"" + entry.name + "\"…")
   }
 
   function startBulkRename() {
@@ -1175,7 +1368,7 @@ Item {
       var newPath = root.joinPath(root.currentPath, newName)
       return "mv -n -- " + Util.shellQuote(oldPath) + " " + Util.shellQuote(newPath)
     })
-    runAction(cmds.join(" && "))
+    runAction(cmds.join(" && "), "Renaming " + entries.length + " items…")
   }
 
   function startChmod(entry) {
@@ -1191,6 +1384,26 @@ Item {
     mode = mode.trim()
     if (!/^[0-7]{3,4}$/.test(mode) || !root.chmodEntry) return
     runAction("chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, root.chmodEntry)))
+  }
+
+  // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
+  function chmodDigit(ownerIdx) {
+    var mode = String(root.chmodMode || "0")
+    while (mode.length < 3) mode = "0" + mode
+    return parseInt(mode.substring(mode.length - 3).charAt(ownerIdx) || "0", 10)
+  }
+
+  function chmodBitSet(ownerIdx, bit) {
+    return (root.chmodDigit(ownerIdx) & bit) !== 0
+  }
+
+  function toggleChmodBit(ownerIdx, bit) {
+    var mode = String(root.chmodMode || "0")
+    while (mode.length < 3) mode = "0" + mode
+    var digits = mode.substring(mode.length - 3)
+    var arr = [digits.charCodeAt(0) - 48, digits.charCodeAt(1) - 48, digits.charCodeAt(2) - 48]
+    arr[ownerIdx] = arr[ownerIdx] ^ bit
+    root.chmodMode = "" + arr[0] + arr[1] + arr[2]
   }
 
   function showPropertiesForSelection() {
@@ -1250,7 +1463,7 @@ Item {
       var uri = "trash:///" + e.name.split("/").map(encodeURIComponent).join("/")
       return "gio trash --restore -- " + Util.shellQuote(uri)
     })
-    runAction(cmds.join(" && "))
+    runAction(cmds.join(" && "), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
   function openContextMenu(x, y, actions) {
@@ -1276,7 +1489,11 @@ Item {
 
     if (!multi) {
       actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
-      if (entries[0].type !== "dir") {
+      if (entries[0].type === "dir") {
+        actions.push({ label: "Open in new tab", action: function () {
+          root.openInNewTab(root.joinPath(root.currentPath, entries[0].name))
+        } })
+      } else {
         actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
       }
       actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
@@ -1319,7 +1536,10 @@ Item {
   }
 
   function bookmarkActions(bookmark) {
-    var actions = [{ label: "Open", action: function () { root.navigateTo(bookmark.path) } }]
+    var actions = [
+      { label: "Open", action: function () { root.navigateTo(bookmark.path) } },
+      { label: "Open in new tab", action: function () { root.openInNewTab(bookmark.path) } }
+    ]
     if (bookmark.path === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     }
@@ -1331,7 +1551,10 @@ Item {
     if (!mount.mounted) {
       return [{ label: "Mount", action: function () { root.mountDevice(mount) } }]
     }
-    var actions = [{ label: "Open", action: function () { root.navigateTo(mount.path) } }]
+    var actions = [
+      { label: "Open", action: function () { root.navigateTo(mount.path) } },
+      { label: "Open in new tab", action: function () { root.openInNewTab(mount.path) } }
+    ]
     if (!root.isBookmarked(mount.path)) {
       actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label) } })
     }
@@ -1342,8 +1565,12 @@ Item {
   }
 
   function pathSegments() {
-    if (root.currentPath === "/") return [{ label: "/", path: "/" }]
-    var parts = root.currentPath.split("/").filter(function (p) { return p.length > 0 })
+    return root.pathSegmentsFor(root.currentPath)
+  }
+
+  function pathSegmentsFor(targetPath) {
+    if (targetPath === "/") return [{ label: "/", path: "/" }]
+    var parts = targetPath.split("/").filter(function (p) { return p.length > 0 })
     var acc = ""
     var segs = [{ label: "/", path: "/" }]
     for (var i = 0; i < parts.length; i++) {
@@ -1504,6 +1731,11 @@ Item {
       root.actionBusy = false
       root.actionLabel = ""
       root.refresh()
+      // Una acción (borrar, mover, pegar...) puede afectar a cualquier
+      // panel, no solo al activo -- refreshTick es la señal para que los
+      // paneles no activos (cada uno con su propio Process de listado, ver
+      // el Repeater de paneles) se refresquen también.
+      root.refreshTick += 1
     }
   }
 
@@ -1849,7 +2081,7 @@ Item {
         }
 
         Rectangle {
-          width: 1
+          width: Style.spacing.hairline
           height: parent.height
           color: Color.menu.border
           opacity: 0.3
@@ -1862,85 +2094,454 @@ Item {
           height: parent.height
           spacing: Style.spacing.rowGap
 
-          Row {
-            id: tabBar
-            visible: root.tabs.length > 1
+          Item {
+            id: panelsRow
             width: parent.width
-            height: Style.spacing.controlHeight
-            spacing: Style.spacing.xs
+            height: parent.height
+            readonly property int panelCount: root.tabs.length
+            // El hueco entre dos paneles lleva panelGap A CADA LADO del
+            // divisor (no panelGap repartido entre los dos) -- para que el
+            // margen "interior" de un panel (hacia el divisor) sea tan ancho
+            // como el "exterior" (hacia la barra lateral o el borde de la
+            // ventana), en vez de la mitad.
+            readonly property real interPanelGap: 2 * Style.spacing.panelGap + Style.spacing.hairline
+            readonly property real slotWidth: (panelsRow.width - (panelCount - 1) * interPanelGap) / panelCount
+            function slotX(i) { return i * (panelsRow.slotWidth + panelsRow.interPanelGap) }
 
+            // ---------- Divisores entre paneles ----------
+            // Una simple línea, no un recuadro con borde propio -- mismo
+            // estilo que ya usa el divisor entre la barra lateral y el
+            // contenido (Color.menu.border, opacity 0.3, Style.spacing.hairline).
+            Repeater {
+              model: Math.max(0, root.tabs.length - 1)
+              delegate: Rectangle {
+                required property int index
+                x: panelsRow.slotX(index) + panelsRow.slotWidth + Style.spacing.panelGap
+                y: 0
+                width: Style.spacing.hairline
+                height: panelsRow.height
+                color: Color.menu.border
+                opacity: 0.3
+              }
+            }
+
+            // ---------- Paneles simples (todas las pestañas salvo la activa) ----------
+            // Generalización de lo que antes era un único panel de "vista
+            // dividida" fijo -- ahora hay uno por cada pestaña que no sea la
+            // activa, cada uno con su propio listado (su propio Process,
+            // hijo del delegado). Deliberadamente simple: sin lazo de
+            // selección ni menú contextual propio, solo navegar con doble
+            // clic y arrastrar -- para eso sirve, el panel activo (más
+            // abajo) ya tiene todo lo demás.
             Repeater {
               model: root.tabs
 
-              CursorSurface {
+              Item {
+                id: bgPanel
                 required property var modelData
                 required property int index
-                implicitHeight: tabBar.height
-                width: Math.min(140, tabLabel.implicitWidth + 34)
-                foreground: Color.menu.text
-                accent: Color.accent
-                hasCursor: tabMouse.containsMouse
-                current: index === root.activeTabIndex
+                visible: index !== root.activeTabIndex
+                x: panelsRow.slotX(index)
+                y: 0
+                width: panelsRow.slotWidth
+                height: panelsRow.height
 
-                MouseArea {
-                  id: tabMouse
+                property var entries: []
+                property string pathError: ""
+                property bool loaded: false
+
+                // Pasar el ratón por encima hace que este panel se vuelva
+                // el activo (el que tiene lazo de selección, menú
+                // contextual, y responde a los atajos de teclado j/k/F2/
+                // Supr/etc.) -- sin esto solo se podía "activar" un panel
+                // haciendo clic dentro, y josema quería que baste con
+                // colocar el cursor encima. HoverHandler en vez de
+                // MouseArea: no roba el evento a los MouseArea de las
+                // filas/botones de debajo, solo observa.
+                HoverHandler {
+                  onHoveredChanged: if (hovered) root.switchToTab(bgPanel.index)
+                }
+
+                function refreshMe() {
+                  if (!bgPanel.visible) return
+                  bgPanel.pathError = ""
+                  bgListProc.command = [root.pluginDir + "/list-dir.sh", bgPanel.modelData.path, root.showHidden ? "1" : "0"]
+                  bgListProc.running = true
+                }
+
+                onVisibleChanged: if (visible) bgPanel.refreshMe()
+                onModelDataChanged: bgPanel.refreshMe()
+                Connections {
+                  target: root
+                  function onRefreshTickChanged() { bgPanel.refreshMe() }
+                }
+                Component.onCompleted: bgPanel.refreshMe()
+
+                Process {
+                  id: bgListProc
+                  stdout: StdioCollector {
+                    waitForEnd: true
+                    onStreamFinished: {
+                      bgPanel.entries = root.sortEntries(root.parseEntries(text))
+                      bgPanel.loaded = true
+                      root.tabEntriesCache[bgPanel.modelData.path] = bgPanel.entries
+                    }
+                  }
+                  onExited: function (exitCode, exitStatus) {
+                    if (exitCode === 2) bgPanel.pathError = "Permission denied"
+                    else if (exitCode === 3) bgPanel.pathError = "This folder no longer exists"
+                    else if (exitCode === 4) bgPanel.pathError = "Not a folder"
+                    else if (exitCode !== 0) bgPanel.pathError = "Couldn't open this folder"
+                  }
+                }
+
+                DropArea {
                   anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.switchToTab(index)
+                  keys: ["text/uri-list"]
+                  onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
+                  onDropped: function (drop) { root.handleFilesDropped(drop, bgPanel.modelData.path) }
                 }
 
                 Row {
-                  anchors.fill: parent
-                  anchors.margins: Style.spacing.xs
-                  spacing: Style.spacing.xs
+                  id: bgHeaderRow
+                  anchors.top: parent.top
+                  width: parent.width
+                  height: Style.spacing.controlHeight
+                  spacing: Style.spacing.controlGap
 
-                  Text {
-                    id: tabLabel
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: modelData.path === root.homeDir ? "Home" : modelData.path.substring(modelData.path.lastIndexOf("/") + 1)
-                    font.pixelSize: Style.font.subtitle
-                    font.family: Style.font.family
-                    color: index === root.activeTabIndex ? Color.menu.selectedText : Color.menu.text
-                    elide: Text.ElideRight
-                    width: parent.width - 44
-                  }
+                  // Misma cabecera que el panel activo (atrás/adelante/casa/
+                  // subir) -- josema pidió que las dos se vean iguales, no
+                  // solo el panel activo con navegación completa.
+                  Button {
+                    width: Style.spacing.controlHeight
+                    height: Style.spacing.controlHeight
+                    foreground: (bgPanel.modelData.historyIndex || 0) <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+                    onClicked: root.navTabBack(bgPanel.index)
 
-                  Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "×"
-                    font.pixelSize: Style.font.subtitle
-                    font.family: Style.font.family
-                    color: Color.menu.text
-                    opacity: 0.6
-
-                    MouseArea {
-                      anchors.fill: parent
-                      anchors.margins: -4
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: { root.activeTabIndex = index; root.closeTab() }
+                    OpticalGlyph {
+                      anchors.centerIn: parent
+                      // md-arrow_left, mismo glyph que el panel activo.
+                      text: "\u{F004D}"
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.icon
+                      color: parent.foreground
                     }
                   }
+
+                  Button {
+                    width: Style.spacing.controlHeight
+                    height: Style.spacing.controlHeight
+                    readonly property var hist: bgPanel.modelData.history || [bgPanel.modelData.path]
+                    foreground: (bgPanel.modelData.historyIndex || 0) >= hist.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+                    onClicked: root.navTabForward(bgPanel.index)
+
+                    OpticalGlyph {
+                      anchors.centerIn: parent
+                      // md-arrow_right, mismo glyph que el panel activo.
+                      text: "\u{F0054}"
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.icon
+                      color: parent.foreground
+                    }
+                  }
+
+                  Button {
+                    width: Style.spacing.controlHeight
+                    height: Style.spacing.controlHeight
+                    foreground: bgPanel.modelData.path === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+                    onClicked: {
+                      var p = bgPanel.modelData.path
+                      var idx = p.lastIndexOf("/")
+                      root.navigateTabTo(bgPanel.index, idx > 0 ? p.substring(0, idx) : "/")
+                    }
+
+                    OpticalGlyph {
+                      anchors.centerIn: parent
+                      text: "󰅃"
+                      fontFamily: Style.font.family
+                      fontSize: Style.font.icon
+                      color: parent.foreground
+                    }
+                  }
+
+                  // Migas de pan completas, igual que en el panel activo --
+                  // antes solo se veía el nombre de la carpeta actual, sin
+                  // el resto de la ruta.
+                  Row {
+                    id: bgBreadcrumbRow
+                    width: parent.width - 3 * Style.spacing.controlHeight - 3 * Style.spacing.controlGap
+                    height: parent.height
+                    spacing: Style.spacing.xs
+                    clip: true
+
+                    Repeater {
+                      model: root.pathSegmentsFor(bgPanel.modelData.path)
+
+                      Row {
+                        required property var modelData
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.spacing.xs
+
+                        Text {
+                          text: modelData.label
+                          font.pixelSize: Style.font.title
+                          font.family: Style.font.family
+                          font.bold: modelData.path === bgPanel.modelData.path
+                          color: Color.menu.text
+                          opacity: modelData.path === bgPanel.modelData.path ? 1.0 : 0.65
+                        }
+
+                        Text {
+                          visible: modelData.path !== bgPanel.modelData.path
+                          text: "›"
+                          font.pixelSize: Style.font.title
+                          font.family: Style.font.family
+                          color: Color.menu.text
+                          opacity: 0.4
+                        }
+                      }
+                    }
+                  }
+                }
+
+                PanelSeparator {
+                  id: bgHeaderSep
+                  anchors.top: bgHeaderRow.bottom
+                  // Mismo hueco que separa navRow de listContainer en el
+                  // panel activo (mainColumn.spacing, no Style.spacing.sm)
+                  // -- con sm quedaba visiblemente más alto que la línea
+                  // del panel activo.
+                  anchors.topMargin: mainColumn.spacing
+                  width: parent.width
+                  foreground: Color.menu.text
+                  strength: 0.15
+                }
+
+                Text {
+                  id: bgErrorText
+                  visible: bgPanel.pathError !== ""
+                  anchors.top: bgHeaderSep.bottom
+                  anchors.topMargin: Style.spacing.sm
+                  width: parent.width
+                  text: bgPanel.pathError
+                  font.pixelSize: Style.font.subtitle
+                  font.family: Style.font.family
+                  color: Color.urgent
+                }
+
+                ListView {
+                  id: bgList
+                  anchors.top: bgErrorText.visible ? bgErrorText.bottom : bgHeaderSep.bottom
+                  anchors.topMargin: Style.spacing.sm
+                  anchors.bottom: bgStatusText.top
+                  anchors.bottomMargin: mainColumn.spacing
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  clip: true
+                  model: bgPanel.entries
+                  boundsBehavior: Flickable.StopAtBounds
+
+                  delegate: CursorSurface {
+                    id: bgRowSurface
+                    required property var modelData
+                    required property int index
+                    width: bgList.width
+                    implicitHeight: bgRowContent.implicitHeight + Style.spacing.sm * 2
+                    foreground: Color.menu.text
+                    accent: Color.accent
+                    hasCursor: bgRowMouse.containsMouse
+
+                    DropArea {
+                      visible: modelData.type === "dir"
+                      anchors.fill: parent
+                      keys: ["text/uri-list"]
+                      onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
+                      onDropped: function (drop) {
+                        root.handleFilesDropped(drop, root.joinPath(bgPanel.modelData.path, modelData.name))
+                      }
+                    }
+
+                    Item {
+                      id: bgRowContent
+                      anchors.left: parent.left
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      // Sin margen a la izquierda -- igual que rowContent del
+                      // panel activo, para que el icono quede en la misma
+                      // columna que los botones de atrás/adelante/subir de
+                      // bgHeaderRow, justo encima.
+                      anchors.leftMargin: 0
+                      anchors.rightMargin: Style.spacing.rowPaddingX
+                      implicitHeight: Math.max(bgThumbSlot.height, bgNameCol.implicitHeight)
+
+                      Item {
+                        id: bgThumbSlot
+                        // Misma miniatura real que el panel activo -- antes
+                        // solo tenía los iconos genéricos de tipo, así que
+                        // las imágenes/vídeos se veían sin previsualizar
+                        // hasta que el cursor pasaba a ser el panel activo.
+                        readonly property bool isVid: root.isVideo(modelData)
+                        readonly property string vidKey: isVid ? root.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
+                        readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
+                        readonly property bool isDir: modelData.type === "dir"
+                        readonly property bool hasThumb: root.isImage(modelData) || (isVid && vidThumb !== "")
+                        readonly property bool isBroken: modelData.link === "broken"
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Style.spacing.controlHeight
+                        height: Style.spacing.controlHeight
+
+                        Component.onCompleted: if (isVid) root.requestVideoThumb(modelData, bgPanel.modelData.path)
+
+                        Image {
+                          anchors.fill: parent
+                          visible: status === Image.Ready
+                          // La ruta es la de ESTE panel (bgPanel.modelData.path),
+                          // no root.currentPath -- ese es del panel activo,
+                          // y era justo lo que hacía fallar la miniatura
+                          // aquí cuando este panel no era el activo.
+                          source: root.isImage(modelData) ? Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
+                            : (bgThumbSlot.vidThumb ? Util.fileUrl(bgThumbSlot.vidThumb) : "")
+                          fillMode: Image.PreserveAspectCrop
+                          asynchronous: true
+                          sourceSize.width: 32
+                          sourceSize.height: 32
+                        }
+
+                        OpticalGlyph {
+                          anchors.fill: parent
+                          visible: bgThumbSlot.isDir && !bgThumbSlot.isBroken
+                          text: "󰉋"
+                          fontFamily: Style.font.family
+                          fontSize: Style.font.iconLarge
+                          color: Color.menu.text
+                        }
+
+                        OpticalGlyph {
+                          anchors.fill: parent
+                          visible: !bgThumbSlot.isDir && !bgThumbSlot.hasThumb && !bgThumbSlot.isBroken
+                          text: root.iconFor(modelData)
+                          fontFamily: Style.font.family
+                          fontSize: Style.font.iconLarge
+                          color: Color.menu.text
+                        }
+
+                        OpticalGlyph {
+                          anchors.fill: parent
+                          visible: bgThumbSlot.isBroken
+                          text: "\u{F033A}"
+                          fontFamily: Style.font.family
+                          fontSize: Style.font.iconLarge
+                          color: Color.urgent
+                        }
+                      }
+
+                      Column {
+                        id: bgNameCol
+                        anchors.left: bgThumbSlot.right
+                        anchors.leftMargin: Style.spacing.rowGap
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.spacing.hairline
+
+                        Text {
+                          width: parent.width
+                          text: modelData.name + (modelData.type === "dir" ? "/" : "")
+                          font.pixelSize: Style.font.title
+                          font.family: Style.font.family
+                          color: modelData.link === "broken" ? Color.urgent : Color.menu.text
+                          elide: Text.ElideRight
+                        }
+
+                        Text {
+                          readonly property string meta: root.metaFor(modelData)
+                          visible: meta.length > 0
+                          width: parent.width
+                          text: meta
+                          font.pixelSize: Style.font.bodySmall
+                          font.family: Style.font.family
+                          color: Color.menu.text
+                          opacity: 0.6
+                          elide: Text.ElideRight
+                        }
+                      }
+                    }
+
+                    MouseArea {
+                      id: bgRowMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      drag.target: bgDragProxy
+                      drag.axis: Drag.XAndYAxis
+                      onDoubleClicked: {
+                        if (modelData.type === "dir") {
+                          root.navigateTabTo(bgPanel.index, root.joinPath(bgPanel.modelData.path, modelData.name))
+                        } else {
+                          openProc.command = ["xdg-open", root.joinPath(bgPanel.modelData.path, modelData.name)]
+                          openProc.running = true
+                        }
+                      }
+                    }
+
+                    Item {
+                      id: bgDragProxy
+                      width: 1
+                      height: 1
+                      Drag.active: bgRowMouse.drag.active
+                      Drag.dragType: Drag.Automatic
+                      Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+                      Drag.proposedAction: Qt.MoveAction
+                      Drag.mimeData: {
+                        var data = {}
+                        data["text/uri-list"] = Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
+                        return data
+                      }
+                    }
+                  }
+                }
+
+                Text {
+                  id: bgStatusText
+                  anchors.bottom: parent.bottom
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  text: bgPanel.entries.length + (bgPanel.entries.length === 1 ? " item" : " items")
+                  font.pixelSize: Style.font.subtitle
+                  font.family: Style.font.family
+                  color: Color.menu.text
+                  opacity: 0.55
                 }
               }
             }
 
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: "+"
-              font.pixelSize: Style.font.title
-              font.family: Style.font.family
-              color: Color.menu.text
-              opacity: 0.7
+            // ---------- Panel activo ----------
+            // Todo lo que ya existía (barra de navegación, campos de
+            // nueva carpeta/fichero/búsqueda, la lista completa con lazo de
+            // selección/menú contextual/drag&drop/etc.) sin tocar su lógica
+            // interna -- solo movido a su propio hueco dentro de la fila de
+            // paneles, en la posición de la pestaña activa.
+            Item {
+              id: activePanel
+              x: panelsRow.slotX(root.activeTabIndex)
+              y: 0
+              width: panelsRow.slotWidth
+              height: panelsRow.height
 
-              MouseArea {
-                anchors.fill: parent
-                anchors.margins: -6
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.newTab()
-              }
-            }
-          }
+          // navRow/listContainer/etc. van en su propia Column interior en
+          // vez de directamente en activePanel -- así statusText, fuera de
+          // ella, puede anclarse a parent.bottom (igual que bgStatusText)
+          // y quedar en el mismo píxel exacto en los dos tipos de panel.
+          // Antes, al ser el último hijo de la Column, su posición salía de
+          // sumar navRow+listContainer+márgenes -- una cadena de números
+          // reales que no siempre cuadraba pixel a pixel con el bottom:
+          // parent.bottom de los paneles de fondo (una simple resta).
+          Column {
+            id: activeTop
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: Style.spacing.rowGap
 
           Row {
             id: navRow
@@ -1951,13 +2552,31 @@ Item {
             Button {
               width: Style.spacing.controlHeight
               height: Style.spacing.controlHeight
-              foreground: Color.menu.text
               anchors.verticalCenter: parent.verticalCenter
-              onClicked: root.navigateTo(root.homeDir)
+              foreground: root.navHistoryIndex <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+              onClicked: root.navBack()
 
               OpticalGlyph {
                 anchors.centerIn: parent
-                text: ""
+                // md-arrow_left, verificado contra el cmap real de la fuente.
+                text: "\u{F004D}"
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.foreground
+              }
+            }
+
+            Button {
+              width: Style.spacing.controlHeight
+              height: Style.spacing.controlHeight
+              anchors.verticalCenter: parent.verticalCenter
+              foreground: root.navHistoryIndex >= root.navHistory.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+              onClicked: root.navForward()
+
+              OpticalGlyph {
+                anchors.centerIn: parent
+                // md-arrow_right, verificado contra el cmap real de la fuente.
+                text: "\u{F0054}"
                 fontFamily: Style.font.family
                 fontSize: Style.font.icon
                 color: parent.foreground
@@ -1982,7 +2601,7 @@ Item {
 
             Item {
               id: pathArea
-              width: parent.width - 2 * (Style.spacing.controlHeight + Style.spacing.controlGap)
+              width: parent.width - 3 * (Style.spacing.controlHeight + Style.spacing.controlGap)
               height: parent.height
 
               MouseArea {
@@ -2008,6 +2627,10 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: Style.spacing.xs
 
+                    // Sin MouseArea propio a propósito -- josema no quería
+                    // navegación por segmento (ya están los botones de
+                    // atrás/subir para eso), solo texto que deje pasar el
+                    // clic al MouseArea de detrás (editar ruta a mano).
                     Text {
                       text: modelData.label
                       font.pixelSize: Style.font.title
@@ -2015,13 +2638,6 @@ Item {
                       font.bold: modelData.path === root.currentPath
                       color: Color.menu.text
                       opacity: modelData.path === root.currentPath ? 1.0 : 0.65
-
-                      MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -4
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.navigateTo(modelData.path)
-                      }
                     }
 
                     Text {
@@ -2041,7 +2657,7 @@ Item {
                 visible: root.editingPath
                 anchors.fill: parent
                 verticalPadding: 2
-                onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() }
+                onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
                 Keys.onPressed: function (event) {
                   if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                     root.navigateTo(text)
@@ -2055,8 +2671,6 @@ Item {
             }
           }
 
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
           Row {
             id: newFolderRow
             visible: root.creatingFolder
@@ -2069,7 +2683,7 @@ Item {
               width: parent.width - 160
               anchors.verticalCenter: parent.verticalCenter
               placeholderText: "New folder name…"
-              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                   root.commitNewFolder(text)
@@ -2101,7 +2715,7 @@ Item {
               width: parent.width - 160
               anchors.verticalCenter: parent.verticalCenter
               placeholderText: "New file name…"
-              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                   root.commitNewFile(text)
@@ -2153,7 +2767,7 @@ Item {
               placeholderText: "Search here… (Ctrl+Enter searches subfolders)"
               text: root.searchQuery
               onTextChanged: root.searchQuery = text
-              onVisibleChanged: if (visible) forceActiveFocus()
+              onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Escape) {
                   root.exitSearch()
@@ -2173,12 +2787,23 @@ Item {
           Item {
             id: listContainer
             width: parent.width
-            height: parent.height - navRow.height - Style.spacing.hairline
-              - (tabBar.visible ? tabBar.height + mainColumn.spacing : 0)
+            height: activePanel.height - navRow.height - Style.spacing.hairline
               - (root.creatingFolder ? newFolderRow.height + mainColumn.spacing : 0)
               - (root.creatingFile ? newFileRow.height + mainColumn.spacing : 0)
               - (root.searching ? searchRow.height + mainColumn.spacing : 0)
-              - statusText.height - mainColumn.spacing * (3 + (tabBar.visible ? 1 : 0) + (root.creatingFolder || root.creatingFile || root.searching ? 1 : 0))
+              - statusText.height - mainColumn.spacing * (2 + (root.creatingFolder || root.creatingFile || root.searching ? 1 : 0))
+
+            // Misma línea que separa cabecera y lista en los paneles de
+            // fondo (bgHeaderSep) -- va aquí dentro, no como hermana en la
+            // Column, para que el hueco entre separador y lista sea el
+            // mismo Style.spacing.sm de allí y no el mainColumn.spacing
+            // (más ancho) que la Column mete entre CUALQUIER par de hijos.
+            PanelSeparator {
+              id: listSep
+              anchors.top: parent.top
+              foreground: Color.menu.text
+              strength: 0.15
+            }
 
             MouseArea {
               // Detrás de la lista: clic derecho en hueco vacío -> menú contextual general.
@@ -2269,7 +2894,7 @@ Item {
 
             ListView {
               id: list
-              anchors.top: parent.top
+              anchors.top: listSep.bottom
               // Hueco reservado encima de la primera fila -- sin esto no hay
               // ningún píxel "vacío" por encima donde arrancar el lazo, la
               // fila 0 empezaría justo en el borde. Solo desplaza la
@@ -2380,6 +3005,11 @@ Item {
                   if (event.key === Qt.Key_Escape) { root.openWithOpen = false; event.accepted = true }
                   return
                 }
+                if (root.chmodOpen) {
+                  if (event.key === Qt.Key_Escape) { root.chmodOpen = false; event.accepted = true }
+                  else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.commitChmod(root.chmodMode); event.accepted = true }
+                  return
+                }
                 if (root.contextMenuOpen) {
                   if (event.key === Qt.Key_Escape) { root.contextMenuOpen = false; event.accepted = true }
                   return
@@ -2404,6 +3034,14 @@ Item {
                   if (event.key === Qt.Key_Escape) { root.propertiesOpen = false; event.accepted = true }
                   return
                 }
+                // Red de seguridad -- bulkRenameField normalmente tiene el
+                // foco y gestiona Escape/Enter él solo, pero si alguna vez
+                // no lo tiene, esto evita que j/k/Supr caigan en la lista de
+                // detrás con el diálogo todavía abierto encima.
+                if (root.bulkRenameOpen) {
+                  if (event.key === Qt.Key_Escape) { root.bulkRenameOpen = false; event.accepted = true }
+                  return
+                }
                 if (root.creatingFolder || root.creatingFile || root.renamingIndex >= 0 || root.editingPath || root.searching) return
 
                 var extend = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -2412,8 +3050,15 @@ Item {
                   root.openTerminalHere()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Escape) {
+                  // Con 2+ pestañas, Escape cierra el panel activo (el que
+                  // tiene el cursor encima, gracias al HoverHandler de cada
+                  // panel) en vez de la ventana entera -- sustituye a la ×
+                  // que había antes en cada cabecera. closeTab() ya cae en
+                  // requestClose() si solo queda 1, así que el comportamiento
+                  // de siempre (Escape cierra la ventana) no cambia con una
+                  // sola pestaña abierta.
                   if (root.previewOpen) root.previewOpen = false
-                  else root.requestClose()
+                  else root.closeTab()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
                   root.goUp()
@@ -2468,6 +3113,18 @@ Item {
                   event.accepted = true
                 } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
                   root.startNewFolder()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
+                  // Antes alternaba la vista dividida; ahora cada pestaña ES
+                  // ya un panel visible, así que este atajo simplemente abre
+                  // uno nuevo (igual que Ctrl+T).
+                  root.newTab()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {
+                  root.navBack()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Right && (event.modifiers & Qt.AltModifier)) {
+                  root.navForward()
                   event.accepted = true
                 } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
                   root.newTab()
@@ -2617,7 +3274,7 @@ Item {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     verticalPadding: 2
-                    onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() }
+                    onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
                     Keys.onPressed: function (event) {
                       if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         root.commitRename(text)
@@ -2921,21 +3578,33 @@ Item {
                 }
               }
             }
-          }
 
-          // ---------- Barra de estado ----------
-          Text {
-            id: statusText
-            text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
-              + (root.searchQuery ? " of " + root.entries.length : "")
-              + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
-              + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
-              + " · sort: " + root.sortLabel()
-            font.pixelSize: Style.font.subtitle
-            font.family: Style.font.family
-            color: Color.menu.text
-            opacity: 0.55
           }
+          } // fin activeTop (Column)
+              // ---------- Barra de estado ----------
+              // Dentro del panel activo, no como hermana global de
+              // panelsRow -- antes quedaba siempre debajo de la columna
+              // izquierda aunque la información fuera de la pestaña de la
+              // derecha, algo que josema notó como desalineado. Fuera de
+              // activeTop y anclada a activePanel.bottom (como
+              // bgStatusText) para que quede en el mismo píxel exacto.
+              Text {
+                id: statusText
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
+                  + (root.searchQuery ? " of " + root.entries.length : "")
+                  + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
+                  + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
+                  + " · sort: " + root.sortLabel()
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+                opacity: 0.55
+              }
+            } // fin activePanel (Item)
+          } // fin panelsRow (Item)
         }
       }
 
@@ -2970,6 +3639,7 @@ Item {
       // ---------- Renombrar en lote ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.bulkRenameOpen
         z: 15
         onClicked: root.bulkRenameOpen = false
@@ -3021,7 +3691,7 @@ Item {
             id: bulkRenameField
             width: parent.width
             text: root.bulkRenamePattern
-            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() }
+            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
             Keys.onPressed: function (event) {
               if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                 root.bulkRenamePattern = text
@@ -3045,6 +3715,7 @@ Item {
       // ---------- Permisos (chmod) ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.chmodOpen
         z: 15
         onClicked: root.chmodOpen = false
@@ -3053,7 +3724,7 @@ Item {
       BorderSurface {
         id: chmodCard
         visible: root.chmodOpen
-        width: Math.min(parent.width - 80, 300)
+        width: Math.min(parent.width - 80, 320)
         height: chmodColumn.implicitHeight + contentTopInset + contentBottomInset
         anchors.centerIn: parent
         radius: Style.cornerRadius
@@ -3083,26 +3754,105 @@ Item {
             elide: Text.ElideMiddle
           }
 
-          TextField {
-            id: chmodField
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          // Cabecera de columnas -- hueco a la izquierda del ancho de la
+          // etiqueta de fila (Owner/Group/Other), luego Read/Write/Exec.
+          Row {
             width: parent.width
-            text: root.chmodMode
-            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() }
-            Keys.onPressed: function (event) {
-              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                root.commitChmod(text)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Escape) {
-                root.chmodOpen = false
-                event.accepted = true
+            spacing: Style.spacing.sm
+
+            Item { width: 60; height: 1 }
+
+            Repeater {
+              model: ["Read", "Write", "Exec"]
+
+              Text {
+                required property string modelData
+                width: Style.spacing.controlHeight
+                horizontalAlignment: Text.AlignHCenter
+                text: modelData
+                font.pixelSize: Style.font.caption
+                font.family: Style.font.family
+                color: Color.menu.text
+                opacity: 0.6
               }
             }
+          }
+
+          // Owner (tú) / Group / Other -- cada fila con sus 3 casillas rwx,
+          // en vez de escribir el octal a mano. root.chmodMode sigue siendo
+          // la fuente de verdad (un string de 3 dígitos); cada casilla
+          // consulta/cambia un bit suyo directamente.
+          Repeater {
+            model: [
+              { label: "Owner", idx: 0 },
+              { label: "Group", idx: 1 },
+              { label: "Other", idx: 2 }
+            ]
+
+            Row {
+              id: chmodRow
+              required property var modelData
+              width: chmodColumn.width
+              spacing: Style.spacing.sm
+
+              Text {
+                width: 60
+                anchors.verticalCenter: parent.verticalCenter
+                text: chmodRow.modelData.label
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+              }
+
+              Repeater {
+                model: [4, 2, 1]
+
+                // CursorSurface en vez de un Rectangle+MouseArea a mano --
+                // mismo componente que usa cualquier otra fila/pestaña
+                // clicable de la app, así que la casilla tiene el mismo
+                // hover y el mismo tratamiento de "seleccionado" (current)
+                // que el resto, en vez de un estilo inventado aparte.
+                CursorSurface {
+                  id: chmodCell
+                  required property int modelData
+                  width: Style.spacing.controlHeight
+                  height: Style.spacing.controlHeight
+                  anchors.verticalCenter: parent.verticalCenter
+                  foreground: Color.menu.text
+                  accent: Color.accent
+                  bordered: true
+                  hasCursor: chmodCellMouse.containsMouse
+                  current: root.chmodBitSet(chmodRow.modelData.idx, modelData)
+
+                  MouseArea {
+                    id: chmodCellMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.toggleChmodBit(chmodRow.modelData.idx, chmodCell.modelData)
+                  }
+                }
+              }
+            }
+          }
+
+          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+
+          Text {
+            width: parent.width
+            text: "Octal: " + root.chmodMode
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            opacity: 0.6
           }
 
           Button {
             text: "Apply"
             bordered: true
-            onClicked: root.commitChmod(chmodField.text)
+            onClicked: root.commitChmod(root.chmodMode)
           }
         }
       }
@@ -3110,6 +3860,7 @@ Item {
       // ---------- Propiedades ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.propertiesOpen
         z: 15
         onClicked: root.propertiesOpen = false
@@ -3256,6 +4007,7 @@ Item {
       // ---------- Abrir con... ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.openWithOpen
         z: 15
         onClicked: root.openWithOpen = false
@@ -3446,6 +4198,7 @@ Item {
       // ---------- Conflicto al pegar ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.pasteConflictOpen
         z: 15
         onClicked: root.cancelPasteConflict()
@@ -3500,6 +4253,7 @@ Item {
       // ---------- Conflicto al soltar (drag & drop) ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.dropConflictOpen
         z: 15
         onClicked: root.cancelDropConflict()
@@ -3554,6 +4308,7 @@ Item {
       // ---------- Paleta de comandos (: o Ctrl+P) ----------
       MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: root.paletteOpen
         z: 25
         onClicked: root.closePalette()
@@ -3563,7 +4318,7 @@ Item {
         id: palette
         visible: root.paletteOpen
         width: Math.min(parent.width - 80, 420)
-        height: Math.min(paletteColumn.implicitHeight + contentTopInset + contentBottomInset, 320)
+        height: Math.min(parent.height - 2 * Style.spacing.huge, 360)
         anchors.horizontalCenter: parent.horizontalCenter
         y: Style.spacing.huge
         radius: Style.cornerRadius
@@ -3589,7 +4344,7 @@ Item {
             placeholderText: "Type a command…"
             text: root.paletteQuery
             onTextChanged: { root.paletteQuery = text; root.paletteIndex = 0 }
-            onVisibleChanged: if (visible) forceActiveFocus()
+            onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
             Keys.onPressed: function (event) {
               var cmds = root.filteredPaletteCommands()
               if (event.key === Qt.Key_Escape) {
@@ -3600,24 +4355,31 @@ Item {
                 event.accepted = true
               } else if (event.key === Qt.Key_Down) {
                 root.paletteIndex = Math.min(cmds.length - 1, root.paletteIndex + 1)
+                paletteList.positionViewAtIndex(root.paletteIndex, ListView.Contain)
                 event.accepted = true
               } else if (event.key === Qt.Key_Up) {
                 root.paletteIndex = Math.max(0, root.paletteIndex - 1)
+                paletteList.positionViewAtIndex(root.paletteIndex, ListView.Contain)
                 event.accepted = true
               }
             }
           }
 
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+          PanelSeparator { id: paletteSep; foreground: Color.menu.text; strength: 0.15 }
 
-          Repeater {
+          ListView {
+            id: paletteList
+            width: parent.width
+            height: parent.height - paletteField.height - paletteSep.height - 2 * paletteColumn.spacing
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
             model: root.paletteOpen ? root.filteredPaletteCommands() : []
 
-            CursorSurface {
+            delegate: CursorSurface {
               required property var modelData
               required property int index
               readonly property bool cmdEnabled: modelData.enabled !== false
-              width: paletteColumn.width
+              width: paletteList.width
               implicitHeight: Style.spacing.controlHeight
               foreground: Color.menu.text
               accent: Color.accent

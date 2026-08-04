@@ -43,16 +43,41 @@ link_state_of() {
   fi
 }
 
+# Un `stat` por fichero (fork+exec cada vez) es lento en carpetas grandes --
+# confirmado con /usr/bin (4197 entradas): más de 5 segundos reales. Un solo
+# `stat` con TODOS los nombres a la vez es igual de correcto y ordenes de
+# magnitud más rápido; los que fallan (symlinks rotos, con -L) simplemente
+# no salen en su salida, así que solo hace falta el fallback individual de
+# antes para esos pocos casos sueltos en vez de para todos.
+declare -A dir_mtime
+if ((${#dirs[@]})); then
+  while IFS=$'\t' read -r mtime name; do
+    dir_mtime["$name"]="$mtime"
+  done < <(stat -Lc $'%Y\t%n' -- "${dirs[@]}" 2>/dev/null)
+fi
 for d in "${dirs[@]}"; do
-  # -L primero: para un symlink válido da la fecha de la carpeta real a la
-  # que apunta (lo útil), no la del propio enlace. Solo cae al -c sin -L
-  # (el enlace en sí) cuando el destino no existe -- un symlink roto no
-  # tiene "carpeta real" de la que sacar fecha.
-  mtime=$(stat -Lc%Y -- "$d" 2>/dev/null || stat -c%Y -- "$d" 2>/dev/null || echo 0)
-  printf 'dir\t%s\t0\t%s\t%s\n' "$d" "$mtime" "$(link_state_of "$d")"
+  [[ -v dir_mtime["$d"] ]] && continue
+  dir_mtime["$d"]=$(stat -c%Y -- "$d" 2>/dev/null || echo 0)
+done
+
+declare -A file_size file_mtime
+if ((${#files[@]})); then
+  while IFS=$'\t' read -r size mtime name; do
+    file_size["$name"]="$size"
+    file_mtime["$name"]="$mtime"
+  done < <(stat -Lc $'%s\t%Y\t%n' -- "${files[@]}" 2>/dev/null)
+fi
+for f in "${files[@]}"; do
+  [[ -v file_size["$f"] ]] && continue
+  read -r size mtime < <(stat -c '%s %Y' -- "$f" 2>/dev/null || echo "0 0")
+  file_size["$f"]="$size"
+  file_mtime["$f"]="$mtime"
+done
+
+for d in "${dirs[@]}"; do
+  printf 'dir\t%s\t0\t%s\t%s\n' "$d" "${dir_mtime[$d]}" "$(link_state_of "$d")"
 done | sort -f -t $'\t' -k2,2
 
 for f in "${files[@]}"; do
-  read -r size mtime < <(stat -Lc '%s %Y' -- "$f" 2>/dev/null || stat -c '%s %Y' -- "$f" 2>/dev/null || echo "0 0")
-  printf 'file\t%s\t%s\t%s\t%s\n' "$f" "$size" "$mtime" "$(link_state_of "$f")"
+  printf 'file\t%s\t%s\t%s\t%s\n' "$f" "${file_size[$f]}" "${file_mtime[$f]}" "$(link_state_of "$f")"
 done | sort -f -t $'\t' -k2,2
