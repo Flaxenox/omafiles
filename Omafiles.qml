@@ -300,6 +300,19 @@ Item {
   // venía cada cosa sin mirar el .trashinfo a mano.
   property var trashInfo: ({})
   property var mounts: []
+  // Ubicaciones de red (SFTP/SMB/WebDAV/FTP) montadas vía GVfs -- cada
+  // una es un directorio real bajo $XDG_RUNTIME_DIR/gvfs/, list-dir.sh la
+  // navega igual que cualquier carpeta local sin cambios. Ver
+  // list-network-mounts.sh y la sección "NETWORK" de la barra lateral.
+  property var networkMounts: []
+  property bool connectServerOpen: false
+  property string connectServerUri: ""
+  property string connectServerError: ""
+  // "Conectando…" es un estado propio (no reutiliza actionBusy) porque
+  // gio mount puede quedarse colgado esperando credenciales que nunca
+  // van a llegar -- necesita su propio botón de Cancelar siempre visible,
+  // no compartir el mecanismo de acciones de fichero normal.
+  property bool networkConnecting: false
 
   readonly property var defaultBookmarks: [
     { label: "Home", path: root.homeDir },
@@ -509,6 +522,10 @@ Item {
     mountsProc.running = true
   }
 
+  function refreshNetworkMounts() {
+    networkMountsProc.running = true
+  }
+
   function loadBookmarks() {
     loadBookmarksProc.running = true
   }
@@ -561,6 +578,82 @@ Item {
   function iconForMount(mount) {
     if (mount.fstype === "iso9660") return root.iconFor({ type: "file", name: "x.iso" })
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
+  }
+
+  // list-network-mounts.sh separa por NUL, no por TSV -- ver
+  // parseEntries()/list-dir.sh para el motivo (un dato con tab/salto de
+  // línea real no debe poder desalinear campos). Aquí el dato es una
+  // etiqueta que el propio script construye, nunca texto arbitrario del
+  // usuario, pero se mantiene el mismo protocolo para no tener dos
+  // convenciones de parseo distintas en el fichero.
+  function parseNetworkMounts(text) {
+    var s = String(text || "")
+    if (s.length === 0) return []
+    var fields = s.split(String.fromCharCode(0))
+    if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+    var out = []
+    for (var i = 0; i + 2 < fields.length; i += 3) {
+      out.push({ label: fields[i], path: fields[i + 1], scheme: fields[i + 2] })
+    }
+    return out
+  }
+
+  // U+F0870 (md-folder_network) -- ya verificado contra el cmap real de
+  // JetBrainsMono Nerd Font en una pasada anterior (ver notas de iconos
+  // de tipo de fichero/dispositivo), reservado entonces para esto mismo.
+  function iconForNetworkMount(mount) {
+    return "\u{F0870}"
+  }
+
+  function networkMountActions(mount) {
+    return [
+      { label: "Open", action: function () { root.navigateTo(mount.path) } },
+      { label: "Open in new tab", action: function () { root.openInNewTab(mount.path) } },
+      { label: "Disconnect", destructive: true, action: function () { root.disconnectNetworkMount(mount) } }
+    ]
+  }
+
+  function disconnectNetworkMount(mount) {
+    if (networkUnmountProc.running) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Still disconnecting a network location — try again in a moment"])
+      return
+    }
+    networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
+    networkUnmountProc.command = ["gio", "mount", "-u", mount.path]
+    networkUnmountProc.running = true
+  }
+
+  function startConnectToServer() {
+    root.connectServerUri = ""
+    root.connectServerError = ""
+    root.connectServerOpen = true
+  }
+
+  function cancelConnectToServer() {
+    root.connectServerOpen = false
+  }
+
+  // "setsid" + matar el grupo entero al cancelar, mismo motivo que
+  // runAction()/cancelAction(): gio mount puede quedarse esperando
+  // credenciales que nunca van a llegar (esta app no tiene un diálogo de
+  // usuario/contraseña -- ver comentario largo en connectServerOpen más
+  // abajo en el fichero, junto al diálogo), y sin esto Cancelar no
+  // conseguiría matar el proceso de verdad.
+  function commitConnectToServer() {
+    var uri = root.connectServerUri.trim()
+    if (!uri) return
+    root.connectServerError = ""
+    root.networkConnecting = true
+    networkMountProc.errorText = ""
+    networkMountProc.command = ["setsid", "gio", "mount", "--", uri]
+    networkMountProc.running = true
+  }
+
+  function cancelNetworkConnect() {
+    var pid = networkMountProc.processId
+    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
+    networkMountProc.running = false
+    root.networkConnecting = false
   }
 
   function ejectMount(mount) {
@@ -857,6 +950,7 @@ Item {
 
     if (!root.bookmarksLoaded) root.loadBookmarks()
     root.refreshMounts()
+    root.refreshNetworkMounts()
   }
 
   function close() {
@@ -889,6 +983,7 @@ Item {
     root.pendingCompress = null
     root.bulkRenameConflictOpen = false
     root.pendingBulkRename = null
+    root.connectServerOpen = false
   }
 
   // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
@@ -1390,7 +1485,7 @@ Item {
       { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
       { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { root.toggleHidden() } },
-      { label: "Refresh", run: function () { root.refresh(); root.refreshMounts() } },
+      { label: "Refresh", run: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { root.setSort("name") } },
       { label: "Sort by size", run: function () { root.setSort("size") } },
       { label: "Sort by date", run: function () { root.setSort("mtime") } },
@@ -1400,6 +1495,7 @@ Item {
         enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
+      { label: "Connect to server...", run: function () { root.startConnectToServer() } },
       { label: "New panel", run: function () { root.newTab() } },
       { label: "Close this panel", enabled: root.tabs.length > 1, run: function () { root.closeTab() } },
       { label: "Back", enabled: root.navHistoryIndex > 0, run: function () { root.navBack() } },
@@ -1830,7 +1926,7 @@ Item {
       actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
     }
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
-    actions.push({ label: "Refresh", action: function () { root.refresh(); root.refreshMounts() } })
+    actions.push({ label: "Refresh", action: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } })
     return actions
   }
 
@@ -2031,6 +2127,84 @@ Item {
         if (match) root.navigateTo(match[1])
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
+      }
+    }
+  }
+
+  Process {
+    id: networkMountsProc
+    command: [root.pluginDir + "/list-network-mounts.sh"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.networkMounts = root.parseNetworkMounts(text)
+    }
+  }
+
+  Process {
+    id: networkUnmountProc
+    property bool wasInside: false
+    property string errorText: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: networkUnmountProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      if (exitCode === 0) {
+        if (networkUnmountProc.wasInside) root.navigateTo(root.homeDir)
+        root.refreshNetworkMounts()
+      } else {
+        Quickshell.execDetached(["notify-send", "Omafiles", "Could not disconnect: " + (networkUnmountProc.errorText || "unknown error")])
+      }
+    }
+  }
+
+  // Sin -a/--anonymous ni forma de pasar contraseña: si el servidor pide
+  // credenciales, gio necesita un GMountOperation interactivo que esta
+  // app no implementa (sería un sub-proyecto en sí mismo, tipo el diálogo
+  // "Conectar a servidor" + llavero de Nautilus). Funciona bien para SFTP
+  // con clave SSH ya configurada, o cualquier servidor con credenciales
+  // ya guardadas en el llavero de una conexión anterior (con Nautilus,
+  // por ejemplo) -- si se queda colgado esperando una contraseña que
+  // nunca llega, el usuario tiene el botón Cancelar del diálogo
+  // (cancelNetworkConnect/setsid, mismo mecanismo que cancelAction()).
+  Process {
+    id: networkMountProc
+    property string errorText: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: networkMountProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      root.networkConnecting = false
+      if (exitCode === 0) {
+        root.connectServerOpen = false
+        // gio no imprime la ruta local igual que udisksctl -- se relista
+        // y se entra al mount que no estaba antes (el que acaba de
+        // aparecer) en vez de parsear la salida de "gio mount".
+        networkMountsAfterConnectProc.beforePaths = root.networkMounts.map(function (m) { return m.path })
+        networkMountsAfterConnectProc.running = true
+      } else {
+        root.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
+      }
+    }
+  }
+
+  // Segunda pasada de list-network-mounts.sh tras un connect con éxito,
+  // solo para encontrar CUÁL de los mounts es el nuevo (comparando contra
+  // los que ya había antes) y navegar directamente a él -- refreshNetworkMounts()
+  // normal no distingue cuál acaba de aparecer.
+  Process {
+    id: networkMountsAfterConnectProc
+    property var beforePaths: []
+    command: [root.pluginDir + "/list-network-mounts.sh"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = root.parseNetworkMounts(text)
+        root.networkMounts = parsed
+        var before = networkMountsAfterConnectProc.beforePaths
+        var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
+        if (fresh.length > 0) root.navigateTo(fresh[0].path)
       }
     }
   }
@@ -2511,6 +2685,130 @@ Item {
                   else root.navigateTo(modelData.path)
                 }
               }
+            }
+          }
+
+          Item {
+            width: 1
+            height: Style.spacing.sm
+          }
+
+          PanelSeparator {
+            foreground: Color.menu.text
+            strength: 0.15
+          }
+
+          Item {
+            width: 1
+            height: Style.spacing.xs
+          }
+
+          // A diferencia de DEVICES/marcadores, esta cabecera y la fila de
+          // "Connect to server..." se ven siempre, con mounts activos o
+          // sin ellos -- si dependieran de root.networkMounts.length > 0
+          // nadie podría descubrir la función la primera vez, cuando por
+          // definición todavía no hay ninguna conexión de red activa.
+          PanelSectionHeader {
+            text: "NETWORK"
+            foreground: Color.menu.text
+            fontFamily: Style.font.family
+            fontSize: Style.font.subtitle
+          }
+
+          Repeater {
+            model: root.networkMounts
+
+            CursorSurface {
+              required property var modelData
+              readonly property bool isCurrent: root.currentPath === modelData.path
+              width: sidebar.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: networkMountMouse.containsMouse
+              current: isCurrent
+
+              OpticalGlyph {
+                id: networkMountIcon
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                width: Style.font.title
+                height: Style.font.title
+                text: root.iconForNetworkMount(parent.modelData)
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: networkMountIcon.right
+                anchors.leftMargin: Style.spacing.xs
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
+                elide: Text.ElideRight
+                width: sidebar.width - Style.spacing.sm * 2 - networkMountIcon.width - Style.spacing.xs
+              }
+
+              MouseArea {
+                id: networkMountMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function (mouse) {
+                  if (mouse.button === Qt.RightButton) {
+                    var pos = mapToItem(card, mouse.x, mouse.y)
+                    root.openContextMenu(pos.x, pos.y, root.networkMountActions(modelData))
+                    return
+                  }
+                  root.navigateTo(modelData.path)
+                }
+              }
+            }
+          }
+
+          CursorSurface {
+            width: sidebar.width
+            implicitHeight: Style.spacing.controlHeight
+            foreground: Color.menu.text
+            accent: Color.accent
+            hasCursor: connectServerMouse.containsMouse
+
+            OpticalGlyph {
+              id: connectServerIcon
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.sm
+              width: Style.font.title
+              height: Style.font.title
+              text: "\u{F0490}"
+              fontFamily: Style.font.family
+              fontSize: Style.font.icon
+              color: Color.menu.text
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.left: connectServerIcon.right
+              anchors.leftMargin: Style.spacing.xs
+              text: "Connect…"
+              font.pixelSize: Style.font.title
+              font.family: Style.font.family
+              color: Color.menu.text
+              elide: Text.ElideRight
+              width: sidebar.width - Style.spacing.sm * 2 - connectServerIcon.width - Style.spacing.xs
+            }
+
+            MouseArea {
+              id: connectServerMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.startConnectToServer()
             }
           }
         }
@@ -3520,6 +3818,16 @@ Item {
                   if (event.key === Qt.Key_Escape) { root.bulkRenameOpen = false; event.accepted = true }
                   return
                 }
+                // Misma red de seguridad que bulkRenameOpen -- connectServerField
+                // gestiona Escape/Enter él solo mientras tiene el foco.
+                if (root.connectServerOpen) {
+                  if (event.key === Qt.Key_Escape) {
+                    if (root.networkConnecting) root.cancelNetworkConnect()
+                    else root.cancelConnectToServer()
+                    event.accepted = true
+                  }
+                  return
+                }
                 if (root.creatingFolder || root.creatingFile || root.renamingIndex >= 0 || root.editingPath || root.searching) return
 
                 var extend = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -4187,6 +4495,105 @@ Item {
             text: "Rename"
             bordered: true
             onClicked: { root.bulkRenamePattern = bulkRenameField.text; root.commitBulkRename() }
+          }
+        }
+      }
+
+      // ---------- Conectar a servidor ----------
+      MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        visible: root.connectServerOpen
+        z: 15
+        onClicked: if (!root.networkConnecting) root.cancelConnectToServer()
+      }
+
+      BorderSurface {
+        id: connectServerCard
+        visible: root.connectServerOpen
+        width: Math.min(parent.width - 80, 420)
+        height: connectServerColumn.implicitHeight + contentTopInset + contentBottomInset
+        anchors.centerIn: parent
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 20
+
+        MouseArea { anchors.fill: parent; onClicked: {} }
+
+        Column {
+          id: connectServerColumn
+          anchors.fill: parent
+          anchors.topMargin: connectServerCard.contentTopInset
+          anchors.rightMargin: connectServerCard.contentRightInset
+          anchors.bottomMargin: connectServerCard.contentBottomInset
+          anchors.leftMargin: connectServerCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            width: parent.width
+            text: "Connect to server"
+            font.pixelSize: Style.font.title
+            font.family: Style.font.family
+            font.bold: true
+            color: Color.menu.text
+          }
+
+          Text {
+            width: parent.width
+            text: "sftp://user@host/path · smb://server/share · dav(s)://host/path · ftp://host/path"
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+            color: Color.menu.text
+            opacity: 0.6
+            wrapMode: Text.Wrap
+          }
+
+          TextField {
+            id: connectServerField
+            width: parent.width
+            text: root.connectServerUri
+            enabled: !root.networkConnecting
+            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
+            Keys.onPressed: function (event) {
+              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.connectServerUri = text
+                root.commitConnectToServer()
+                event.accepted = true
+              } else if (event.key === Qt.Key_Escape) {
+                if (root.networkConnecting) root.cancelNetworkConnect()
+                else root.cancelConnectToServer()
+                event.accepted = true
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            visible: root.connectServerError.length > 0
+            text: root.connectServerError
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+            color: Color.urgent
+            wrapMode: Text.Wrap
+          }
+
+          Row {
+            spacing: Style.spacing.sm
+
+            Button {
+              text: root.networkConnecting ? "Connecting…" : "Connect"
+              bordered: true
+              enabled: !root.networkConnecting
+              onClicked: { root.connectServerUri = connectServerField.text; root.commitConnectToServer() }
+            }
+
+            Button {
+              text: "Cancel"
+              visible: root.networkConnecting
+              onClicked: root.cancelNetworkConnect()
+            }
           }
         }
       }
