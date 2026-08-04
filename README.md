@@ -51,6 +51,8 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | `/` | Search here (`Ctrl+Enter` searches recursively) |
 | `:` / `Ctrl+P` | Command palette |
 | `Ctrl+A` | Select all |
+| `Ctrl+Shift+A` | Select none |
+| `Ctrl+I` | Invert selection |
 | `F2` | Rename |
 | `Delete` | Delete (to trash) |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste |

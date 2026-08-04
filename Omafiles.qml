@@ -544,6 +544,21 @@ Item {
     root.anchorIndex = index
   }
 
+  function selectNone() {
+    root.selectOnly(-1)
+  }
+
+  function invertSelection() {
+    var current = root.selectedIndices
+    var next = []
+    for (var i = 0; i < root.visibleEntries.length; i++) {
+      if (current.indexOf(i) < 0) next.push(i)
+    }
+    root.selectedIndices = next
+    root.selectedIndex = next.length > 0 ? next[next.length - 1] : -1
+    root.anchorIndex = root.selectedIndex
+  }
+
   function selectRange(index) {
     var start = root.anchorIndex >= 0 ? root.anchorIndex : index
     var from = Math.min(start, index)
@@ -1897,6 +1912,9 @@ Item {
       { label: "Copy path", enabled: hasSelection, run: function () { root.copyPathFor(root.selectedEntries()) } },
       { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
+      { label: "Select all", run: function () { root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
+      { label: "Select none", enabled: hasSelection, run: function () { root.selectNone() } },
+      { label: "Invert selection", run: function () { root.invertSelection() } },
       { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { root.toggleHidden() } },
       { label: "Refresh", run: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { root.setSort("name") } },
@@ -4824,8 +4842,14 @@ Item {
                   var up = Math.max(0, root.selectedIndex - 1)
                   if (extend) root.selectRange(up); else root.selectOnly(up)
                   event.accepted = true
+                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                  root.selectNone()
+                  event.accepted = true
                 } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
                   root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i })
+                  event.accepted = true
+                } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
+                  root.invertSelection()
                   event.accepted = true
                 } else if (event.key === Qt.Key_F2) {
                   root.startRename(root.selectedIndex)
@@ -6053,6 +6077,8 @@ Item {
                   { key: "/", action: "Search here (Ctrl+Enter searches recursively)" },
                   { key: ": / Ctrl+P", action: "Command palette" },
                   { key: "Ctrl+A", action: "Select all" },
+                  { key: "Ctrl+Shift+A", action: "Select none" },
+                  { key: "Ctrl+I", action: "Invert selection" },
                   { key: "F2", action: "Rename" },
                   { key: "Delete", action: "Delete (to trash)" },
                   { key: "Ctrl+C / Ctrl+X / Ctrl+V", action: "Copy / cut / paste" },
