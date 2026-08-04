@@ -36,6 +36,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Back/forward navigation history (`Alt+←`/`Alt+→`) and preview state, independent per tab.
 - The active panel's folder refreshes live (via `inotifywait`, optional — degrades to manual refresh if `inotify-tools` isn't installed) instead of only on `F5`. Mounted drives and network locations are polled every few seconds.
 - Recent files in the sidebar, persisted across sessions — opening one jumps to its folder with it selected.
+- In-app keyboard shortcuts reference (`?`), also reachable from the command palette.
 
 ## Keyboard shortcuts
 
@@ -64,6 +65,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | `Ctrl+H` | Toggle hidden files |
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |
+| `?` | Toggle keyboard shortcuts help |
 | `Escape` | Close preview, or close the window |
 
 ## Installation
