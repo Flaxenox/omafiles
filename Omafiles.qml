@@ -359,6 +359,12 @@ Item {
   // app sola al abrir ficheros, el usuario no lo edita a mano).
   property var recentFiles: []
   property bool recentLoaded: false
+  property string bulkRenameHistoryFile: root.homeDir + "/.local/state/omafiles/bulk-rename-history.json"
+  // Patrones usados de verdad en Bulk rename, más reciente primero, tope
+  // 8 -- mostrados como accesos rápidos en el propio diálogo en vez de
+  // tener que volver a teclearlos cada vez.
+  property var bulkRenameHistory: []
+  property bool bulkRenameHistoryLoaded: false
   property bool bookmarksLoaded: false
 
   readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
@@ -612,6 +618,27 @@ Item {
   function clearRecent() {
     root.recentFiles = []
     root.saveRecent()
+  }
+
+  function loadBulkRenameHistory() {
+    loadBulkRenameHistoryProc.running = true
+  }
+
+  function saveBulkRenameHistory() {
+    var dir = root.bulkRenameHistoryFile.substring(0, root.bulkRenameHistoryFile.lastIndexOf("/"))
+    var json = JSON.stringify(root.bulkRenameHistory)
+    saveBulkRenameHistoryProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bulkRenameHistoryFile)]
+    saveBulkRenameHistoryProc.running = true
+  }
+
+  function addBulkRenameHistory(pattern) {
+    pattern = pattern.trim()
+    if (!pattern) return
+    var next = root.bulkRenameHistory.filter(function (p) { return p !== pattern })
+    next.unshift(pattern)
+    if (next.length > 8) next = next.slice(0, 8)
+    root.bulkRenameHistory = next
+    root.saveBulkRenameHistory()
   }
 
   function removeBookmark(path) {
@@ -1103,6 +1130,7 @@ Item {
 
     if (!root.bookmarksLoaded) root.loadBookmarks()
     if (!root.recentLoaded) root.loadRecent()
+    if (!root.bulkRenameHistoryLoaded) root.loadBulkRenameHistory()
     root.refreshMounts()
     root.refreshNetworkMounts()
   }
@@ -1930,6 +1958,7 @@ Item {
     root.bulkRenameOpen = false
     if (entries.length === 0) return
     var pattern = root.bulkRenamePattern
+    root.addBulkRenameHistory(pattern)
     var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
@@ -2584,6 +2613,24 @@ Item {
 
   Process {
     id: saveRecentProc
+  }
+
+  Process {
+    id: loadBulkRenameHistoryProc
+    command: ["cat", root.bulkRenameHistoryFile]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.bulkRenameHistoryLoaded = true
+        var parsed = null
+        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+        root.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
+      }
+    }
+  }
+
+  Process {
+    id: saveBulkRenameHistoryProc
   }
 
   Process {
@@ -5069,6 +5116,53 @@ Item {
               } else if (event.key === Qt.Key_Escape) {
                 root.bulkRenameOpen = false
                 event.accepted = true
+              }
+            }
+          }
+
+          // Patrones usados antes, más reciente primero -- clic rellena
+          // el campo (no renombra directo), para que se pueda revisar/
+          // ajustar antes de aplicar. Solo si hay historial: la primera
+          // vez que se usa Bulk rename no hay nada que ofrecer aquí.
+          Flow {
+            width: parent.width
+            visible: root.bulkRenameHistory.length > 0
+            spacing: Style.spacing.xs
+
+            Repeater {
+              model: root.bulkRenameHistory
+
+              CursorSurface {
+                id: patternChip
+                required property string modelData
+                width: chipText.implicitWidth + Style.spacing.sm * 2
+                height: Style.spacing.controlHeight * 0.8
+                foreground: Color.menu.text
+                accent: Color.accent
+                hasCursor: chipMouse.containsMouse
+                Accessible.role: Accessible.Button
+                Accessible.name: "Use pattern " + modelData
+
+                Text {
+                  id: chipText
+                  anchors.centerIn: parent
+                  text: patternChip.modelData
+                  font.pixelSize: Style.font.bodySmall
+                  font.family: Style.font.family
+                  color: Color.menu.text
+                }
+
+                MouseArea {
+                  id: chipMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    bulkRenameField.text = patternChip.modelData
+                    bulkRenameField.forceActiveFocus()
+                    bulkRenameField.selectAll()
+                  }
+                }
               }
             }
           }
