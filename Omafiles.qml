@@ -1531,6 +1531,16 @@ Item {
   // que se prioriza compatibilidad amplia sobre poder distinguir cut/copy
   // de cara a OTRAS apps (Omafiles sí distingue cut/copy para sus propias
   // acciones vía clipboardMode; esto es solo para interoperar con fuera).
+  // Ruta(s) como texto plano al portapapeles -- para pegar en una
+  // terminal/chat/otra app, no confundir con copySelected() (que copia
+  // los FICHEROS para pegarlos con paste()). Varias seleccionadas ->
+  // una ruta por línea.
+  function copyPathFor(entries) {
+    if (!entries || entries.length === 0) return
+    var paths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
+  }
+
   function syncClipboardToSystem() {
     if (root.clipboardPaths.length === 0) {
       Quickshell.execDetached(["wl-copy", "-c"])
@@ -1786,6 +1796,7 @@ Item {
       { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
       { label: "Copy", enabled: hasSelection, run: function () { root.copySelected() } },
       { label: "Cut", enabled: hasSelection, run: function () { root.cutSelected() } },
+      { label: "Copy path", enabled: hasSelection, run: function () { root.copyPathFor(root.selectedEntries()) } },
       { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
       { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { root.toggleHidden() } },
@@ -1838,7 +1849,7 @@ Item {
     // también, no porque fuera a romper nada (esas funciones ya son
     // no-op dentro de un archivo) sino para no enseñar entradas muertas.
     if (root.inArchive) {
-      var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Paste", "Delete",
+      var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
         "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
@@ -2305,6 +2316,7 @@ Item {
     }
     actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
     actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
+    actions.push({ label: "Copy path" + suffix, action: function () { root.copyPathFor(entries) } })
     if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
     actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
