@@ -581,9 +581,11 @@ Item {
     root.saveBookmarks()
   }
 
-  function addBookmark(path, label) {
+  // type: "dir" (por defecto, compatible con marcadores guardados antes
+  // de que existiera este campo -- todos eran de carpeta) o "file".
+  function addBookmark(path, label, type) {
     if (root.bookmarks.some(function (b) { return b.path === path })) return
-    root.bookmarks = root.bookmarks.concat([{ label: label, path: path }])
+    root.bookmarks = root.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
     root.saveBookmarks()
   }
 
@@ -595,6 +597,11 @@ Item {
   function iconForBookmark(modelData) {
     if (modelData.path === root.homeDir) return "\u{F015}"
     if (modelData.path === root.trashDir) return "\u{F0A7A}"
+    // Marcador de fichero suelto (no carpeta) -- icono real por
+    // extensión, como en la lista principal, en vez de adivinar por
+    // nombre de etiqueta (eso solo tiene sentido para las carpetas
+    // especiales de abajo).
+    if (modelData.type === "file") return root.iconFor({ type: "file", name: modelData.path })
     var label = modelData.label.toLowerCase()
     if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return root.iconFor({ name: "x.jpg" })
     if (label.indexOf("video") >= 0) return root.iconFor({ name: "x.mp4" })
@@ -1655,12 +1662,14 @@ Item {
     if (entry && entry.type !== "dir" && root.isArchive(entry)) {
       cmds.push({ label: "Extract here", run: function () { root.extractHere(entry) } })
     }
-    if (entry && entry.type === "dir") {
+    if (entry) {
       var fullPath = root.joinPath(root.currentPath, entry.name)
       if (!root.isBookmarked(fullPath)) {
-        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name) } })
+        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name, entry.type) } })
       }
-      cmds.push({ label: "Open in new tab", run: function () { root.openInNewTab(fullPath) } })
+      if (entry.type === "dir") {
+        cmds.push({ label: "Open in new tab", run: function () { root.openInNewTab(fullPath) } })
+      }
     }
     return cmds
   }
@@ -2100,11 +2109,9 @@ Item {
         actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
       }
       actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
-      if (entries[0].type === "dir") {
-        var fullPath = root.joinPath(root.currentPath, entries[0].name)
-        if (!root.isBookmarked(fullPath)) {
-          actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name) } })
-        }
+      var fullPath = root.joinPath(root.currentPath, entries[0].name)
+      if (!root.isBookmarked(fullPath)) {
+        actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
       if (root.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
@@ -2139,11 +2146,27 @@ Item {
     return actions
   }
 
+  // Marcador de fichero: navega a la carpeta que lo contiene y lo deja
+  // seleccionado -- reutiliza pendingSelectName, el mismo mecanismo que
+  // ya usa "Mostrar en el gestor de archivos" (dbus-filemanager1.py) para
+  // resaltar un fichero concreto al aterrizar en una carpeta.
+  function openBookmark(bookmark) {
+    if (bookmark.type === "file") {
+      var slash = bookmark.path.lastIndexOf("/")
+      root.pendingSelectName = bookmark.path.substring(slash + 1)
+      root.navigateTo(slash > 0 ? bookmark.path.substring(0, slash) : "/")
+    } else {
+      root.navigateTo(bookmark.path)
+    }
+  }
+
   function bookmarkActions(bookmark) {
     var actions = [
-      { label: "Open", action: function () { root.navigateTo(bookmark.path) } },
-      { label: "Open in new tab", action: function () { root.openInNewTab(bookmark.path) } }
+      { label: "Open", action: function () { root.openBookmark(bookmark) } }
     ]
+    if (bookmark.type !== "file") {
+      actions.push({ label: "Open in new tab", action: function () { root.openInNewTab(bookmark.path) } })
+    }
     if (bookmark.path === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     }
@@ -2160,7 +2183,7 @@ Item {
       { label: "Open in new tab", action: function () { root.openInNewTab(mount.path) } }
     ]
     if (!root.isBookmarked(mount.path)) {
-      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label) } })
+      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label, "dir") } })
     }
     if (mount.removable) {
       actions.push({ label: "Eject", destructive: true, action: function () { root.ejectMount(mount) } })
@@ -2814,7 +2837,12 @@ Item {
               current: isCurrent || root.dropHoverPath === modelData.path
 
               DropArea {
+                // Deshabilitado para marcadores de fichero -- soltar
+                // algo "sobre un fichero" no tiene destino real (a
+                // diferencia de una carpeta), destDir tendría que ser un
+                // directorio.
                 anchors.fill: parent
+                enabled: modelData.type !== "file"
                 keys: ["text/uri-list"]
                 onEntered: function (drag) {
                   if (!drag.hasUrls) { drag.accepted = false; return }
@@ -2864,7 +2892,7 @@ Item {
                     root.openContextMenu(pos.x, pos.y, root.bookmarkActions(modelData))
                     return
                   }
-                  root.navigateTo(modelData.path)
+                  root.openBookmark(modelData)
                 }
               }
             }

@@ -14,7 +14,8 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Vim-style keyboard navigation (`j`/`k`, `gg`/`G`, `h`/`l`), plus arrow keys.
 - Command palette (`:` or `Ctrl+P`) for every action, fuzzy-searchable.
 - Tabs shown as side-by-side panels — every open tab is visible at once, separated by a hairline divider, not a one-at-a-time switcher. Whichever panel has the mouse over it is the active one: that's where keyboard shortcuts, selection, and the context menu apply.
-- Editable bookmarks, mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
+- Editable bookmarks — folders or individual files, opening a file bookmark jumps to its folder with it selected.
+- Mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
 - Network locations (SFTP/SMB/WebDAV/FTP via GVfs) — "Connect..." in the sidebar or command palette, active connections listed and browsable like any local folder. Needs credentials already cached (SSH key, saved keyring entry) — there's no in-app password prompt.
 - Sort by name/size/date/type — a key cycles it, no dropdown.
 - Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing) and a "still working" indicator with Cancel for copy/move.
