@@ -2547,6 +2547,12 @@ Item {
       return actions
     }
 
+    // Orden por grupos (antes era una lista plana en el orden en que se
+    // habían ido añadiendo funciones a lo largo de varias sesiones, sin
+    // criterio): 1) abrir, 2) portapapeles, 3) organizar (renombrar/
+    // enlace/marcador/comprimir/extraer/montar), 4) permisos/borrar/
+    // propiedades, 5) vista. Mismo grupo en single y multi-selección para
+    // que el menú no "salte" de sitio al seleccionar un segundo ítem.
     if (!multi) {
       actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
       if (entries[0].type === "dir") {
@@ -2556,28 +2562,33 @@ Item {
       } else {
         actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
       }
+    }
+
+    actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
+    actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
+    actions.push({ label: "Copy path" + suffix, action: function () { root.copyPathFor(entries) } })
+    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
+
+    if (!multi) {
       actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
+      actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
       var fullPath = root.joinPath(root.currentPath, entries[0].name)
       if (!root.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
+      actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
       if (root.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
       }
       if (root.isIso(entries[0])) {
         actions.push({ label: "Mount", action: function () { root.mountIso(entries[0]) } })
       }
-      actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
-      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
     } else {
       actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
-      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
+      actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
     }
-    actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
-    actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
-    actions.push({ label: "Copy path" + suffix, action: function () { root.copyPathFor(entries) } })
-    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
-    actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
+
+    actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { root.showPropertiesForSelection() } })
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
@@ -3498,7 +3509,19 @@ Item {
           id: sidebar
           width: 160
           height: parent.height
-          spacing: Style.spacing.sm
+          spacing: Style.spacing.md
+
+          PanelSectionHeader {
+            text: "BOOKMARKS"
+            foreground: Color.menu.text
+            fontFamily: Style.font.family
+            fontSize: Style.font.subtitle
+          }
+
+          Item {
+            width: 1
+            height: Style.spacing.xxs
+          }
 
           Repeater {
             model: root.bookmarks
@@ -3555,6 +3578,7 @@ Item {
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
                 elide: Text.ElideRight
                 width: sidebar.width - Style.spacing.sm * 2 - bookmarkIcon.width - Style.spacing.xs
@@ -3604,6 +3628,12 @@ Item {
             fontSize: Style.font.subtitle
           }
 
+          Item {
+            visible: root.recentFiles.length > 0
+            width: 1
+            height: Style.spacing.xxs
+          }
+
           Repeater {
             model: root.recentFiles
 
@@ -3637,6 +3667,7 @@ Item {
                 text: parent.modelData.name
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: Color.menu.text
                 elide: Text.ElideRight
                 width: sidebar.width - Style.spacing.sm * 2 - recentIcon.width - Style.spacing.xs
@@ -3688,6 +3719,12 @@ Item {
             foreground: Color.menu.text
             fontFamily: Style.font.family
             fontSize: Style.font.subtitle
+          }
+
+          Item {
+            visible: root.mounts.length > 0
+            width: 1
+            height: Style.spacing.xxs
           }
 
           Repeater {
@@ -3745,6 +3782,7 @@ Item {
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
                 elide: Text.ElideRight
                 width: sidebar.width - Style.spacing.sm * 2 - mountIcon.width - Style.spacing.xs
@@ -3801,6 +3839,11 @@ Item {
             fontSize: Style.font.subtitle
           }
 
+          Item {
+            width: 1
+            height: Style.spacing.xxs
+          }
+
           Repeater {
             model: root.networkMounts
 
@@ -3837,6 +3880,7 @@ Item {
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
                 elide: Text.ElideRight
                 width: sidebar.width - Style.spacing.sm * 2 - networkMountIcon.width - Style.spacing.xs
@@ -3975,7 +4019,7 @@ Item {
                 // cuenta de a qué panel le estaban llegando los atajos de
                 // teclado y actuar sobre el equivocado sin querer. Solo
                 // opacidad, sin tocar colores del tema.
-                opacity: 0.8
+                opacity: 0.72
 
                 property var entries: []
                 property string pathError: ""
@@ -4131,7 +4175,7 @@ Item {
                           font.family: Style.font.family
                           font.bold: modelData.path === bgPanel.modelData.path
                           color: Color.menu.text
-                          opacity: modelData.path === bgPanel.modelData.path ? 1.0 : 0.65
+                          opacity: modelData.path === bgPanel.modelData.path ? 1.0 : 0.5
                         }
 
                         Text {
@@ -4175,7 +4219,7 @@ Item {
                 ListView {
                   id: bgList
                   anchors.top: bgErrorText.visible ? bgErrorText.bottom : bgHeaderSep.bottom
-                  anchors.topMargin: Style.spacing.sm
+                  anchors.topMargin: Style.spacing.md
                   anchors.bottom: bgStatusText.top
                   anchors.bottomMargin: mainColumn.spacing
                   anchors.left: parent.left
@@ -4189,10 +4233,19 @@ Item {
                     required property var modelData
                     required property int index
                     width: bgList.width
-                    implicitHeight: bgRowContent.implicitHeight + Style.spacing.sm * 2
+                    implicitHeight: bgRowContent.implicitHeight + Style.spacing.md * 2
                     foreground: Color.menu.text
                     accent: Color.accent
                     hasCursor: bgRowMouse.containsMouse
+                    // El fill/borde de hover ya es semitransparente de por
+                    // sí (Style.hoverFillFor) -- bgPanel entero va a
+                    // opacity:0.72 para marcarse como "no es el panel
+                    // activo", y sin esto esa opacidad se multiplica TAMBIÉN
+                    // sobre el hover, quedando doblemente débil/desvaído en
+                    // vez del mismo aspecto que tiene en el panel activo.
+                    // 1/0.72 cancela justo la opacidad del padre solo
+                    // mientras esta fila concreta tiene el cursor encima.
+                    opacity: hasCursor ? 1 / 0.72 : 1
 
                     DropArea {
                       visible: modelData.type === "dir"
@@ -4228,8 +4281,12 @@ Item {
                         readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                         readonly property bool isDir: modelData.type === "dir"
                         readonly property bool isBroken: modelData.link === "broken"
+                        // Alineado con el nombre (bgNameText), no con el
+                        // bloque de dos líneas -- mismo criterio que el
+                        // panel activo, con "y" explícito por el mismo
+                        // motivo (ver comentario junto a thumbSlot).
                         anchors.left: parent.left
-                        anchors.verticalCenter: parent.verticalCenter
+                        y: bgNameCol.y + (bgNameText.height - height) / 2
                         width: Style.spacing.controlHeight
                         height: Style.spacing.controlHeight
 
@@ -4292,13 +4349,15 @@ Item {
                         anchors.leftMargin: Style.spacing.rowGap
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.spacing.hairline
+                        spacing: Style.spacing.xs
 
                         Text {
+                          id: bgNameText
                           width: parent.width
                           text: modelData.name + (modelData.type === "dir" ? "/" : "")
                           font.pixelSize: Style.font.title
                           font.family: Style.font.family
+                          font.weight: Font.Medium
                           color: modelData.link === "broken" ? Color.urgent : Color.menu.text
                           elide: Text.ElideRight
                         }
@@ -4351,6 +4410,35 @@ Item {
                   }
                 }
 
+                // Mismo estado vacío que el panel activo -- ver el
+                // comentario junto a su versión (busca "Style.font.displayLarge")
+                // para la referencia real (Menu.qml/Emojis.qml).
+                Column {
+                  visible: bgPanel.pathError === "" && bgPanel.entries.length === 0
+                  anchors.centerIn: bgList
+                  spacing: Style.spacing.sm
+
+                  Text {
+                    text: "\u{F0209}"
+                    color: Color.menu.selectedText
+                    opacity: 0.8
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.displayLarge
+                    horizontalAlignment: Text.AlignHCenter
+                    width: bgList.width
+                  }
+
+                  Text {
+                    text: bgPanel.modelData.path === root.trashDir ? "Trash is empty" : "Nothing here yet"
+                    color: Color.menu.text
+                    opacity: 0.7
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.title
+                    horizontalAlignment: Text.AlignHCenter
+                    width: bgList.width
+                  }
+                }
+
                 Text {
                   id: bgStatusText
                   anchors.bottom: parent.bottom
@@ -4378,23 +4466,12 @@ Item {
               width: panelsRow.slotWidth
               height: panelsRow.height
 
-              // Tinte de fondo muy sutil detrás de TODO el panel, solo
-              // cuando hay más de uno a la vista -- con un único panel no
-              // hay nada que desambiguar y sería decoración de más.
-              // Declarado antes que el resto de hijos (queda debajo, no
-              // tapa nada) y sin anchors.margins, así que no roba espacio
-              // ni desplaza la fila de navegación/lista un solo píxel --
-              // a diferencia de un borde o una línea, que sí necesitarían
-              // hueco propio y podrían desalinear el panel activo respecto
-              // a los de fondo (ver la nota sobre alineado a píxel más
-              // abajo en el fichero). Complementa el atenuado de bgPanel:
-              // color (no solo brillo), para notarse sin comparar los dos
-              // paneles a la vez.
-              Rectangle {
-                visible: root.tabs.length > 1
-                anchors.fill: parent
-                color: Util.alpha(Color.accent, 0.08)
-              }
+          // Sin tinte de fondo propio en el panel activo -- se probó un
+          // Rectangle de Util.alpha(Color.accent, 0.08) de pared a pared,
+          // pero josema lo vio feo al pasar el ratón (mancha de color
+          // sobre todo el panel). El atenuado opacity:0.8 de bgPanel ya
+          // basta por sí solo para distinguir cuál está activo, sin
+          // añadir color encima.
 
           // navRow/listContainer/etc. van en su propia Column interior en
           // vez de directamente en activePanel -- así statusText, fuera de
@@ -4511,7 +4588,7 @@ Item {
                       font.family: Style.font.family
                       font.bold: modelData.path === root.currentPath
                       color: Color.menu.text
-                      opacity: modelData.path === root.currentPath ? 1.0 : 0.65
+                      opacity: modelData.path === root.currentPath ? 1.0 : 0.5
                     }
 
                     Text {
@@ -4673,7 +4750,15 @@ Item {
           Item {
             id: listContainer
             width: parent.width
-            height: activePanel.height - navRow.height - Style.spacing.hairline
+            // Sin el "- Style.spacing.hairline" que llevaba antes: ese
+            // único píxel de más hacía que list.height quedara 1px por
+            // debajo de bgList.height (misma fórmula, pero bgList lo
+            // deriva de anchors reales, sin ese fudge). En una lista con
+            // filas no se notaba (solo cambia el margen bajo la última
+            // fila), pero el estado vacío, centrado en el alto total,
+            // amplificaba ese único píxel a un desajuste visible al
+            // cambiar entre panel activo/de fondo.
+            height: activePanel.height - navRow.height
               - (root.creatingFolder ? newFolderRow.height + mainColumn.spacing : 0)
               - (root.creatingFile ? newFileRow.height + mainColumn.spacing : 0)
               - (root.searching ? searchRow.height + mainColumn.spacing : 0)
@@ -4785,8 +4870,11 @@ Item {
               // ningún píxel "vacío" por encima donde arrancar el lazo, la
               // fila 0 empezaría justo en el borde. Solo desplaza la
               // ListView, marqueeArea/DropArea de detrás siguen llegando
-              // hasta el borde real, así que ese hueco cae en ellos.
-              anchors.topMargin: Style.spacing.sm
+              // hasta el borde real, así que ese hueco cae en ellos. Subido
+              // de sm a md (josema: poco aire entre la cabecera y la
+              // lista) -- mismo valor en bgList para que las dos alturas
+              // seguán coincidiendo exactas (ver el bug del -1px anterior).
+              anchors.topMargin: Style.spacing.md
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: root.previewOpen ? parent.width * 0.55 : parent.width
@@ -5091,7 +5179,7 @@ Item {
                 required property var modelData
                 required property int index
                 width: list.width
-                implicitHeight: rowContent.implicitHeight + Style.spacing.sm * 2
+                implicitHeight: rowContent.implicitHeight + Style.spacing.md * 2
                 Accessible.role: Accessible.ListItem
                 Accessible.name: modelData.name + (modelData.type === "dir" ? ", folder" : ", file")
                 Accessible.selected: root.isSelected(index)
@@ -5150,9 +5238,20 @@ Item {
                     readonly property bool isBroken: modelData.link === "broken"
                     // Mismo ancho que los botones de casita/subir de navRow
                     // (Style.spacing.controlHeight), para que el icono quede
-                    // centrado en la misma columna que ellos.
+                    // centrado en la misma columna que ellos. Vertical:
+                    // alineado con el nombre (nameText), no con el bloque
+                    // de dos líneas completo -- josema quería el icono a la
+                    // altura del nombre, con el peso/fecha colgando debajo.
+                    // "anchors.verticalCenter: nameText.verticalCenter" no
+                    // daba el resultado esperado aquí (probado y medido con
+                    // un overlay de depuración: seguía saliendo como si
+                    // centrara sobre nameCol entero, no sobre nameText) --
+                    // en vez de perseguir por qué, "y" explícito a partir de
+                    // nameCol.y (mismo marco de referencia que thumbSlot,
+                    // los dos son hijos directos de rowContent) es
+                    // inequívoco y ya verificado con el mismo overlay.
                     anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
+                    y: nameCol.y + (nameText.height - height) / 2
                     width: Style.spacing.controlHeight
                     height: Style.spacing.controlHeight
 
@@ -5241,13 +5340,15 @@ Item {
                     anchors.leftMargin: Style.spacing.rowGap
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spacing.hairline
+                    spacing: Style.spacing.xs
 
                     Text {
+                      id: nameText
                       width: parent.width
                       text: modelData.name + (modelData.type === "dir" ? "/" : "")
                       font.pixelSize: Style.font.title
                       font.family: Style.font.family
+                      font.weight: Font.Medium
                       color: modelData.link === "broken" ? Color.urgent
                         : root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
                         ? Qt.darker(Color.menu.text, 1.6)
@@ -5267,6 +5368,7 @@ Item {
                       elide: Text.ElideRight
                     }
                   }
+
                 }
 
                 MouseArea {
@@ -5407,6 +5509,49 @@ Item {
               font.family: Style.font.family
               font.pixelSize: Style.font.subtitle
               color: Color.urgent
+            }
+
+            // Estado vacío -- mismo patrón (icono grande + mensaje, Column
+            // centrada) que usan de verdad Menu.qml y Emojis.qml para "sin
+            // resultados", no algo inventado; antes esto solo se notaba por
+            // "0 items" en la barra de estado de abajo, sin nada en el
+            // propio hueco de la lista.
+            Column {
+              visible: root.currentPathError === "" && root.visibleEntries.length === 0
+              // Centrado sobre "list" (la ListView), no sobre "parent" --
+              // parent también incluye navRow/listSep por encima, así que
+              // centrarse en él daba una posición vertical distinta a la
+              // del mismo estado vacío en bgPanel (centrado en bgList, que
+              // SÍ excluye su cabecera). Al pasar el ratón, este panel pasa
+              // de renderizarse como bgPanel a activePanel y el icono/texto
+              // saltaba de sitio -- mismo id "list" ya trae el ancho
+              // correcto (fórmula 0.55/preview incluida), así que basta con
+              // anclarse a él en vez de repetir la fórmula a mano.
+              anchors.centerIn: list
+              width: list.width
+              spacing: Style.spacing.sm
+
+              Text {
+                text: "\u{F0209}"
+                color: Color.menu.selectedText
+                opacity: 0.8
+                font.family: Style.font.family
+                font.pixelSize: Style.font.displayLarge
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+              }
+
+              Text {
+                text: root.searchQuery
+                  ? "No results for “" + root.searchQuery + "”"
+                  : (root.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
+                color: Color.menu.text
+                opacity: 0.7
+                font.family: Style.font.family
+                font.pixelSize: Style.font.title
+                horizontalAlignment: Text.AlignHCenter
+                width: parent.width
+              }
             }
 
             // Rectángulo visual del lazo -- después de la ListView en el
@@ -6499,7 +6644,7 @@ Item {
           anchors.rightMargin: contextMenu.contentRightInset
           anchors.bottomMargin: contextMenu.contentBottomInset
           anchors.leftMargin: contextMenu.contentLeftInset
-          spacing: Style.spacing.xxs
+          spacing: Style.spacing.xs
 
           Repeater {
             model: root.contextMenuActions
@@ -6794,6 +6939,7 @@ Item {
             id: paletteList
             width: parent.width
             height: parent.height - paletteField.height - paletteSep.height - 2 * paletteColumn.spacing
+            spacing: Style.spacing.xs
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             model: root.paletteOpen ? root.filteredPaletteCommands() : []
