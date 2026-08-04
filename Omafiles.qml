@@ -353,6 +353,12 @@ Item {
 
   property var bookmarks: []
   property string bookmarksFile: root.homeDir + "/.local/state/omafiles/bookmarks.json"
+  property string recentFile: root.homeDir + "/.local/state/omafiles/recent.json"
+  // { path, name } -- más reciente primero, tope 20. Persistido aparte
+  // (no en bookmarks.json, semántica distinta: esto lo escribe la propia
+  // app sola al abrir ficheros, el usuario no lo edita a mano).
+  property var recentFiles: []
+  property bool recentLoaded: false
   property bool bookmarksLoaded: false
 
   readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
@@ -574,6 +580,38 @@ Item {
     var json = JSON.stringify(root.bookmarks)
     saveBookmarksProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bookmarksFile)]
     saveBookmarksProc.running = true
+  }
+
+  function loadRecent() {
+    loadRecentProc.running = true
+  }
+
+  function saveRecent() {
+    var dir = root.recentFile.substring(0, root.recentFile.lastIndexOf("/"))
+    var json = JSON.stringify(root.recentFiles)
+    saveRecentProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.recentFile)]
+    saveRecentProc.running = true
+  }
+
+  // Llamado al abrir un fichero de verdad (enter()/launchWith(), NO al
+  // navegar por carpetas -- para eso ya están el historial y las
+  // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
+  function addRecent(path, name) {
+    var next = root.recentFiles.filter(function (r) { return r.path !== path })
+    next.unshift({ path: path, name: name })
+    if (next.length > 20) next = next.slice(0, 20)
+    root.recentFiles = next
+    root.saveRecent()
+  }
+
+  function removeRecent(path) {
+    root.recentFiles = root.recentFiles.filter(function (r) { return r.path !== path })
+    root.saveRecent()
+  }
+
+  function clearRecent() {
+    root.recentFiles = []
+    root.saveRecent()
   }
 
   function removeBookmark(path) {
@@ -968,8 +1006,10 @@ Item {
     } else if (root.isArchive(entry)) {
       root.enterArchive(root.joinPath(root.currentPath, entry.name))
     } else {
-      openProc.command = ["xdg-open", root.joinPath(root.currentPath, entry.name)]
+      var openPath = root.joinPath(root.currentPath, entry.name)
+      openProc.command = ["xdg-open", openPath]
       openProc.running = true
+      root.addRecent(openPath, entry.name)
     }
   }
 
@@ -1062,6 +1102,7 @@ Item {
     }
 
     if (!root.bookmarksLoaded) root.loadBookmarks()
+    if (!root.recentLoaded) root.loadRecent()
     root.refreshMounts()
     root.refreshNetworkMounts()
   }
@@ -1771,7 +1812,9 @@ Item {
 
   function launchWith(desktopId) {
     if (root.openWithEntry) {
-      Quickshell.execDetached(["gtk-launch", desktopId, root.joinPath(root.currentPath, root.openWithEntry.name)])
+      var openPath = root.joinPath(root.currentPath, root.openWithEntry.name)
+      Quickshell.execDetached(["gtk-launch", desktopId, openPath])
+      root.addRecent(openPath, root.openWithEntry.name)
     }
     root.openWithOpen = false
     root.openWithEntry = null
@@ -2160,6 +2203,14 @@ Item {
     }
   }
 
+  // Mismo mecanismo que openBookmark() para uno de tipo "file" -- todos
+  // los recientes son ficheros (nunca carpetas, ver addRecent()).
+  function openRecent(item) {
+    var slash = item.path.lastIndexOf("/")
+    root.pendingSelectName = item.name
+    root.navigateTo(slash > 0 ? item.path.substring(0, slash) : "/")
+  }
+
   function bookmarkActions(bookmark) {
     var actions = [
       { label: "Open", action: function () { root.openBookmark(bookmark) } }
@@ -2515,6 +2566,24 @@ Item {
 
   Process {
     id: saveBookmarksProc
+  }
+
+  Process {
+    id: loadRecentProc
+    command: ["cat", root.recentFile]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.recentLoaded = true
+        var parsed = null
+        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+        root.recentFiles = Array.isArray(parsed) ? parsed : []
+      }
+    }
+  }
+
+  Process {
+    id: saveRecentProc
   }
 
   Process {
@@ -2893,6 +2962,90 @@ Item {
                     return
                   }
                   root.openBookmark(modelData)
+                }
+              }
+            }
+          }
+
+          Item {
+            visible: root.recentFiles.length > 0
+            width: 1
+            height: Style.spacing.sm
+          }
+
+          PanelSeparator {
+            visible: root.recentFiles.length > 0
+            foreground: Color.menu.text
+            strength: 0.15
+          }
+
+          Item {
+            visible: root.recentFiles.length > 0
+            width: 1
+            height: Style.spacing.xs
+          }
+
+          PanelSectionHeader {
+            visible: root.recentFiles.length > 0
+            text: "RECENT"
+            foreground: Color.menu.text
+            fontFamily: Style.font.family
+            fontSize: Style.font.subtitle
+          }
+
+          Repeater {
+            model: root.recentFiles
+
+            CursorSurface {
+              required property var modelData
+              width: sidebar.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: recentMouse.containsMouse
+
+              OpticalGlyph {
+                id: recentIcon
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                width: Style.font.title
+                height: Style.font.title
+                text: root.iconFor({ type: "file", name: parent.modelData.name })
+                fontFamily: Style.font.family
+                fontSize: Style.font.icon
+                color: Color.menu.text
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: recentIcon.right
+                anchors.leftMargin: Style.spacing.xs
+                text: parent.modelData.name
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                color: Color.menu.text
+                elide: Text.ElideRight
+                width: sidebar.width - Style.spacing.sm * 2 - recentIcon.width - Style.spacing.xs
+              }
+
+              MouseArea {
+                id: recentMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function (mouse) {
+                  if (mouse.button === Qt.RightButton) {
+                    var pos = mapToItem(card, mouse.x, mouse.y)
+                    root.openContextMenu(pos.x, pos.y, [
+                      { label: "Open", action: function () { root.openRecent(modelData) } },
+                      { label: "Remove from recent", destructive: true, action: function () { root.removeRecent(modelData.path) } },
+                      { label: "Clear recent", destructive: true, action: function () { root.clearRecent() } }
+                    ])
+                    return
+                  }
+                  root.openRecent(modelData)
                 }
               }
             }
