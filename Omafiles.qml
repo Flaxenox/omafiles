@@ -253,7 +253,14 @@ Item {
   property string bulkRenamePattern: "{name}{ext}"
 
   property bool chmodOpen: false
-  property string chmodEntry: ""
+  // Lista de nombres en vez de un string suelto -- chmod ahora admite
+  // aplicar el mismo modo a toda la selección, no solo a un fichero.
+  property var chmodNames: []
+  // true si al abrir el diálogo los ítems seleccionados NO tenían todos
+  // el mismo modo octal -- chmodMode se deja en blanco en ese caso (no
+  // tiene sentido precargar el modo de "uno cualquiera" de ellos) y la UI
+  // avisa de que es una selección mixta.
+  property bool chmodMixed: false
   property string chmodMode: ""
 
   property bool propertiesOpen: false
@@ -263,6 +270,16 @@ Item {
   property string propertiesPerms: ""
   property string propertiesOwner: ""
   property string propertiesMtime: ""
+  // Guard de carrera: showProperties()/showPropertiesForSelection() suben
+  // este contador cada vez que se abre el panel para un ítem nuevo, y
+  // anotan ese número como "dueño" del stat/du que lanzan. Si el usuario
+  // cambia de selección antes de que un "du" lento de una carpeta grande
+  // termine, la respuesta tardía ya no coincide con propertiesRequestId
+  // (que para entonces ya subió) y se descarta en vez de sobreescribir el
+  // tamaño del ítem que se está mirando ahora con el de otro distinto.
+  property int propertiesRequestId: 0
+  property int _propertiesStatOwner: -1
+  property int _propertiesDuOwner: -1
   // Selección múltiple: sin permisos/dueño/fecha (no tiene sentido combinar
   // varios), solo cuenta de items y tamaño total.
   property bool propertiesMulti: false
@@ -543,7 +560,13 @@ Item {
     // ejectProc.command a mitad de la primera llamada, reiniciándola --
     // mismo problema que runAction() ya evitaba para las acciones de
     // fichero, pero este proceso no lo tenía.
-    if (ejectProc.running) return
+    // Aviso explícito en vez de un return mudo -- sin esto, el segundo
+    // clic no hacía nada visible y parecía que la app había ignorado la
+    // pulsación, igual que le pasaba antes a runAction() (ver ahí).
+    if (ejectProc.running) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Still ejecting a drive — try again in a moment"])
+      return
+    }
     var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
     ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
@@ -555,7 +578,10 @@ Item {
   // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
   // es la unidad recién montada.
   function mountDevice(mount) {
-    if (mountProc.running) return
+    if (mountProc.running) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting a drive — try again in a moment"])
+      return
+    }
     mountProc.command = ["udisksctl", "mount", "-b", mount.device]
     mountProc.running = true
   }
@@ -1350,7 +1376,7 @@ Item {
       { label: "Search", run: function () { root.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
       { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
-      { label: "Permissions...", enabled: !!entry, run: function () { if (entry) root.startChmod(entry) } },
+      { label: "Permissions...", enabled: hasSelection, run: function () { root.startChmod(root.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) root.makeLinkFor(entry) } },
       { label: "Properties", enabled: hasSelection, run: function () { root.showPropertiesForSelection() } }
     ]
@@ -1586,10 +1612,13 @@ Item {
     root.bulkRenameConflictOpen = false
   }
 
-  function startChmod(entry) {
-    root.chmodEntry = entry.name
+  function startChmod(entries) {
+    if (!entries || entries.length === 0) return
+    root.chmodNames = entries.map(function (e) { return e.name })
     root.chmodMode = ""
-    chmodStatProc.command = ["stat", "-c%a", root.joinPath(root.currentPath, entry.name)]
+    root.chmodMixed = false
+    var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(root.currentPath, e.name)) }).join(" ")
+    chmodStatProc.command = ["bash", "-c", "stat -c%a -- " + paths]
     chmodStatProc.running = true
     root.chmodOpen = true
   }
@@ -1597,8 +1626,14 @@ Item {
   function commitChmod(mode) {
     root.chmodOpen = false
     mode = mode.trim()
-    if (!/^[0-7]{3,4}$/.test(mode) || !root.chmodEntry) return
-    runAction("chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, root.chmodEntry)))
+    if (!/^[0-7]{3,4}$/.test(mode) || root.chmodNames.length === 0) return
+    var cmds = root.chmodNames.map(function (n) {
+      return "chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
+    })
+    var label = root.chmodNames.length === 1
+      ? "Setting permissions for \"" + root.chmodNames[0] + "\"…"
+      : "Setting permissions for " + root.chmodNames.length + " items…"
+    runAction(root.chainCmds(cmds), label)
   }
 
   // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
@@ -1625,6 +1660,7 @@ Item {
     var entries = root.selectedEntries()
     if (entries.length === 0) return
     if (entries.length === 1) { root.showProperties(entries[0]); return }
+    root.propertiesRequestId += 1
     root.propertiesMulti = true
     root.propertiesEntry = null
     root.propertiesCount = entries.length
@@ -1637,6 +1673,7 @@ Item {
     var quoted = entries.map(function (e) {
       return Util.shellQuote(root.joinPath(root.currentPath, e.name))
     }).join(" ")
+    root._propertiesDuOwner = root.propertiesRequestId
     propertiesDuProc.command = ["bash", "-c", "du -shc -- " + quoted + " | tail -n1"]
     propertiesDuProc.running = true
   }
@@ -1660,6 +1697,7 @@ Item {
 
   function showProperties(entry) {
     if (!entry) return
+    root.propertiesRequestId += 1
     root.propertiesMulti = false
     var path = root.joinPath(root.currentPath, entry.name)
     root.propertiesEntry = entry
@@ -1669,9 +1707,16 @@ Item {
     root.propertiesOwner = ""
     root.propertiesMtime = ""
     root.propertiesOpen = true
+    root._propertiesStatOwner = root.propertiesRequestId
     propertiesStatProc.command = ["stat", "-c", "%A %a\t%U:%G\t%y", "--", path]
     propertiesStatProc.running = true
+    // Deliberadamente NO se toca propertiesDuProc si entry no es carpeta
+    // (el tamaño ya se conoce sin proceso). Un "du" anterior de una
+    // carpeta puede seguir corriendo en ese caso -- por eso el guard de
+    // _propertiesDuOwner de más abajo es imprescindible, no solo para
+    // cuando SÍ se relanza.
     if (entry.type === "dir") {
+      root._propertiesDuOwner = root.propertiesRequestId
       propertiesDuProc.command = ["du", "-sh", "--", path]
       propertiesDuProc.running = true
     }
@@ -1728,9 +1773,10 @@ Item {
         actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
       }
       actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
-      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries[0]) } })
+      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
     } else {
       actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
+      actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
     }
     actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
     actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
@@ -2117,7 +2163,13 @@ Item {
     id: chmodStatProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.chmodMode = text.trim()
+      onStreamFinished: {
+        var lines = String(text || "").trim().split("\n").filter(function (l) { return l.length > 0 })
+        if (lines.length === 0) return
+        var allSame = lines.every(function (l) { return l === lines[0] })
+        root.chmodMixed = !allSame
+        root.chmodMode = allSame ? lines[0] : ""
+      }
     }
   }
 
@@ -2139,6 +2191,9 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        // Descarta la respuesta si el usuario ya cambió a otro ítem
+        // mientras este "stat" estaba en vuelo (ver propertiesRequestId).
+        if (root._propertiesStatOwner !== root.propertiesRequestId) return
         var parts = String(text || "").trim().split("\t")
         root.propertiesPerms = parts[0] || ""
         root.propertiesOwner = parts[1] || ""
@@ -2152,6 +2207,12 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        // Mismo guard que propertiesStatProc -- este es el que de verdad
+        // importa: un "du" de una carpeta grande puede tardar segundos, y
+        // sin esto su resultado tardío pisaba el tamaño del ítem que el
+        // usuario esté mirando ahora, aunque ya no tenga nada que ver con
+        // la carpeta que se estaba midiendo.
+        if (root._propertiesDuOwner !== root.propertiesRequestId) return
         root.propertiesSize = String(text || "").split("\t")[0] || ""
         root.propertiesSizeLoading = false
       }
@@ -2460,6 +2521,13 @@ Item {
                 y: 0
                 width: panelsRow.slotWidth
                 height: panelsRow.height
+                // Atenuado respecto al panel activo -- con "el panel activo
+                // es el que tiene el ratón encima" (ver HoverHandler más
+                // abajo), sin ninguna señal visual era fácil no darse
+                // cuenta de a qué panel le estaban llegando los atajos de
+                // teclado y actuar sobre el equivocado sin querer. Solo
+                // opacidad, sin tocar colores del tema.
+                opacity: 0.8
 
                 property var entries: []
                 property string pathError: ""
@@ -2848,6 +2916,24 @@ Item {
               y: 0
               width: panelsRow.slotWidth
               height: panelsRow.height
+
+              // Tinte de fondo muy sutil detrás de TODO el panel, solo
+              // cuando hay más de uno a la vista -- con un único panel no
+              // hay nada que desambiguar y sería decoración de más.
+              // Declarado antes que el resto de hijos (queda debajo, no
+              // tapa nada) y sin anchors.margins, así que no roba espacio
+              // ni desplaza la fila de navegación/lista un solo píxel --
+              // a diferencia de un borde o una línea, que sí necesitarían
+              // hueco propio y podrían desalinear el panel activo respecto
+              // a los de fondo (ver la nota sobre alineado a píxel más
+              // abajo en el fichero). Complementa el atenuado de bgPanel:
+              // color (no solo brillo), para notarse sin comparar los dos
+              // paneles a la vez.
+              Rectangle {
+                visible: root.tabs.length > 1
+                anchors.fill: parent
+                color: Util.alpha(Color.accent, 0.08)
+              }
 
           // navRow/listContainer/etc. van en su propia Column interior en
           // vez de directamente en activePanel -- así statusText, fuera de
@@ -4080,12 +4166,24 @@ Item {
 
           Text {
             width: parent.width
-            text: "Permissions for \"" + root.chmodEntry + "\""
+            text: root.chmodNames.length === 1
+              ? "Permissions for \"" + root.chmodNames[0] + "\""
+              : "Permissions for " + root.chmodNames.length + " items"
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
             color: Color.menu.text
             elide: Text.ElideMiddle
+          }
+
+          Text {
+            width: parent.width
+            visible: root.chmodMixed
+            text: "Mixed permissions — choose a mode to apply to all"
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+            color: Qt.darker(Color.menu.text, 1.6)
+            wrapMode: Text.WordWrap
           }
 
           PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
