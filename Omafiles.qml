@@ -289,6 +289,17 @@ Item {
   property var previewEntry: null
   property string previewText: ""
   property bool previewIsText: false
+  // HTML con estilos inline (Pygments, noclasses=True) para el fragmento
+  // en previsualización -- vacío si el lenguaje no se reconoce o
+  // highlight-preview.sh falla, en cuyo caso se cae al Text plano de
+  // siempre con previewText. Ver loadPreview()/highlightPreviewProc.
+  property string previewHighlighted: ""
+  // Render de la primera página como PNG (pdftoppm) -- vacío mientras se
+  // genera o si pdftoppm falla, igual que videoThumbReady con los vídeos.
+  property string previewPdfImage: ""
+  // Metadatos de audio (ffprobe): duración/formato/bitrate/etc, mismo
+  // formato { label, value } que ya usa el Repeater de Properties.
+  property var previewAudioInfo: []
 
   property string trashDir: root.homeDir + "/.local/share/Trash/files"
   // { "<nombre en Trash/files>": { origPath, epoch } } -- leído de
@@ -368,6 +379,14 @@ Item {
 
   function isVideo(entry) {
     return entry.type === "file" && videoExt.indexOf(extOf(entry.name)) >= 0
+  }
+
+  function isAudio(entry) {
+    return entry.type === "file" && audioExt.indexOf(extOf(entry.name)) >= 0
+  }
+
+  function isPdf(entry) {
+    return entry.type === "file" && extOf(entry.name) === "pdf"
   }
 
   // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
@@ -1077,6 +1096,31 @@ Item {
     else root.close()
   }
 
+  function parseAudioInfo(text) {
+    var out = []
+    var data
+    try { data = JSON.parse(text) } catch (e) { return out }
+    var fmt = (data && data.format) || {}
+    var stream = (data && data.streams && data.streams[0]) || {}
+    var dur = parseFloat(fmt.duration || stream.duration || 0)
+    if (dur > 0) {
+      var mins = Math.floor(dur / 60)
+      var secs = Math.round(dur % 60)
+      out.push({ label: "Duration", value: mins + ":" + (secs < 10 ? "0" : "") + secs })
+    }
+    if (stream.codec_name) out.push({ label: "Codec", value: String(stream.codec_name).toUpperCase() })
+    if (fmt.bit_rate) out.push({ label: "Bitrate", value: Math.round(fmt.bit_rate / 1000) + " kbps" })
+    if (stream.sample_rate) out.push({ label: "Sample rate", value: Math.round(stream.sample_rate / 1000) + " kHz" })
+    if (stream.channels) {
+      out.push({ label: "Channels", value: stream.channels === 1 ? "Mono" : stream.channels === 2 ? "Stereo" : String(stream.channels) })
+    }
+    var tags = fmt.tags || {}
+    if (tags.artist) out.push({ label: "Artist", value: tags.artist })
+    if (tags.title) out.push({ label: "Title", value: tags.title })
+    if (tags.album) out.push({ label: "Album", value: tags.album })
+    return out
+  }
+
   function formatSize(bytes) {
     if (bytes < 1024) return bytes + " B"
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " K"
@@ -1656,13 +1700,50 @@ Item {
     root.previewEntry = entry
     root.previewOpen = true
     root.previewText = ""
+    root.previewHighlighted = ""
+    root.previewPdfImage = ""
+    root.previewAudioInfo = []
     var ext = root.extOf(entry.name)
+    var path = root.joinPath(root.currentPath, entry.name)
     root.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (root.previewIsText && !root.isImage(entry)) {
-      previewProc.command = ["head", "-c", "4000", root.joinPath(root.currentPath, entry.name)]
+      previewProc.command = ["head", "-c", "4000", path]
       previewProc.running = true
+      // Resaltado de sintaxis SOLO para extensiones de código conocidas
+      // (codeExt) -- .txt/.conf/sin extensión se quedan en texto plano,
+      // no hay lenguaje real que adivinar ahí. Se lanza en paralelo al
+      // texto plano de arriba (no en cadena): si highlight-preview.sh
+      // falla o Pygments no reconoce el lenguaje, previewHighlighted se
+      // queda vacío y el texto plano ya cargado sigue siendo lo que se
+      // ve, sin parpadeo ni hueco en blanco de por medio.
+      if (root.codeExt.indexOf(ext) >= 0) {
+        highlightPreviewProc.command = [root.pluginDir + "/highlight-preview.sh", path, "4000", ext]
+        highlightPreviewProc.running = true
+      }
     }
     if (root.isVideo(entry)) root.requestVideoThumb(entry)
+    if (root.isPdf(entry)) {
+      // Cacheado por hash(ruta+mtime), igual que las miniaturas de vídeo
+      // -- no vuelve a renderizar la primera página si ya existe de una
+      // vista previa anterior del mismo fichero sin cambios.
+      var outDir = root.homeDir + "/.cache/omafiles/pdf-preview/" + root.simpleHash(path + "|" + entry.mtime)
+      var outFile = outDir + "/preview.png"
+      pdfPreviewProc.outFile = outFile
+      // "page-*.png" en vez de asumir "page-1.png" -- pdftoppm añade
+      // ceros de relleno al número de página según hagan falta para el
+      // total de páginas del PDF (de 10 páginas en adelante ya sería
+      // "page-01.png"), así que se renombra al único fichero que haya
+      // salido en vez de adivinar el nombre exacto.
+      pdfPreviewProc.command = ["bash", "-c",
+        "test -e " + Util.shellQuote(outFile) + " && exit 0; mkdir -p -- " + Util.shellQuote(outDir)
+        + " && pdftoppm -png -f 1 -l 1 -scale-to 1000 -- " + Util.shellQuote(path) + " " + Util.shellQuote(outDir + "/page")
+        + " && mv -f -- " + Util.shellQuote(outDir) + "/page-*.png " + Util.shellQuote(outFile)]
+      pdfPreviewProc.running = true
+    }
+    if (root.isAudio(entry)) {
+      audioInfoProc.command = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path]
+      audioInfoProc.running = true
+    }
   }
 
   function showOpenWith(entry) {
@@ -2551,6 +2632,33 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.previewText = text
+    }
+  }
+
+  Process {
+    id: highlightPreviewProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      // Vacío/fallido -> previewHighlighted se queda "" y la UI cae al
+      // Text plano (previewText) sin más -- ver el "visible:" de cada
+      // bloque en el panel de previsualización.
+      onStreamFinished: root.previewHighlighted = text
+    }
+  }
+
+  Process {
+    id: pdfPreviewProc
+    property string outFile: ""
+    onExited: function (exitCode) {
+      if (exitCode === 0) root.previewPdfImage = pdfPreviewProc.outFile
+    }
+  }
+
+  Process {
+    id: audioInfoProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.previewAudioInfo = root.parseAudioInfo(text)
     }
   }
 
@@ -4493,10 +4601,27 @@ Item {
                   height: parent.height - 60
                   clip: true
                   contentWidth: width
-                  contentHeight: previewTextItem.implicitHeight
+                  contentHeight: (root.previewHighlighted ? previewHighlightedItem : previewTextItem).implicitHeight
+
+                  // Resaltado de sintaxis cuando highlight-preview.sh
+                  // (Pygments) reconoció el lenguaje -- ver loadPreview().
+                  // Mismo Flickable/posición que el Text plano de abajo,
+                  // uno de los dos siempre queda oculto.
+                  Text {
+                    id: previewHighlightedItem
+                    visible: root.previewHighlighted.length > 0
+                    width: parent.width
+                    textFormat: Text.RichText
+                    text: root.previewHighlighted
+                    font.pixelSize: Style.font.subtitle
+                    font.family: "monospace"
+                    color: Color.menu.text
+                    wrapMode: Text.Wrap
+                  }
 
                   Text {
                     id: previewTextItem
+                    visible: root.previewHighlighted.length === 0
                     width: parent.width
                     text: root.previewText || "(empty)"
                     font.pixelSize: Style.font.subtitle
@@ -4506,9 +4631,54 @@ Item {
                   }
                 }
 
+                Image {
+                  visible: root.previewEntry && root.isPdf(root.previewEntry) && root.previewPdfImage !== ""
+                  width: parent.width
+                  height: parent.height - 60
+                  fillMode: Image.PreserveAspectFit
+                  asynchronous: true
+                  source: root.previewPdfImage ? Util.fileUrl(root.previewPdfImage) : ""
+                }
+
+                Column {
+                  visible: root.previewEntry && root.isAudio(root.previewEntry) && root.previewAudioInfo.length > 0
+                  width: parent.width
+                  spacing: Style.spacing.sm
+
+                  Repeater {
+                    model: root.previewAudioInfo
+
+                    Row {
+                      required property var modelData
+                      width: parent.width
+                      spacing: Style.spacing.sm
+
+                      Text {
+                        width: 84
+                        text: parent.modelData.label
+                        font.pixelSize: Style.font.subtitle
+                        font.family: Style.font.family
+                        color: Color.menu.text
+                        opacity: 0.6
+                      }
+
+                      Text {
+                        width: parent.width - 84 - Style.spacing.sm
+                        text: parent.modelData.value
+                        font.pixelSize: Style.font.subtitle
+                        font.family: Style.font.family
+                        color: Color.menu.text
+                        elide: Text.ElideRight
+                      }
+                    }
+                  }
+                }
+
                 Column {
                   visible: root.previewEntry && !root.isImage(root.previewEntry) && !root.previewIsText
                     && !(root.isVideo(root.previewEntry) && root.videoThumbReady[root.thumbKeyFor(root.previewEntry)])
+                    && !(root.isPdf(root.previewEntry) && root.previewPdfImage !== "")
+                    && !(root.isAudio(root.previewEntry) && root.previewAudioInfo.length > 0)
                   width: parent.width
                   spacing: Style.spacing.sm
 

@@ -23,6 +23,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod, a read-only Properties panel (real folder size via `du`, permissions, owner, dates — or combined item count and total size for a multi-selection).
 - Browse inside a zip/7z/rar/tar archive without extracting it — opening a file inside extracts just that one file to a temp cache and opens it with your default app. Read-only view (no rename/delete/copy/etc. inside).
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
+- Preview (`Space`): images, video thumbnails, syntax-highlighted text (Pygments), first-page PDF render (`pdftoppm`), and audio metadata (duration/codec/bitrate/tags via `ffprobe`).
 - Recursive search, "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
 - Broken symlinks are flagged clearly (distinct icon, red name, "Broken link" instead of a fake size/date) instead of looking like an ordinary 0-byte file from 1970; valid symlinks show their real target's size.
@@ -89,7 +90,8 @@ This is idempotent and only runs once (tracked in `~/.local/state/omafiles/integ
 ## Requirements
 
 - Omarchy 4 (Quickshell-based shell).
-- `ffmpegthumbnailer` for video thumbnails (optional — falls back gracefully without it).
+- `ffmpegthumbnailer` for video thumbnails, `ffprobe` (ffmpeg) for audio metadata, `pygmentize` (python-pygments) for syntax-highlighted previews, `pdftoppm` (poppler) for PDF previews — all optional, each falls back gracefully without it.
+- `gio` with the relevant GVfs backend for network locations (`gvfs` covers SFTP/FTP/WebDAV; SMB needs `gvfs-smb` too).
 - `gio`, `udisksctl`, standard coreutils (all present on a stock Omarchy install).
 
 ## Status
