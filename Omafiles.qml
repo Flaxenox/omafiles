@@ -93,7 +93,15 @@ Item {
 
   property int renamingIndex: -1
   property bool creatingFolder: false
+  property bool creatingFile: false
   property bool editingPath: false
+
+  // Feedback de "en curso" para copiar/mover -- no hay porcentaje real (cp/mv
+  // no lo reportan), pero al menos se ve que algo está pasando en vez de que
+  // la ventana parezca congelada con ficheros grandes.
+  property bool actionBusy: false
+  property string actionLabel: ""
+  property string actionBusyDots: ""
 
   property var clipboardPaths: []
   property string clipboardMode: "" // "copy" | "cut"
@@ -149,6 +157,10 @@ Item {
   property string propertiesPerms: ""
   property string propertiesOwner: ""
   property string propertiesMtime: ""
+  // Selección múltiple: sin permisos/dueño/fecha (no tiene sentido combinar
+  // varios), solo cuenta de items y tamaño total.
+  property bool propertiesMulti: false
+  property int propertiesCount: 0
 
   readonly property var tarExt: ["tar", "gz", "tgz", "bz2", "tbz", "xz", "txz"]
   property var previewEntry: null
@@ -498,12 +510,13 @@ Item {
     root.selectOnly(-1)
     root.renamingIndex = -1
     root.creatingFolder = false
+    root.creatingFile = false
     root.editingPath = false
     // list.contentY nunca se corrige solo: si venías desplazado hacia abajo
     // en la carpeta anterior, esa posición de scroll se queda fija aunque
     // el listado nuevo no tenga nada ahí -- se ve como un hueco vacío
     // arriba del todo en vez de las primeras filas.
-    list.contentY = 0
+    list.contentY = list.originY
     root.refresh()
   }
 
@@ -597,6 +610,7 @@ Item {
     root.closingFromHost = false
     root.renamingIndex = -1
     root.creatingFolder = false
+    root.creatingFile = false
     root.editingPath = false
     root.pendingDeleteNames = []
     root.contextMenuOpen = false
@@ -641,14 +655,24 @@ Item {
     return parts.join(" · ")
   }
 
-  function runAction(cmd) {
+  function runAction(cmd, busyLabel) {
+    root.actionLabel = busyLabel || ""
+    root.actionBusy = !!busyLabel
     actionProc.command = ["bash", "-c", cmd]
     actionProc.running = true
+  }
+
+  function cancelAction() {
+    actionProc.running = false
+    root.actionBusy = false
+    root.actionLabel = ""
+    root.refresh()
   }
 
   function startRename(index) {
     if (index < 0 || index >= root.visibleEntries.length) return
     root.creatingFolder = false
+    root.creatingFile = false
     root.renamingIndex = index
   }
 
@@ -686,11 +710,33 @@ Item {
   function startNewFolder() {
     root.renamingIndex = -1
     root.searching = false
+    root.creatingFile = false
     root.creatingFolder = true
+  }
+
+  function startNewFile() {
+    root.renamingIndex = -1
+    root.searching = false
+    root.creatingFolder = false
+    root.creatingFile = true
+  }
+
+  function commitNewFile(name) {
+    root.creatingFile = false
+    name = name.trim()
+    if (!name) return
+    var path = root.joinPath(root.currentPath, name)
+    runAction("touch -- " + Util.shellQuote(path))
+    // gio trash en vez de rm: si el usuario ya escribió algo antes de
+    // deshacer, va a la papelera en vez de perderse sin recuperación.
+    root.pushUndo("new file \"" + name + "\"", function () {
+      root.runAction("gio trash -- " + Util.shellQuote(path))
+    })
   }
 
   function commitNewFolder(name) {
     root.creatingFolder = false
+    root.creatingFile = false
     name = name.trim()
     if (!name) return
     var path = root.joinPath(root.currentPath, name)
@@ -778,7 +824,11 @@ Item {
         var verb = isCut ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
         return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
       })
-      runAction(cmds.join(" && "))
+      var busyVerb = isCut ? "Moving " : "Copying "
+      var busyLabel = pairs.length === 1
+        ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
+        : busyVerb + pairs.length + " items…"
+      runAction(cmds.join(" && "), busyLabel)
       if (isCut) {
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
@@ -871,7 +921,11 @@ Item {
         var verb = isMove ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
         return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
       })
-      runAction(cmds.join(" && "))
+      var busyVerb = isMove ? "Moving " : "Copying "
+      var busyLabel = pairs.length === 1
+        ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
+        : busyVerb + pairs.length + " items…"
+      runAction(cmds.join(" && "), busyLabel)
       if (isMove) {
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
@@ -908,7 +962,7 @@ Item {
 
   function toggleHidden() {
     root.showHidden = !root.showHidden
-    list.contentY = 0
+    list.contentY = list.originY
     root.refresh()
   }
 
@@ -918,16 +972,17 @@ Item {
 
   function startSearch() {
     root.creatingFolder = false
+    root.creatingFile = false
     root.searching = true
     root.searchQuery = ""
-    list.contentY = 0
+    list.contentY = list.originY
   }
 
   function exitSearch() {
     root.searching = false
     root.searchQuery = ""
     root.deepSearchRoot = ""
-    list.contentY = 0
+    list.contentY = list.originY
     root.refresh()
     root.selectOnly(-1)
   }
@@ -935,7 +990,7 @@ Item {
   function runDeepSearch() {
     if (!root.searchQuery) return
     root.deepSearchRoot = root.currentPath
-    list.contentY = 0
+    list.contentY = list.originY
     deepSearchProc.command = [root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"]
     deepSearchProc.running = true
   }
@@ -958,6 +1013,7 @@ Item {
     var entry = root.selectedIndices.length === 1 ? root.visibleEntries[root.selectedIndex] : null
     var cmds = [
       { label: "New folder", run: function () { root.startNewFolder() } },
+      { label: "New file", run: function () { root.startNewFile() } },
       { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
       { label: "Copy", enabled: hasSelection, run: function () { root.copySelected() } },
       { label: "Cut", enabled: hasSelection, run: function () { root.cutSelected() } },
@@ -979,7 +1035,8 @@ Item {
       { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
       { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
       { label: "Permissions...", enabled: !!entry, run: function () { if (entry) root.startChmod(entry) } },
-      { label: "Properties", enabled: !!entry, run: function () { if (entry) root.showProperties(entry) } }
+      { label: "Make link", enabled: !!entry, run: function () { if (entry) root.makeLinkFor(entry) } },
+      { label: "Properties", enabled: hasSelection, run: function () { root.showPropertiesForSelection() } }
     ]
     if (root.currentPath === root.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
@@ -1136,8 +1193,40 @@ Item {
     runAction("chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, root.chmodEntry)))
   }
 
+  function showPropertiesForSelection() {
+    var entries = root.selectedEntries()
+    if (entries.length === 0) return
+    if (entries.length === 1) { root.showProperties(entries[0]); return }
+    root.propertiesMulti = true
+    root.propertiesEntry = null
+    root.propertiesCount = entries.length
+    root.propertiesSize = ""
+    root.propertiesSizeLoading = true
+    root.propertiesPerms = ""
+    root.propertiesOwner = ""
+    root.propertiesMtime = ""
+    root.propertiesOpen = true
+    var quoted = entries.map(function (e) {
+      return Util.shellQuote(root.joinPath(root.currentPath, e.name))
+    }).join(" ")
+    propertiesDuProc.command = ["bash", "-c", "du -shc -- " + quoted + " | tail -n1"]
+    propertiesDuProc.running = true
+  }
+
+  function makeLinkFor(entry) {
+    if (!entry) return
+    var target = root.joinPath(root.currentPath, entry.name)
+    var linkName = "Link to " + entry.name
+    var linkPath = root.joinPath(root.currentPath, linkName)
+    runAction("ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath))
+    root.pushUndo("make link \"" + linkName + "\"", function () {
+      root.runAction("rm -- " + Util.shellQuote(linkPath))
+    })
+  }
+
   function showProperties(entry) {
     if (!entry) return
+    root.propertiesMulti = false
     var path = root.joinPath(root.currentPath, entry.name)
     root.propertiesEntry = entry
     root.propertiesSize = entry.type === "dir" ? "" : root.formatSize(entry.size)
@@ -1200,8 +1289,8 @@ Item {
       if (root.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
       }
+      actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
       actions.push({ label: "Permissions...", action: function () { root.startChmod(entries[0]) } })
-      actions.push({ label: "Properties", action: function () { root.showProperties(entries[0]) } })
     } else {
       actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
     }
@@ -1210,6 +1299,7 @@ Item {
     if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
     actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
+    actions.push({ label: "Properties" + suffix, action: function () { root.showPropertiesForSelection() } })
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
     return actions
   }
@@ -1220,6 +1310,7 @@ Item {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else {
       actions.push({ label: "New folder", action: function () { root.startNewFolder() } })
+      actions.push({ label: "New file", action: function () { root.startNewFile() } })
       actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
     }
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
@@ -1283,6 +1374,16 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         root.entries = root.sortEntries(root.parseEntries(text))
+        // El array de arriba es un objeto nuevo, no una mutación del
+        // anterior -- QML/Qt no siempre reancla bien el origen interno de
+        // ListView (originY) al reemplazar el modelo entero así, sobre todo
+        // si la lista anterior era más corta. `list.contentY = 0` (puesto
+        // ANTES de lanzar este proceso, en toggleHidden/navigateTo/etc) no
+        // basta porque corre contra el modelo VIEJO -- esto es lo que
+        // realmente deja el hueco arriba del todo. positionViewAtBeginning()
+        // es la forma correcta de QML de resetear origen+contentY juntos,
+        // justo cuando el modelo nuevo ya está puesto.
+        list.positionViewAtBeginning()
         root.loaded = true
         var selectName = root.pendingSelectName
         root.pendingSelectName = ""
@@ -1313,6 +1414,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         root.entries = root.sortEntries(root.parseEntries(text))
+        list.positionViewAtBeginning()
         root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }
     }
@@ -1398,7 +1500,11 @@ Item {
 
   Process {
     id: actionProc
-    onExited: root.refresh()
+    onExited: {
+      root.actionBusy = false
+      root.actionLabel = ""
+      root.refresh()
+    }
   }
 
   Process {
@@ -1984,6 +2090,38 @@ Item {
           }
 
           Row {
+            id: newFileRow
+            visible: root.creatingFile
+            width: parent.width
+            height: Style.spacing.controlHeight
+            spacing: Style.spacing.controlGap
+
+            TextField {
+              id: newFileField
+              width: parent.width - 160
+              anchors.verticalCenter: parent.verticalCenter
+              placeholderText: "New file name…"
+              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+              Keys.onPressed: function (event) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                  root.commitNewFile(text)
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Escape) {
+                  root.creatingFile = false
+                  event.accepted = true
+                }
+              }
+            }
+
+            Button {
+              text: "Create"
+              bordered: true
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.commitNewFile(newFileField.text)
+            }
+          }
+
+          Row {
             id: searchRow
             visible: root.searching
             width: parent.width
@@ -2038,8 +2176,9 @@ Item {
             height: parent.height - navRow.height - Style.spacing.hairline
               - (tabBar.visible ? tabBar.height + mainColumn.spacing : 0)
               - (root.creatingFolder ? newFolderRow.height + mainColumn.spacing : 0)
+              - (root.creatingFile ? newFileRow.height + mainColumn.spacing : 0)
               - (root.searching ? searchRow.height + mainColumn.spacing : 0)
-              - statusText.height - mainColumn.spacing * (3 + (tabBar.visible ? 1 : 0) + (root.creatingFolder || root.searching ? 1 : 0))
+              - statusText.height - mainColumn.spacing * (3 + (tabBar.visible ? 1 : 0) + (root.creatingFolder || root.creatingFile || root.searching ? 1 : 0))
 
             MouseArea {
               // Detrás de la lista: clic derecho en hueco vacío -> menú contextual general.
@@ -2090,8 +2229,14 @@ Item {
                 var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
                 wheelAccumulator = step.remainder
                 if (step.steps === 0) return
-                var maxY = Math.max(0, list.contentHeight - list.height)
-                list.contentY = Math.max(0, Math.min(maxY, list.contentY - step.steps * 60))
+                // El suelo es list.originY, NO 0 -- ListView puede desplazar
+                // su origen con el reciclado de delegados (visto en vivo:
+                // originY llegó a valer cientos de píxeles tras scrollear
+                // mucho), y forzar contentY a 0 en ese caso deja justo el
+                // hueco vacío arriba del todo que reportaba el usuario.
+                var minY = list.originY
+                var maxY = minY + Math.max(0, list.contentHeight - list.height)
+                list.contentY = Math.max(minY, Math.min(maxY, list.contentY - step.steps * 60))
               }
             }
 
@@ -2144,6 +2289,17 @@ Item {
               // Flickable ata la rueda a esta misma propiedad, hay que
               // reimplementarla a mano (ver wheelArea más abajo).
               interactive: false
+              // Sin esto (default DragAndOvershootBounds), cualquier cambio
+              // en contentHeight mientras contentY está en el borde (el
+              // footer se recalcula constantemente a partir de
+              // measuredRowHeight) dispara una animación de rebote propia de
+              // Flickable que puede pasar a negativo antes de asentarse. Si
+              // el siguiente evento de rueda llega a mitad de esa animación,
+              // el contentY que se lee ya no es el real y el rebote se
+              // reinicia sobre un punto erróneo -- eso es lo que hacía crecer
+              // el hueco de arriba en cada ciclo de scroll. Con esto, el
+              // límite es duro e inmediato, sin animación que interrumpir.
+              boundsBehavior: Flickable.StopAtBounds
 
               // Hueco de abajo para el lazo. Un MouseArea suelto detrás de
               // la ListView (como el de arriba) NO sirve aquí: al ser
@@ -2158,14 +2314,19 @@ Item {
               footer: Item {
                 id: listFooter
                 width: list.width
-                // Rellena justo el hueco que quede bajo la última fila, a
-                // partir de root.measuredRowHeight (no de list.contentHeight
-                // -- confirmado bucle de binding real con eso, ver arriba).
-                // Sin medida todavía (carpeta vacía, primer frame): llena
-                // toda la vista, que es lo correcto para 0 ficheros.
-                height: root.measuredRowHeight > 0
-                  ? Math.max(0, list.height - root.visibleEntries.length * root.measuredRowHeight)
-                  : list.height
+                // Altura FIJA a propósito -- nada que dependa de
+                // measuredRowHeight/contentHeight/visibleEntries.length, ni
+                // de ninguna otra propiedad que cambie durante el scroll. El
+                // footer es contenido propio de la ListView (participa en su
+                // recolocación/reciclado de delegados); atarlo a algo que se
+                // recalcula mientras se hace scroll es lo que dejaba
+                // `list.originY` desincronizado de 0 -- confirmado con un
+                // lector de depuración (originY llegó a valer 210 tras
+                // scrollear arriba/abajo varias veces), y eso es exactamente
+                // el hueco que aparecía arriba del todo. Con un número fijo
+                // el footer nunca se recalcula, así que no hay nada que
+                // pueda perturbar el origen.
+                height: 400
 
                 MouseArea {
                   anchors.fill: parent
@@ -2199,10 +2360,11 @@ Item {
                 running: root.marqueeActive && list.contentHeight > list.height
                   && (root.marqueeViewportY < 32 || root.marqueeViewportY > list.height - 32)
                 onTriggered: {
-                  var maxY = Math.max(0, list.contentHeight - list.height)
+                  var minY = list.originY
+                  var maxY = minY + Math.max(0, list.contentHeight - list.height)
                   var step = 18
                   if (root.marqueeViewportY < 32) {
-                    list.contentY = Math.max(0, list.contentY - step)
+                    list.contentY = Math.max(minY, list.contentY - step)
                     root.marqueeCurrentY = list.contentY
                   } else {
                     list.contentY = Math.min(maxY, list.contentY + step)
@@ -2242,7 +2404,7 @@ Item {
                   if (event.key === Qt.Key_Escape) { root.propertiesOpen = false; event.accepted = true }
                   return
                 }
-                if (root.creatingFolder || root.renamingIndex >= 0 || root.editingPath || root.searching) return
+                if (root.creatingFolder || root.creatingFile || root.renamingIndex >= 0 || root.editingPath || root.searching) return
 
                 var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 
@@ -2340,7 +2502,18 @@ Item {
                 required property int index
                 width: list.width
                 implicitHeight: rowContent.implicitHeight + Style.spacing.sm * 2
-                onHeightChanged: root.measuredRowHeight = height
+                // Al reciclar delegados (recrea filas al hacer scroll),
+                // implicitHeight puede pasar por 0 durante un frame antes de
+                // que el layout del texto se asiente -- si se acepta ese
+                // valor de paso, measuredRowHeight (compartido por todas las
+                // filas) queda mal un instante, el footer recalcula su
+                // altura, contentHeight cambia en pleno scroll y eso es justo
+                // lo que hacía crecer el hueco de arriba en cada ciclo. Todas
+                // las filas miden lo mismo, así que quedarse con el máximo
+                // visto es seguro y nunca acepta un valor transitorio menor.
+                onHeightChanged: {
+                  if (height > root.measuredRowHeight) root.measuredRowHeight = height
+                }
                 foreground: Color.menu.text
                 accent: Color.accent
                 hasCursor: mouseArea.containsMouse
@@ -2967,7 +3140,9 @@ Item {
 
           Text {
             width: parent.width
-            text: root.propertiesEntry ? root.propertiesEntry.name : ""
+            text: root.propertiesMulti
+              ? root.propertiesCount + " items selected"
+              : (root.propertiesEntry ? root.propertiesEntry.name : "")
             font.pixelSize: Style.font.title
             font.family: Style.font.family
             font.bold: true
@@ -2978,13 +3153,18 @@ Item {
           PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
           Repeater {
-            model: [
-              { label: "Type", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Folder" : "File") : "" },
-              { label: "Size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize },
-              { label: "Permissions", value: root.propertiesPerms },
-              { label: "Owner", value: root.propertiesOwner },
-              { label: "Modified", value: root.propertiesMtime }
-            ]
+            model: root.propertiesMulti
+              ? [
+                  { label: "Items", value: String(root.propertiesCount) },
+                  { label: "Total size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize }
+                ]
+              : [
+                  { label: "Type", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Folder" : "File") : "" },
+                  { label: "Size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize },
+                  { label: "Permissions", value: root.propertiesPerms },
+                  { label: "Owner", value: root.propertiesOwner },
+                  { label: "Modified", value: root.propertiesMtime }
+                ]
 
             Row {
               required property var modelData
@@ -3017,6 +3197,60 @@ Item {
             onClicked: root.propertiesOpen = false
           }
         }
+      }
+
+      // ---------- Copiar/mover en curso ----------
+      // No bloquea el resto de la ventana (sin MouseArea de fondo a pantalla
+      // completa) -- cp/mv no reportan progreso real, así que esto es solo
+      // "sigue vivo" (puntos animados) + Cancel, no una barra de porcentaje.
+      BorderSurface {
+        id: actionBusyCard
+        visible: root.actionBusy
+        width: Math.min(parent.width - 80, 420)
+        height: actionBusyRow.implicitHeight + contentTopInset + contentBottomInset
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: Style.spacing.lg
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        z: 25
+
+        Row {
+          id: actionBusyRow
+          anchors.fill: parent
+          anchors.topMargin: actionBusyCard.contentTopInset
+          anchors.rightMargin: actionBusyCard.contentRightInset
+          anchors.bottomMargin: actionBusyCard.contentBottomInset
+          anchors.leftMargin: actionBusyCard.contentLeftInset
+          spacing: Style.spacing.sm
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - cancelActionButton.width - parent.spacing
+            text: root.actionLabel + root.actionBusyDots
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            elide: Text.ElideRight
+          }
+
+          Button {
+            id: cancelActionButton
+            text: "Cancel"
+            bordered: true
+            anchors.verticalCenter: parent.verticalCenter
+            onClicked: root.cancelAction()
+          }
+        }
+      }
+
+      Timer {
+        running: root.actionBusy
+        repeat: true
+        interval: 400
+        onTriggered: root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
       }
 
       // ---------- Abrir con... ----------

@@ -15,9 +15,9 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Command palette (`:` or `Ctrl+P`) for every action, fuzzy-searchable.
 - Tabs, editable bookmarks, mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
 - Sort by name/size/date/type — a key cycles it, no dropdown.
-- Rename, new folder, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing).
-- Undo (`Ctrl+Z`) for rename, new folder, delete, and move.
-- Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod, a read-only Properties panel (real folder size via `du`, permissions, owner, dates).
+- Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing) and a "still working" indicator with Cancel for copy/move.
+- Undo (`Ctrl+Z`) for rename, new folder, new file, make link, delete, and move.
+- Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod, a read-only Properties panel (real folder size via `du`, permissions, owner, dates — or combined item count and total size for a multi-selection).
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
 - Recursive search, "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
