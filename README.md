@@ -12,6 +12,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 
 - Tiled, real window (`FloatingWindow`) — not a modal overlay, not layer-shell. Lives alongside your terminal/editor like a normal app.
 - Vim-style keyboard navigation (`j`/`k`, `gg`/`G`, `h`/`l`), plus arrow keys.
+- Basic screen-reader support — `Accessible.role`/`Accessible.name` on the file list, sidebar entries, nav buttons, text inputs, and dialog buttons. Not exhaustive (context menus, the palette results list, and a few dialog internals still don't have it) but the main flows are covered.
 - Command palette (`:` or `Ctrl+P`) for every action, fuzzy-searchable.
 - Tabs shown as side-by-side panels — every open tab is visible at once, separated by a hairline divider, not a one-at-a-time switcher. Whichever panel has the mouse over it is the active one: that's where keyboard shortcuts, selection, and the context menu apply.
 - Editable bookmarks — folders or individual files, opening a file bookmark jumps to its folder with it selected.

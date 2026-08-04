@@ -2904,6 +2904,9 @@ Item {
               accent: Color.accent
               hasCursor: bookmarkMouse.containsMouse
               current: isCurrent || root.dropHoverPath === modelData.path
+              Accessible.role: Accessible.ListItem
+              Accessible.name: "Bookmark, " + modelData.label
+              Accessible.selected: isCurrent
 
               DropArea {
                 // Deshabilitado para marcadores de fichero -- soltar
@@ -3003,6 +3006,8 @@ Item {
               foreground: Color.menu.text
               accent: Color.accent
               hasCursor: recentMouse.containsMouse
+              Accessible.role: Accessible.ListItem
+              Accessible.name: "Recent file, " + modelData.name
 
               OpticalGlyph {
                 id: recentIcon
@@ -3089,6 +3094,9 @@ Item {
               accent: Color.accent
               hasCursor: mountMouse.containsMouse
               current: isCurrent || root.dropHoverPath === modelData.path
+              Accessible.role: Accessible.ListItem
+              Accessible.name: modelData.label + (modelData.mounted ? "" : ", not mounted")
+              Accessible.selected: isCurrent
 
               DropArea {
                 // Solo unidades ya montadas -- soltar en una sin montar no
@@ -3197,6 +3205,9 @@ Item {
               accent: Color.accent
               hasCursor: networkMountMouse.containsMouse
               current: isCurrent
+              Accessible.role: Accessible.ListItem
+              Accessible.name: "Network location, " + modelData.label
+              Accessible.selected: isCurrent
 
               OpticalGlyph {
                 id: networkMountIcon
@@ -3247,6 +3258,8 @@ Item {
             foreground: Color.menu.text
             accent: Color.accent
             hasCursor: connectServerMouse.containsMouse
+            Accessible.role: Accessible.Button
+            Accessible.name: "Connect to server"
 
             OpticalGlyph {
               id: connectServerIcon
@@ -3433,6 +3446,8 @@ Item {
                     height: Style.spacing.controlHeight
                     foreground: (bgPanel.modelData.historyIndex || 0) <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
                     onClicked: root.navTabBack(bgPanel.index)
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Back"
 
                     OpticalGlyph {
                       anchors.centerIn: parent
@@ -3450,6 +3465,8 @@ Item {
                     readonly property var hist: bgPanel.modelData.history || [bgPanel.modelData.path]
                     foreground: (bgPanel.modelData.historyIndex || 0) >= hist.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
                     onClicked: root.navTabForward(bgPanel.index)
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Forward"
 
                     OpticalGlyph {
                       anchors.centerIn: parent
@@ -3465,6 +3482,8 @@ Item {
                     width: Style.spacing.controlHeight
                     height: Style.spacing.controlHeight
                     foreground: bgPanel.modelData.path === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
+                    Accessible.role: Accessible.Button
+                    Accessible.name: "Up"
                     onClicked: {
                       var p = bgPanel.modelData.path
                       var idx = p.lastIndexOf("/")
@@ -3789,6 +3808,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.navHistoryIndex <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
               onClicked: root.navBack()
+              Accessible.role: Accessible.Button
+              Accessible.name: "Back"
 
               OpticalGlyph {
                 anchors.centerIn: parent
@@ -3806,6 +3827,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.navHistoryIndex >= root.navHistory.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
               onClicked: root.navForward()
+              Accessible.role: Accessible.Button
+              Accessible.name: "Forward"
 
               OpticalGlyph {
                 anchors.centerIn: parent
@@ -3823,6 +3846,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               foreground: root.currentPath === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
               onClicked: root.goUp()
+              Accessible.role: Accessible.Button
+              Accessible.name: "Up"
 
               OpticalGlyph {
                 anchors.centerIn: parent
@@ -3891,6 +3916,8 @@ Item {
                 visible: root.editingPath
                 anchors.fill: parent
                 verticalPadding: 2
+                Accessible.role: Accessible.EditableText
+                Accessible.name: "Path"
                 onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
                 Keys.onPressed: function (event) {
                   if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -3917,6 +3944,8 @@ Item {
               width: parent.width - 160
               anchors.verticalCenter: parent.verticalCenter
               placeholderText: "New folder name…"
+              Accessible.role: Accessible.EditableText
+              Accessible.name: "New folder name"
               onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -3933,6 +3962,8 @@ Item {
               text: "Create"
               bordered: true
               anchors.verticalCenter: parent.verticalCenter
+              Accessible.role: Accessible.Button
+              Accessible.name: "Create folder"
               onClicked: root.commitNewFolder(newFolderField.text)
             }
           }
@@ -3949,6 +3980,8 @@ Item {
               width: parent.width - 160
               anchors.verticalCenter: parent.verticalCenter
               placeholderText: "New file name…"
+              Accessible.role: Accessible.EditableText
+              Accessible.name: "New file name"
               onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -3965,6 +3998,8 @@ Item {
               text: "Create"
               bordered: true
               anchors.verticalCenter: parent.verticalCenter
+              Accessible.role: Accessible.Button
+              Accessible.name: "Create file"
               onClicked: root.commitNewFile(newFileField.text)
             }
           }
@@ -3999,6 +4034,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               verticalPadding: 2
               placeholderText: "Search here… (Ctrl+Enter searches subfolders)"
+              Accessible.role: Accessible.EditableText
+              Accessible.name: "Search"
               text: root.searchQuery
               onTextChanged: root.searchQuery = text
               onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
@@ -4415,6 +4452,9 @@ Item {
                 required property int index
                 width: list.width
                 implicitHeight: rowContent.implicitHeight + Style.spacing.sm * 2
+                Accessible.role: Accessible.ListItem
+                Accessible.name: modelData.name + (modelData.type === "dir" ? ", folder" : ", file")
+                Accessible.selected: root.isSelected(index)
                 // Al reciclar delegados (recrea filas al hacer scroll),
                 // implicitHeight puede pasar por 0 durante un frame antes de
                 // que el layout del texto se asiente -- si se acepta ese
@@ -4525,6 +4565,8 @@ Item {
                   TextField {
                     id: renameField
                     visible: root.renamingIndex === index
+                    Accessible.role: Accessible.EditableText
+                    Accessible.name: "Rename"
                     anchors.left: thumbSlot.right
                     anchors.leftMargin: Style.spacing.rowGap
                     anchors.right: parent.right
@@ -5015,6 +5057,8 @@ Item {
           TextField {
             id: bulkRenameField
             width: parent.width
+            Accessible.role: Accessible.EditableText
+            Accessible.name: "Bulk rename pattern"
             text: root.bulkRenamePattern
             onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
             Keys.onPressed: function (event) {
@@ -5032,6 +5076,8 @@ Item {
           Button {
             text: "Rename"
             bordered: true
+            Accessible.role: Accessible.Button
+            Accessible.name: text
             onClicked: { root.bulkRenamePattern = bulkRenameField.text; root.commitBulkRename() }
           }
         }
@@ -5091,6 +5137,8 @@ Item {
           TextField {
             id: connectServerField
             width: parent.width
+            Accessible.role: Accessible.EditableText
+            Accessible.name: "Server address"
             text: root.connectServerUri
             enabled: !root.networkConnecting
             onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
@@ -5124,12 +5172,16 @@ Item {
               text: root.networkConnecting ? "Connecting…" : "Connect"
               bordered: true
               enabled: !root.networkConnecting
+              Accessible.role: Accessible.Button
+              Accessible.name: text
               onClicked: { root.connectServerUri = connectServerField.text; root.commitConnectToServer() }
             }
 
             Button {
               text: "Cancel"
               visible: root.networkConnecting
+              Accessible.role: Accessible.Button
+              Accessible.name: text
               onClicked: root.cancelNetworkConnect()
             }
           }
@@ -5299,6 +5351,8 @@ Item {
           Button {
             text: "Apply"
             bordered: true
+            Accessible.role: Accessible.Button
+            Accessible.name: text
             onClicked: root.commitChmod(root.chmodMode)
           }
         }
@@ -5392,6 +5446,8 @@ Item {
           Button {
             text: "Close"
             bordered: true
+            Accessible.role: Accessible.Button
+            Accessible.name: text
             onClicked: root.propertiesOpen = false
           }
         }
@@ -5439,6 +5495,8 @@ Item {
             text: "Cancel"
             bordered: true
             anchors.verticalCenter: parent.verticalCenter
+            Accessible.role: Accessible.Button
+            Accessible.name: text
             onClicked: root.cancelAction()
           }
         }
@@ -5733,9 +5791,9 @@ Item {
             width: parent.width
             spacing: Style.spacing.xs
 
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; onClicked: root.runPaste("overwrite") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; onClicked: root.runPaste("skip") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; onClicked: root.cancelPasteConflict() }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runPaste("overwrite") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runPaste("skip") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelPasteConflict() }
           }
         }
       }
@@ -5788,9 +5846,9 @@ Item {
             width: parent.width
             spacing: Style.spacing.xs
 
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; onClicked: root.runDrop("overwrite") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; onClicked: root.runDrop("skip") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; onClicked: root.cancelDropConflict() }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runDrop("overwrite") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runDrop("skip") }
+            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelDropConflict() }
           }
         }
       }
@@ -5831,6 +5889,8 @@ Item {
           TextField {
             id: paletteField
             width: parent.width
+            Accessible.role: Accessible.EditableText
+            Accessible.name: "Command palette"
             placeholderText: "Type a command…"
             text: root.paletteQuery
             onTextChanged: { root.paletteQuery = text; root.paletteIndex = 0 }
