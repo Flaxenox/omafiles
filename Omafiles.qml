@@ -267,6 +267,14 @@ Item {
   // nada que ofrecer sobre una selección de solo ficheros).
   property bool chmodHasDir: false
   property bool chmodRecursive: false
+  // { "<nombre>": "<modo octal previo>" }, capturado por chmodStatProc al
+  // abrir el diálogo -- para poder deshacer. Restaura solo el modo del
+  // propio ítem seleccionado, NO el de su contenido si se aplicó con
+  // -R -- capturar el árbol entero antes de cambiar nada sería mucho
+  // más caro (find+stat recursivo) para lo que pedía el hueco real
+  // (chmod era, junto a bulk rename, la única acción de riesgo sin
+  // ningún undo).
+  property var chmodOriginalModes: ({})
 
   property bool propertiesOpen: false
   property var propertiesEntry: null
@@ -2116,11 +2124,23 @@ Item {
     root.pendingBulkRename = null
     root.bulkRenameConflictOpen = false
     if (!pairs) return
-    var cmds = pairs.filter(function (p) { return p.newName !== p.oldName }).map(function (p) {
+    // Antes bulk rename era la única operación de riesgo (junto a chmod)
+    // sin ningún undo -- un patrón {n}/{name}/{ext} mal escrito podía
+    // renombrar decenas de ficheros de golpe sin red de seguridad.
+    var toRename = pairs.filter(function (p) { return p.newName !== p.oldName })
+    var cmds = toRename.map(function (p) {
       return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
     })
     if (cmds.length === 0) return
-    runAction(root.chainCmds(cmds), "Renaming " + cmds.length + " items…")
+    runAction(root.chainCmds(cmds), "Renaming " + cmds.length + " items…", function () {
+      var label = toRename.length === 1 ? "rename \"" + toRename[0].oldName + "\"" : "bulk rename " + toRename.length + " items"
+      root.pushUndo(label, function () {
+        var undoCmds = toRename.map(function (p) {
+          return "mv -n -- " + Util.shellQuote(p.newPath) + " " + Util.shellQuote(p.oldPath)
+        })
+        return root.runAction(root.chainCmds(undoCmds))
+      })
+    })
   }
 
   function cancelPendingBulkRename() {
@@ -2156,7 +2176,22 @@ Item {
     var label = root.chmodNames.length === 1
       ? "Setting permissions for \"" + root.chmodNames[0] + "\"…"
       : "Setting permissions for " + root.chmodNames.length + " items…"
-    runAction(root.chainCmds(cmds), label)
+    // chmod era, junto a bulk rename, la única acción de riesgo real
+    // (más aún con -R) sin ningún undo. Restaura el modo original de
+    // cada ítem seleccionado -- NO el de su contenido si se aplicó
+    // recursivo, ver el comentario de chmodOriginalModes.
+    var names = root.chmodNames
+    var originalModes = root.chmodOriginalModes
+    runAction(root.chainCmds(cmds), label, function () {
+      var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
+      root.pushUndo(undoLabel, function () {
+        var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
+          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
+        })
+        if (undoCmds.length === 0) return false
+        return root.runAction(root.chainCmds(undoCmds))
+      })
+    })
   }
 
   // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
@@ -3018,6 +3053,12 @@ Item {
         var allSame = lines.every(function (l) { return l === lines[0] })
         root.chmodMixed = !allSame
         root.chmodMode = allSame ? lines[0] : ""
+        // stat conserva el orden de los argumentos -- lines[i] es el modo
+        // de root.chmodNames[i]. Guardado para poder deshacer (ver
+        // commitChmod/chmodOriginalModes).
+        var orig = {}
+        for (var i = 0; i < root.chmodNames.length && i < lines.length; i++) orig[root.chmodNames[i]] = lines[i]
+        root.chmodOriginalModes = orig
       }
     }
   }
