@@ -305,6 +305,18 @@ Item {
   // Metadatos de audio (ffprobe): duración/formato/bitrate/etc, mismo
   // formato { label, value } que ya usa el Repeater de Properties.
   property var previewAudioInfo: []
+  // Guard de carrera, mismo mecanismo que propertiesRequestId: loadPreview()
+  // sube este contador cada vez que se previsualiza un ítem nuevo y anota
+  // ese número como "dueño" de cada proceso que lanza (texto/resaltado/
+  // PDF/audio). Sin esto, seleccionar rápido un fichero A (con highlight-
+  // preview.sh/pdftoppm/ffprobe lento) y pasar a un fichero B antes de que
+  // termine dejaba que el resultado de A, al llegar tarde, se pintara
+  // encima de la previsualización de B.
+  property int previewRequestId: 0
+  property int _previewTextOwner: -1
+  property int _previewHighlightOwner: -1
+  property int _previewPdfOwner: -1
+  property int _previewAudioOwner: -1
 
   property string trashDir: root.homeDir + "/.local/share/Trash/files"
   // { "<nombre en Trash/files>": { origPath, epoch } } -- leído de
@@ -666,7 +678,7 @@ Item {
     // extensión, como en la lista principal, en vez de adivinar por
     // nombre de etiqueta (eso solo tiene sentido para las carpetas
     // especiales de abajo).
-    if (modelData.type === "file") return root.iconFor({ type: "file", name: modelData.path })
+    if (modelData.type === "file") return root.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
     var label = modelData.label.toLowerCase()
     if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return root.iconFor({ name: "x.jpg" })
     if (label.indexOf("video") >= 0) return root.iconFor({ name: "x.mp4" })
@@ -1335,6 +1347,14 @@ Item {
   function commitRename(newName) {
     var index = root.renamingIndex
     root.renamingIndex = -1
+    // Defensa en profundidad: startRename() ya bloquea EMPEZAR un
+    // renombrado dentro de un archivo, pero no cubre el caso de empezar
+    // a renombrar FUERA, no confirmar, y entrar en un .zip mientras
+    // tanto -- renamingIndex se queda apuntando a un índice que ahora
+    // pertenece a una entrada del archivo, y sin este guard commitRename
+    // ejecutaría mv sobre currentPath/<nombre-del-zip>, que puede
+    // coincidir por casualidad con un fichero real.
+    if (root.inArchive) return
     if (index < 0 || index >= root.visibleEntries.length) return
     var oldName = root.visibleEntries[index].name
     newName = newName.trim()
@@ -1750,6 +1770,21 @@ Item {
         cmds.push({ label: "Open in new tab", run: function () { root.openInNewTab(fullPath) } })
       }
     }
+    // Bug real corregido aquí: a diferencia de itemActions() (menú
+    // contextual), esta lista no tenía NINGÚN filtro para root.inArchive
+    // -- "Add to bookmarks"/"Open in new tab" no tienen guard propio (a
+    // diferencia de rename/copy/paste/etc., que sí se auto-protegen
+    // dentro de su función) y mezclaban la carpeta real con el nombre de
+    // un elemento DENTRO del archivo, escribiendo una ruta rota a
+    // bookmarks.json sin avisar. El resto de la lista se filtra aquí
+    // también, no porque fuera a romper nada (esas funciones ya son
+    // no-op dentro de un archivo) sino para no enseñar entradas muertas.
+    if (root.inArchive) {
+      var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Paste", "Delete",
+        "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
+        "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Empty trash", "Restore"]
+      cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
+    }
     return cmds
   }
 
@@ -1790,6 +1825,8 @@ Item {
 
   function loadPreview(entry) {
     if (!entry || entry.type === "dir") return
+    root.previewRequestId += 1
+    var reqId = root.previewRequestId
     root.previewEntry = entry
     root.previewOpen = true
     root.previewText = ""
@@ -1800,6 +1837,7 @@ Item {
     var path = root.joinPath(root.currentPath, entry.name)
     root.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (root.previewIsText && !root.isImage(entry)) {
+      root._previewTextOwner = reqId
       previewProc.command = ["head", "-c", "4000", path]
       previewProc.running = true
       // Resaltado de sintaxis SOLO para extensiones de código conocidas
@@ -1810,6 +1848,7 @@ Item {
       // queda vacío y el texto plano ya cargado sigue siendo lo que se
       // ve, sin parpadeo ni hueco en blanco de por medio.
       if (root.codeExt.indexOf(ext) >= 0) {
+        root._previewHighlightOwner = reqId
         highlightPreviewProc.command = [root.pluginDir + "/highlight-preview.sh", path, "4000", ext]
         highlightPreviewProc.running = true
       }
@@ -1822,6 +1861,7 @@ Item {
       var outDir = root.homeDir + "/.cache/omafiles/pdf-preview/" + root.simpleHash(path + "|" + entry.mtime)
       var outFile = outDir + "/preview.png"
       pdfPreviewProc.outFile = outFile
+      root._previewPdfOwner = reqId
       // "page-*.png" en vez de asumir "page-1.png" -- pdftoppm añade
       // ceros de relleno al número de página según hagan falta para el
       // total de páginas del PDF (de 10 páginas en adelante ya sería
@@ -1834,6 +1874,7 @@ Item {
       pdfPreviewProc.running = true
     }
     if (root.isAudio(entry)) {
+      root._previewAudioOwner = reqId
       audioInfoProc.command = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path]
       audioInfoProc.running = true
     }
@@ -2218,7 +2259,10 @@ Item {
     var actions = []
     if (root.currentPath === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
-    } else {
+    } else if (!root.inArchive) {
+      // Dentro de un archivo estas ya son no-op (cada función se
+      // protege sola), pero se quitan de aquí para no enseñar entradas
+      // muertas en el menú de hueco vacío.
       actions.push({ label: "New folder", action: function () { root.startNewFolder() } })
       actions.push({ label: "New file", action: function () { root.startNewFile() } })
       actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
@@ -2791,7 +2835,10 @@ Item {
     id: previewProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.previewText = text
+      // Descarta si el usuario ya pasó a otro ítem mientras "head"
+      // estaba en vuelo -- mismo guard que propertiesDuProc, ver
+      // previewRequestId.
+      onStreamFinished: if (root._previewTextOwner === root.previewRequestId) root.previewText = text
     }
   }
 
@@ -2802,7 +2849,7 @@ Item {
       // Vacío/fallido -> previewHighlighted se queda "" y la UI cae al
       // Text plano (previewText) sin más -- ver el "visible:" de cada
       // bloque en el panel de previsualización.
-      onStreamFinished: root.previewHighlighted = text
+      onStreamFinished: if (root._previewHighlightOwner === root.previewRequestId) root.previewHighlighted = text
     }
   }
 
@@ -2810,7 +2857,7 @@ Item {
     id: pdfPreviewProc
     property string outFile: ""
     onExited: function (exitCode) {
-      if (exitCode === 0) root.previewPdfImage = pdfPreviewProc.outFile
+      if (exitCode === 0 && root._previewPdfOwner === root.previewRequestId) root.previewPdfImage = pdfPreviewProc.outFile
     }
   }
 
@@ -2818,7 +2865,7 @@ Item {
     id: audioInfoProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.previewAudioInfo = root.parseAudioInfo(text)
+      onStreamFinished: if (root._previewAudioOwner === root.previewRequestId) root.previewAudioInfo = root.parseAudioInfo(text)
     }
   }
 
@@ -4731,7 +4778,12 @@ Item {
                     else if (mouse.modifiers & Qt.ShiftModifier) root.selectRange(index)
                     else root.selectOnly(index)
                   }
-                  onDoubleClicked: root.enter(modelData)
+                  // hasPendingEdit: no entrar (y sobre todo no entrar en
+                  // un archivo comprimido) mientras hay un renombrado/
+                  // nueva-carpeta/nuevo-fichero sin confirmar en esta
+                  // misma fila u otra -- ver commitRename() para el bug
+                  // real que esto evita.
+                  onDoubleClicked: if (!root.hasPendingEdit) root.enter(modelData)
                 }
 
                 // Proxy invisible que MouseArea.drag mueve -- lo único que
