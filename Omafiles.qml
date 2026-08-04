@@ -291,6 +291,14 @@ Item {
   property bool previewIsText: false
 
   property string trashDir: root.homeDir + "/.local/share/Trash/files"
+  // { "<nombre en Trash/files>": { origPath, epoch } } -- leído de
+  // ~/.local/share/Trash/info/*.trashinfo por trash-info.sh, solo cuando
+  // el panel activo está mostrando la papelera (ver listProc.onStreamFinished
+  // y metaFor()). Antes la papelera se veía como "una carpeta más": el
+  // subtítulo mostraba el mtime propio del fichero (de antes de borrarlo)
+  // como si fuera la fecha de borrado, y no había forma de saber de dónde
+  // venía cada cosa sin mirar el .trashinfo a mano.
+  property var trashInfo: ({})
   property var mounts: []
 
   readonly property var defaultBookmarks: [
@@ -913,8 +921,32 @@ Item {
   // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
   // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
   // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
-  function metaFor(entry) {
+  // basePath: la ruta del panel que está pintando esta fila -- por
+  // defecto root.currentPath (panel activo), pero un panel de fondo debe
+  // pasar la suya propia (bgPanel.modelData.path) o el aviso de "en la
+  // papelera" saldría según la carpeta del panel ACTIVO, no la de este
+  // panel (mismo tipo de bug ya documentado para thumbKeyFor/etc.).
+  function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
+    var atPath = basePath !== undefined ? basePath : root.currentPath
+    if (atPath === root.trashDir) {
+      var parts = []
+      if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
+      // root.trashInfo solo se rellena para la papelera del panel ACTIVO
+      // (ver listProc) -- si este es un panel de fondo mostrando la
+      // papelera, simplemente no hay info extra que añadir todavía; se
+      // degrada a solo el tamaño en vez de mostrar algo incorrecto.
+      var info = root.trashInfo[entry.name]
+      if (info) {
+        var rel = root.relativeTime(info.epoch)
+        parts.push(rel ? "Deleted " + rel : "Deleted")
+        if (info.origPath) {
+          var slash = info.origPath.lastIndexOf("/")
+          parts.push("from " + (slash > 0 ? info.origPath.substring(0, slash) : "/"))
+        }
+      }
+      return parts.join(" · ")
+    }
     var parts = []
     if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
     var rel = root.relativeTime(entry.mtime)
@@ -1868,6 +1900,17 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         root.entries = root.sortEntries(root.parseEntries(text))
+        // Refresca la info de la papelera junto con el listado -- entrar
+        // en Trash/files o borrar/restaurar algo estando ya dentro debe
+        // mantener origen/fecha al día. Se limpia al salir para no dejar
+        // datos obsoletos si se vuelve a entrar más tarde con contenido
+        // distinto.
+        if (root.currentPath === root.trashDir) {
+          trashInfoProc.command = [root.pluginDir + "/trash-info.sh", root.homeDir + "/.local/share/Trash/info"]
+          trashInfoProc.running = true
+        } else if (Object.keys(root.trashInfo).length > 0) {
+          root.trashInfo = ({})
+        }
         // El array de arriba es un objeto nuevo, no una mutación del
         // anterior -- QML/Qt no siempre reancla bien el origen interno de
         // ListView (originY) al reemplazar el modelo entero así, sobre todo
@@ -1899,6 +1942,22 @@ Item {
       else if (exitCode === 3) root.currentPathError = "This folder no longer exists"
       else if (exitCode === 4) root.currentPathError = "Not a folder"
       else if (exitCode !== 0) root.currentPathError = "Couldn't open this folder"
+    }
+  }
+
+  Process {
+    id: trashInfoProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var fields = String(text || "").split("\u0000")
+        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+        var info = {}
+        for (var i = 0; i + 2 < fields.length; i += 3) {
+          info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0) }
+        }
+        root.trashInfo = info
+      }
     }
   }
 
@@ -2843,7 +2902,7 @@ Item {
                         }
 
                         Text {
-                          readonly property string meta: root.metaFor(modelData)
+                          readonly property string meta: root.metaFor(modelData, bgPanel.modelData.path)
                           visible: meta.length > 0
                           width: parent.width
                           text: meta

@@ -17,6 +17,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Editable bookmarks, mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
 - Sort by name/size/date/type — a key cycles it, no dropdown.
 - Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing) and a "still working" indicator with Cancel for copy/move.
+- Trash shows each item's original location and deletion time (read from `.trashinfo`), not just a plain file listing.
 - Undo (`Ctrl+Z`) for rename, new folder, new file, make link, delete, and move.
 - Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod, a read-only Properties panel (real folder size via `du`, permissions, owner, dates — or combined item count and total size for a multi-selection).
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
