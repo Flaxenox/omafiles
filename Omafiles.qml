@@ -499,6 +499,11 @@ Item {
     root.renamingIndex = -1
     root.creatingFolder = false
     root.editingPath = false
+    // list.contentY nunca se corrige solo: si venías desplazado hacia abajo
+    // en la carpeta anterior, esa posición de scroll se queda fija aunque
+    // el listado nuevo no tenga nada ahí -- se ve como un hueco vacío
+    // arriba del todo en vez de las primeras filas.
+    list.contentY = 0
     root.refresh()
   }
 
@@ -903,6 +908,7 @@ Item {
 
   function toggleHidden() {
     root.showHidden = !root.showHidden
+    list.contentY = 0
     root.refresh()
   }
 
@@ -914,12 +920,14 @@ Item {
     root.creatingFolder = false
     root.searching = true
     root.searchQuery = ""
+    list.contentY = 0
   }
 
   function exitSearch() {
     root.searching = false
     root.searchQuery = ""
     root.deepSearchRoot = ""
+    list.contentY = 0
     root.refresh()
     root.selectOnly(-1)
   }
@@ -927,6 +935,7 @@ Item {
   function runDeepSearch() {
     if (!root.searchQuery) return
     root.deepSearchRoot = root.currentPath
+    list.contentY = 0
     deepSearchProc.command = [root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"]
     deepSearchProc.running = true
   }
