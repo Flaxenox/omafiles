@@ -117,15 +117,23 @@ Item {
     root.tabs = next
   }
 
-  // ---------- Deshacer (Ctrl+Z) ----------
-  // Pila simple de acciones reversibles: renombrar, nueva carpeta, borrar
-  // (a la papelera) y mover (cortar+pegar). Copiar/comprimir/chmod/renombrado
-  // en lote se quedan fuera a propósito -- deshacerlos es más ambiguo o
-  // menos crítico que perder por error un fichero renombrado/movido/borrado.
+  // ---------- Deshacer/Rehacer (Ctrl+Z / Ctrl+Shift+Z) ----------
+  // Pila simple de acciones reversibles: renombrar, nueva carpeta/fichero,
+  // borrar (a la papelera), mover (cortar+pegar/arrastrar), renombrado en
+  // lote, chmod y enlace. Copiar/comprimir se quedan fuera a propósito --
+  // deshacerlos es más ambiguo (¿borrar la copia? ¿y si ya se movió/editó?)
+  // que perder por error algo renombrado/movido/borrado/con permisos
+  // cambiados.
   property var undoStack: []
+  // redoFn es opcional -- solo las entradas que lo llevan aparecen en
+  // Ctrl+Shift+Z. Cualquier acción NUEVA (pushUndo de verdad, no un
+  // redo/undo de una ya existente) invalida el redo pendiente, mismo
+  // comportamiento que cualquier editor de texto.
+  property var redoStack: []
 
-  function pushUndo(label, undoFn) {
-    root.undoStack = root.undoStack.concat([{ label: label, undo: undoFn }]).slice(-20)
+  function pushUndo(label, undoFn, redoFn) {
+    root.undoStack = root.undoStack.concat([{ label: label, undo: undoFn, redo: redoFn }]).slice(-20)
+    root.redoStack = []
   }
 
   function undoLast() {
@@ -133,18 +141,38 @@ Item {
     var entry = root.undoStack[root.undoStack.length - 1]
     root.undoStack = root.undoStack.slice(0, -1)
     // entry.undo() devuelve lo que runAction() devuelve: false si se
-    // descartó por haber otra acción en curso (esa entrada del historial ya
-    // se ha perdido igual, al haberla sacado del stack arriba). Antes esto
-    // decía "Undone" pase lo que pase, incluso cuando el undo ni siquiera
-    // llegó a lanzarse. Ahora solo se anuncia como "en marcha" -- si el
-    // comando termina fallando de verdad, actionProc ya avisa por su cuenta
-    // (ver runAction/actionProc).
+    // descartó por haber otra acción en curso. Antes esto decía "Undone"
+    // pase lo que pase, incluso cuando el undo ni siquiera llegó a
+    // lanzarse, Y la entrada se perdía de la pila igual. Ahora, si no
+    // llegó a lanzarse, se devuelve a la pila para poder reintentarlo.
     var started = entry.undo()
     if (started === false) {
+      root.undoStack = root.undoStack.concat([entry])
       Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't undo \"" + entry.label + "\": still busy with another action"])
       return
     }
+    // Solo pasa a la pila de redo si de verdad lleva forma de rehacerse
+    // -- no todas las entradas del undoStack tienen redoFn (ver el
+    // comentario junto a pushUndo).
+    if (entry.redo) root.redoStack = root.redoStack.concat([entry]).slice(-20)
     Quickshell.execDetached(["notify-send", "Omafiles", "Undoing: " + entry.label])
+  }
+
+  function redoLast() {
+    if (root.redoStack.length === 0) return
+    var entry = root.redoStack[root.redoStack.length - 1]
+    root.redoStack = root.redoStack.slice(0, -1)
+    var started = entry.redo()
+    if (started === false) {
+      root.redoStack = root.redoStack.concat([entry])
+      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't redo \"" + entry.label + "\": still busy with another action"])
+      return
+    }
+    // De vuelta a undoStack SIN pasar por pushUndo() -- eso vaciaría
+    // redoStack, que es justo lo que no queremos en pleno ciclo
+    // deshacer/rehacer/deshacer.
+    root.undoStack = root.undoStack.concat([entry]).slice(-20)
+    Quickshell.execDetached(["notify-send", "Omafiles", "Redoing: " + entry.label])
   }
 
   // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
@@ -1412,9 +1440,12 @@ Item {
     // verdad ocurrió. Antes se registraba siempre, incluso cuando runAction
     // lo descartaba por haber otra acción en curso (el rename ya se había
     // dado por hecho en la UI -- el input se cerraba igual).
-    runAction("mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath), undefined, function () {
+    var renameCmd = "mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath)
+    runAction(renameCmd, undefined, function () {
       root.pushUndo("rename to \"" + oldName + "\"", function () {
         return root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
+      }, function () {
+        return root.runAction(renameCmd)
       })
     })
   }
@@ -1453,11 +1484,14 @@ Item {
     // PREEXISTENTE de verdad (con su contenido real), no uno vacío recién
     // creado. Recuperable vía papelera, pero sorprendente y no lo que
     // pedía el README (conflictos tratados, no ignorados en silencio).
-    runAction("if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; touch -- " + Util.shellQuote(path), undefined, function () {
+    var newFileCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; touch -- " + Util.shellQuote(path)
+    runAction(newFileCmd, undefined, function () {
       // gio trash en vez de rm: si el usuario ya escribió algo antes de
       // deshacer, va a la papelera en vez de perderse sin recuperación.
       root.pushUndo("new file \"" + name + "\"", function () {
         return root.runAction("gio trash -- " + Util.shellQuote(path))
+      }, function () {
+        return root.runAction(newFileCmd)
       })
     })
   }
@@ -1472,11 +1506,14 @@ Item {
     // ya existe, y sin este guard un Ctrl+Z posterior podía rmdir una
     // carpeta preexistente (vacía) que no tenía nada que ver con esta
     // acción.
-    runAction("if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; mkdir -p -- " + Util.shellQuote(path), undefined, function () {
+    var newFolderCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; mkdir -p -- " + Util.shellQuote(path)
+    runAction(newFolderCmd, undefined, function () {
       // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
       // deshacer, falla en vez de borrar contenido a lo tonto.
       root.pushUndo("new folder \"" + name + "\"", function () {
         return root.runAction("rmdir -- " + Util.shellQuote(path))
+      }, function () {
+        return root.runAction(newFolderCmd)
       })
     })
   }
@@ -1498,7 +1535,8 @@ Item {
       runAction("rm -rf -- " + quoted)
     } else {
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      runAction("gio trash -- " + quoted, "", function () {
+      var deleteCmd = "gio trash -- " + quoted
+      runAction(deleteCmd, "", function () {
         // Solo se registra el undo si el borrado a papelera confirmó éxito
         // -- antes se registraba siempre, así que un "gio trash" fallido
         // (permiso denegado, etc.) dejaba un undo que restauraba algo que
@@ -1509,6 +1547,8 @@ Item {
             return "gio trash --restore -- " + Util.shellQuote(uri)
           })
           return root.runAction(root.chainCmds(cmds))
+        }, function () {
+          return root.runAction(deleteCmd)
         })
       })
     }
@@ -1610,7 +1650,8 @@ Item {
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      runAction(root.chainCmds(cmds), busyLabel, function () {
+      var pasteMoveCmd = root.chainCmds(cmds)
+      runAction(pasteMoveCmd, busyLabel, function () {
         if (!isCut) return
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
@@ -1620,6 +1661,8 @@ Item {
             return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
           })
           return root.runAction(root.chainCmds(undoCmds))
+        }, function () {
+          return root.runAction(pasteMoveCmd)
         })
       })
     }
@@ -1707,7 +1750,8 @@ Item {
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      runAction(root.chainCmds(cmds), busyLabel, function () {
+      var dropMoveCmd = root.chainCmds(cmds)
+      runAction(dropMoveCmd, busyLabel, function () {
         if (!isMove) return
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
@@ -1717,6 +1761,8 @@ Item {
             return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
           })
           return root.runAction(root.chainCmds(undoCmds))
+        }, function () {
+          return root.runAction(dropMoveCmd)
         })
       })
     }
@@ -1816,6 +1862,8 @@ Item {
       { label: "Reverse order", run: function () { root.reverseSort() } },
       { label: root.undoStack.length > 0 ? "Undo: " + root.undoStack[root.undoStack.length - 1].label : "Undo",
         enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
+      { label: root.redoStack.length > 0 ? "Redo: " + root.redoStack[root.redoStack.length - 1].label : "Redo",
+        enabled: root.redoStack.length > 0, run: function () { root.redoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
       { label: "Connect to server...", run: function () { root.startConnectToServer() } },
@@ -2132,13 +2180,16 @@ Item {
       return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
     })
     if (cmds.length === 0) return
-    runAction(root.chainCmds(cmds), "Renaming " + cmds.length + " items…", function () {
+    var bulkRenameCmd = root.chainCmds(cmds)
+    runAction(bulkRenameCmd, "Renaming " + cmds.length + " items…", function () {
       var label = toRename.length === 1 ? "rename \"" + toRename[0].oldName + "\"" : "bulk rename " + toRename.length + " items"
       root.pushUndo(label, function () {
         var undoCmds = toRename.map(function (p) {
           return "mv -n -- " + Util.shellQuote(p.newPath) + " " + Util.shellQuote(p.oldPath)
         })
         return root.runAction(root.chainCmds(undoCmds))
+      }, function () {
+        return root.runAction(bulkRenameCmd)
       })
     })
   }
@@ -2182,7 +2233,8 @@ Item {
     // recursivo, ver el comentario de chmodOriginalModes.
     var names = root.chmodNames
     var originalModes = root.chmodOriginalModes
-    runAction(root.chainCmds(cmds), label, function () {
+    var chmodCmd = root.chainCmds(cmds)
+    runAction(chmodCmd, label, function () {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
       root.pushUndo(undoLabel, function () {
         var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
@@ -2190,6 +2242,8 @@ Item {
         })
         if (undoCmds.length === 0) return false
         return root.runAction(root.chainCmds(undoCmds))
+      }, function () {
+        return root.runAction(chmodCmd)
       })
     })
   }
@@ -2254,9 +2308,12 @@ Item {
     // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z
     // posterior lo borraba igualmente aunque no tuviera nada que ver con
     // el enlace que se intentó crear.
-    runAction("ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath), undefined, function () {
+    var makeLinkCmd = "ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath)
+    runAction(makeLinkCmd, undefined, function () {
       root.pushUndo("make link \"" + linkName + "\"", function () {
         return root.runAction("rm -- " + Util.shellQuote(linkPath))
+      }, function () {
+        return root.runAction(makeLinkCmd)
       })
     })
   }
@@ -4722,6 +4779,12 @@ Item {
                   event.accepted = true
                 } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
                   root.paste()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
+                  root.redoLast()
+                  event.accepted = true
+                } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier)) {
+                  root.redoLast()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
                   root.undoLast()
