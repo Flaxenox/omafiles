@@ -4733,6 +4733,12 @@ Item {
                 text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
                   + (root.searchQuery ? " of " + root.entries.length : "")
                   + (root.searchTruncated ? " · showing first 200" : "")
+                  // Sin tope en la carpeta en sí (a diferencia de la
+                  // búsqueda) -- cortar un listado normal a los N primeros
+                  // rompería el manejo de ficheros de verdad para carpetas
+                  // grandes (node_modules, caches de paquetes...). Solo un
+                  // aviso informativo de que puede ir lento, no un límite.
+                  + (!root.searchQuery && root.entries.length > 5000 ? " · large folder, may be slow" : "")
                   + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
                   + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
                   + " · sort: " + root.sortLabel()
