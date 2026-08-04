@@ -639,7 +639,15 @@ Item {
     // comprobar inArchive en cada sitio.
     if (root.inArchive) { root.refreshArchiveListing(); return }
     root.currentPathError = ""
-    listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
+    // La Papelera agrega la de casa MÁS la de cualquier otro disco
+    // montado que tenga la suya propia (spec de XDG Trash) -- ver
+    // list-trash.sh/trash-roots.sh. No es una carpeta real única, así
+    // que no puede pasar por list-dir.sh a secas como el resto.
+    if (root.currentPath === root.trashDir) {
+      listProc.command = [root.pluginDir + "/list-trash.sh", root.showHidden ? "1" : "0"]
+    } else {
+      listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
+    }
     listProc.running = true
   }
 
@@ -915,7 +923,11 @@ Item {
   }
 
   function emptyTrash() {
-    runAction("gio trash --empty --force", "Emptying trash…")
+    // "gio trash --empty" solo vacía la papelera de casa -- ahora que
+    // la vista agrega la de cualquier disco montado (ver
+    // trash-roots.sh), vaciar tiene que cubrir las mismas o el botón
+    // dejaría cosas huérfanas afirmando haber vaciado del todo.
+    runAction("bash " + Util.shellQuote(root.pluginDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
   // list-dir.sh/search-recursive.sh separan TODO por NUL (\0) -- campos Y
@@ -1625,11 +1637,25 @@ Item {
     var names = root.pendingDeleteNames
     root.pendingDeleteNames = []
     if (names.length === 0) return
-    var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(root.currentPath, n)) }).join(" ")
     if (root.currentPath === root.trashDir) {
-      // Borrado permanente -- no hay undo posible.
-      runAction("rm -rf -- " + quoted)
+      // Borrado permanente -- no hay undo posible. root.trashInfo (ver
+      // trash-info.sh) sabe la raíz física real de cada ítem -- puede
+      // ser la papelera de casa o la de cualquier otro disco montado,
+      // ya no se puede asumir root.trashDir a secas como antes de
+      // agregar varias papeleras.
+      var cmds = names.map(function (n) {
+        var info = root.trashInfo[n]
+        if (!info) return "true"
+        return "rm -rf -- " + Util.shellQuote(info.trashRoot + "/files/" + n) +
+          "; rm -f -- " + Util.shellQuote(info.trashRoot + "/info/" + n + ".trashinfo")
+      })
+      runAction(root.chainCmds(cmds))
     } else {
+      var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(root.currentPath, n)) }).join(" ")
+      // Rutas originales absolutas capturadas AQUÍ (no dentro de los
+      // closures de más abajo) -- root.currentPath puede haber cambiado
+      // para cuando el usuario pulse deshacer, mucho más tarde.
+      var origPaths = names.map(function (n) { return root.joinPath(root.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
       var deleteCmd = "gio trash -- " + quoted
       runAction(deleteCmd, "", function () {
@@ -1638,11 +1664,17 @@ Item {
         // (permiso denegado, etc.) dejaba un undo que restauraba algo que
         // nunca llegó a borrarse.
         root.pushUndo(label, function () {
-          var cmds = names.map(function (n) {
-            var uri = "trash:///" + n.split("/").map(encodeURIComponent).join("/")
-            return "gio trash --restore -- " + Util.shellQuote(uri)
+          // restore-by-origpath.sh busca en TODAS las papeleras activas
+          // (no solo la de casa) el .trashinfo cuya ruta original
+          // coincide, así funciona igual borre desde donde borre --
+          // root.trashInfo (usado por el botón "Restore" normal) no
+          // sirve aquí porque solo se rellena mientras se está VIENDO
+          // la Papelera, y el usuario puede deshacer mucho después sin
+          // haber entrado nunca en ella.
+          var restoreCmds = origPaths.map(function (p) {
+            return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(p)
           })
-          return root.runAction(root.chainCmds(cmds))
+          return root.runAction(root.chainCmds(restoreCmds))
         }, function () {
           return root.runAction(deleteCmd)
         })
@@ -2473,10 +2505,17 @@ Item {
   function restoreFromTrash() {
     var entries = root.selectedEntries()
     if (entries.length === 0) return
-    var cmds = entries.map(function (e) {
-      var uri = "trash:///" + e.name.split("/").map(encodeURIComponent).join("/")
-      return "gio trash --restore -- " + Util.shellQuote(uri)
-    })
+    // root.trashInfo (ver trash-info.sh) ya sabe la ruta original
+    // absoluta de cada ítem, resuelta correctamente incluso para la
+    // papelera de otro disco (donde Path= es relativo al punto de
+    // montaje, no a casa) -- restore-by-origpath.sh la usa para
+    // localizar el .trashinfo correcto sin asumir una única papelera.
+    var cmds = entries
+      .filter(function (e) { return !!root.trashInfo[e.name] })
+      .map(function (e) {
+        return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(root.trashInfo[e.name].origPath)
+      })
+    if (cmds.length === 0) return
     runAction(root.chainCmds(cmds), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
@@ -2715,7 +2754,7 @@ Item {
         // datos obsoletos si se vuelve a entrar más tarde con contenido
         // distinto.
         if (root.currentPath === root.trashDir) {
-          trashInfoProc.command = [root.pluginDir + "/trash-info.sh", root.homeDir + "/.local/share/Trash/info"]
+          trashInfoProc.command = [root.pluginDir + "/trash-info.sh"]
           trashInfoProc.running = true
         } else if (Object.keys(root.trashInfo).length > 0) {
           root.trashInfo = ({})
@@ -2799,8 +2838,8 @@ Item {
         var fields = String(text || "").split("\u0000")
         if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
         var info = {}
-        for (var i = 0; i + 2 < fields.length; i += 3) {
-          info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0) }
+        for (var i = 0; i + 3 < fields.length; i += 4) {
+          info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
         }
         root.trashInfo = info
       }
