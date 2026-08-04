@@ -1512,6 +1512,7 @@ Item {
     if (entries.length === 0) return
     root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
     root.clipboardMode = "copy"
+    root.syncClipboardToSystem()
   }
 
   function cutSelected() {
@@ -1520,11 +1521,40 @@ Item {
     if (entries.length === 0) return
     root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
     root.clipboardMode = "cut"
+    root.syncClipboardToSystem()
+  }
+
+  // Antes clipboardPaths era solo interno -- copiar en Omafiles y pegar
+  // en otra app (o al revés) no funcionaba. text/uri-list es el tipo MIME
+  // más ampliamente reconocido (gestores de archivos, navegadores, apps
+  // de chat...) -- wl-copy solo puede servir un tipo por invocación, así
+  // que se prioriza compatibilidad amplia sobre poder distinguir cut/copy
+  // de cara a OTRAS apps (Omafiles sí distingue cut/copy para sus propias
+  // acciones vía clipboardMode; esto es solo para interoperar con fuera).
+  function syncClipboardToSystem() {
+    if (root.clipboardPaths.length === 0) {
+      Quickshell.execDetached(["wl-copy", "-c"])
+      return
+    }
+    var uris = root.clipboardPaths.map(function (p) {
+      return "file://" + p.split("/").map(encodeURIComponent).join("/")
+    }).join("\n")
+    Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
   }
 
   function paste() {
     if (root.inArchive) return
-    if (root.clipboardPaths.length === 0) return
+    if (root.clipboardPaths.length === 0) {
+      // Nada copiado desde DENTRO de Omafiles -- probar el portapapeles
+      // del sistema (copiar en Nautilus/el navegador/un chat/etc. y
+      // pegar aquí). Se trata siempre como "copy", nunca "cut": un
+      // text/uri-list suelto no lleva esa distinción (a diferencia del
+      // x-special/gnome-copied-files propio de GTK, que no todas las
+      // apps que copian rutas escriben).
+      systemClipboardReadProc.command = ["wl-paste", "-t", "text/uri-list"]
+      systemClipboardReadProc.running = true
+      return
+    }
     var destPaths = root.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
       return root.joinPath(root.currentPath, name)
@@ -2794,6 +2824,26 @@ Item {
       onStreamFinished: {
         if (text.trim() === "1") root.renameConflictOpen = true
         else root.runPendingRename(false)
+      }
+    }
+  }
+
+  Process {
+    id: systemClipboardReadProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var uris = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        var paths = uris.map(function (u) {
+          return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
+        }).filter(function (p) { return p.length > 0 })
+        // Vacío = portapapeles del sistema sin uris (o sin nada) -- no
+        // hay nada que avisar, paste() ya no hacía nada tampoco antes en
+        // este caso.
+        if (paths.length === 0) return
+        root.clipboardPaths = paths
+        root.clipboardMode = "copy"
+        root.paste()
       }
     }
   }

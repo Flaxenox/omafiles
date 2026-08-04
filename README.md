@@ -19,6 +19,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Mounted-drives sidebar (mount/eject, distinguishes internal disks from removable/USB by icon).
 - Network locations (SFTP/SMB/WebDAV/FTP via GVfs) — "Connect..." in the sidebar or command palette, active connections listed and browsable like any local folder. Needs credentials already cached (SSH key, saved keyring entry) — there's no in-app password prompt.
 - Sort by name/size/date/type — a key cycles it, no dropdown.
+- Copy/cut sync with the system clipboard (`wl-copy`, `text/uri-list`) — paste files copied in Omafiles into another app, or files copied elsewhere into Omafiles (`Ctrl+V` falls back to reading the system clipboard when nothing's copied inside the app).
 - Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste, drag-and-drop, extract, compress, and bulk rename all refuse to silently clobber an existing name. Copy/cut/paste/drag show a real overwrite/skip/cancel dialog; extract/compress/bulk rename show their own equivalent (overwrite / skip the conflicting ones and continue); rename shows an overwrite confirmation; new folder/new file/make link just refuse with a clear error instead of silently doing nothing or failing (no choice to make there — there's nothing to overwrite by design). A "still working" indicator with Cancel covers copy/move.
 - Trash shows each item's original location and deletion time (read from `.trashinfo`), not just a plain file listing.
 - Undo (`Ctrl+Z`) for rename, new folder, new file, make link, delete, and move.
@@ -96,7 +97,7 @@ This is idempotent and only runs once (tracked in `~/.local/state/omafiles/integ
 - Omarchy 4 (Quickshell-based shell).
 - `ffmpegthumbnailer` for video thumbnails, `ffprobe` (ffmpeg) for audio metadata, `pygmentize` (python-pygments) for syntax-highlighted previews, `pdftoppm` (poppler) for PDF previews, `inotifywait` (inotify-tools) for live folder refresh — all optional, each falls back gracefully without it.
 - `gio` with the relevant GVfs backend for network locations (`gvfs` covers SFTP/FTP/WebDAV; SMB needs `gvfs-smb` too).
-- `gio`, `udisksctl`, standard coreutils (all present on a stock Omarchy install).
+- `gio`, `udisksctl`, `wl-clipboard`, standard coreutils (all present on a stock Omarchy install).
 
 ## Status
 
