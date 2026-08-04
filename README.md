@@ -58,6 +58,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | `s` / `Shift+S` | Cycle sort field / reverse order |
 | `Ctrl+L` | Edit path directly |
 | `Ctrl+Shift+N` | New folder |
+| `Ctrl+N` | New file |
 | `Ctrl+T` / `Ctrl+\` | New tab (new panel) |
 | `Ctrl+W` / `Ctrl+Tab` | Close tab / next tab |
 | `Ctrl+H` | Toggle hidden files |

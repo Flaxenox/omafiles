@@ -4837,6 +4837,12 @@ Item {
                 } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
                   root.startNewFolder()
                   event.accepted = true
+                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
+                  // "New file" no tenía atajo propio, a diferencia de
+                  // "New folder" (Ctrl+Shift+N, arriba) -- solo estaba en
+                  // paleta/menú contextual.
+                  root.startNewFile()
+                  event.accepted = true
                 } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
                   // Antes alternaba la vista dividida; ahora cada pestaña ES
                   // ya un panel visible, así que este atajo simplemente abre
