@@ -581,6 +581,25 @@ Item {
     listProc.running = true
   }
 
+  // Refresco en vivo del panel ACTIVO -- antes nada se refrescaba solo:
+  // conectar un USB o crear un fichero por terminal no aparecía hasta F5.
+  // Deliberadamente solo el panel activo, no cada panel de fondo (mismo
+  // criterio ya aplicado en todo el fichero: los paneles de fondo tienen
+  // funcionalidad reducida). Si inotify-tools no está instalado, el
+  // Process simplemente falla al arrancar y esto se queda como un no-op
+  // silencioso -- mismo patrón de "opcional, degrada con gracia" que
+  // ffmpegthumbnailer/pygmentize/pdftoppm.
+  function startDirWatch(path) {
+    dirWatchProc.running = false
+    dirWatchProc.command = ["inotifywait", "-m", "-q", "-e",
+      "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path]
+    dirWatchProc.running = true
+  }
+
+  function stopDirWatch() {
+    dirWatchProc.running = false
+  }
+
   function refreshMounts() {
     mountsProc.running = true
   }
@@ -929,6 +948,7 @@ Item {
     // detrás enseguida, sustituyéndola sin que se note.
     if (root.tabEntriesCache[path]) root.entries = root.tabEntriesCache[path]
     root.refresh()
+    root.startDirWatch(path)
   }
 
   function _pushHistory(path) {
@@ -1145,6 +1165,13 @@ Item {
     if (!root.bulkRenameHistoryLoaded) root.loadBulkRenameHistory()
     root.refreshMounts()
     root.refreshNetworkMounts()
+    // Cubre los tres casos: primera carga (currentPath recién puesto,
+    // arriba), reabrir apuntando a un target (navigateTo ya lo arrancó
+    // dentro de _goToPath, esto solo lo reafirma sobre la misma ruta
+    // final) y reabrir SIN target (la ventana estaba cerrada -> close()
+    // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
+    // vigilar).
+    if (!root.inArchive) root.startDirWatch(root.currentPath)
   }
 
   function close() {
@@ -1152,6 +1179,7 @@ Item {
     root.opened = false
     panel.visible = false
     root.closingFromHost = false
+    root.stopDirWatch()
     root.renamingIndex = -1
     root.creatingFolder = false
     root.creatingFile = false
@@ -2370,6 +2398,47 @@ Item {
 
   Process {
     id: installIntegrationsProc
+  }
+
+  // "close_write" (fichero cerrado tras escribir) en vez de fiarse solo
+  // de "modify" -- así una copia grande en curso no dispara un refresh
+  // por cada bloque escrito, solo cuando el fichero realmente queda
+  // listo. inotifywait -m no termina nunca solo (modo monitor); se mata
+  // explícitamente (running=false) al navegar a otra carpeta o cerrar
+  // la ventana, ver startDirWatch()/stopDirWatch().
+  Process {
+    id: dirWatchProc
+    stdout: SplitParser {
+      onRead: dirWatchDebounce.restart()
+    }
+  }
+
+  Timer {
+    id: dirWatchDebounce
+    // Varios eventos casi seguidos (copiar/mover/borrar varios ficheros
+    // a la vez) colapsan en un solo refresh en vez de uno por evento.
+    interval: 400
+    // No refrescar mientras hay un nombre a medio escribir -- un
+    // refresh en pleno renombrado podría reordenar la lista y dejar
+    // renamingIndex apuntando a la fila equivocada (mismo tipo de bug
+    // ya visto y arreglado para el caso de entrar en un archivo a medio
+    // renombrar). Se pierde ese refresh puntual, pero el próximo evento
+    // real (o una navegación normal) lo recupera.
+    onTriggered: if (!root.hasPendingEdit) root.refresh()
+  }
+
+  // Discos/red no tienen un evento fácil de vigilar aquí (habría que
+  // suscribirse a señales D-Bus de UDisks2/GVfs) -- un polling modesto
+  // es la opción honesta dado el alcance: enchufar un USB o que una
+  // ubicación de red se caiga se nota en unos segundos en vez de nunca
+  // (antes) o de tener que montar infraestructura D-Bus (después,
+  // quizás). "running: root.opened" para que no siga en marcha de fondo
+  // con la ventana cerrada.
+  Timer {
+    interval: 7000
+    repeat: true
+    running: root.opened
+    onTriggered: { root.refreshMounts(); root.refreshNetworkMounts() }
   }
 
   Process {
