@@ -218,12 +218,20 @@ Item {
   // otro panel (ver el HoverHandler de bgPanel más abajo).
   readonly property bool hasPendingEdit: root.renamingIndex >= 0 || root.creatingFolder || root.creatingFile || root.editingPath
 
-  // Feedback de "en curso" para copiar/mover -- no hay porcentaje real (cp/mv
-  // no lo reportan), pero al menos se ve que algo está pasando en vez de que
-  // la ventana parezca congelada con ficheros grandes.
+  // Feedback de "en curso". cp/mv no reportan progreso ellos mismos, así
+  // que para copiar/mover se ESTIMA por fuera: tamaño total del origen
+  // conocido de antemano (du), y un sondeo periódico de cuánto hay ya en
+  // el destino mientras la acción corre -- no es exacto al byte (el
+  // sondeo tiene un intervalo, y du sobre un fichero a medio escribir da
+  // su tamaño en ese instante) pero da una cifra real en vez de solo
+  // "sigue vivo". -1 = sin progreso que mostrar (cualquier acción que no
+  // sea copiar/mover: renombrar, chmod, comprimir...).
   property bool actionBusy: false
   property string actionLabel: ""
   property string actionBusyDots: ""
+  property real actionProgressPct: -1
+  property real actionTotalBytes: 0
+  property var actionProgressDestPaths: []
 
   property var clipboardPaths: []
   property string clipboardMode: "" // "copy" | "cut"
@@ -1412,8 +1420,23 @@ Item {
     actionProc.running = false
     root.actionBusy = false
     root.actionLabel = ""
+    root.actionProgressPct = -1
     root.refresh()
     root.refreshTick += 1
+  }
+
+  // Lanza el sondeo de progreso para una copia/movimiento -- llamar justo
+  // antes de runAction() con los mismos origen/destino. Sin esto
+  // actionProgressPct se queda en -1 (sin barra, solo puntos animados)
+  // para cualquier otra acción, que es lo que queremos: chmod/comprimir/
+  // renombrar no tienen un "tamaño total" que tenga sentido mostrar así.
+  function startCopyProgress(sourcePaths, destPaths) {
+    root.actionProgressPct = 0
+    root.actionTotalBytes = 0
+    root.actionProgressDestPaths = destPaths
+    var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
+    actionProgressTotalProc.command = ["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"]
+    actionProgressTotalProc.running = true
   }
 
   function startRename(index) {
@@ -1667,6 +1690,7 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       var pasteMoveCmd = root.chainCmds(cmds)
+      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
       runAction(pasteMoveCmd, busyLabel, function () {
         if (!isCut) return
         var label = pairs.length === 1
@@ -1767,6 +1791,7 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       var dropMoveCmd = root.chainCmds(cmds)
+      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
       runAction(dropMoveCmd, busyLabel, function () {
         if (!isMove) return
         var label = pairs.length === 1
@@ -2916,6 +2941,9 @@ Item {
     onExited: function (exitCode) {
       root.actionBusy = false
       root.actionLabel = ""
+      root.actionProgressPct = -1
+      root.actionTotalBytes = 0
+      root.actionProgressDestPaths = []
       root.refresh()
       // Una acción (borrar, mover, pegar...) puede afectar a cualquier
       // panel, no solo al activo -- refreshTick es la señal para que los
@@ -2934,6 +2962,52 @@ Item {
         // exactamente igual que uno que había ido bien.
         Quickshell.execDetached(["notify-send", "Omafiles", "Action failed: " + (actionProc.errorText.trim() || "unknown error")])
       }
+    }
+  }
+
+  // Tamaño total del origen, UNA vez al principio de una copia/movimiento
+  // -- ver startCopyProgress().
+  Process {
+    id: actionProgressTotalProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var n = parseInt(text.trim(), 10)
+        root.actionTotalBytes = isNaN(n) ? 0 : n
+      }
+    }
+  }
+
+  // Sondeo periódico de cuánto hay ya en el destino mientras
+  // actionBusy+actionTotalBytes>0 -- ver el Timer de abajo, que es quien
+  // decide CUÁNDO relanzar esto (no tiene sentido más de un sondeo a la
+  // vez si el anterior tarda más que el intervalo).
+  Process {
+    id: actionProgressPollProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.actionTotalBytes <= 0) return
+        var n = parseInt(text.trim(), 10)
+        if (isNaN(n)) return
+        root.actionProgressPct = Math.min(100, n / root.actionTotalBytes * 100)
+      }
+    }
+  }
+
+  Timer {
+    // Un sondeo "du" sobre destinos grandes no es instantáneo -- esta
+    // guardia (en vez de solo "repeat: true") evita amontonar sondeos si
+    // uno tarda más que el intervalo.
+    id: actionProgressPollTimer
+    interval: 600
+    repeat: true
+    running: root.actionBusy && root.actionTotalBytes > 0 && root.actionProgressDestPaths.length > 0
+    onTriggered: {
+      if (actionProgressPollProc.running) return
+      var quoted = root.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
+      actionProgressPollProc.command = ["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"]
+      actionProgressPollProc.running = true
     }
   }
 
@@ -5895,7 +5969,7 @@ Item {
         id: actionBusyCard
         visible: root.actionBusy
         width: Math.min(parent.width - 80, 420)
-        height: actionBusyRow.implicitHeight + contentTopInset + contentBottomInset
+        height: actionBusyColumn.implicitHeight + contentTopInset + contentBottomInset
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Style.spacing.lg
@@ -5905,33 +5979,60 @@ Item {
         padding: Style.spacing.sm
         z: 25
 
-        Row {
-          id: actionBusyRow
+        Column {
+          id: actionBusyColumn
           anchors.fill: parent
           anchors.topMargin: actionBusyCard.contentTopInset
           anchors.rightMargin: actionBusyCard.contentRightInset
           anchors.bottomMargin: actionBusyCard.contentBottomInset
           anchors.leftMargin: actionBusyCard.contentLeftInset
-          spacing: Style.spacing.sm
+          spacing: Style.spacing.xs
 
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - cancelActionButton.width - parent.spacing
-            text: root.actionLabel + root.actionBusyDots
-            font.pixelSize: Style.font.subtitle
-            font.family: Style.font.family
-            color: Color.menu.text
-            elide: Text.ElideRight
+          Row {
+            id: actionBusyRow
+            width: parent.width
+            spacing: Style.spacing.sm
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              width: parent.width - cancelActionButton.width - parent.spacing
+              // Porcentaje real para copiar/mover (ver
+              // startCopyProgress/actionProgressPct); puntos animados
+              // para cualquier otra acción, que no tiene un "tamaño
+              // total" con el que calcular nada.
+              text: root.actionLabel + (root.actionProgressPct >= 0 ? " " + Math.round(root.actionProgressPct) + "%" : root.actionBusyDots)
+              font.pixelSize: Style.font.subtitle
+              font.family: Style.font.family
+              color: Color.menu.text
+              elide: Text.ElideRight
+            }
+
+            Button {
+              id: cancelActionButton
+              text: "Cancel"
+              bordered: true
+              anchors.verticalCenter: parent.verticalCenter
+              Accessible.role: Accessible.Button
+              Accessible.name: text
+              onClicked: root.cancelAction()
+            }
           }
 
-          Button {
-            id: cancelActionButton
-            text: "Cancel"
-            bordered: true
-            anchors.verticalCenter: parent.verticalCenter
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: root.cancelAction()
+          Rectangle {
+            visible: root.actionProgressPct >= 0
+            width: parent.width
+            height: 3
+            radius: height / 2
+            color: Qt.darker(Color.menu.text, 2.5)
+
+            Rectangle {
+              width: parent.width * (root.actionProgressPct / 100)
+              height: parent.height
+              radius: height / 2
+              color: Color.accent
+
+              Behavior on width { NumberAnimation { duration: 200 } }
+            }
           }
         }
       }
