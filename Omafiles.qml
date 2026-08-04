@@ -33,6 +33,10 @@ Item {
   property bool searching: false
   property string deepSearchRoot: ""
   property string searchQuery: ""
+  // Antes la búsqueda recursiva se cortaba en 200 resultados sin decir
+  // nada -- una búsqueda con muchas coincidencias parecía completa cuando
+  // en realidad faltaban ítems. Ver runDeepSearch()/search-recursive.sh.
+  property bool searchTruncated: false
   readonly property var visibleEntries: root.searchQuery
     ? root.entries.filter(function (e) { return e.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) >= 0 })
     : root.entries
@@ -128,8 +132,19 @@ Item {
     if (root.undoStack.length === 0) return
     var entry = root.undoStack[root.undoStack.length - 1]
     root.undoStack = root.undoStack.slice(0, -1)
-    entry.undo()
-    Quickshell.execDetached(["notify-send", "Omafiles", "Undone: " + entry.label])
+    // entry.undo() devuelve lo que runAction() devuelve: false si se
+    // descartó por haber otra acción en curso (esa entrada del historial ya
+    // se ha perdido igual, al haberla sacado del stack arriba). Antes esto
+    // decía "Undone" pase lo que pase, incluso cuando el undo ni siquiera
+    // llegó a lanzarse. Ahora solo se anuncia como "en marcha" -- si el
+    // comando termina fallando de verdad, actionProc ya avisa por su cuenta
+    // (ver runAction/actionProc).
+    var started = entry.undo()
+    if (started === false) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't undo \"" + entry.label + "\": still busy with another action"])
+      return
+    }
+    Quickshell.execDetached(["notify-send", "Omafiles", "Undoing: " + entry.label])
   }
 
   // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
@@ -170,6 +185,10 @@ Item {
   property bool creatingFolder: false
   property bool creatingFile: false
   property bool editingPath: false
+  // Hay una edición sin confirmar en el panel activo (nombre a medio
+  // escribir) -- usado para no tirarla al vuelo por un simple hover sobre
+  // otro panel (ver el HoverHandler de bgPanel más abajo).
+  readonly property bool hasPendingEdit: root.renamingIndex >= 0 || root.creatingFolder || root.creatingFile || root.editingPath
 
   // Feedback de "en curso" para copiar/mover -- no hay porcentaje real (cp/mv
   // no lo reportan), pero al menos se ve que algo está pasando en vez de que
@@ -188,6 +207,18 @@ Item {
 
   property var pasteConflictNames: []
   property bool pasteConflictOpen: false
+
+  property var pendingExtract: null // { entry, cmd }
+  property var extractConflictNames: []
+  property bool extractConflictOpen: false
+
+  property var pendingCompress: null // { archiveName, cmd }
+  property bool compressConflictOpen: false
+
+  property var pendingBulkRename: null // [{ oldName, newName, oldPath, newPath }]
+  property int bulkRenameInternalDupes: 0
+  property int bulkRenameConflictCount: 0
+  property bool bulkRenameConflictOpen: false
 
   // ---------- Arrastrar y soltar ----------
   // Deliberadamente separado del portapapeles de Ctrl+C/X/V (clipboardPaths/
@@ -508,6 +539,11 @@ Item {
   }
 
   function ejectMount(mount) {
+    // Sin esta guardia, hacer doble clic en "Expulsar" reasignaba
+    // ejectProc.command a mitad de la primera llamada, reiniciándola --
+    // mismo problema que runAction() ya evitaba para las acciones de
+    // fichero, pero este proceso no lo tenía.
+    if (ejectProc.running) return
     var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
     ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
@@ -519,6 +555,7 @@ Item {
   // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
   // es la unidad recién montada.
   function mountDevice(mount) {
+    if (mountProc.running) return
     mountProc.command = ["udisksctl", "mount", "-b", mount.device]
     mountProc.running = true
   }
@@ -527,12 +564,32 @@ Item {
     runAction("gio trash --empty --force", "Emptying trash…")
   }
 
+  // list-dir.sh/search-recursive.sh separan TODO por NUL (\0) -- campos Y
+  // entradas -- en vez de TAB/newline: un nombre de fichero real puede
+  // contener un tab o un salto de línea (son bytes válidos en un nombre de
+  // Linux, solo "/" y NUL están prohibidos), así que un TSV de toda la
+  // vida se podía desalinear con un nombre así y hacer que una operación
+  // destructiva actuara sobre el fichero equivocado. NUL es el único byte
+  // que nunca puede aparecer dentro de un campo, así que separar por NUL
+  // es inequívoco pase lo que pase en el nombre.
   function parseEntries(text) {
-    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-    return lines.map(function (l) {
-      var parts = l.split("\t")
-      return { type: parts[0], name: parts[1], size: Number(parts[2] || 0), mtime: Number(parts[3] || 0), link: parts[4] || "" }
-    })
+    var s = String(text || "")
+    if (s.length === 0) return []
+    var fields = s.split("\u0000")
+    // Cada campo, incluido el último de la última entrada, termina en
+    // NUL -- split() deja un elemento vacío colgando al final. Se quita
+    // solo ese, no con un filtro genérico: un campo "enlace" vacío en
+    // medio (fichero normal, sin symlink) es válido y no hay que perderlo.
+    if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+    var out = []
+    for (var i = 0; i + 4 < fields.length; i += 5) {
+      out.push({
+        type: fields[i], name: fields[i + 1],
+        size: Number(fields[i + 2] || 0), mtime: Number(fields[i + 3] || 0),
+        link: fields[i + 4] || ""
+      })
+    }
+    return out
   }
 
   function compareEntries(a, b) {
@@ -792,6 +849,12 @@ Item {
     root.renameConflictOpen = false
     root.pasteConflictOpen = false
     root.dropConflictOpen = false
+    root.extractConflictOpen = false
+    root.pendingExtract = null
+    root.compressConflictOpen = false
+    root.pendingCompress = null
+    root.bulkRenameConflictOpen = false
+    root.pendingBulkRename = null
   }
 
   // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
@@ -833,21 +896,67 @@ Item {
     return parts.join(" · ")
   }
 
-  function runAction(cmd, busyLabel) {
+  // onSuccess (opcional) se llama SOLO si el comando termina con exit 0 --
+  // úsalo para todo lo que no deba pasar si la acción en realidad falló
+  // (sobre todo pushUndo: un undo registrado para algo que nunca ocurrió en
+  // disco es peor que no tener undo). Devuelve true si el comando se lanzó,
+  // false si se descartó porque ya había otra acción en marcha (el llamador
+  // decide si eso merece avisar al usuario).
+  function runAction(cmd, busyLabel, onSuccess) {
     // actionProc es un único proceso compartido por todas las acciones de
     // fichero (renombrar, borrar, copiar/mover, comprimir...). Sin esta
     // guardia, una segunda llamada mientras la primera sigue en marcha
     // (doble clic, o una tecla de más durante una operación larga) le
     // cambiaba el comando y lo reiniciaba, cortando la operación en curso
     // a media copia sin ningún aviso.
-    if (actionProc.running) return
+    if (actionProc.running) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Still busy with the previous action — try again in a moment"])
+      return false
+    }
     root.actionLabel = busyLabel || ""
     root.actionBusy = !!busyLabel
-    actionProc.command = ["bash", "-c", cmd]
+    root._actionOnSuccess = onSuccess || null
+    root._actionCancelled = false
+    // "setsid" delante de bash: lo convierte en líder de una sesión/grupo
+    // de procesos nuevo (su PGID pasa a ser su propio PID) en vez de
+    // compartir el grupo de Quickshell. Sin esto, cancelAction() solo podía
+    // matar el "bash -c" en sí -- cualquier cp/mv/zip que ese bash hubiera
+    // lanzado como hijo se quedaba huérfano y seguía corriendo de fondo
+    // como si nada, aunque la UI ya diera la acción por cancelada.
+    actionProc.command = ["setsid", "bash", "-c", cmd]
     actionProc.running = true
+    return true
+  }
+
+  // Callback pendiente del runAction en curso -- ver actionProc.onExited.
+  property var _actionOnSuccess: null
+  // true mientras se procesa un cancelAction() explícito -- así
+  // actionProc.onExited no muestra "Action failed" por un proceso que el
+  // propio usuario mandó parar (sale con código != 0 por la señal, pero
+  // eso no es un fallo real).
+  property bool _actionCancelled: false
+
+  // Une comandos de una operación por lotes (pegar/soltar/borrar N archivos,
+  // renombrado masivo...) para que el fallo de uno no se coma los demás.
+  // Antes se unían con "&&": en cuanto el ítem 2 de 5 fallaba (ya no
+  // existía, permiso denegado...) los ítems 3-5 no se llegaban a intentar
+  // y encima no había ningún aviso. Con esto se intentan todos, y si alguno
+  // falla el proceso sale con estado != 0 para que actionProc lo reporte
+  // (ver runAction/actionProc más arriba) -- sin decir cuál en concreto,
+  // pero ya no se pierden en silencio.
+  function chainCmds(cmds) {
+    if (cmds.length <= 1) return cmds[0] || "true"
+    return "st=0; " + cmds.map(function (c) { return "{ " + c + "; } || st=1" }).join("; ") + "; exit $st"
   }
 
   function cancelAction() {
+    // actionProc.running = false solo mata el "setsid bash -c ..." en sí;
+    // con el grupo de procesos propio que le da setsid en runAction(), esto
+    // manda la señal a TODO el grupo (setsid + bash + el cp/mv/zip real que
+    // esté corriendo dentro), no solo al primero.
+    var pid = actionProc.processId
+    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
+    root._actionCancelled = true
     actionProc.running = false
     root.actionBusy = false
     root.actionLabel = ""
@@ -881,10 +990,15 @@ Item {
     root.pendingRename = null
     root.renameConflictOpen = false
     if (!r) return
-    runAction("mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath))
     var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
-    root.pushUndo("rename to \"" + oldName + "\"", function () {
-      root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
+    // Igual que en makeLinkFor: el undo solo se registra si el "mv" de
+    // verdad ocurrió. Antes se registraba siempre, incluso cuando runAction
+    // lo descartaba por haber otra acción en curso (el rename ya se había
+    // dado por hecho en la UI -- el input se cerraba igual).
+    runAction("mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath), undefined, function () {
+      root.pushUndo("rename to \"" + oldName + "\"", function () {
+        return root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
+      })
     })
   }
 
@@ -912,11 +1026,14 @@ Item {
     name = name.trim()
     if (!name) return
     var path = root.joinPath(root.currentPath, name)
-    runAction("touch -- " + Util.shellQuote(path))
-    // gio trash en vez de rm: si el usuario ya escribió algo antes de
-    // deshacer, va a la papelera en vez de perderse sin recuperación.
-    root.pushUndo("new file \"" + name + "\"", function () {
-      root.runAction("gio trash -- " + Util.shellQuote(path))
+    // Mismo criterio que makeLinkFor/runPendingRename: undo solo si "touch"
+    // confirmó éxito.
+    runAction("touch -- " + Util.shellQuote(path), undefined, function () {
+      // gio trash en vez de rm: si el usuario ya escribió algo antes de
+      // deshacer, va a la papelera en vez de perderse sin recuperación.
+      root.pushUndo("new file \"" + name + "\"", function () {
+        return root.runAction("gio trash -- " + Util.shellQuote(path))
+      })
     })
   }
 
@@ -926,11 +1043,12 @@ Item {
     name = name.trim()
     if (!name) return
     var path = root.joinPath(root.currentPath, name)
-    runAction("mkdir -p -- " + Util.shellQuote(path))
-    // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
-    // deshacer, falla en vez de borrar contenido a lo tonto.
-    root.pushUndo("new folder \"" + name + "\"", function () {
-      root.runAction("rmdir -- " + Util.shellQuote(path))
+    runAction("mkdir -p -- " + Util.shellQuote(path), undefined, function () {
+      // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
+      // deshacer, falla en vez de borrar contenido a lo tonto.
+      root.pushUndo("new folder \"" + name + "\"", function () {
+        return root.runAction("rmdir -- " + Util.shellQuote(path))
+      })
     })
   }
 
@@ -949,14 +1067,19 @@ Item {
       // Borrado permanente -- no hay undo posible.
       runAction("rm -rf -- " + quoted)
     } else {
-      runAction("gio trash -- " + quoted)
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      root.pushUndo(label, function () {
-        var cmds = names.map(function (n) {
-          var uri = "trash:///" + n.split("/").map(encodeURIComponent).join("/")
-          return "gio trash --restore -- " + Util.shellQuote(uri)
+      runAction("gio trash -- " + quoted, "", function () {
+        // Solo se registra el undo si el borrado a papelera confirmó éxito
+        // -- antes se registraba siempre, así que un "gio trash" fallido
+        // (permiso denegado, etc.) dejaba un undo que restauraba algo que
+        // nunca llegó a borrarse.
+        root.pushUndo(label, function () {
+          var cmds = names.map(function (n) {
+            var uri = "trash:///" + n.split("/").map(encodeURIComponent).join("/")
+            return "gio trash --restore -- " + Util.shellQuote(uri)
+          })
+          return root.runAction(root.chainCmds(cmds))
         })
-        root.runAction(cmds.join(" && "))
       })
     }
   }
@@ -1014,8 +1137,8 @@ Item {
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      runAction(cmds.join(" && "), busyLabel)
-      if (isCut) {
+      runAction(root.chainCmds(cmds), busyLabel, function () {
+        if (!isCut) return
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
           : "move " + pairs.length + " items"
@@ -1023,9 +1146,9 @@ Item {
           var undoCmds = pairs.map(function (p) {
             return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
           })
-          root.runAction(undoCmds.join(" && "))
+          return root.runAction(root.chainCmds(undoCmds))
         })
-      }
+      })
     }
     if (root.clipboardMode === "cut") {
       root.clipboardPaths = []
@@ -1111,8 +1234,8 @@ Item {
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      runAction(cmds.join(" && "), busyLabel)
-      if (isMove) {
+      runAction(root.chainCmds(cmds), busyLabel, function () {
+        if (!isMove) return
         var label = pairs.length === 1
           ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
           : "move " + pairs.length + " items"
@@ -1120,9 +1243,9 @@ Item {
           var undoCmds = pairs.map(function (p) {
             return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
           })
-          root.runAction(undoCmds.join(" && "))
+          return root.runAction(root.chainCmds(undoCmds))
         })
-      }
+      })
     }
     root.dropPendingSources = []
     root.dropTargetDir = ""
@@ -1162,6 +1285,7 @@ Item {
     root.creatingFile = false
     root.searching = true
     root.searchQuery = ""
+    root.searchTruncated = false
     list.contentY = list.originY
   }
 
@@ -1169,6 +1293,7 @@ Item {
     root.searching = false
     root.searchQuery = ""
     root.deepSearchRoot = ""
+    root.searchTruncated = false
     list.contentY = list.originY
     root.refresh()
     root.selectOnly(-1)
@@ -1327,8 +1452,34 @@ Item {
       ? entries[0].name.replace(/\/$/, "") + ".zip"
       : "selected-files.zip"
     var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
-    runAction("cd -- " + Util.shellQuote(root.currentPath) + " && zip -r -q " + Util.shellQuote(archiveName) + " " + names,
-      "Compressing to \"" + archiveName + "\"…")
+    // "rm -f" antes del zip: si el usuario confirma sobrescribir un
+    // archiveName ya existente, que sea un reemplazo real -- sin el rm,
+    // "zip -r" AÑADE/actualiza entradas dentro del zip existente en vez de
+    // sustituirlo, así que confirmar "overwrite" no dejaba en realidad un
+    // zip limpio con solo lo seleccionado ahora.
+    // "./" delante del nombre del zip + "--" delante de la lista: un
+    // archivo real llamado, por ejemplo, "-rf" (nombre válido en Linux)
+    // se interpretaría como flags de zip en vez de como nombre de fichero.
+    // zip no admite "--" antes del propio nombre del zip (error "can't use
+    // -- before archive name"), de ahí el "./" en su lugar.
+    var cmd = "cd -- " + Util.shellQuote(root.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
+      + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
+    root.pendingCompress = { archiveName: archiveName, cmd: cmd }
+    compressCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"]
+    compressCheckProc.running = true
+  }
+
+  function runPendingCompress() {
+    var p = root.pendingCompress
+    root.pendingCompress = null
+    root.compressConflictOpen = false
+    if (!p) return
+    runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
+  }
+
+  function cancelPendingCompress() {
+    root.pendingCompress = null
+    root.compressConflictOpen = false
   }
 
   function isArchive(entry) {
@@ -1341,13 +1492,39 @@ Item {
     var ext = root.extOf(entry.name)
     var path = Util.shellQuote(root.joinPath(root.currentPath, entry.name))
     var dir = Util.shellQuote(root.currentPath)
-    var cmd
-    if (ext === "zip") cmd = "unzip -o -q " + path + " -d " + dir
-    else if (ext === "7z") cmd = "7z x -y " + path + " -o" + dir
-    else if (ext === "rar") cmd = "unrar x -o+ " + path + " " + dir + "/"
-    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + path + " -C " + dir
+    var cmd, listCmd
+    // Todas fuerzan sobrescritura (-o/-y/-o+) -- necesario para que
+    // runPendingExtract pueda de verdad sobrescribir tras confirmar el
+    // aviso de conflicto de abajo. listCmd usa el modo "lista plana" de
+    // cada herramienta (nombre por línea, sin cabecera) para saber qué se
+    // pisaría, sin necesidad de parsear tablas.
+    if (ext === "zip") { cmd = "unzip -o -q " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
+    else if (ext === "7z") { cmd = "7z x -y " + path + " -o" + dir; listCmd = "7z l -ba -slt -- " + path + " | grep '^Path = ' | sed 's/^Path = //'" }
+    else if (ext === "rar") { cmd = "unrar x -o+ " + path + " " + dir + "/"; listCmd = "unrar lb -- " + path }
+    else if (root.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf -- " + path }
     else return
-    runAction(cmd, "Extracting \"" + entry.name + "\"…")
+    // Antes esto sobrescribía sin preguntar, a diferencia de pegar/soltar/
+    // renombrar (que sí comprueban conflictos). Antes de extraer, se lista
+    // el contenido del archivo y se comprueba si algún elemento de primer
+    // nivel ya existe en la carpeta actual.
+    root.pendingExtract = { entry: entry, cmd: cmd }
+    extractListProc.command = ["bash", "-c", listCmd]
+    extractListProc.running = true
+  }
+
+  function runPendingExtract() {
+    var p = root.pendingExtract
+    root.pendingExtract = null
+    root.extractConflictOpen = false
+    root.extractConflictNames = []
+    if (!p) return
+    runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
+  }
+
+  function cancelPendingExtract() {
+    root.pendingExtract = null
+    root.extractConflictOpen = false
+    root.extractConflictNames = []
   }
 
   function startBulkRename() {
@@ -1360,15 +1537,53 @@ Item {
     root.bulkRenameOpen = false
     if (entries.length === 0) return
     var pattern = root.bulkRenamePattern
-    var cmds = entries.map(function (e, i) {
+    var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
       var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
-      var oldPath = root.joinPath(root.currentPath, e.name)
-      var newPath = root.joinPath(root.currentPath, newName)
-      return "mv -n -- " + Util.shellQuote(oldPath) + " " + Util.shellQuote(newPath)
+      return {
+        oldName: e.name, newName: newName,
+        oldPath: root.joinPath(root.currentPath, e.name),
+        newPath: root.joinPath(root.currentPath, newName)
+      }
     })
-    runAction(cmds.join(" && "), "Renaming " + entries.length + " items…")
+    root.pendingBulkRename = pairs
+    // Antes esto usaba "mv -n" a ciegas: un patrón que produce un nombre ya
+    // existente (o que dos ítems de la propia selección acaben con el
+    // mismo nombre nuevo) hacía que mv -n no tocara ESE ítem en concreto,
+    // sin ningún aviso de cuál se había quedado sin renombrar. Ahora se
+    // comprueban antes los conflictos con lo que ya existe en disco...
+    var targetCounts = {}
+    pairs.forEach(function (p) {
+      if (p.newName === p.oldName) return
+      targetCounts[p.newPath] = (targetCounts[p.newPath] || 0) + 1
+    })
+    // ...y también los conflictos DENTRO de la propia selección (dos
+    // ítems que el patrón deja con el mismo nombre nuevo).
+    root.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
+    var checkCmd = pairs.map(function (p) {
+      if (p.newName === p.oldName) return "true"
+      return "test -e " + Util.shellQuote(p.newPath) + " && printf '%s\\n' " + Util.shellQuote(p.newName)
+    }).join("; ")
+    bulkRenameCheckProc.command = ["bash", "-c", checkCmd]
+    bulkRenameCheckProc.running = true
+  }
+
+  function runPendingBulkRename() {
+    var pairs = root.pendingBulkRename
+    root.pendingBulkRename = null
+    root.bulkRenameConflictOpen = false
+    if (!pairs) return
+    var cmds = pairs.filter(function (p) { return p.newName !== p.oldName }).map(function (p) {
+      return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
+    })
+    if (cmds.length === 0) return
+    runAction(root.chainCmds(cmds), "Renaming " + cmds.length + " items…")
+  }
+
+  function cancelPendingBulkRename() {
+    root.pendingBulkRename = null
+    root.bulkRenameConflictOpen = false
   }
 
   function startChmod(entry) {
@@ -1431,9 +1646,15 @@ Item {
     var target = root.joinPath(root.currentPath, entry.name)
     var linkName = "Link to " + entry.name
     var linkPath = root.joinPath(root.currentPath, linkName)
-    runAction("ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath))
-    root.pushUndo("make link \"" + linkName + "\"", function () {
-      root.runAction("rm -- " + Util.shellQuote(linkPath))
+    // El undo solo se registra si "ln -s" confirmó éxito -- antes se
+    // registraba a ciegas, así que si ya existía un archivo con el nombre
+    // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z
+    // posterior lo borraba igualmente aunque no tuviera nada que ver con
+    // el enlace que se intentó crear.
+    runAction("ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath), undefined, function () {
+      root.pushUndo("make link \"" + linkName + "\"", function () {
+        return root.runAction("rm -- " + Util.shellQuote(linkPath))
+      })
     })
   }
 
@@ -1463,7 +1684,7 @@ Item {
       var uri = "trash:///" + e.name.split("/").map(encodeURIComponent).join("/")
       return "gio trash --restore -- " + Util.shellQuote(uri)
     })
-    runAction(cmds.join(" && "), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
+    runAction(root.chainCmds(cmds), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
   function openContextMenu(x, y, actions) {
@@ -1640,7 +1861,14 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.entries = root.sortEntries(root.parseEntries(text))
+        var parsed = root.parseEntries(text)
+        // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
+        // que había más de 200 coincidencias reales; se descarta el que
+        // sobra y se avisa en la barra de estado en vez de dar la lista
+        // por completa en silencio.
+        root.searchTruncated = parsed.length > 200
+        if (root.searchTruncated) parsed = parsed.slice(0, 200)
+        root.entries = root.sortEntries(parsed)
         list.positionViewAtBeginning()
         root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }
@@ -1727,7 +1955,12 @@ Item {
 
   Process {
     id: actionProc
-    onExited: {
+    property string errorText: ""
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: actionProc.errorText = text
+    }
+    onExited: function (exitCode) {
       root.actionBusy = false
       root.actionLabel = ""
       root.refresh()
@@ -1736,6 +1969,18 @@ Item {
       // paneles no activos (cada uno con su propio Process de listado, ver
       // el Repeater de paneles) se refresquen también.
       root.refreshTick += 1
+      var cb = root._actionOnSuccess
+      root._actionOnSuccess = null
+      var wasCancelled = root._actionCancelled
+      root._actionCancelled = false
+      if (exitCode === 0) {
+        if (cb) cb()
+      } else if (!wasCancelled) {
+        // Antes esto se tragaba en silencio -- un mv/cp/chmod/zip/unzip que
+        // fallara (permisos, disco lleno, archivo corrupto...) se veía
+        // exactamente igual que uno que había ido bien.
+        Quickshell.execDetached(["notify-send", "Omafiles", "Action failed: " + (actionProc.errorText.trim() || "unknown error")])
+      }
     }
   }
 
@@ -1777,6 +2022,76 @@ Item {
         } else {
           root.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
           root.dropConflictOpen = true
+        }
+      }
+    }
+  }
+
+  Process {
+    id: compressCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text.trim() === "1") root.compressConflictOpen = true
+        else root.runPendingCompress()
+      }
+    }
+  }
+
+  Process {
+    id: bulkRenameCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        var total = conflicts.length + root.bulkRenameInternalDupes
+        if (total === 0) {
+          root.runPendingBulkRename()
+        } else {
+          root.bulkRenameConflictCount = total
+          root.bulkRenameConflictOpen = true
+        }
+      }
+    }
+  }
+
+  // Lista el contenido del archivo antes de extraer (nombre por línea vía
+  // el modo "lista plana" de cada herramienta) para poder comprobar
+  // conflictos -- ver extractHere().
+  Process {
+    id: extractListProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var top = {}
+        String(text || "").split("\n").forEach(function (line) {
+          var name = line.replace(/\/+$/, "")
+          if (!name) return
+          var slash = name.indexOf("/")
+          top[slash >= 0 ? name.substring(0, slash) : name] = true
+        })
+        var names = Object.keys(top)
+        if (names.length === 0) { root.runPendingExtract(); return }
+        var checkCmd = names.map(function (n) {
+          return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
+        }).join("; ")
+        extractConflictCheckProc.command = ["bash", "-c", checkCmd]
+        extractConflictCheckProc.running = true
+      }
+    }
+  }
+
+  Process {
+    id: extractConflictCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        if (conflicts.length === 0) {
+          root.runPendingExtract()
+        } else {
+          root.extractConflictNames = conflicts
+          root.extractConflictOpen = true
         }
       }
     }
@@ -2159,7 +2474,13 @@ Item {
                 // MouseArea: no roba el evento a los MouseArea de las
                 // filas/botones de debajo, solo observa.
                 HoverHandler {
-                  onHoveredChanged: if (hovered) root.switchToTab(bgPanel.index)
+                  // No cambiar de panel activo mientras el usuario tiene un
+                  // nombre a medio escribir (rename/nueva carpeta/nuevo
+                  // fichero/ruta editable) -- switchToTab -> _goToPath
+                  // resetea esos campos, y con hover-to-activate bastaba con
+                  // cruzar el ratón por el divisor para perder el texto sin
+                  // ningún clic de por medio.
+                  onHoveredChanged: if (hovered && !root.hasPendingEdit) root.switchToTab(bgPanel.index)
                 }
 
                 function refreshMe() {
@@ -3022,6 +3343,18 @@ Item {
                   if (renameConflictConfirm.handleKey(event)) event.accepted = true
                   return
                 }
+                if (root.extractConflictOpen) {
+                  if (extractConflictConfirm.handleKey(event)) event.accepted = true
+                  return
+                }
+                if (root.compressConflictOpen) {
+                  if (compressConflictConfirm.handleKey(event)) event.accepted = true
+                  return
+                }
+                if (root.bulkRenameConflictOpen) {
+                  if (bulkRenameConflictConfirm.handleKey(event)) event.accepted = true
+                  return
+                }
                 if (root.pasteConflictOpen) {
                   if (event.key === Qt.Key_Escape) { root.cancelPasteConflict(); event.accepted = true }
                   return
@@ -3595,6 +3928,7 @@ Item {
                 anchors.right: parent.right
                 text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
                   + (root.searchQuery ? " of " + root.entries.length : "")
+                  + (root.searchTruncated ? " · showing first 200" : "")
                   + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
                   + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
                   + " · sort: " + root.sortLabel()
@@ -4193,6 +4527,49 @@ Item {
         foreground: Color.menu.text
         onCanceled: root.cancelPendingRename()
         onConfirmed: root.runPendingRename(true)
+      }
+
+      ConfirmDialog {
+        id: extractConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: root.extractConflictOpen
+        message: root.extractConflictNames.length === 1
+          ? "\"" + root.extractConflictNames[0] + "\" already exists here and will be overwritten."
+          : root.extractConflictNames.length + " items already exist here and will be overwritten."
+        confirmText: "Overwrite"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: root.cancelPendingExtract()
+        onConfirmed: root.runPendingExtract()
+      }
+
+      ConfirmDialog {
+        id: compressConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: root.compressConflictOpen
+        message: root.pendingCompress ? "\"" + root.pendingCompress.archiveName + "\" already exists. Overwrite it?" : ""
+        confirmText: "Overwrite"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: root.cancelPendingCompress()
+        onConfirmed: root.runPendingCompress()
+      }
+
+      ConfirmDialog {
+        id: bulkRenameConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: root.bulkRenameConflictOpen
+        message: root.bulkRenameConflictCount === 1
+          ? "1 rename would collide with an existing name and will be skipped. Rename the rest?"
+          : root.bulkRenameConflictCount + " renames would collide with existing or duplicate names and will be skipped. Rename the rest?"
+        confirmText: "Continue"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: root.cancelPendingBulkRename()
+        onConfirmed: root.runPendingBulkRename()
       }
 
       // ---------- Conflicto al pegar ----------

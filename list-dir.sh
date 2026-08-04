@@ -1,6 +1,14 @@
 #!/bin/bash
-# Lista el contenido de una carpeta como TSV:
-# tipo<TAB>nombre<TAB>tamaño<TAB>mtime<TAB>enlace
+# Lista el contenido de una carpeta como 5 campos por entrada --
+# tipo/nombre/tamaño/mtime/enlace -- separados por NUL (\0), tanto entre
+# campos como entre entradas (el lado QML sabe que son grupos fijos de 5).
+# NUL es el único byte que de verdad no puede aparecer en un nombre de
+# fichero de Linux; un TAB o un salto de línea sí son válidos en un nombre,
+# así que un TSV normal (campos con TAB, entradas con \n, como se usaba
+# antes) se podía desalinear con un nombre así -- el tamaño/fecha de UNA
+# fila pasaban a pertenecer a la fila de al lado, con el riesgo de que una
+# operación destructiva (borrar/mover/renombrar) actuara sobre el fichero
+# equivocado.
 # Carpetas primero, luego ficheros, cada grupo en orden alfabético -- el
 # orden final que pida el usuario (nombre/tamaño/fecha/tipo) se aplica en
 # QML, que ya tiene la lista completa en memoria y no necesita relanzar esto.
@@ -74,10 +82,31 @@ for f in "${files[@]}"; do
   file_mtime["$f"]="$mtime"
 done
 
-for d in "${dirs[@]}"; do
-  printf 'dir\t%s\t0\t%s\t%s\n' "$d" "${dir_mtime[$d]}" "$(link_state_of "$d")"
-done | sort -f -t $'\t' -k2,2
+# Se ordena la lista de NOMBRES (un array bash normal, sin NUL de por
+# medio -- válido aunque un nombre concreto tenga tabs/saltos de línea
+# dentro) y solo DESPUÉS se construye la salida NUL-delimitada final; no se
+# puede meter esta última por un "sort" normal porque no entiende que cada
+# entrada son 5 campos y los reordenaría campo a campo.
+# Guardia ((${#...})) necesaria: con el array vacío (carpeta sin
+# subcarpetas, o sin ficheros sueltos), "printf '%s\0' " sin ningún
+# argumento detrás IGUALMENTE ejecuta una pasada del formato (rellenando
+# %s con vacío) en vez de no imprimir nada -- cuela un registro fantasma de
+# nombre vacío que luego el bucle de abajo intenta buscar en file_size/
+# file_mtime (índice inexistente) y el lado QML lo pinta como un fichero
+# sin nombre. Confirmado en vivo: pasaba en $HOME, que no tiene ficheros
+# sueltos en la raíz, solo carpetas.
+dirs_sorted=()
+files_sorted=()
+((${#dirs[@]})) && readarray -d '' -t dirs_sorted < <(printf '%s\0' "${dirs[@]}" | sort -fz)
+((${#files[@]})) && readarray -d '' -t files_sorted < <(printf '%s\0' "${files[@]}" | sort -fz)
 
-for f in "${files[@]}"; do
-  printf 'file\t%s\t%s\t%s\t%s\n' "$f" "${file_size[$f]}" "${file_mtime[$f]}" "$(link_state_of "$f")"
-done | sort -f -t $'\t' -k2,2
+for d in "${dirs_sorted[@]}"; do
+  # "0" (tamaño) va como argumento %s, no literal en el formato -- printf
+  # trata "\0" seguido de un dígito como escape octal (\0NNN), así que un
+  # "0" pegado a mano ahí se fundiría con el separador anterior.
+  printf 'dir\0%s\0%s\0%s\0%s\0' "$d" "0" "${dir_mtime[$d]}" "$(link_state_of "$d")"
+done
+
+for f in "${files_sorted[@]}"; do
+  printf 'file\0%s\0%s\0%s\0%s\0' "$f" "${file_size[$f]}" "${file_mtime[$f]}" "$(link_state_of "$f")"
+done
