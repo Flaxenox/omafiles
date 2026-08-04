@@ -1090,7 +1090,7 @@ Item {
     var next = root.tabs.slice()
     next[root.activeTabIndex] = {
       path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
-      previewOpen: root.previewOpen, previewEntry: root.previewEntry
+      previewOpen: root.previewOpen, previewEntry: root.previewEntry, scrollY: list.contentY
     }
     root.tabs = next
   }
@@ -1117,6 +1117,17 @@ Item {
     }
   }
 
+  // _goToPath() siempre deja list.contentY = list.originY (arriba del
+  // todo) al navegar -- sin esto, volver a una pestaña en la que se había
+  // bajado en la lista aterrizaba siempre en la fila 0, perdiendo la
+  // posición aunque la carpeta en sí no hubiera cambiado. Se llama
+  // DESPUÉS de _goToPath, mismo motivo que _restoreTabPreview: para
+  // entonces el modelo (root.visibleEntries) ya está actualizado y
+  // contentHeight ya refleja el listado correcto.
+  function _restoreTabScroll(tab) {
+    list.contentY = tab.scrollY || list.originY
+  }
+
   function switchToTab(index) {
     if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
     root.saveActiveTab()
@@ -1124,6 +1135,7 @@ Item {
     root._restoreTabHistory(root.tabs[index])
     root._goToPath(root.tabs[index].path)
     root._restoreTabPreview(root.tabs[index])
+    root._restoreTabScroll(root.tabs[index])
   }
 
   function newTab() {
@@ -1156,6 +1168,7 @@ Item {
     root._restoreTabHistory(root.tabs[newIndex])
     root._goToPath(root.tabs[newIndex].path)
     root._restoreTabPreview(root.tabs[newIndex])
+    root._restoreTabScroll(root.tabs[newIndex])
   }
 
   function nextTab() {
@@ -2556,8 +2569,18 @@ Item {
     if (!multi) {
       actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
       if (entries[0].type === "dir") {
+        // Bug real: usar root.currentPath dentro del closure (en vez de
+        // capturarlo aquí) leía la ruta en el momento del CLIC del menú,
+        // no en el momento de abrirlo -- si el ratón pasaba por otro
+        // panel de fondo mientras el menú seguía abierto (el
+        // HoverHandler de cambio de pestaña no se desactiva solo por
+        // haber un menú encima), la pestaña activa ya había cambiado y
+        // "Open in new tab" abría la carpeta dentro de la carpeta
+        // EQUIVOCADA. Capturado como variable local, coherente con como
+        // ya lo hace paletteCommands() para el mismo caso.
+        var dirFullPath = root.joinPath(root.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
-          root.openInNewTab(root.joinPath(root.currentPath, entries[0].name))
+          root.openInNewTab(dirFullPath)
         } })
       } else {
         actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
@@ -4039,14 +4062,31 @@ Item {
                   // fichero/ruta editable) -- switchToTab -> _goToPath
                   // resetea esos campos, y con hover-to-activate bastaba con
                   // cruzar el ratón por el divisor para perder el texto sin
-                  // ningún clic de por medio.
-                  onHoveredChanged: if (hovered && !root.hasPendingEdit) root.switchToTab(bgPanel.index)
+                  // ningún clic de por medio. Tampoco con el menú
+                  // contextual abierto -- bug real: el menú se abre sobre
+                  // el panel activo de ESE momento, pero si el cursor
+                  // pasaba por otro panel de fondo de camino a una entrada
+                  // del menú (nada bloqueaba el hover solo por haber un
+                  // menú encima), la pestaña activa cambiaba a mitad de
+                  // acción y "Open in new tab"/Copy/etc. acababan actuando
+                  // sobre la carpeta equivocada.
+                  onHoveredChanged: if (hovered && !root.hasPendingEdit && !root.contextMenuOpen) root.switchToTab(bgPanel.index)
                 }
 
                 function refreshMe() {
                   if (!bgPanel.visible) return
                   bgPanel.pathError = ""
-                  bgListProc.command = [root.pluginDir + "/list-dir.sh", bgPanel.modelData.path, root.showHidden ? "1" : "0"]
+                  // Papelera: igual que root.refresh() con el panel activo
+                  // -- no es una carpeta real, agrega la de casa más la de
+                  // cualquier otro disco montado (list-trash.sh), así que
+                  // list-dir.sh a secas contra trashDir solo ve la de casa
+                  // y con eso vacía se veía como "papelera vacía" hasta
+                  // que este panel pasaba a ser el activo.
+                  if (bgPanel.modelData.path === root.trashDir) {
+                    bgListProc.command = [root.pluginDir + "/list-trash.sh", root.showHidden ? "1" : "0"]
+                  } else {
+                    bgListProc.command = [root.pluginDir + "/list-dir.sh", bgPanel.modelData.path, root.showHidden ? "1" : "0"]
+                  }
                   bgListProc.running = true
                 }
 
