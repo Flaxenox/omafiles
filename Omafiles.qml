@@ -897,6 +897,23 @@ Item {
     return out
   }
 
+  // Orden "natural": trocea el nombre en tramos alternos texto/número y
+  // compara los números como números, no letra a letra -- sin esto
+  // "file2.txt" salía después de "file10.txt" (lexicográfico puro: "1" <
+  // "2"), y lo mismo con fechas/capítulos/versiones numeradas. Algoritmo
+  // compacto ya conocido (trocea con una regex, compara tramo a tramo).
+  function naturalCompare(a, b) {
+    var ax = [], bx = []
+    a.replace(/(\d+)|(\D+)/g, function (_, d, s) { ax.push([d || Infinity, s || ""]) })
+    b.replace(/(\d+)|(\D+)/g, function (_, d, s) { bx.push([d || Infinity, s || ""]) })
+    while (ax.length && bx.length) {
+      var an = ax.shift(), bn = bx.shift()
+      var nn = (an[0] - bn[0]) || an[1].localeCompare(bn[1])
+      if (nn) return nn
+    }
+    return ax.length - bx.length
+  }
+
   function compareEntries(a, b) {
     var result = 0
     if (root.sortKey === "size") {
@@ -908,8 +925,7 @@ Item {
       result = ea < eb ? -1 : (ea > eb ? 1 : 0)
     }
     if (result === 0) {
-      var na = a.name.toLowerCase(), nb = b.name.toLowerCase()
-      result = na < nb ? -1 : (na > nb ? 1 : 0)
+      result = root.naturalCompare(a.name.toLowerCase(), b.name.toLowerCase())
     }
     return root.sortDesc ? -result : result
   }
