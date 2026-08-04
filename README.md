@@ -20,7 +20,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Rename, new folder, new file, make link, delete (to trash, with confirm), copy/cut/paste — **with conflict handling** (overwrite/skip/cancel instead of silently failing) and a "still working" indicator with Cancel for copy/move.
 - Trash shows each item's original location and deletion time (read from `.trashinfo`), not just a plain file listing.
 - Undo (`Ctrl+Z`) for rename, new folder, new file, make link, delete, and move.
-- Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod, a read-only Properties panel (real folder size via `du`, permissions, owner, dates — or combined item count and total size for a multi-selection).
+- Archive compress/extract (zip/7z/rar/tar family), bulk rename with `{name}`/`{ext}`/`{n}` patterns, chmod (multi-selection, with an "Apply to subfolders" toggle for `chmod -R`), a read-only Properties panel (real folder size via `du`, permissions, owner, dates — or combined item count and total size for a multi-selection).
 - Browse inside a zip/7z/rar/tar archive without extracting it — opening a file inside extracts just that one file to a temp cache and opens it with your default app. Read-only view (no rename/delete/copy/etc. inside).
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
 - Preview (`Space`): images, video thumbnails, syntax-highlighted text (Pygments), first-page PDF render (`pdftoppm`), and audio metadata (duration/codec/bitrate/tags via `ffprobe`).

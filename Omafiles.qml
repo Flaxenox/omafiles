@@ -262,6 +262,11 @@ Item {
   // avisa de que es una selección mixta.
   property bool chmodMixed: false
   property string chmodMode: ""
+  // true si al menos uno de los seleccionados es una carpeta -- controla
+  // si se muestra el toggle "Apply to subfolders" (chmod -R no tiene
+  // nada que ofrecer sobre una selección de solo ficheros).
+  property bool chmodHasDir: false
+  property bool chmodRecursive: false
 
   property bool propertiesOpen: false
   property var propertiesEntry: null
@@ -1928,6 +1933,8 @@ Item {
     root.chmodNames = entries.map(function (e) { return e.name })
     root.chmodMode = ""
     root.chmodMixed = false
+    root.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
+    root.chmodRecursive = false
     var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(root.currentPath, e.name)) }).join(" ")
     chmodStatProc.command = ["bash", "-c", "stat -c%a -- " + paths]
     chmodStatProc.running = true
@@ -1938,8 +1945,12 @@ Item {
     root.chmodOpen = false
     mode = mode.trim()
     if (!/^[0-7]{3,4}$/.test(mode) || root.chmodNames.length === 0) return
+    // -R es inofensivo sobre un fichero suelto (no baja a ningún sitio),
+    // así que se puede aplicar al comando entero sin separar ficheros de
+    // carpetas -- más simple que dos ramas de chainCmds distintas.
+    var flag = root.chmodRecursive ? "-R " : ""
     var cmds = root.chmodNames.map(function (n) {
-      return "chmod " + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
+      return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
     })
     var label = root.chmodNames.length === 1
       ? "Setting permissions for \"" + root.chmodNames[0] + "\"…"
@@ -5085,6 +5096,17 @@ Item {
             font.family: Style.font.family
             color: Color.menu.text
             opacity: 0.6
+          }
+
+          Toggle {
+            width: parent.width
+            visible: root.chmodHasDir
+            label: "Apply to subfolders"
+            description: "chmod -R -- also changes everything inside"
+            checked: root.chmodRecursive
+            foreground: Color.menu.text
+            accent: Color.accent
+            onClicked: root.chmodRecursive = !root.chmodRecursive
           }
 
           Button {
