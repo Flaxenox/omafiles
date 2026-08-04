@@ -3723,7 +3723,6 @@ Item {
                         readonly property string vidKey: isVid ? root.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
                         readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                         readonly property bool isDir: modelData.type === "dir"
-                        readonly property bool hasThumb: root.isImage(modelData) || (isVid && vidThumb !== "")
                         readonly property bool isBroken: modelData.link === "broken"
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
@@ -3733,6 +3732,7 @@ Item {
                         Component.onCompleted: if (isVid) root.requestVideoThumb(modelData, bgPanel.modelData.path)
 
                         Image {
+                          id: bgThumbImage
                           anchors.fill: parent
                           visible: status === Image.Ready
                           // La ruta es la de ESTE panel (bgPanel.modelData.path),
@@ -3756,9 +3756,16 @@ Item {
                           color: Color.menu.text
                         }
 
+                        // Antes se ocultaba con "!bgThumbSlot.hasThumb", que
+                        // decide por EXTENSIÓN -- una imagen real pero lenta
+                        // de cargar (o con contenido corrupto, status nunca
+                        // llega a Ready) tenía hasThumb=true sin que la
+                        // Image de arriba se hiciera visible nunca, así que
+                        // la fila se quedaba sin icono ninguno. Ahora se basa
+                        // en el estado real de carga de la propia Image.
                         OpticalGlyph {
                           anchors.fill: parent
-                          visible: !bgThumbSlot.isDir && !bgThumbSlot.hasThumb && !bgThumbSlot.isBroken
+                          visible: !bgThumbSlot.isDir && !bgThumbImage.visible && !bgThumbSlot.isBroken
                           text: root.iconFor(modelData)
                           fontFamily: Style.font.family
                           fontSize: Style.font.iconLarge
@@ -4611,7 +4618,6 @@ Item {
                     readonly property string vidKey: isVid ? root.thumbKeyFor(modelData) : ""
                     readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                     readonly property bool isDir: modelData.type === "dir"
-                    readonly property bool hasThumb: root.isImage(modelData) || (isVid && vidThumb !== "")
                     readonly property bool isBroken: modelData.link === "broken"
                     // Mismo ancho que los botones de casita/subir de navRow
                     // (Style.spacing.controlHeight), para que el icono quede
@@ -4624,6 +4630,7 @@ Item {
                     Component.onCompleted: if (isVid) root.requestVideoThumb(modelData)
 
                     Image {
+                      id: thumbImage
                       anchors.fill: parent
                       visible: status === Image.Ready
                       source: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
@@ -4643,9 +4650,16 @@ Item {
                       color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
                     }
 
+                    // Antes se ocultaba con "!thumbSlot.hasThumb", que decide
+                    // por EXTENSIÓN -- una imagen real pero lenta de cargar
+                    // (o con contenido corrupto, status nunca llega a Ready)
+                    // tenía hasThumb=true sin que la Image de arriba se
+                    // hiciera visible nunca, así que la fila se quedaba sin
+                    // icono ninguno. Ahora se basa en el estado real de carga
+                    // de la propia Image.
                     OpticalGlyph {
                       anchors.fill: parent
-                      visible: !thumbSlot.isDir && !thumbSlot.hasThumb && !thumbSlot.isBroken
+                      visible: !thumbSlot.isDir && !thumbImage.visible && !thumbSlot.isBroken
                       text: root.iconFor(modelData)
                       fontFamily: Style.font.family
                       fontSize: Style.font.iconLarge
@@ -4997,7 +5011,12 @@ Item {
                       spacing: Style.spacing.sm
 
                       Text {
-                        width: 84
+                        // 84 no le llegaba a "Sample rate" (se pegaba con
+                        // el valor sin espacio, confirmado midiendo el
+                        // glyph real de la fuente) -- 120 deja margen de
+                        // sobra para cualquier etiqueta actual de esta
+                        // tabla al tamaño de fuente real de la app.
+                        width: 120
                         text: parent.modelData.label
                         font.pixelSize: Style.font.subtitle
                         font.family: Style.font.family
@@ -5006,7 +5025,7 @@ Item {
                       }
 
                       Text {
-                        width: parent.width - 84 - Style.spacing.sm
+                        width: parent.width - 120 - Style.spacing.sm
                         text: parent.modelData.value
                         font.pixelSize: Style.font.subtitle
                         font.family: Style.font.family
@@ -5201,6 +5220,11 @@ Item {
                 height: Style.spacing.controlHeight * 0.8
                 foreground: Color.menu.text
                 accent: Color.accent
+                // Sin esto se confundía con texto suelto en reposo -- el
+                // mismo componente ya lleva borde permanente en la rejilla
+                // de permisos de chmod (chmodCell) por este motivo
+                // exacto, aquí se le había olvidado.
+                bordered: true
                 hasCursor: chipMouse.containsMouse
                 Accessible.role: Accessible.Button
                 Accessible.name: "Use pattern " + modelData
@@ -5580,7 +5604,10 @@ Item {
               spacing: Style.spacing.sm
 
               Text {
-                width: 84
+                // Mismo ajuste que la tabla de metadatos de audio: 84 no
+                // le llegaba a "Permissions" (mide igual de ancho que
+                // "Sample rate", medido con la fuente real).
+                width: 120
                 text: parent.modelData.label
                 font.pixelSize: Style.font.subtitle
                 font.family: Style.font.family
@@ -5589,7 +5616,7 @@ Item {
               }
 
               Text {
-                width: parent.width - 84 - Style.spacing.sm
+                width: parent.width - 120 - Style.spacing.sm
                 text: parent.modelData.value
                 font.pixelSize: Style.font.subtitle
                 font.family: Style.font.family

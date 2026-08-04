@@ -33,4 +33,12 @@ html="$(head -c "$bytes" -- "$path" | pygmentize -l "$lexer" -f html -O "noclass
 # fondo, que no queremos -- el fondo lo pone Color.menu.background) y los
 # atributos propios del <pre> (line-height fijo de Pygments, que no
 # queremos -- eso lo controla Style.font.* como el resto del fichero).
-printf '%s' "$html" | sed -e 's#^<div[^>]*>##' -e 's#<pre[^>]*>#<pre>#' -e 's#</pre></div>$#</pre>#'
+#
+# Bug real corregido aquí: un <pre> SIN atributos sigue implicando
+# white-space:pre (sin ajuste de línea) en el motor de texto enriquecido
+# de Qt -- el wrapMode:Text.Wrap del Text de QML no lo anula. Las líneas
+# largas se cortaban en seco en el borde del panel en vez de envolver.
+# pre-wrap conserva los saltos de línea reales (lo que se necesitaba)
+# pero SÍ permite ajustar dentro de una línea larga; word-break de
+# refuerzo para una palabra/token suelto más ancho que el panel.
+printf '%s' "$html" | sed -e 's#^<div[^>]*>##' -e 's#<pre[^>]*>#<pre style="white-space:pre-wrap; word-break:break-word">#' -e 's#</pre></div>$#</pre>#'
