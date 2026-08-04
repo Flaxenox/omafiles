@@ -417,6 +417,7 @@ Item {
   // app sola al abrir ficheros, el usuario no lo edita a mano).
   property var recentFiles: []
   property bool recentLoaded: false
+  property string sessionFile: root.homeDir + "/.local/state/omafiles/session.json"
   property string bulkRenameHistoryFile: root.homeDir + "/.local/state/omafiles/bulk-rename-history.json"
   // Patrones usados de verdad en Bulk rename, más reciente primero, tope
   // 8 -- mostrados como accesos rápidos en el propio diálogo en vez de
@@ -710,6 +711,28 @@ Item {
   function clearRecent() {
     root.recentFiles = []
     root.saveRecent()
+  }
+
+  // Solo se llama en la primera apertura de la sesión de Quickshell, sin
+  // ruta pedida por el host -- ver open(). Carga async (cat + Process,
+  // igual que bookmarks/recent); refresh()/startDirWatch se disparan
+  // desde el propio handler de loadSessionProc en cuanto sabe la ruta
+  // real, no aquí (evita listar homeDir de más si sí había sesión).
+  function loadSession() {
+    loadSessionProc.running = true
+  }
+
+  // Solo guarda la ruta de cada pestaña -- no historial/preview/scroll,
+  // eso son sesión "en caliente" (ya sobrevive a cerrar/reabrir sin salir
+  // de Quickshell gracias a keepLoaded) y no vale la pena la complejidad
+  // de restaurarlo tras un reinicio real del shell.
+  function saveSession() {
+    root.saveActiveTab()
+    var snapshot = root.tabs.map(function (t) { return { path: t.path } })
+    var json = JSON.stringify({ tabs: snapshot, activeTabIndex: root.activeTabIndex })
+    var dir = root.sessionFile.substring(0, root.sessionFile.lastIndexOf("/"))
+    saveSessionProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.sessionFile)]
+    saveSessionProc.running = true
   }
 
   function loadBulkRenameHistory() {
@@ -1221,14 +1244,25 @@ Item {
 
     if (targetPath) root.pendingSelectName = selectName
 
+    var restoringSession = false
     if (!root.loaded) {
       if (targetPath) {
         root.currentPath = targetPath
         root.tabs = [{ path: targetPath, history: [targetPath], historyIndex: 0 }]
         root.navHistory = [targetPath]
         root.navHistoryIndex = 0
+        root.refresh()
+      } else {
+        // Primera apertura de esta sesión de Quickshell sin una ruta
+        // pedida por el host -- intenta restaurar carpeta/pestañas de la
+        // sesión anterior (session.json) en vez de abrir siempre en
+        // homeDir. loadSession() dispara refresh()/startDirWatch ella
+        // sola en cuanto sabe la ruta real (leer el fichero es async), así
+        // que aquí no se hace -- evita listar homeDir de más para tirarlo
+        // enseguida si sí había sesión guardada.
+        restoringSession = true
+        root.loadSession()
       }
-      root.refresh()
     } else if (targetPath) {
       // Ya estaba cargado antes (uso normal previo): abre en pestaña
       // nueva para no perder la ubicación en la que ya estaba el usuario.
@@ -1242,16 +1276,18 @@ Item {
     if (!root.bulkRenameHistoryLoaded) root.loadBulkRenameHistory()
     root.refreshMounts()
     root.refreshNetworkMounts()
-    // Cubre los tres casos: primera carga (currentPath recién puesto,
-    // arriba), reabrir apuntando a un target (navigateTo ya lo arrancó
-    // dentro de _goToPath, esto solo lo reafirma sobre la misma ruta
-    // final) y reabrir SIN target (la ventana estaba cerrada -> close()
+    // Cubre los dos casos restantes: primera carga con target (currentPath
+    // recién puesto, arriba) y reabrir apuntando a un target (navigateTo ya
+    // lo arrancó dentro de _goToPath, esto solo lo reafirma sobre la misma
+    // ruta final) o reabrir SIN target (la ventana estaba cerrada -> close()
     // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
-    // vigilar).
-    if (!root.inArchive) root.startDirWatch(root.currentPath)
+    // vigilar). El caso restante (restoringSession) ya lo cubre
+    // loadSessionProc por su cuenta.
+    if (!restoringSession && !root.inArchive) root.startDirWatch(root.currentPath)
   }
 
   function close() {
+    root.saveSession()
     root.closingFromHost = true
     root.opened = false
     panel.visible = false
@@ -2933,6 +2969,34 @@ Item {
 
   Process {
     id: saveRecentProc
+  }
+
+  Process {
+    id: loadSessionProc
+    command: ["cat", root.sessionFile]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = null
+        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
+        var savedTabs = (parsed && Array.isArray(parsed.tabs))
+          ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
+          : []
+        if (savedTabs.length > 0) {
+          root.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
+          root.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, root.tabs.length - 1))
+          root.currentPath = root.tabs[root.activeTabIndex].path
+          root.navHistory = [root.currentPath]
+          root.navHistoryIndex = 0
+        }
+        root.refresh()
+        if (!root.inArchive) root.startDirWatch(root.currentPath)
+      }
+    }
+  }
+
+  Process {
+    id: saveSessionProc
   }
 
   Process {

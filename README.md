@@ -37,6 +37,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - The active panel's folder refreshes live (via `inotifywait`, optional — degrades to manual refresh if `inotify-tools` isn't installed) instead of only on `F5`. Mounted drives and network locations are polled every few seconds.
 - Recent files in the sidebar, persisted across sessions — opening one jumps to its folder with it selected.
 - In-app keyboard shortcuts reference (`?`), also reachable from the command palette.
+- Remembers which folder(s) and tab(s) were open across a full Quickshell restart (not just closing/reopening the window, which already persists on its own) — just the paths, not scroll position or history.
 
 ## Keyboard shortcuts
 
