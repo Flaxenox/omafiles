@@ -898,6 +898,7 @@ Item {
     ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
     ejectProc.wasInside = wasInside
+    ejectProc.device = mount.device
     ejectProc.running = true
   }
 
@@ -1164,6 +1165,8 @@ Item {
       navigateTo(root.joinPath(root.currentPath, entry.name))
     } else if (root.isArchive(entry)) {
       root.enterArchive(root.joinPath(root.currentPath, entry.name))
+    } else if (root.isIso(entry)) {
+      root.mountIso(entry)
     } else {
       var openPath = root.joinPath(root.currentPath, entry.name)
       openProc.command = ["xdg-open", openPath]
@@ -1985,6 +1988,9 @@ Item {
     if (entry && entry.type !== "dir" && root.isArchive(entry)) {
       cmds.push({ label: "Extract here", run: function () { root.extractHere(entry) } })
     }
+    if (entry && root.isIso(entry)) {
+      cmds.push({ label: "Mount ISO", run: function () { root.mountIso(entry) } })
+    }
     if (entry) {
       var fullPath = root.joinPath(root.currentPath, entry.name)
       if (!root.isBookmarked(fullPath)) {
@@ -2006,7 +2012,7 @@ Item {
     if (root.inArchive) {
       var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
         "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
-        "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Empty trash", "Restore"]
+        "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
     return cmds
@@ -2173,6 +2179,26 @@ Item {
     if (entry.type === "dir") return false
     var ext = root.extOf(entry.name)
     return ext === "zip" || ext === "7z" || ext === "rar" || root.tarExt.indexOf(ext) >= 0
+  }
+
+  function isIso(entry) {
+    return entry.type !== "dir" && root.extOf(entry.name) === "iso"
+  }
+
+  // A diferencia de isArchive() (enterArchive(), navegación de solo
+  // lectura sin montar nada de verdad), un .iso se monta como un
+  // dispositivo loop real -- así lo que haya dentro (un instalador, por
+  // ejemplo) se puede ejecutar/copiar igual que en cualquier carpeta
+  // normal, no solo mirarlo. Aparece en la barra lateral como cualquier
+  // otra unidad extraíble en cuanto se monta (list-mounts.sh ya distingue
+  // el icono por fstype=iso9660) y se expulsa igual que una.
+  function mountIso(entry) {
+    if (mountIsoProc.running) {
+      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting an ISO — try again in a moment"])
+      return
+    }
+    mountIsoProc.command = ["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)]
+    mountIsoProc.running = true
   }
 
   function extractHere(entry) {
@@ -2499,6 +2525,9 @@ Item {
       if (root.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
       }
+      if (root.isIso(entries[0])) {
+        actions.push({ label: "Mount", action: function () { root.mountIso(entries[0]) } })
+      }
       actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
       actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
     } else {
@@ -2815,6 +2844,7 @@ Item {
     property string mountPath: ""
     property bool wasInside: false
     property string errorText: ""
+    property string device: ""
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: ejectProc.errorText = text
@@ -2822,6 +2852,13 @@ Item {
     onExited: function (exitCode) {
       if (exitCode === 0) {
         if (ejectProc.wasInside) root.navigateTo(root.homeDir)
+        // Un .iso montado con mountIso() deja el /dev/loopN asociado al
+        // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
+        // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
+        // device para siempre hasta reiniciar.
+        if (ejectProc.device.indexOf("/dev/loop") === 0) {
+          Quickshell.execDetached(["udisksctl", "loop-delete", "-b", ejectProc.device])
+        }
         root.refreshMounts()
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not eject: " + (ejectProc.errorText || "device busy")])
@@ -2848,6 +2885,29 @@ Item {
         if (match) root.navigateTo(match[1])
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
+      }
+    }
+  }
+
+  Process {
+    id: mountIsoProc
+    property string outputText: ""
+    property string errorText: ""
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: mountIsoProc.outputText = text
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: mountIsoProc.errorText = text
+    }
+    onExited: function (exitCode) {
+      root.refreshMounts()
+      if (exitCode === 0) {
+        var match = mountIsoProc.outputText.match(/ at (\/[^\s.]+)/)
+        if (match) root.navigateTo(match[1])
+      } else {
+        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount ISO: " + (mountIsoProc.errorText || "unknown error")])
       }
     }
   }
