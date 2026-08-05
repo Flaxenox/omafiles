@@ -22,23 +22,23 @@ Item {
 
   function enterArchive(path) {
     selectionOps.selectOnly(-1)
-    root.inArchive = true
-    root.archivePath = path
-    root.archiveSubPath = ""
+    ArchiveState.inArchive = true
+    ArchiveState.archivePath = path
+    ArchiveState.archiveSubPath = ""
     refreshArchiveListing()
   }
 
   function exitArchive() {
-    root.inArchive = false
-    root.archivePath = ""
-    root.archiveSubPath = ""
+    ArchiveState.inArchive = false
+    ArchiveState.archivePath = ""
+    ArchiveState.archiveSubPath = ""
     root.refresh()
   }
 
   function refreshArchiveListing() {
     selectionOps.selectOnly(-1)
     list.contentY = list.originY
-    archiveListProc.command = [root.pluginDir + "/list-archive.sh", root.archivePath, root.archiveSubPath]
+    archiveListProc.command = [root.pluginDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath]
     archiveListProc.running = true
   }
 
@@ -48,15 +48,15 @@ Item {
   // igual de eficiente que abrir un fichero normal aunque el .zip sea
   // enorme.
   function openFileInArchive(entry) {
-    var full = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
-    var ext = root.extOf(root.archivePath)
-    var out = root.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(root.archivePath + "|" + full) + "/" + entry.name
+    var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
+    var ext = root.extOf(ArchiveState.archivePath)
+    var out = root.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(ArchiveState.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
-    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
-    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(root.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
+    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out
     archiveOpenProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd]

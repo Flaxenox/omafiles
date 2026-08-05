@@ -17,3 +17,6 @@ singleton MountsState 1.0 MountsState.qml
 singleton BookmarksState 1.0 BookmarksState.qml
 singleton DropHoverState 1.0 DropHoverState.qml
 singleton EditModeState 1.0 EditModeState.qml
+singleton TrashState 1.0 TrashState.qml
+singleton ArchiveState 1.0 ArchiveState.qml
+singleton TabsState 1.0 TabsState.qml

@@ -1,4 +1,5 @@
 import QtQuick
+import "../state"
 import "../Utils.js" as Utils
 
 // Metadatos de fichero: subtítulo de fila (tamaño + fecha, o info de
@@ -40,7 +41,7 @@ Item {
   // pasar la suya propia (bgPanel.modelData.path) o el aviso de "en la
   // papelera" saldría según la carpeta del panel ACTIVO, no la de este
   // panel (mismo tipo de bug ya documentado para thumbKeyFor/etc.).
-  // root.trashInfo es compartida entre el panel activo y todos los de
+  // TrashState.trashInfo es compartida entre el panel activo y todos los de
   // fondo (ver bgTrashInfoProc en BackgroundPanel.qml) -- quien la
   // rellene primero (activo o cualquier panel de fondo) sirve para todos,
   // así que esta función siempre lee la misma copia sin importar quién
@@ -51,7 +52,7 @@ Item {
     if (atPath === root.trashDir) {
       var parts = []
       if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
-      var info = root.trashInfo[entry.name]
+      var info = TrashState.trashInfo[entry.name]
       if (info) {
         var rel = Utils.relativeTime(info.epoch)
         parts.push(rel ? "Deleted " + rel : "Deleted")

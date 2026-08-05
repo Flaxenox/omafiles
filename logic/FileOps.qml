@@ -14,7 +14,7 @@ Item {
   property Item selectionOps: null
 
   function startBulkRename() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     DialogsState.bulkRenamePattern = "{name}{ext}"
     DialogsState.bulkRenameOpen = true
   }
@@ -97,7 +97,7 @@ Item {
   }
 
   function makeLinkFor(entry) {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     if (!entry) return
     var target = root.joinPath(root.currentPath, entry.name)
     var linkName = "Link to " + entry.name
@@ -120,15 +120,15 @@ Item {
   function restoreFromTrash() {
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    // root.trashInfo (ver trash-info.sh) ya sabe la ruta original
+    // TrashState.trashInfo (ver trash-info.sh) ya sabe la ruta original
     // absoluta de cada ítem, resuelta correctamente incluso para la
     // papelera de otro disco (donde Path= es relativo al punto de
     // montaje, no a casa) -- restore-by-origpath.sh la usa para
     // localizar el .trashinfo correcto sin asumir una única papelera.
     var cmds = entries
-      .filter(function (e) { return !!root.trashInfo[e.name] })
+      .filter(function (e) { return !!TrashState.trashInfo[e.name] })
       .map(function (e) {
-        return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(root.trashInfo[e.name].origPath)
+        return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(TrashState.trashInfo[e.name].origPath)
       })
     if (cmds.length === 0) return
     root.runAction(root.chainCmds(cmds), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")

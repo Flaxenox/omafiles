@@ -27,7 +27,7 @@ Item {
   property Item bookmarkOps: null
 
   function paste() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     if (ClipboardState.clipboardPaths.length === 0) {
       // Nada copiado desde DENTRO de Omafiles -- probar el portapapeles
       // del sistema (copiar en Nautilus/el navegador/un chat/etc. y pegar
@@ -73,7 +73,7 @@ Item {
   }
 
   function compressSelected() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     var archiveName = entries.length === 1
@@ -177,7 +177,7 @@ Item {
     // una entrada del archivo, y sin este guard commitRename ejecutaría mv
     // sobre currentPath/<nombre-del-zip>, que puede coincidir por
     // casualidad con un fichero real.
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     if (index < 0 || index >= root.visibleEntries.length) return
     var oldName = root.visibleEntries[index].name
     newName = newName.trim()

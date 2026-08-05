@@ -62,8 +62,8 @@ Item {
   // restaurarlo tras un reinicio real del shell.
   function saveSession() {
     tabOps.saveActiveTab()
-    var snapshot = root.tabs.map(function (t) { return { path: t.path } })
-    _saveJson(root.sessionFile, { tabs: snapshot, activeTabIndex: root.activeTabIndex })
+    var snapshot = TabsState.tabs.map(function (t) { return { path: t.path } })
+    _saveJson(root.sessionFile, { tabs: snapshot, activeTabIndex: TabsState.activeTabIndex })
   }
 
   function loadBulkRenameHistory() {
@@ -119,14 +119,14 @@ Item {
           ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
           : []
         if (savedTabs.length > 0) {
-          root.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
-          root.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, root.tabs.length - 1))
-          root.currentPath = root.tabs[root.activeTabIndex].path
-          root.navHistory = [root.currentPath]
-          root.navHistoryIndex = 0
+          TabsState.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
+          TabsState.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, TabsState.tabs.length - 1))
+          root.currentPath = TabsState.tabs[TabsState.activeTabIndex].path
+          TabsState.navHistory = [root.currentPath]
+          TabsState.navHistoryIndex = 0
         }
         root.refresh()
-        if (!root.inArchive) root.startDirWatch(root.currentPath)
+        if (!ArchiveState.inArchive) root.startDirWatch(root.currentPath)
       }
     }
   }

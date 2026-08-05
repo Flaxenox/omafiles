@@ -48,6 +48,11 @@ Item {
 
   // ---------- Marcadores / iconos de unidades ----------
   function removeBookmark(path) {
+    // Trash es fija -- no se puede quitar (ver el guard gemelo en
+    // bookmarkActions() de Omafiles.qml, que ni siquiera ofrece la
+    // opción; este es el guard real, por si algún día se llama desde
+    // otro sitio).
+    if (path === root.trashDir) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
   }

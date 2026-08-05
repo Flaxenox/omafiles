@@ -24,14 +24,9 @@ Item {
   property string homeDir: Quickshell.env("HOME")
   property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
   property string currentPath: homeDir
-  property var tabs: [{ path: homeDir, history: [homeDir], historyIndex: 0 }]
-  property int activeTabIndex: 0
-  // Historial atrás/adelante de la pestaña ACTIVA -- cada pestaña guarda el
-  // suyo propio en su objeto (campos history/historyIndex de arriba) y este
-  // par de propiedades es solo la "vista en curso" de esa pestaña, que se
-  // intercambia al cambiar de pestaña (ver switchToTab/newTab/etc.).
-  property var navHistory: [homeDir]
-  property int navHistoryIndex: 0
+  // tabs/activeTabIndex/navHistory/navHistoryIndex viven ahora en
+  // state/TabsState.qml -- vigesimoprimer y último slice de la capa
+  // state/.
   property var entries: []
   // Caché de listados por ruta, alimentada por los paneles de fondo cada
   // vez que refrescan -- ver _goToPath().
@@ -200,14 +195,8 @@ Item {
   // décimo slice de la capa state/.
 
   property string trashDir: root.homeDir + "/.local/share/Trash/files"
-  // { "<nombre en Trash/files>": { origPath, epoch } } -- leído de
-  // ~/.local/share/Trash/info/*.trashinfo por trash-info.sh, solo cuando
-  // el panel activo está mostrando la papelera (ver listProc.onStreamFinished
-  // y metaFor()). Antes la papelera se veía como "una carpeta más": el
-  // subtítulo mostraba el mtime propio del fichero (de antes de borrarlo)
-  // como si fuera la fecha de borrado, y no había forma de saber de dónde
-  // venía cada cosa sin mirar el .trashinfo a mano.
-  property var trashInfo: ({})
+  // trashInfo vive ahora en state/TrashState.qml -- decimonoveno slice
+  // de la capa state/.
   // mounts/networkMounts viven ahora en state/MountsState.qml --
   // decimoquinto slice de la capa state/.
 
@@ -216,10 +205,9 @@ Item {
   // que contiene el archivo); root.entries pasa a venir de list-archive.sh
   // en vez de list-dir.sh. Deliberadamente de solo lectura: sin selección
   // múltiple/menú contextual/renombrar/borrar/chmod/arrastrar -- ver los
-  // guards "if (root.inArchive) return" en cada acción que muta disco.
-  property bool inArchive: false
-  property string archivePath: ""
-  property string archiveSubPath: ""
+  // guards "if (ArchiveState.inArchive) return" en cada acción que muta
+  // disco. inArchive/archivePath/archiveSubPath viven ahora en
+  // state/ArchiveState.qml -- vigésimo slice de la capa state/.
 
   readonly property var defaultBookmarks: [
     { label: "Home", path: root.homeDir },
@@ -275,7 +263,7 @@ Item {
     // de ocultos, el "Refresh" de la paleta, el onExited de las acciones
     // de fichero...) recargue lo correcto sin tener que acordarse de
     // comprobar inArchive en cada sitio.
-    if (root.inArchive) { archiveActions.refreshArchiveListing(); return }
+    if (ArchiveState.inArchive) { archiveActions.refreshArchiveListing(); return }
     root.currentPathError = ""
     // La Papelera agrega la de casa MÁS la de cualquier otro disco
     // montado que tenga la suya propia (spec de XDG Trash) -- ver
@@ -435,7 +423,7 @@ Item {
     // comprimido" -- currentPath nunca cambia mientras se navega DENTRO
     // del archivo (ver enter()/goUp()/inArchive), así que si esto se
     // ejecuta es que el usuario se fue a otro sitio de verdad.
-    if (root.inArchive) { root.inArchive = false; root.archivePath = ""; root.archiveSubPath = "" }
+    if (ArchiveState.inArchive) { ArchiveState.inArchive = false; ArchiveState.archivePath = ""; ArchiveState.archiveSubPath = "" }
     root.currentPath = path
     selectionOps.selectOnly(-1)
     EditModeState.renamingIndex = -1
@@ -459,25 +447,25 @@ Item {
   }
 
   function _pushHistory(path) {
-    if (root.navHistory[root.navHistoryIndex] === path) return
+    if (TabsState.navHistory[TabsState.navHistoryIndex] === path) return
     // Trunca cualquier "adelante" antes de añadir -- mismo comportamiento
     // que el historial de cualquier navegador.
-    var h = root.navHistory.slice(0, root.navHistoryIndex + 1)
+    var h = TabsState.navHistory.slice(0, TabsState.navHistoryIndex + 1)
     h.push(path)
-    root.navHistory = h
-    root.navHistoryIndex = h.length - 1
+    TabsState.navHistory = h
+    TabsState.navHistoryIndex = h.length - 1
   }
 
   function navBack() {
-    if (root.navHistoryIndex <= 0) return
-    root.navHistoryIndex -= 1
-    root._goToPath(root.navHistory[root.navHistoryIndex])
+    if (TabsState.navHistoryIndex <= 0) return
+    TabsState.navHistoryIndex -= 1
+    root._goToPath(TabsState.navHistory[TabsState.navHistoryIndex])
   }
 
   function navForward() {
-    if (root.navHistoryIndex >= root.navHistory.length - 1) return
-    root.navHistoryIndex += 1
-    root._goToPath(root.navHistory[root.navHistoryIndex])
+    if (TabsState.navHistoryIndex >= TabsState.navHistory.length - 1) return
+    TabsState.navHistoryIndex += 1
+    root._goToPath(TabsState.navHistory[TabsState.navHistoryIndex])
   }
 
   // Usado por BackgroundPanel (doble clic sobre un fichero en un panel de
@@ -491,9 +479,9 @@ Item {
 
   function enter(entry) {
     if (!entry) return
-    if (root.inArchive) {
+    if (ArchiveState.inArchive) {
       if (entry.type === "dir") {
-        root.archiveSubPath = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
+        ArchiveState.archiveSubPath = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
         archiveActions.refreshArchiveListing()
       } else {
         archiveActions.openFileInArchive(entry)
@@ -516,10 +504,10 @@ Item {
 
 
   function goUp() {
-    if (root.inArchive) {
-      if (root.archiveSubPath === "") { archiveActions.exitArchive(); return }
-      var slash = root.archiveSubPath.lastIndexOf("/")
-      root.archiveSubPath = slash > 0 ? root.archiveSubPath.substring(0, slash) : ""
+    if (ArchiveState.inArchive) {
+      if (ArchiveState.archiveSubPath === "") { archiveActions.exitArchive(); return }
+      var slash = ArchiveState.archiveSubPath.lastIndexOf("/")
+      ArchiveState.archiveSubPath = slash > 0 ? ArchiveState.archiveSubPath.substring(0, slash) : ""
       archiveActions.refreshArchiveListing()
       return
     }
@@ -555,9 +543,9 @@ Item {
     if (!root.loaded) {
       if (targetPath) {
         root.currentPath = targetPath
-        root.tabs = [{ path: targetPath, history: [targetPath], historyIndex: 0 }]
-        root.navHistory = [targetPath]
-        root.navHistoryIndex = 0
+        TabsState.tabs = [{ path: targetPath, history: [targetPath], historyIndex: 0 }]
+        TabsState.navHistory = [targetPath]
+        TabsState.navHistoryIndex = 0
         root.refresh()
       } else {
         // Primera apertura de esta sesión de Quickshell sin una ruta
@@ -590,7 +578,7 @@ Item {
     // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
     // vigilar). El caso restante (restoringSession) ya lo cubre
     // Persistence.loadSession() por su cuenta.
-    if (!restoringSession && !root.inArchive) root.startDirWatch(root.currentPath)
+    if (!restoringSession && !ArchiveState.inArchive) root.startDirWatch(root.currentPath)
   }
 
   function close() {
@@ -695,9 +683,9 @@ Item {
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
       { label: "Connect to server...", run: function () { mountOps.startConnectToServer() } },
       { label: "New panel", run: function () { tabOps.newTab() } },
-      { label: "Close this panel", enabled: root.tabs.length > 1, run: function () { tabOps.closeTab() } },
-      { label: "Back", enabled: root.navHistoryIndex > 0, run: function () { root.navBack() } },
-      { label: "Forward", enabled: root.navHistoryIndex < root.navHistory.length - 1, run: function () { root.navForward() } },
+      { label: "Close this panel", enabled: TabsState.tabs.length > 1, run: function () { tabOps.closeTab() } },
+      { label: "Back", enabled: TabsState.navHistoryIndex > 0, run: function () { root.navBack() } },
+      { label: "Forward", enabled: TabsState.navHistoryIndex < TabsState.navHistory.length - 1, run: function () { root.navForward() } },
       { label: "Edit path", run: function () { searchOps.startEditPath() } },
       { label: "Search", run: function () { searchOps.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { conflictActions.compressSelected() } },
@@ -727,7 +715,7 @@ Item {
       }
     }
     // Bug real corregido aquí: a diferencia de itemActions() (menú
-    // contextual), esta lista no tenía NINGÚN filtro para root.inArchive
+    // contextual), esta lista no tenía NINGÚN filtro para ArchiveState.inArchive
     // -- "Add to bookmarks"/"Open in new tab" no tienen guard propio (a
     // diferencia de rename/copy/paste/etc., que sí se auto-protegen
     // dentro de su función) y mezclaban la carpeta real con el nombre de
@@ -735,7 +723,7 @@ Item {
     // bookmarks.json sin avisar. El resto de la lista se filtra aquí
     // también, no porque fuera a romper nada (esas funciones ya son
     // no-op dentro de un archivo) sino para no enseñar entradas muertas.
-    if (root.inArchive) {
+    if (ArchiveState.inArchive) {
       var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
         "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
@@ -783,7 +771,7 @@ Item {
     // Dentro de un comprimido solo se navega/abre -- nada de lo demás
     // (renombrar/borrar/chmod/comprimir/copiar/enlazar/marcador) tiene
     // sentido sobre una ruta que no existe de verdad en disco.
-    if (root.inArchive) {
+    if (ArchiveState.inArchive) {
       if (entries.length !== 1) return []
       return [{ label: entries[0].type === "dir" ? "Open" : "Open (extracts a temp copy)", action: function () { root.enter(entries[0]) } }]
     }
@@ -860,7 +848,7 @@ Item {
     var actions = []
     if (root.currentPath === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
-    } else if (!root.inArchive) {
+    } else if (!ArchiveState.inArchive) {
       // Dentro de un archivo estas ya son no-op (cada función se
       // protege sola), pero se quitan de aquí para no enseñar entradas
       // muertas en el menú de hueco vacío.
@@ -913,8 +901,13 @@ Item {
     }
     if (bookmark.path === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
+    } else {
+      // Trash es fija -- josema la quitó por error una vez y no hay
+      // forma de recuperarla salvo pidiéndomelo a mano (defaultBookmarks
+      // solo se usa la primera vez que se abre la app, nunca más). Sin
+      // "Remove bookmark" para ella, no se puede volver a perder igual.
+      actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
     }
-    actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
     return actions
   }
 
@@ -943,10 +936,10 @@ Item {
   // segmento tenga path === root.currentPath -- es lo único que usa la
   // plantilla compartida para decidir cuál pintar en negrita.
   function pathSegments() {
-    if (!root.inArchive) return root.pathSegmentsFor(root.currentPath)
+    if (!ArchiveState.inArchive) return root.pathSegmentsFor(root.currentPath)
     var segs = root.pathSegmentsFor(root.currentPath)
-    var archiveName = root.archivePath.substring(root.archivePath.lastIndexOf("/") + 1)
-    var parts = root.archiveSubPath ? root.archiveSubPath.split("/") : []
+    var archiveName = ArchiveState.archivePath.substring(ArchiveState.archivePath.lastIndexOf("/") + 1)
+    var parts = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath.split("/") : []
     var isLast = parts.length === 0
     segs.push({ label: archiveName, path: isLast ? root.currentPath : "" })
     for (var i = 0; i < parts.length; i++) {
@@ -1030,7 +1023,7 @@ Item {
       onStreamFinished: {
         var parsed = sortOps.sortEntries(Utils.parseEntries(text))
         if (root.currentPath === root.trashDir) {
-          if (Object.keys(root.trashInfo).length > 0) {
+          if (Object.keys(TrashState.trashInfo).length > 0) {
             // Ya hay trashInfo cargada -- de este mismo panel en una
             // visita anterior de esta sesión, o COMPARTIDA desde un panel
             // de fondo que ya la tenía (ver BackgroundPanel.qml/
@@ -1055,7 +1048,7 @@ Item {
           trashInfoProc.command = [root.pluginDir + "/trash-info.sh"]
           trashInfoProc.running = true
         } else {
-          // NO se limpia root.trashInfo al salir de la papelera -- es
+          // NO se limpia TrashState.trashInfo al salir de la papelera -- es
           // COMPARTIDA entre el panel activo y todos los de fondo (ver
           // BackgroundPanel.qml/bgTrashInfoProc), así que vaciarla aquí
           // sin más se la quitaba también a un panel de FONDO que
@@ -1187,7 +1180,7 @@ Item {
         for (var i = 0; i + 3 < fields.length; i += 4) {
           info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
         }
-        root.trashInfo = info
+        TrashState.trashInfo = info
         if (root._waitingForTrashInfo) {
           root._waitingForTrashInfo = false
           root._applyEntries(root._pendingListEntries)
@@ -1353,7 +1346,7 @@ Item {
             id: panelsRow
             width: parent.width
             height: parent.height
-            readonly property int panelCount: root.tabs.length
+            readonly property int panelCount: TabsState.tabs.length
             // El hueco entre dos paneles lleva panelGap A CADA LADO del
             // divisor (no panelGap repartido entre los dos) -- para que el
             // margen "interior" de un panel (hacia el divisor) sea tan ancho
@@ -1368,7 +1361,7 @@ Item {
             // estilo que ya usa el divisor entre la barra lateral y el
             // contenido (Color.menu.border, opacity 0.15, Style.spacing.hairline).
             Repeater {
-              model: Math.max(0, root.tabs.length - 1)
+              model: Math.max(0, TabsState.tabs.length - 1)
               delegate: Rectangle {
                 required property int index
                 x: panelsRow.slotX(index) + panelsRow.slotWidth + Style.spacing.panelGap
@@ -1389,7 +1382,7 @@ Item {
             // clic y arrastrar -- para eso sirve, el panel activo (más
             // abajo) ya tiene todo lo demás.
             Repeater {
-              model: root.tabs
+              model: TabsState.tabs
 
               BackgroundPanel {
                 hostRoot: root
@@ -1410,7 +1403,7 @@ Item {
             // paneles, en la posición de la pestaña activa.
             Item {
               id: activePanel
-              x: panelsRow.slotX(root.activeTabIndex)
+              x: panelsRow.slotX(TabsState.activeTabIndex)
               y: 0
               width: panelsRow.slotWidth
               height: panelsRow.height
@@ -1445,8 +1438,8 @@ Item {
 
             PanelNavButtons {
               anchors.verticalCenter: parent.verticalCenter
-              canGoBack: root.navHistoryIndex > 0
-              canGoForward: root.navHistoryIndex < root.navHistory.length - 1
+              canGoBack: TabsState.navHistoryIndex > 0
+              canGoForward: TabsState.navHistoryIndex < TabsState.navHistory.length - 1
               canGoUp: root.currentPath !== "/"
               onBackRequested: root.navBack()
               onForwardRequested: root.navForward()

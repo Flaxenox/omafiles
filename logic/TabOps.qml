@@ -18,12 +18,12 @@ Item {
   // Cierra la pestaña/panel en `index`, sea o no la activa (la × de cada
   // panel puede estar en uno que no es el que tiene el foco ahora mismo).
   function closeTabAt(index) {
-    if (root.tabs.length <= 1) { root.requestClose(); return }
-    if (index === root.activeTabIndex) { closeTab(); return }
-    var next = root.tabs.slice()
+    if (TabsState.tabs.length <= 1) { root.requestClose(); return }
+    if (index === TabsState.activeTabIndex) { closeTab(); return }
+    var next = TabsState.tabs.slice()
     next.splice(index, 1)
-    root.tabs = next
-    if (root.activeTabIndex > index) root.activeTabIndex -= 1
+    TabsState.tabs = next
+    if (TabsState.activeTabIndex > index) TabsState.activeTabIndex -= 1
   }
 
   // Navegar DENTRO de un panel que no es el activo -- no toca
@@ -31,62 +31,62 @@ Item {
   // propio objeto de esa pestaña. Mantiene su historial igual que
   // navigateTo mantiene el de la pestaña activa.
   function navigateTabTo(index, path) {
-    if (!path || index < 0 || index >= root.tabs.length) return
+    if (!path || index < 0 || index >= TabsState.tabs.length) return
     path = path.replace(/\/+$/, "") || "/"
-    if (index === root.activeTabIndex) { root.navigateTo(path); return }
-    var next = root.tabs.slice()
+    if (index === TabsState.activeTabIndex) { root.navigateTo(path); return }
+    var next = TabsState.tabs.slice()
     var tab = next[index]
     if (path === tab.path) return
     var h = (tab.history || [tab.path]).slice(0, (tab.historyIndex !== undefined ? tab.historyIndex : 0) + 1)
     h.push(path)
     next[index] = { path: path, history: h, historyIndex: h.length - 1 }
-    root.tabs = next
+    TabsState.tabs = next
   }
 
   // Atrás/adelante para un panel que no es el activo -- mismo concepto que
   // navBack/navForward, pero leyendo/escribiendo el historial guardado en
-  // ese objeto de pestaña en concreto en vez de root.navHistory (que es
+  // ese objeto de pestaña en concreto en vez de TabsState.navHistory (que es
   // solo el de la activa).
   function navTabBack(index) {
-    if (index === root.activeTabIndex) { root.navBack(); return }
-    if (index < 0 || index >= root.tabs.length) return
-    var tab = root.tabs[index]
+    if (index === TabsState.activeTabIndex) { root.navBack(); return }
+    if (index < 0 || index >= TabsState.tabs.length) return
+    var tab = TabsState.tabs[index]
     var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
     if (hIdx <= 0) return
     var hist = tab.history || [tab.path]
-    var next = root.tabs.slice()
+    var next = TabsState.tabs.slice()
     next[index] = { path: hist[hIdx - 1], history: hist, historyIndex: hIdx - 1 }
-    root.tabs = next
+    TabsState.tabs = next
   }
 
   function navTabForward(index) {
-    if (index === root.activeTabIndex) { root.navForward(); return }
-    if (index < 0 || index >= root.tabs.length) return
-    var tab = root.tabs[index]
+    if (index === TabsState.activeTabIndex) { root.navForward(); return }
+    if (index < 0 || index >= TabsState.tabs.length) return
+    var tab = TabsState.tabs[index]
     var hist = tab.history || [tab.path]
     var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
     if (hIdx >= hist.length - 1) return
-    var next = root.tabs.slice()
+    var next = TabsState.tabs.slice()
     next[index] = { path: hist[hIdx + 1], history: hist, historyIndex: hIdx + 1 }
-    root.tabs = next
+    TabsState.tabs = next
   }
 
   function saveActiveTab() {
-    var next = root.tabs.slice()
-    next[root.activeTabIndex] = {
-      path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
+    var next = TabsState.tabs.slice()
+    next[TabsState.activeTabIndex] = {
+      path: root.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
       previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
-      inArchive: root.inArchive, archivePath: root.archivePath, archiveSubPath: root.archiveSubPath
+      inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath
     }
-    root.tabs = next
+    TabsState.tabs = next
   }
 
   // Restaura el historial atrás/adelante propio de `tab` como el "en curso"
   // -- usado por switchToTab/closeTab al aterrizar en una pestaña que no es
   // la que se acaba de crear (esa ya trae su historial propio desde cero).
   function _restoreTabHistory(tab) {
-    root.navHistory = tab.history || [tab.path]
-    root.navHistoryIndex = tab.historyIndex !== undefined ? tab.historyIndex : 0
+    TabsState.navHistory = tab.history || [tab.path]
+    TabsState.navHistoryIndex = tab.historyIndex !== undefined ? tab.historyIndex : 0
   }
 
   // La preview (foto/vídeo/texto) es del panel activo, y _goToPath la
@@ -105,9 +105,9 @@ Item {
   // _restoreTabPreview/_restoreTabScroll.
   function _restoreTabArchive(tab) {
     if (tab.inArchive && tab.archivePath) {
-      root.inArchive = true
-      root.archivePath = tab.archivePath
-      root.archiveSubPath = tab.archiveSubPath || ""
+      ArchiveState.inArchive = true
+      ArchiveState.archivePath = tab.archivePath
+      ArchiveState.archiveSubPath = tab.archiveSubPath || ""
       archiveActions.refreshArchiveListing()
     }
   }
@@ -141,23 +141,23 @@ Item {
   }
 
   function switchToTab(index) {
-    if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
+    if (index < 0 || index >= TabsState.tabs.length || index === TabsState.activeTabIndex) return
     if (root.hasBlockingOverlay) return
     saveActiveTab()
-    root.activeTabIndex = index
-    _restoreTabHistory(root.tabs[index])
-    root._goToPath(root.tabs[index].path)
-    _restoreTabArchive(root.tabs[index])
-    _restoreTabPreview(root.tabs[index])
-    _restoreTabScroll(root.tabs[index])
+    TabsState.activeTabIndex = index
+    _restoreTabHistory(TabsState.tabs[index])
+    root._goToPath(TabsState.tabs[index].path)
+    _restoreTabArchive(TabsState.tabs[index])
+    _restoreTabPreview(TabsState.tabs[index])
+    _restoreTabScroll(TabsState.tabs[index])
   }
 
   function newTab() {
     saveActiveTab()
-    root.tabs = root.tabs.concat([{ path: root.currentPath, history: [root.currentPath], historyIndex: 0 }])
-    root.activeTabIndex = root.tabs.length - 1
-    root.navHistory = [root.currentPath]
-    root.navHistoryIndex = 0
+    TabsState.tabs = TabsState.tabs.concat([{ path: root.currentPath, history: [root.currentPath], historyIndex: 0 }])
+    TabsState.activeTabIndex = TabsState.tabs.length - 1
+    TabsState.navHistory = [root.currentPath]
+    TabsState.navHistoryIndex = 0
   }
 
   // Para quien no use Ctrl+T -- una pestaña nueva ya apuntando a `path` (una
@@ -165,28 +165,28 @@ Item {
   function openInNewTab(path) {
     if (!path) return
     saveActiveTab()
-    root.tabs = root.tabs.concat([{ path: path, history: [path], historyIndex: 0 }])
-    root.activeTabIndex = root.tabs.length - 1
-    root.navHistory = [path]
-    root.navHistoryIndex = 0
+    TabsState.tabs = TabsState.tabs.concat([{ path: path, history: [path], historyIndex: 0 }])
+    TabsState.activeTabIndex = TabsState.tabs.length - 1
+    TabsState.navHistory = [path]
+    TabsState.navHistoryIndex = 0
     root._goToPath(path)
   }
 
   function closeTab() {
-    if (root.tabs.length <= 1) { root.requestClose(); return }
-    var next = root.tabs.slice()
-    next.splice(root.activeTabIndex, 1)
-    root.tabs = next
-    var newIndex = Math.min(root.activeTabIndex, next.length - 1)
-    root.activeTabIndex = newIndex
-    _restoreTabHistory(root.tabs[newIndex])
-    root._goToPath(root.tabs[newIndex].path)
-    _restoreTabArchive(root.tabs[newIndex])
-    _restoreTabPreview(root.tabs[newIndex])
-    _restoreTabScroll(root.tabs[newIndex])
+    if (TabsState.tabs.length <= 1) { root.requestClose(); return }
+    var next = TabsState.tabs.slice()
+    next.splice(TabsState.activeTabIndex, 1)
+    TabsState.tabs = next
+    var newIndex = Math.min(TabsState.activeTabIndex, next.length - 1)
+    TabsState.activeTabIndex = newIndex
+    _restoreTabHistory(TabsState.tabs[newIndex])
+    root._goToPath(TabsState.tabs[newIndex].path)
+    _restoreTabArchive(TabsState.tabs[newIndex])
+    _restoreTabPreview(TabsState.tabs[newIndex])
+    _restoreTabScroll(TabsState.tabs[newIndex])
   }
 
   function nextTab() {
-    switchToTab((root.activeTabIndex + 1) % root.tabs.length)
+    switchToTab((TabsState.activeTabIndex + 1) % TabsState.tabs.length)
   }
 }

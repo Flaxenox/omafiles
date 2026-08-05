@@ -25,7 +25,7 @@ Item {
   property Item hostSortOps: null
   required property var modelData
   required property int index
-  visible: index !== hostRoot.activeTabIndex
+  visible: index !== TabsState.activeTabIndex
   x: hostPanelsRow.slotX(index)
   y: 0
   width: hostPanelsRow.slotWidth
@@ -85,7 +85,7 @@ Item {
   }
 
   onVisibleChanged: if (visible) bgPanel.refreshMe()
-  // TabOps.saveActiveTab() reasigna root.tabs entero (para guardar el
+  // TabOps.saveActiveTab() reasigna TabsState.tabs entero (para guardar el
   // estado de la pestaña que se abandona) cada vez que se cambia de
   // pestaña -- eso dispara onModelDataChanged en TODOS los paneles de
   // fondo del Repeater, aunque la ruta de ESTE panel concreto no haya
@@ -124,10 +124,10 @@ Item {
         var parsed = hostSortOps.sortEntries(Utils.parseEntries(text))
         hostRoot.tabEntriesCache[bgPanel.modelData.path] = parsed
         if (bgPanel.modelData.path === hostRoot.trashDir) {
-          if (Object.keys(hostRoot.trashInfo).length > 0) {
+          if (Object.keys(TrashState.trashInfo).length > 0) {
             // Ya hay trashInfo cargada -- de este mismo panel en una
             // visita anterior, del panel activo, o de OTRO panel de
-            // fondo (hostRoot.trashInfo es compartida entre todos, ver
+            // fondo (TrashState.trashInfo es compartida entre todos, ver
             // bgTrashInfoProc más abajo: trash-info.sh siempre devuelve
             // TODA la papelera, no depende de qué panel pregunte).
             // Pintar ya con eso; el trashInfoProc que sigue solo la
@@ -166,7 +166,7 @@ Item {
   property bool _waitingForTrashInfo: false
   property var _pendingEntries: []
 
-  // hostRoot.trashInfo es COMPARTIDA entre el panel activo y todos los
+  // TrashState.trashInfo es COMPARTIDA entre el panel activo y todos los
   // paneles de fondo -- antes cada panel tenía su propia copia, y al
   // pasar de fondo a activo (con solo pasar el ratón por encima, ver
   // HoverHandler más abajo) la copia del panel activo empezaba vacía
@@ -186,7 +186,7 @@ Item {
         for (var i = 0; i + 3 < fields.length; i += 4) {
           info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
         }
-        hostRoot.trashInfo = info
+        TrashState.trashInfo = info
         if (bgPanel._waitingForTrashInfo) {
           bgPanel._waitingForTrashInfo = false
           bgPanel._applyEntries(bgPanel._pendingEntries)

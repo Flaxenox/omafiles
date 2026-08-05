@@ -18,6 +18,26 @@ Item {
 
   signal closeRequested()
 
+  // Mide las etiquetas SIN instanciar ningún Text visible -- evita el
+  // problema de depender de children reales para calcular el ancho
+  // (circular: el ancho de cada fila dependería del ancho del menú, que
+  // a su vez debería depender del ancho de cada fila). Misma fuente que
+  // usa el Text real de cada fila (ver más abajo).
+  FontMetrics {
+    id: menuFontMetrics
+    font.pixelSize: Style.font.title
+    font.family: Style.font.family
+    font.weight: Font.Medium
+  }
+
+  readonly property real maxLabelWidth: {
+    var m = 0
+    for (var i = 0; i < root.actions.length; i++) {
+      m = Math.max(m, menuFontMetrics.advanceWidth(root.actions[i].label))
+    }
+    return m
+  }
+
   MouseArea {
     anchors.fill: parent
     visible: root.open
@@ -31,7 +51,12 @@ Item {
     visible: root.open
     x: root.menuX
     y: root.menuY
-    width: 200
+    // Ancho mínimo 200 (igual que antes) para que un menú con pocas
+    // acciones cortas ("Open"/"Delete"...) no se vea escuálido, pero
+    // crece con el contenido real -- antes era un 200 fijo, y una
+    // etiqueta larga ("Open (extracts a temp copy)", el "Open" de un
+    // fichero dentro de un archivo) se salía del recuadro.
+    width: Math.max(200, root.maxLabelWidth + Style.spacing.sm * 2 + contentLeftInset + contentRightInset)
     height: contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset
     radius: Style.cornerRadius
     color: Color.menu.background

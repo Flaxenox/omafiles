@@ -22,7 +22,7 @@ Item {
   property Item selectionOps: null
 
   function startChmod(entries) {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     if (!entries || entries.length === 0) return
     ChmodState.chmodNames = entries.map(function (e) { return e.name })
     ChmodState.chmodMode = ""
@@ -42,7 +42,7 @@ Item {
     // del-zip", que no existe (o, peor, podría coincidir por casualidad
     // con un fichero real de ese nombre en la carpeta contenedora y
     // enseñar datos de OTRO fichero sin que se note el error).
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     if (entries.length === 1) { showProperties(entries[0]); return }

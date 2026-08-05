@@ -11,7 +11,7 @@ Item {
   property Item selectionOps: null
 
   function copySelected() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
@@ -20,7 +20,7 @@ Item {
   }
 
   function cutSelected() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })

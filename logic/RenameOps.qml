@@ -10,7 +10,7 @@ Item {
   property Item root: null
 
   function startRename(index) {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     if (index < 0 || index >= root.visibleEntries.length) return
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
@@ -43,7 +43,7 @@ Item {
   }
 
   function startNewFolder() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     EditModeState.renamingIndex = -1
     root.searching = false
     EditModeState.creatingFile = false
@@ -51,7 +51,7 @@ Item {
   }
 
   function startNewFile() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     EditModeState.renamingIndex = -1
     root.searching = false
     EditModeState.creatingFolder = false

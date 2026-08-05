@@ -50,7 +50,7 @@ Item {
   // Llamado desde cada DropArea (fila de carpeta, marcador, unidad, fondo
   // de la lista) con el DragEvent real y la carpeta destino ya resuelta.
   function handleFilesDropped(drop, destDir) {
-    if (root.inArchive) { drop.accepted = false; return }
+    if (ArchiveState.inArchive) { drop.accepted = false; return }
     if (!drop.hasUrls) { drop.accepted = false; return }
     var paths = drop.urls.map(function (u) { return urlToPath(u) }).filter(function (p) { return p.length > 0 })
     if (paths.length === 0) { drop.accepted = false; return }

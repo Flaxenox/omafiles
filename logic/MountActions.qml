@@ -31,7 +31,7 @@ Item {
       return
     }
     networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
-    networkUnmountProc.tabIndex = root.activeTabIndex
+    networkUnmountProc.tabIndex = TabsState.activeTabIndex
     networkUnmountProc.command = ["gio", "mount", "-u", mount.path]
     networkUnmountProc.running = true
   }
@@ -85,7 +85,7 @@ Item {
     ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
     ejectProc.wasInside = wasInside
-    ejectProc.tabIndex = root.activeTabIndex
+    ejectProc.tabIndex = TabsState.activeTabIndex
     ejectProc.device = mount.device
     ejectProc.running = true
   }
@@ -101,7 +101,7 @@ Item {
     // Capturado aquí (no releído en onExited) -- si el ratón pasa a otro
     // panel mientras el montaje tarda, el resultado debe navegar el
     // panel que lo pidió, no el que resulte estar activo cuando termine.
-    mountProc.tabIndex = root.activeTabIndex
+    mountProc.tabIndex = TabsState.activeTabIndex
     mountProc.command = ["udisksctl", "mount", "-b", mount.device]
     mountProc.running = true
   }
@@ -118,7 +118,7 @@ Item {
       Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting an ISO — try again in a moment"])
       return
     }
-    mountIsoProc.tabIndex = root.activeTabIndex
+    mountIsoProc.tabIndex = TabsState.activeTabIndex
     mountIsoProc.command = ["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)]
     mountIsoProc.running = true
   }

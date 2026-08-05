@@ -27,7 +27,7 @@ Item {
   }
 
   function startSearch() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
     root.searching = true

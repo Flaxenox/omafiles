@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../state"
 
 // Borrar (a la papelera, o permanente si ya se está viendo la papelera) --
 // vigésimo tercer componente extraído de Omafiles.qml.
@@ -8,7 +9,7 @@ Item {
   property Item selectionOps: null
 
   function requestDelete() {
-    if (root.inArchive) return
+    if (ArchiveState.inArchive) return
     var names = selectionOps.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
     root.pendingDeleteNames = names
@@ -19,13 +20,13 @@ Item {
     root.pendingDeleteNames = []
     if (names.length === 0) return
     if (root.currentPath === root.trashDir) {
-      // Borrado permanente -- no hay undo posible. root.trashInfo (ver
+      // Borrado permanente -- no hay undo posible. TrashState.trashInfo (ver
       // trash-info.sh) sabe la raíz física real de cada ítem -- puede
       // ser la papelera de casa o la de cualquier otro disco montado,
       // ya no se puede asumir root.trashDir a secas como antes de
       // agregar varias papeleras.
       var cmds = names.map(function (n) {
-        var info = root.trashInfo[n]
+        var info = TrashState.trashInfo[n]
         if (!info) return "true"
         return "rm -rf -- " + Util.shellQuote(info.trashRoot + "/files/" + n) +
           "; rm -f -- " + Util.shellQuote(info.trashRoot + "/info/" + n + ".trashinfo")
@@ -48,7 +49,7 @@ Item {
           // restore-by-origpath.sh busca en TODAS las papeleras activas
           // (no solo la de casa) el .trashinfo cuya ruta original
           // coincide, así funciona igual borre desde donde borre --
-          // root.trashInfo (usado por el botón "Restore" normal) no
+          // TrashState.trashInfo (usado por el botón "Restore" normal) no
           // sirve aquí porque solo se rellena mientras se está VIENDO
           // la Papelera, y el usuario puede deshacer mucho después sin
           // haber entrado nunca en ella.
