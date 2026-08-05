@@ -326,7 +326,7 @@ Item {
   // nada que ofrecer sobre una selección de solo ficheros).
   property bool chmodHasDir: false
   property bool chmodRecursive: false
-  // { "<nombre>": "<modo octal previo>" }, capturado por chmodStatProc al
+  // { "<nombre>": "<modo octal previo>" }, capturado por PropertiesLoader al
   // abrir el diálogo -- para poder deshacer. Restaura solo el modo del
   // propio ítem seleccionado, NO el de su contenido si se aplicó con
   // -R -- capturar el árbol entero antes de cambiar nada sería mucho
@@ -366,7 +366,7 @@ Item {
   // HTML con estilos inline (Pygments, noclasses=True) para el fragmento
   // en previsualización -- vacío si el lenguaje no se reconoce o
   // highlight-preview.sh falla, en cuyo caso se cae al Text plano de
-  // siempre con previewText. Ver loadPreview()/highlightPreviewProc.
+  // siempre con previewText. Ver PreviewLoader.loadPreview().
   property string previewHighlighted: ""
   // Render de la primera página como PNG (pdftoppm) -- vacío mientras se
   // genera o si pdftoppm falla, igual que videoThumbReady con los vídeos.
@@ -533,7 +533,7 @@ Item {
     root.selectedIndices = index >= 0 ? [index] : []
     if (root.previewOpen) {
       if (index >= 0 && index < root.visibleEntries.length && root.visibleEntries[index].type !== "dir") {
-        root.loadPreview(root.visibleEntries[index])
+        previewLoader.loadPreview(root.visibleEntries[index])
       } else {
         root.previewOpen = false
       }
@@ -683,28 +683,6 @@ Item {
     networkMountsProc.running = true
   }
 
-  function loadBookmarks() {
-    loadBookmarksProc.running = true
-  }
-
-  function saveBookmarks() {
-    var dir = root.bookmarksFile.substring(0, root.bookmarksFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.bookmarks)
-    saveBookmarksProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bookmarksFile)]
-    saveBookmarksProc.running = true
-  }
-
-  function loadRecent() {
-    loadRecentProc.running = true
-  }
-
-  function saveRecent() {
-    var dir = root.recentFile.substring(0, root.recentFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.recentFiles)
-    saveRecentProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.recentFile)]
-    saveRecentProc.running = true
-  }
-
   // Llamado al abrir un fichero de verdad (enter()/launchWith(), NO al
   // navegar por carpetas -- para eso ya están el historial y las
   // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
@@ -713,50 +691,17 @@ Item {
     next.unshift({ path: path, name: name })
     if (next.length > 20) next = next.slice(0, 20)
     root.recentFiles = next
-    root.saveRecent()
+    persistence.saveRecent()
   }
 
   function removeRecent(path) {
     root.recentFiles = root.recentFiles.filter(function (r) { return r.path !== path })
-    root.saveRecent()
+    persistence.saveRecent()
   }
 
   function clearRecent() {
     root.recentFiles = []
-    root.saveRecent()
-  }
-
-  // Solo se llama en la primera apertura de la sesión de Quickshell, sin
-  // ruta pedida por el host -- ver open(). Carga async (cat + Process,
-  // igual que bookmarks/recent); refresh()/startDirWatch se disparan
-  // desde el propio handler de loadSessionProc en cuanto sabe la ruta
-  // real, no aquí (evita listar homeDir de más si sí había sesión).
-  function loadSession() {
-    loadSessionProc.running = true
-  }
-
-  // Solo guarda la ruta de cada pestaña -- no historial/preview/scroll,
-  // eso son sesión "en caliente" (ya sobrevive a cerrar/reabrir sin salir
-  // de Quickshell gracias a keepLoaded) y no vale la pena la complejidad
-  // de restaurarlo tras un reinicio real del shell.
-  function saveSession() {
-    root.saveActiveTab()
-    var snapshot = root.tabs.map(function (t) { return { path: t.path } })
-    var json = JSON.stringify({ tabs: snapshot, activeTabIndex: root.activeTabIndex })
-    var dir = root.sessionFile.substring(0, root.sessionFile.lastIndexOf("/"))
-    saveSessionProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.sessionFile)]
-    saveSessionProc.running = true
-  }
-
-  function loadBulkRenameHistory() {
-    loadBulkRenameHistoryProc.running = true
-  }
-
-  function saveBulkRenameHistory() {
-    var dir = root.bulkRenameHistoryFile.substring(0, root.bulkRenameHistoryFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.bulkRenameHistory)
-    saveBulkRenameHistoryProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bulkRenameHistoryFile)]
-    saveBulkRenameHistoryProc.running = true
+    persistence.saveRecent()
   }
 
   function addBulkRenameHistory(pattern) {
@@ -766,12 +711,12 @@ Item {
     next.unshift(pattern)
     if (next.length > 8) next = next.slice(0, 8)
     root.bulkRenameHistory = next
-    root.saveBulkRenameHistory()
+    persistence.saveBulkRenameHistory()
   }
 
   function removeBookmark(path) {
     root.bookmarks = root.bookmarks.filter(function (b) { return b.path !== path })
-    root.saveBookmarks()
+    persistence.saveBookmarks()
   }
 
   // type: "dir" (por defecto, compatible con marcadores guardados antes
@@ -779,7 +724,7 @@ Item {
   function addBookmark(path, label, type) {
     if (root.bookmarks.some(function (b) { return b.path === path })) return
     root.bookmarks = root.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
-    root.saveBookmarks()
+    persistence.saveBookmarks()
   }
 
   // Icono de la barra lateral -- Home/Trash por ruta especial, Imágenes/
@@ -1078,7 +1023,7 @@ Item {
 
   function _restoreTabPreview(tab) {
     if (tab.previewOpen && tab.previewEntry) {
-      root.loadPreview(tab.previewEntry)
+      previewLoader.loadPreview(tab.previewEntry)
     } else {
       root.previewOpen = false
     }
@@ -1265,7 +1210,7 @@ Item {
         // que aquí no se hace -- evita listar homeDir de más para tirarlo
         // enseguida si sí había sesión guardada.
         restoringSession = true
-        root.loadSession()
+        persistence.loadSession()
       }
     } else if (targetPath) {
       // Ya estaba cargado antes (uso normal previo): abre en pestaña
@@ -1275,9 +1220,9 @@ Item {
       root.saveActiveTab()
     }
 
-    if (!root.bookmarksLoaded) root.loadBookmarks()
-    if (!root.recentLoaded) root.loadRecent()
-    if (!root.bulkRenameHistoryLoaded) root.loadBulkRenameHistory()
+    if (!root.bookmarksLoaded) persistence.loadBookmarks()
+    if (!root.recentLoaded) persistence.loadRecent()
+    if (!root.bulkRenameHistoryLoaded) persistence.loadBulkRenameHistory()
     root.refreshMounts()
     root.refreshNetworkMounts()
     // Cubre los dos casos restantes: primera carga con target (currentPath
@@ -1286,12 +1231,12 @@ Item {
     // ruta final) o reabrir SIN target (la ventana estaba cerrada -> close()
     // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
     // vigilar). El caso restante (restoringSession) ya lo cubre
-    // loadSessionProc por su cuenta.
+    // Persistence.loadSession() por su cuenta.
     if (!restoringSession && !root.inArchive) root.startDirWatch(root.currentPath)
   }
 
   function close() {
-    root.saveSession()
+    persistence.saveSession()
     root.closingFromHost = true
     root.opened = false
     panel.visible = false
@@ -1985,9 +1930,9 @@ Item {
       { label: "Search", run: function () { root.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
       { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
-      { label: "Permissions...", enabled: hasSelection, run: function () { root.startChmod(root.selectedEntries()) } },
+      { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(root.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) root.makeLinkFor(entry) } },
-      { label: "Properties", enabled: hasSelection, run: function () { root.showPropertiesForSelection() } },
+      { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
       { label: "Keyboard shortcuts", run: function () { root.shortcutsHelpOpen = true } }
     ]
     if (root.currentPath === root.trashDir) {
@@ -2051,72 +1996,6 @@ Item {
     if (cmd.enabled === false) return
     root.closePalette()
     cmd.run()
-  }
-
-  function togglePreview() {
-    if (root.previewOpen) {
-      root.previewOpen = false
-      return
-    }
-    if (root.selectedIndex < 0 || root.selectedIndex >= root.visibleEntries.length) return
-    root.loadPreview(root.visibleEntries[root.selectedIndex])
-  }
-
-  function loadPreview(entry) {
-    if (!entry || entry.type === "dir") return
-    root.previewRequestId += 1
-    var reqId = root.previewRequestId
-    root.previewEntry = entry
-    root.previewOpen = true
-    root.previewText = ""
-    root.previewHighlighted = ""
-    root.previewPdfImage = ""
-    root.previewAudioInfo = []
-    var ext = root.extOf(entry.name)
-    var path = root.joinPath(root.currentPath, entry.name)
-    root.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
-    if (root.previewIsText && !root.isImage(entry)) {
-      root._previewTextOwner = reqId
-      previewProc.command = ["head", "-c", "4000", path]
-      previewProc.running = true
-      // Resaltado de sintaxis SOLO para extensiones de código conocidas
-      // (codeExt) -- .txt/.conf/sin extensión se quedan en texto plano,
-      // no hay lenguaje real que adivinar ahí. Se lanza en paralelo al
-      // texto plano de arriba (no en cadena): si highlight-preview.sh
-      // falla o Pygments no reconoce el lenguaje, previewHighlighted se
-      // queda vacío y el texto plano ya cargado sigue siendo lo que se
-      // ve, sin parpadeo ni hueco en blanco de por medio.
-      if (root.codeExt.indexOf(ext) >= 0) {
-        root._previewHighlightOwner = reqId
-        highlightPreviewProc.command = [root.pluginDir + "/highlight-preview.sh", path, "4000", ext]
-        highlightPreviewProc.running = true
-      }
-    }
-    if (root.isVideo(entry)) root.requestVideoThumb(entry)
-    if (root.isPdf(entry)) {
-      // Cacheado por hash(ruta+mtime), igual que las miniaturas de vídeo
-      // -- no vuelve a renderizar la primera página si ya existe de una
-      // vista previa anterior del mismo fichero sin cambios.
-      var outDir = root.homeDir + "/.cache/omafiles/pdf-preview/" + Utils.simpleHash(path + "|" + entry.mtime)
-      var outFile = outDir + "/preview.png"
-      pdfPreviewProc.outFile = outFile
-      root._previewPdfOwner = reqId
-      // "page-*.png" en vez de asumir "page-1.png" -- pdftoppm añade
-      // ceros de relleno al número de página según hagan falta para el
-      // total de páginas del PDF (de 10 páginas en adelante ya sería
-      // "page-01.png"), así que se renombra al único fichero que haya
-      // salido en vez de adivinar el nombre exacto.
-      pdfPreviewProc.command = ["bash", "-c",
-        "test -e " + Util.shellQuote(outFile) + " && exit 0; mkdir -p -- " + Util.shellQuote(outDir)
-        + " && pdftoppm -png -f 1 -l 1 -scale-to 1000 -- " + Util.shellQuote(path) + " " + Util.shellQuote(outDir + "/page")
-        + " && mv -f -- " + Util.shellQuote(outDir) + "/page-*.png " + Util.shellQuote(outFile)]
-      pdfPreviewProc.running = true
-    }
-    if (root.isAudio(entry)) {
-      root._previewAudioOwner = reqId
-      audioInfoProc.command = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path]
-      audioInfoProc.running = true
-    }
   }
 
   function showOpenWith(entry) {
@@ -2334,20 +2213,6 @@ Item {
     root.bulkRenameConflictOpen = false
   }
 
-  function startChmod(entries) {
-    if (root.inArchive) return
-    if (!entries || entries.length === 0) return
-    root.chmodNames = entries.map(function (e) { return e.name })
-    root.chmodMode = ""
-    root.chmodMixed = false
-    root.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
-    root.chmodRecursive = false
-    var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(root.currentPath, e.name)) }).join(" ")
-    chmodStatProc.command = ["bash", "-c", "stat -c%a -- " + paths]
-    chmodStatProc.running = true
-    root.chmodOpen = true
-  }
-
   function commitChmod(mode) {
     root.chmodOpen = false
     mode = mode.trim()
@@ -2403,35 +2268,6 @@ Item {
     root.chmodMode = "" + arr[0] + arr[1] + arr[2]
   }
 
-  function showPropertiesForSelection() {
-    // root.currentPath sigue siendo la carpeta real que contiene el
-    // archivo mientras se navega dentro de él -- sin este guard,
-    // Properties intentaría hacer stat/du de "carpeta-real/nombre-dentro-
-    // del-zip", que no existe (o, peor, podría coincidir por casualidad
-    // con un fichero real de ese nombre en la carpeta contenedora y
-    // enseñar datos de OTRO fichero sin que se note el error).
-    if (root.inArchive) return
-    var entries = root.selectedEntries()
-    if (entries.length === 0) return
-    if (entries.length === 1) { root.showProperties(entries[0]); return }
-    root.propertiesRequestId += 1
-    root.propertiesMulti = true
-    root.propertiesEntry = null
-    root.propertiesCount = entries.length
-    root.propertiesSize = ""
-    root.propertiesSizeLoading = true
-    root.propertiesPerms = ""
-    root.propertiesOwner = ""
-    root.propertiesMtime = ""
-    root.propertiesOpen = true
-    var quoted = entries.map(function (e) {
-      return Util.shellQuote(root.joinPath(root.currentPath, e.name))
-    }).join(" ")
-    root._propertiesDuOwner = root.propertiesRequestId
-    propertiesDuProc.command = ["bash", "-c", "du -shc -- " + quoted + " | tail -n1"]
-    propertiesDuProc.running = true
-  }
-
   function makeLinkFor(entry) {
     if (root.inArchive) return
     if (!entry) return
@@ -2451,33 +2287,6 @@ Item {
         return root.runAction(makeLinkCmd)
       })
     })
-  }
-
-  function showProperties(entry) {
-    if (!entry) return
-    root.propertiesRequestId += 1
-    root.propertiesMulti = false
-    var path = root.joinPath(root.currentPath, entry.name)
-    root.propertiesEntry = entry
-    root.propertiesSize = entry.type === "dir" ? "" : Utils.formatSize(entry.size)
-    root.propertiesSizeLoading = entry.type === "dir"
-    root.propertiesPerms = ""
-    root.propertiesOwner = ""
-    root.propertiesMtime = ""
-    root.propertiesOpen = true
-    root._propertiesStatOwner = root.propertiesRequestId
-    propertiesStatProc.command = ["stat", "-c", "%A %a\t%U:%G\t%y", "--", path]
-    propertiesStatProc.running = true
-    // Deliberadamente NO se toca propertiesDuProc si entry no es carpeta
-    // (el tamaño ya se conoce sin proceso). Un "du" anterior de una
-    // carpeta puede seguir corriendo en ese caso -- por eso el guard de
-    // _propertiesDuOwner de más abajo es imprescindible, no solo para
-    // cuando SÍ se relanza.
-    if (entry.type === "dir") {
-      root._propertiesDuOwner = root.propertiesRequestId
-      propertiesDuProc.command = ["du", "-sh", "--", path]
-      propertiesDuProc.running = true
-    }
   }
 
   function restoreFromTrash() {
@@ -2576,9 +2385,9 @@ Item {
       actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
     }
 
-    actions.push({ label: "Permissions...", action: function () { root.startChmod(entries) } })
+    actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
-    actions.push({ label: "Properties" + suffix, action: function () { root.showPropertiesForSelection() } })
+    actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
     return actions
   }
@@ -3043,91 +2852,9 @@ Item {
     }
   }
 
-  Process {
-    id: loadBookmarksProc
-    command: ["cat", root.bookmarksFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        root.bookmarksLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          root.bookmarks = parsed
-        } else {
-          root.bookmarks = root.defaultBookmarks
-          root.saveBookmarks()
-        }
-      }
-    }
-  }
-
-  Process {
-    id: saveBookmarksProc
-  }
-
-  Process {
-    id: loadRecentProc
-    command: ["cat", root.recentFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        root.recentLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        root.recentFiles = Array.isArray(parsed) ? parsed : []
-      }
-    }
-  }
-
-  Process {
-    id: saveRecentProc
-  }
-
-  Process {
-    id: loadSessionProc
-    command: ["cat", root.sessionFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        var savedTabs = (parsed && Array.isArray(parsed.tabs))
-          ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
-          : []
-        if (savedTabs.length > 0) {
-          root.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
-          root.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, root.tabs.length - 1))
-          root.currentPath = root.tabs[root.activeTabIndex].path
-          root.navHistory = [root.currentPath]
-          root.navHistoryIndex = 0
-        }
-        root.refresh()
-        if (!root.inArchive) root.startDirWatch(root.currentPath)
-      }
-    }
-  }
-
-  Process {
-    id: saveSessionProc
-  }
-
-  Process {
-    id: loadBulkRenameHistoryProc
-    command: ["cat", root.bulkRenameHistoryFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        root.bulkRenameHistoryLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        root.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
-      }
-    }
-  }
-
-  Process {
-    id: saveBulkRenameHistoryProc
+  Persistence {
+    id: persistence
+    root: root
   }
 
   Process {
@@ -3350,42 +3077,9 @@ Item {
     }
   }
 
-  Process {
-    id: previewProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      // Descarta si el usuario ya pasó a otro ítem mientras "head"
-      // estaba en vuelo -- mismo guard que propertiesDuProc, ver
-      // previewRequestId.
-      onStreamFinished: if (root._previewTextOwner === root.previewRequestId) root.previewText = text
-    }
-  }
-
-  Process {
-    id: highlightPreviewProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      // Vacío/fallido -> previewHighlighted se queda "" y la UI cae al
-      // Text plano (previewText) sin más -- ver el "visible:" de cada
-      // bloque en el panel de previsualización.
-      onStreamFinished: if (root._previewHighlightOwner === root.previewRequestId) root.previewHighlighted = text
-    }
-  }
-
-  Process {
-    id: pdfPreviewProc
-    property string outFile: ""
-    onExited: function (exitCode) {
-      if (exitCode === 0 && root._previewPdfOwner === root.previewRequestId) root.previewPdfImage = pdfPreviewProc.outFile
-    }
-  }
-
-  Process {
-    id: audioInfoProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (root._previewAudioOwner === root.previewRequestId) root.previewAudioInfo = root.parseAudioInfo(text)
-    }
+  PreviewLoader {
+    id: previewLoader
+    root: root
   }
 
   Process {
@@ -3396,24 +3090,9 @@ Item {
     }
   }
 
-  Process {
-    id: chmodStatProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var lines = String(text || "").trim().split("\n").filter(function (l) { return l.length > 0 })
-        if (lines.length === 0) return
-        var allSame = lines.every(function (l) { return l === lines[0] })
-        root.chmodMixed = !allSame
-        root.chmodMode = allSame ? lines[0] : ""
-        // stat conserva el orden de los argumentos -- lines[i] es el modo
-        // de root.chmodNames[i]. Guardado para poder deshacer (ver
-        // commitChmod/chmodOriginalModes).
-        var orig = {}
-        for (var i = 0; i < root.chmodNames.length && i < lines.length; i++) orig[root.chmodNames[i]] = lines[i]
-        root.chmodOriginalModes = orig
-      }
-    }
+  PropertiesLoader {
+    id: propertiesLoader
+    root: root
   }
 
   Process {
@@ -3437,39 +3116,6 @@ Item {
       }
       root.thumbBusy = false
       root.processThumbQueue()
-    }
-  }
-
-  Process {
-    id: propertiesStatProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Descarta la respuesta si el usuario ya cambió a otro ítem
-        // mientras este "stat" estaba en vuelo (ver propertiesRequestId).
-        if (root._propertiesStatOwner !== root.propertiesRequestId) return
-        var parts = String(text || "").trim().split("\t")
-        root.propertiesPerms = parts[0] || ""
-        root.propertiesOwner = parts[1] || ""
-        root.propertiesMtime = parts[2] || ""
-      }
-    }
-  }
-
-  Process {
-    id: propertiesDuProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Mismo guard que propertiesStatProc -- este es el que de verdad
-        // importa: un "du" de una carpeta grande puede tardar segundos, y
-        // sin esto su resultado tardío pisaba el tamaño del ítem que el
-        // usuario esté mirando ahora, aunque ya no tenga nada que ver con
-        // la carpeta que se estaba midiendo.
-        if (root._propertiesDuOwner !== root.propertiesRequestId) return
-        root.propertiesSize = String(text || "").split("\t")[0] || ""
-        root.propertiesSizeLoading = false
-      }
     }
   }
 
@@ -4442,7 +4088,7 @@ Item {
                   if (root.selectedIndex >= 0) root.enter(root.visibleEntries[root.selectedIndex])
                   event.accepted = true
                 } else if (event.key === Qt.Key_Space) {
-                  root.togglePreview()
+                  previewLoader.togglePreview()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Slash) {
                   root.startSearch()
