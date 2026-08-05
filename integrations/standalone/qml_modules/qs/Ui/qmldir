@@ -1,0 +1,11 @@
+module qs.Ui
+BorderSurface 1.0 BorderSurface.qml
+Button 1.0 Button.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+CursorSurface 1.0 CursorSurface.qml
+OpticalGlyph 1.0 OpticalGlyph.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+PanelToolTip 1.0 PanelToolTip.qml
+TextField 1.0 TextField.qml
+Toggle 1.0 Toggle.qml
