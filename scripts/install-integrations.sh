@@ -12,7 +12,20 @@
 
 set -euo pipefail
 
-INTEGRATION_VERSION=1
+# Bug real (auditoría 2026-08-05): con "set -e", cualquier paso que
+# fallara a mitad abortaba el script en silencio -- STATE_FILE nunca se
+# llegaba a escribir, así que el siguiente arranque del shell reintentaba
+# el mismo paso fallido para siempre, sin ningún aviso visible (stderr de
+# xdg-mime/dbus-send ya iba a /dev/null a propósito). Este trap asegura
+# que al menos se vea UNA notificación de que algo falló, en vez de un
+# fallo mudo repitiéndose cada arranque sin que nadie se entere.
+on_error() {
+  command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send \
+    "Omafiles" "Failed to set up default-file-manager integrations (see ~/.config/omarchy/plugins/omafiles/scripts/install-integrations.sh). Will retry on next shell restart." >/dev/null 2>&1
+}
+trap on_error ERR
+
+INTEGRATION_VERSION=2
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="$HOME/.local/state/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
@@ -24,7 +37,17 @@ fi
 
 APPS_DIR="$HOME/.local/share/applications"
 DBUS_SERVICES_DIR="$HOME/.local/share/dbus-1/services"
-mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR"
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
+
+# Bug real: el .desktop de abajo referencia Icon=omafiles, pero nada
+# instalaba nunca el SVG en sí -- estaba puesto a mano en este equipo
+# concreto, así que una máquina nueva (o un ~/.local/share/icons
+# reconstruido) se quedaría con el icono genérico de "gestor de
+# archivos" sin ningún aviso. Ahora el SVG vive en el propio repo
+# (assets/omafiles.svg) y este script lo instala como cualquier otra
+# integración.
+cp -f "$PLUGIN_DIR/assets/omafiles.svg" "$ICON_DIR/omafiles.svg"
 
 cat >"$APPS_DIR/omafiles.desktop" <<EOF
 [Desktop Entry]

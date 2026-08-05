@@ -63,17 +63,44 @@ def summon(folder, select_name=""):
 
 
 def handle_show(uris, select_item):
-    for uri in uris:
-        path = uri_to_path(uri)
-        if not path:
-            continue
-        p = Path(path)
-        if select_item:
-            # ShowItems/ShowItemProperties siempre significan "muéstralo
-            # dentro de su carpeta contenedora", sea fichero o carpeta.
-            summon(str(p.parent), p.name)
-        else:
-            summon(str(p) if p.is_dir() else str(p.parent))
+    # Bug real (auditoría 2026-08-05): esto llamaba a summon() una vez POR
+    # URI. Como el plugin es keepLoaded, cada summon después del primero
+    # cae en la rama "ya estaba cargado" de Omafiles.qml open(), que
+    # SIEMPRE abre una pestaña nueva -- así que seleccionar varios
+    # ficheros de la MISMA carpeta en otra app (ej. varias descargas en
+    # Firefox, "Mostrar en el gestor de archivos") abría una pestaña
+    # duplicada por fichero, con solo el último de verdad resaltado.
+    # Ahora se agrupan por carpeta contenedora y se manda un único
+    # summon por carpeta, con todos los nombres de esa carpeta en el
+    # payload (separados por \x1f -- ver Omafiles.qml open()).
+    if select_item:
+        # ShowItems/ShowItemProperties siempre significan "muéstralo
+        # dentro de su carpeta contenedora", sea fichero o carpeta.
+        groups = {}
+        order = []
+        for uri in uris:
+            path = uri_to_path(uri)
+            if not path:
+                continue
+            p = Path(path)
+            parent = str(p.parent)
+            if parent not in groups:
+                groups[parent] = []
+                order.append(parent)
+            groups[parent].append(p.name)
+        for parent in order:
+            summon(parent, "\x1f".join(groups[parent]))
+    else:
+        seen = []
+        for uri in uris:
+            path = uri_to_path(uri)
+            if not path:
+                continue
+            p = Path(path)
+            target = str(p) if p.is_dir() else str(p.parent)
+            if target not in seen:
+                seen.append(target)
+                summon(target)
 
 
 def on_method_call(connection, sender, object_path, interface_name, method_name, parameters, invocation):

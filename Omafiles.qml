@@ -47,10 +47,13 @@ Item {
   // borrada entre navegar y listar...) -- vacío = sin error, carpeta
   // realmente vacía o listado en curso.
   property string currentPathError: ""
-  // Nombre de entrada a resaltar en cuanto termine el próximo listado --
+  // Nombres de entrada a resaltar en cuanto termine el próximo listado --
   // lo usa open() cuando el payload pide "abre esta carpeta y selecciona
-  // este fichero" (caso ShowItems de org.freedesktop.FileManager1).
-  property string pendingSelectName: ""
+  // estos ficheros" (caso ShowItems de org.freedesktop.FileManager1, que
+  // puede llegar con varios URIs de golpe -- ej. varias descargas
+  // seleccionadas en Firefox y "Mostrar en el gestor de archivos"). Un
+  // solo fichero es simplemente un array de 1.
+  property var pendingSelectNames: []
 
   // ---------- Paneles ----------
   // Cada pestaña abierta se ve a la vez como un panel propio, lado a lado
@@ -217,6 +220,25 @@ Item {
   // escribir) -- usado para no tirarla al vuelo por un simple hover sobre
   // otro panel (ver el HoverHandler de bgPanel más abajo).
   readonly property bool hasPendingEdit: root.renamingIndex >= 0 || root.creatingFolder || root.creatingFile || root.editingPath
+
+  // Bug real (auditoría 2026-08-05): cualquier diálogo con un paso de
+  // "confirmar" que relee root.currentPath/root.selectedEntries() EN EL
+  // MOMENTO DEL CLIC (no al abrirse) puede acabar actuando sobre la
+  // carpeta equivocada si la pestaña activa cambia mientras el diálogo
+  // sigue abierto -- y nada impedía que cambiara, porque el hover-para-
+  // activar-panel solo se bloqueaba para hasPendingEdit/contextMenuOpen,
+  // no para el resto de diálogos (chmod, abrir-con, conflictos al pegar/
+  // extraer/comprimir/renombrar en lote/soltar, confirmar borrado,
+  // paleta, conectar a servidor, propiedades). En vez de capturar la
+  // ruta a mano en cada sitio, un único punto de bloqueo en
+  // switchToTab() cubre todos los casos de golpe: mientras cualquiera de
+  // estos está abierto, la pestaña activa (y su currentPath) no se
+  // puede mover por debajo del diálogo.
+  readonly property bool hasBlockingOverlay: root.hasPendingEdit || root.contextMenuOpen
+    || root.pendingDeleteNames.length > 0 || root.renameConflictOpen || root.pasteConflictOpen
+    || root.extractConflictOpen || root.compressConflictOpen || root.bulkRenameConflictOpen
+    || root.dropConflictOpen || root.paletteOpen || root.openWithOpen || root.bulkRenameOpen
+    || root.chmodOpen || root.propertiesOpen || root.connectServerOpen
 
   // Feedback de "en curso". cp/mv no reportan progreso ellos mismos, así
   // que para copiar/mover se ESTIMA por fuera: tamaño total del origen
@@ -853,6 +875,7 @@ Item {
       return
     }
     networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
+    networkUnmountProc.tabIndex = root.activeTabIndex
     networkUnmountProc.command = ["gio", "mount", "-u", mount.path]
     networkUnmountProc.running = true
   }
@@ -906,6 +929,7 @@ Item {
     ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
     ejectProc.wasInside = wasInside
+    ejectProc.tabIndex = root.activeTabIndex
     ejectProc.device = mount.device
     ejectProc.running = true
   }
@@ -918,6 +942,10 @@ Item {
       Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting a drive — try again in a moment"])
       return
     }
+    // Capturado aquí (no releído en onExited) -- si el ratón pasa a otro
+    // panel mientras el montaje tarda, el resultado debe navegar el
+    // panel que lo pidió, no el que resulte estar activo cuando termine.
+    mountProc.tabIndex = root.activeTabIndex
     mountProc.command = ["udisksctl", "mount", "-b", mount.device]
     mountProc.running = true
   }
@@ -1090,7 +1118,8 @@ Item {
     var next = root.tabs.slice()
     next[root.activeTabIndex] = {
       path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
-      previewOpen: root.previewOpen, previewEntry: root.previewEntry, scrollY: list.contentY
+      previewOpen: root.previewOpen, previewEntry: root.previewEntry, scrollY: list.contentY,
+      inArchive: root.inArchive, archivePath: root.archivePath, archiveSubPath: root.archiveSubPath
     }
     root.tabs = next
   }
@@ -1109,6 +1138,23 @@ Item {
   // original la siguiera teniendo abierta. Se llama DESPUÉS de _goToPath,
   // que ya dejó currentPath listo para que loadPreview lea el fichero
   // correcto si es de texto.
+  // Bug real: navegar DENTRO de un comprimido (inArchive/archivePath/
+  // archiveSubPath) no era parte del estado guardado por pestaña -- al
+  // cambiar de pestaña con el ratón y volver, _goToPath() ya había
+  // salido del modo archivo sin que nada lo restaurase, así que la
+  // pestaña aterrizaba en la carpeta real que contiene el .zip en vez de
+  // en la ruta de dentro donde estaba navegando. Llamado DESPUÉS de
+  // _goToPath (que es quien limpia inArchive), mismo patrón que
+  // _restoreTabPreview/_restoreTabScroll.
+  function _restoreTabArchive(tab) {
+    if (tab.inArchive && tab.archivePath) {
+      root.inArchive = true
+      root.archivePath = tab.archivePath
+      root.archiveSubPath = tab.archiveSubPath || ""
+      root.refreshArchiveListing()
+    }
+  }
+
   function _restoreTabPreview(tab) {
     if (tab.previewOpen && tab.previewEntry) {
       root.loadPreview(tab.previewEntry)
@@ -1130,10 +1176,12 @@ Item {
 
   function switchToTab(index) {
     if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
+    if (root.hasBlockingOverlay) return
     root.saveActiveTab()
     root.activeTabIndex = index
     root._restoreTabHistory(root.tabs[index])
     root._goToPath(root.tabs[index].path)
+    root._restoreTabArchive(root.tabs[index])
     root._restoreTabPreview(root.tabs[index])
     root._restoreTabScroll(root.tabs[index])
   }
@@ -1167,6 +1215,7 @@ Item {
     root.activeTabIndex = newIndex
     root._restoreTabHistory(root.tabs[newIndex])
     root._goToPath(root.tabs[newIndex].path)
+    root._restoreTabArchive(root.tabs[newIndex])
     root._restoreTabPreview(root.tabs[newIndex])
     root._restoreTabScroll(root.tabs[newIndex])
   }
@@ -1267,10 +1316,16 @@ Item {
 
     var nlIdx = payload ? payload.indexOf("\n") : -1
     var folderPart = nlIdx >= 0 ? payload.substring(0, nlIdx) : payload
-    var selectName = nlIdx >= 0 ? payload.substring(nlIdx + 1) : ""
+    // Varios nombres a seleccionar de golpe se separan con \x1f (ASCII
+    // Unit Separator) -- un solo nombre sin \x1f sigue funcionando igual
+    // que antes (array de 1). Ver dbus-filemanager1.py, que ahora agrupa
+    // varios URIs de la misma carpeta en un único summon() con todos los
+    // nombres, en vez de un summon (y una pestaña) por URI.
+    var selectPart = nlIdx >= 0 ? payload.substring(nlIdx + 1) : ""
+    var selectNames = selectPart ? selectPart.split("\x1f") : []
     var targetPath = (folderPart && folderPart.charAt(0) === "/") ? folderPart : ""
 
-    if (targetPath) root.pendingSelectName = selectName
+    if (targetPath) root.pendingSelectNames = selectNames
 
     var restoringSession = false
     if (!root.loaded) {
@@ -1735,9 +1790,13 @@ Item {
       Quickshell.execDetached(["wl-copy", "-c"])
       return
     }
+    // \r\n entre URIs (RFC 2483), no \n a secas -- el DnD mimeData de más
+    // abajo (dragMimeDataFor) ya lo hacía bien; esto lo iguala para que
+    // cualquier app externa que lea el portapapeles reciba el mismo
+    // formato spec-correcto sea cual sea el camino (copiar o arrastrar).
     var uris = root.clipboardPaths.map(function (p) {
       return "file://" + p.split("/").map(encodeURIComponent).join("/")
-    }).join("\n")
+    }).join("\r\n")
     Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
   }
 
@@ -2242,6 +2301,7 @@ Item {
       Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting an ISO — try again in a moment"])
       return
     }
+    mountIsoProc.tabIndex = root.activeTabIndex
     mountIsoProc.command = ["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)]
     mountIsoProc.running = true
   }
@@ -2636,13 +2696,13 @@ Item {
   }
 
   // Marcador de fichero: navega a la carpeta que lo contiene y lo deja
-  // seleccionado -- reutiliza pendingSelectName, el mismo mecanismo que
+  // seleccionado -- reutiliza pendingSelectNames, el mismo mecanismo que
   // ya usa "Mostrar en el gestor de archivos" (dbus-filemanager1.py) para
   // resaltar un fichero concreto al aterrizar en una carpeta.
   function openBookmark(bookmark) {
     if (bookmark.type === "file") {
       var slash = bookmark.path.lastIndexOf("/")
-      root.pendingSelectName = bookmark.path.substring(slash + 1)
+      root.pendingSelectNames = [bookmark.path.substring(slash + 1)]
       root.navigateTo(slash > 0 ? bookmark.path.substring(0, slash) : "/")
     } else {
       root.navigateTo(bookmark.path)
@@ -2653,7 +2713,7 @@ Item {
   // los recientes son ficheros (nunca carpetas, ver addRecent()).
   function openRecent(item) {
     var slash = item.path.lastIndexOf("/")
-    root.pendingSelectName = item.name
+    root.pendingSelectNames = [item.name]
     root.navigateTo(slash > 0 ? item.path.substring(0, slash) : "/")
   }
 
@@ -2804,16 +2864,27 @@ Item {
         // justo cuando el modelo nuevo ya está puesto.
         list.positionViewAtBeginning()
         root.loaded = true
-        var selectName = root.pendingSelectName
-        root.pendingSelectName = ""
-        var foundIndex = -1
-        if (selectName) {
+        var selectNames = root.pendingSelectNames
+        root.pendingSelectNames = []
+        var foundIndices = []
+        if (selectNames.length > 0) {
           for (var i = 0; i < root.visibleEntries.length; i++) {
-            if (root.visibleEntries[i].name === selectName) { foundIndex = i; break }
+            if (selectNames.indexOf(root.visibleEntries[i].name) >= 0) foundIndices.push(i)
           }
         }
-        if (foundIndex >= 0) root.selectOnly(foundIndex)
-        else if (root.selectedIndex >= root.visibleEntries.length) root.selectedIndex = root.visibleEntries.length - 1
+        if (foundIndices.length > 0) {
+          // selectOnly() ya cubría el caso de 1 (el de siempre: marcador
+          // de fichero, reciente, la mayoría de ShowItems reales). Varios
+          // a la vez (ShowItems con multi-selección real en el llamador,
+          // ver dbus-filemanager1.py) no tenían forma de aplicarse antes
+          // -- se resaltaban todos, con el primero como "principal".
+          root.selectedIndex = foundIndices[0]
+          root.anchorIndex = foundIndices[0]
+          root.selectedIndices = foundIndices
+          if (root.previewOpen && foundIndices.length > 1) root.previewOpen = false
+        } else if (root.selectedIndex >= root.visibleEntries.length) {
+          root.selectedIndex = root.visibleEntries.length - 1
+        }
       }
     }
     // stdout ya deja entries vacío (list-dir.sh no imprime nada si falla);
@@ -2916,6 +2987,7 @@ Item {
     id: ejectProc
     property string mountPath: ""
     property bool wasInside: false
+    property int tabIndex: -1
     property string errorText: ""
     property string device: ""
     stderr: StdioCollector {
@@ -2924,7 +2996,7 @@ Item {
     }
     onExited: function (exitCode) {
       if (exitCode === 0) {
-        if (ejectProc.wasInside) root.navigateTo(root.homeDir)
+        if (ejectProc.wasInside) root.navigateTabTo(ejectProc.tabIndex, root.homeDir)
         // Un .iso montado con mountIso() deja el /dev/loopN asociado al
         // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
         // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
@@ -2943,6 +3015,7 @@ Item {
     id: mountProc
     property string outputText: ""
     property string errorText: ""
+    property int tabIndex: -1
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: mountProc.outputText = text
@@ -2955,7 +3028,7 @@ Item {
       root.refreshMounts()
       if (exitCode === 0) {
         var match = mountProc.outputText.match(/ at (\/[^\s.]+)/)
-        if (match) root.navigateTo(match[1])
+        if (match) root.navigateTabTo(mountProc.tabIndex, match[1])
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
       }
@@ -2966,6 +3039,7 @@ Item {
     id: mountIsoProc
     property string outputText: ""
     property string errorText: ""
+    property int tabIndex: -1
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: mountIsoProc.outputText = text
@@ -2978,7 +3052,7 @@ Item {
       root.refreshMounts()
       if (exitCode === 0) {
         var match = mountIsoProc.outputText.match(/ at (\/[^\s.]+)/)
-        if (match) root.navigateTo(match[1])
+        if (match) root.navigateTabTo(mountIsoProc.tabIndex, match[1])
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount ISO: " + (mountIsoProc.errorText || "unknown error")])
       }
@@ -2997,6 +3071,7 @@ Item {
   Process {
     id: networkUnmountProc
     property bool wasInside: false
+    property int tabIndex: -1
     property string errorText: ""
     stderr: StdioCollector {
       waitForEnd: true
@@ -3004,7 +3079,7 @@ Item {
     }
     onExited: function (exitCode) {
       if (exitCode === 0) {
-        if (networkUnmountProc.wasInside) root.navigateTo(root.homeDir)
+        if (networkUnmountProc.wasInside) root.navigateTabTo(networkUnmountProc.tabIndex, root.homeDir)
         root.refreshNetworkMounts()
       } else {
         Quickshell.execDetached(["notify-send", "Omafiles", "Could not disconnect: " + (networkUnmountProc.errorText || "unknown error")])
@@ -3246,7 +3321,14 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var uris = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
+        // Bug real: RFC 2483 exige CRLF entre URIs de un text/uri-list,
+        // y las apps GTK reales (Nautilus, selectores de fichero,
+        // Firefox...) lo escriben así -- sin quitar el "\r" que queda
+        // pegado al final de cada línea, decodeURIComponent lo dejaba
+        // colado en el path, pasteCheckProc.test -e nunca lo encontraba,
+        // y pegar desde fuera de Omafiles fallaba en silencio sin ningún
+        // aviso.
+        var uris = String(text || "").split("\n").map(function (l) { return l.replace(/\r$/, "") }).filter(function (l) { return l.length > 0 })
         var paths = uris.map(function (u) {
           return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
         }).filter(function (p) { return p.length > 0 })
@@ -3433,10 +3515,21 @@ Item {
     id: thumbProc
     property string currentKey: ""
     property string currentDest: ""
-    onExited: {
-      var ready = Object.assign({}, root.videoThumbReady)
-      ready[thumbProc.currentKey] = thumbProc.currentDest
-      root.videoThumbReady = ready
+    onExited: function (exitCode) {
+      // Bug real: antes se marcaba "lista" pase lo que pase, aunque
+      // ffmpegthumbnailer fallara (formato raro, fichero corrupto, sin
+      // memoria un instante) -- requestVideoThumb() nunca reintentaba
+      // porque videoThumbReady[key] ya era verdadero (con una ruta que
+      // en realidad no existe), así que ese vídeo se quedaba sin
+      // miniatura real el resto de la sesión. Ahora solo se marca lista
+      // si el proceso terminó bien, así una próxima visita a la carpeta
+      // (nueva key por mtime, o simplemente request() de nuevo) puede
+      // reintentar.
+      if (exitCode === 0) {
+        var ready = Object.assign({}, root.videoThumbReady)
+        ready[thumbProc.currentKey] = thumbProc.currentDest
+        root.videoThumbReady = ready
+      }
       root.thumbBusy = false
       root.processThumbQueue()
     }
@@ -3956,6 +4049,7 @@ Item {
               text: "Connect…"
               font.pixelSize: Style.font.title
               font.family: Style.font.family
+              font.weight: Font.Medium
               color: Color.menu.text
               elide: Text.ElideRight
               width: sidebar.width - Style.spacing.sm * 2 - connectServerIcon.width - Style.spacing.xs
@@ -3975,7 +4069,13 @@ Item {
           width: Style.spacing.hairline
           height: parent.height
           color: Color.menu.border
-          opacity: 0.3
+          // Bajado de 0.3 a 0.15 -- misma alpha que usa PanelSeparator
+          // (el separador horizontal real de Omarchy) para el mismo rol
+          // conceptual de "línea divisoria discreta". No hay un
+          // componente vertical real con el que comparar, pero no hay
+          // motivo para que esta línea sea el doble de fuerte que las
+          // horizontales del mismo fichero.
+          opacity: 0.15
         }
 
         // ---------- Contenido principal ----------
@@ -4002,7 +4102,7 @@ Item {
             // ---------- Divisores entre paneles ----------
             // Una simple línea, no un recuadro con borde propio -- mismo
             // estilo que ya usa el divisor entre la barra lateral y el
-            // contenido (Color.menu.border, opacity 0.3, Style.spacing.hairline).
+            // contenido (Color.menu.border, opacity 0.15, Style.spacing.hairline).
             Repeater {
               model: Math.max(0, root.tabs.length - 1)
               delegate: Rectangle {
@@ -4012,7 +4112,7 @@ Item {
                 width: Style.spacing.hairline
                 height: panelsRow.height
                 color: Color.menu.border
-                opacity: 0.3
+                opacity: 0.15
               }
             }
 
@@ -4070,7 +4170,9 @@ Item {
                   // menú encima), la pestaña activa cambiaba a mitad de
                   // acción y "Open in new tab"/Copy/etc. acababan actuando
                   // sobre la carpeta equivocada.
-                  onHoveredChanged: if (hovered && !root.hasPendingEdit && !root.contextMenuOpen) root.switchToTab(bgPanel.index)
+                  // El guard real vive ahora en switchToTab() (hasBlockingOverlay),
+                  // así cubre TODOS los diálogos, no solo estos dos.
+                  onHoveredChanged: if (hovered) root.switchToTab(bgPanel.index)
                 }
 
                 function refreshMe() {
@@ -6132,7 +6234,13 @@ Item {
             text: "Mixed permissions — choose a mode to apply to all"
             font.pixelSize: Style.font.bodySmall
             font.family: Style.font.family
-            color: Qt.darker(Color.menu.text, 1.6)
+            // Qt.darker se usa en este fichero para texto DESHABILITADO
+            // (botones/filas sin acción posible) -- este texto no está
+            // deshabilitado, es solo un aviso secundario, así que le
+            // toca la misma convención de opacity:0.6 que el resto del
+            // texto secundario del fichero.
+            color: Color.menu.text
+            opacity: 0.6
             wrapMode: Text.WordWrap
           }
 
@@ -6640,6 +6748,7 @@ Item {
                 text: parent.modelData.name
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: Color.menu.text
               }
 
@@ -6705,6 +6814,7 @@ Item {
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: parent.modelData.destructive ? Color.urgent : (parent.actionEnabled ? Color.menu.text : Qt.darker(Color.menu.text, 1.8))
               }
 
@@ -7001,6 +7111,7 @@ Item {
                 text: parent.modelData.label
                 font.pixelSize: Style.font.title
                 font.family: Style.font.family
+                font.weight: Font.Medium
                 color: parent.cmdEnabled ? (index === root.paletteIndex ? Color.menu.selectedText : Color.menu.text) : Qt.darker(Color.menu.text, 1.8)
               }
 
