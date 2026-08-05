@@ -168,8 +168,8 @@ Item {
   }
 
   function commitRename(newName) {
-    var index = root.renamingIndex
-    root.renamingIndex = -1
+    var index = EditModeState.renamingIndex
+    EditModeState.renamingIndex = -1
     // Defensa en profundidad: startRename() ya bloquea EMPEZAR un
     // renombrado dentro de un archivo, pero no cubre el caso de empezar a
     // renombrar FUERA, no confirmar, y entrar en un .zip mientras tanto --
@@ -196,6 +196,57 @@ Item {
       onStreamFinished: {
         if (text.trim() === "1") ConflictState.renameConflictOpen = true
         else renameOps.runPendingRename(false)
+      }
+    }
+  }
+
+  // Comprobación de existencia ANTES de crear -- bug real corregido aquí
+  // (josema, 2026-08-05): touch/mkdir -p son idempotentes (éxito
+  // silencioso sobre algo que ya existía), así que sin este guard "New
+  // file"/"New folder" con un nombre en conflicto no creaba nada nuevo
+  // pero SÍ registraba un undo -- un Ctrl+Z posterior mandaba a la
+  // papelera el ítem PREEXISTENTE de verdad. Ahora, en vez de fallar en
+  // silencio (notify-send fácil de no ver), se ofrece el mismo diálogo
+  // Overwrite/Cancel que ya usa renombrar.
+  function commitNewFile(name) {
+    EditModeState.creatingFile = false
+    name = name.trim()
+    if (!name) return
+    var path = root.joinPath(root.currentPath, name)
+    ConflictState.pendingNewFile = { path: path, name: name }
+    newFileCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"]
+    newFileCheckProc.running = true
+  }
+
+  Process {
+    id: newFileCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text.trim() === "1") ConflictState.newFileConflictOpen = true
+        else renameOps.runPendingNewFile(false)
+      }
+    }
+  }
+
+  function commitNewFolder(name) {
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = false
+    name = name.trim()
+    if (!name) return
+    var path = root.joinPath(root.currentPath, name)
+    ConflictState.pendingNewFolder = { path: path, name: name }
+    newFolderCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"]
+    newFolderCheckProc.running = true
+  }
+
+  Process {
+    id: newFolderCheckProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text.trim() === "1") ConflictState.newFolderConflictOpen = true
+        else renameOps.runPendingNewFolder(false)
       }
     }
   }

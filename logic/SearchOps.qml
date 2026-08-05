@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import "../state"
 import "../Utils.js" as Utils
 
 // Búsqueda (filtro en vivo + búsqueda profunda en subcarpetas), ocultos,
@@ -22,13 +23,13 @@ Item {
   }
 
   function startEditPath() {
-    root.editingPath = true
+    EditModeState.editingPath = true
   }
 
   function startSearch() {
     if (root.inArchive) return
-    root.creatingFolder = false
-    root.creatingFile = false
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = false
     root.searching = true
     root.searchQuery = ""
     root.searchTruncated = false

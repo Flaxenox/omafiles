@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "../state"
 
 // Persistencia en disco (marcadores, recientes, sesión de pestañas,
 // historial de renombrado en bloque) -- decimosexto componente extraído
@@ -35,7 +36,7 @@ Item {
   }
 
   function saveBookmarks() {
-    _saveJson(root.bookmarksFile, root.bookmarks)
+    _saveJson(root.bookmarksFile, BookmarksState.bookmarks)
   }
 
   function loadRecent() {
@@ -43,7 +44,7 @@ Item {
   }
 
   function saveRecent() {
-    _saveJson(root.recentFile, root.recentFiles)
+    _saveJson(root.recentFile, BookmarksState.recentFiles)
   }
 
   // Solo se llama en la primera apertura de la sesión de Quickshell, sin
@@ -70,7 +71,7 @@ Item {
   }
 
   function saveBulkRenameHistory() {
-    _saveJson(root.bulkRenameHistoryFile, root.bulkRenameHistory)
+    _saveJson(root.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
   }
 
   Process {
@@ -79,13 +80,13 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.bookmarksLoaded = true
+        BookmarksState.bookmarksLoaded = true
         var parsed = null
         try { parsed = JSON.parse(text) } catch (e) { parsed = null }
         if (Array.isArray(parsed) && parsed.length > 0) {
-          root.bookmarks = parsed
+          BookmarksState.bookmarks = parsed
         } else {
-          root.bookmarks = root.defaultBookmarks
+          BookmarksState.bookmarks = root.defaultBookmarks
           saveBookmarks()
         }
       }
@@ -98,10 +99,10 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.recentLoaded = true
+        BookmarksState.recentLoaded = true
         var parsed = null
         try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        root.recentFiles = Array.isArray(parsed) ? parsed : []
+        BookmarksState.recentFiles = Array.isArray(parsed) ? parsed : []
       }
     }
   }
@@ -136,10 +137,10 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.bulkRenameHistoryLoaded = true
+        BookmarksState.bulkRenameHistoryLoaded = true
         var parsed = null
         try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        root.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
+        BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
       }
     }
   }

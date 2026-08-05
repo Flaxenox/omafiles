@@ -40,6 +40,7 @@ Item {
 
   signal bookmarkOpened(var bookmark)
   signal recentOpened(var item)
+  signal recentLaunched(var item)
   signal recentRemoveRequested(string path)
   signal recentClearRequested()
   signal mountActivated(var mount)
@@ -234,6 +235,7 @@ Item {
             }
             root.recentOpened(modelData)
           }
+          onDoubleClicked: root.recentLaunched(modelData)
         }
       }
     }

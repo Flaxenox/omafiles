@@ -118,17 +118,15 @@ Item {
 
   readonly property var sortKeys: ["name", "size", "mtime", "type"]
   readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
-  property string sortKey: "name"
-  property bool sortDesc: false
+  // sortKey/sortDesc viven ahora en state/SortState.qml -- decimotercer
+  // slice de la capa state/, completa logic/SortOps.qml.
 
-  property int renamingIndex: -1
-  property bool creatingFolder: false
-  property bool creatingFile: false
-  property bool editingPath: false
+  // renamingIndex/creatingFolder/creatingFile/editingPath viven ahora en
+  // state/EditModeState.qml -- decimoctavo slice de la capa state/.
   // Hay una edición sin confirmar en el panel activo (nombre a medio
   // escribir) -- usado para no tirarla al vuelo por un simple hover sobre
   // otro panel (ver el HoverHandler de bgPanel más abajo).
-  readonly property bool hasPendingEdit: root.renamingIndex >= 0 || root.creatingFolder || root.creatingFile || root.editingPath
+  readonly property bool hasPendingEdit: EditModeState.renamingIndex >= 0 || EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.editingPath
 
   // Bug real (auditoría 2026-08-05): cualquier diálogo con un paso de
   // "confirmar" que relee root.currentPath/selectionOps.selectedEntries() EN EL
@@ -146,23 +144,17 @@ Item {
   readonly property bool hasBlockingOverlay: root.hasPendingEdit || ContextMenuState.contextMenuOpen
     || root.pendingDeleteNames.length > 0 || ConflictState.renameConflictOpen || ConflictState.pasteConflictOpen
     || ConflictState.extractConflictOpen || ConflictState.compressConflictOpen || ConflictState.bulkRenameConflictOpen
-    || ConflictState.dropConflictOpen || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
+    || ConflictState.dropConflictOpen || ConflictState.newFileConflictOpen || ConflictState.newFolderConflictOpen
+    || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
     || ChmodState.chmodOpen || PropertiesState.propertiesOpen || DialogsState.connectServerOpen
 
-  // Feedback de "en curso". cp/mv no reportan progreso ellos mismos, así
-  // que para copiar/mover se ESTIMA por fuera: tamaño total del origen
-  // conocido de antemano (du), y un sondeo periódico de cuánto hay ya en
-  // el destino mientras la acción corre -- no es exacto al byte (el
-  // sondeo tiene un intervalo, y du sobre un fichero a medio escribir da
-  // su tamaño en ese instante) pero da una cifra real en vez de solo
-  // "sigue vivo". -1 = sin progreso que mostrar (cualquier acción que no
-  // sea copiar/mover: renombrar, chmod, comprimir...).
-  property bool actionBusy: false
-  property string actionLabel: ""
+  // actionBusy/actionLabel/actionProgressPct/actionTotalBytes/
+  // actionProgressDestPaths/_actionOnSuccess/_actionCancelled viven ahora
+  // en state/ActionState.qml -- duodécimo slice de la capa state/, completa
+  // la migración de logic/ActionEngine.qml (undoStack/redoStack ya estaban
+  // en state/UndoState.qml). actionBusyDots se queda aquí -- animación
+  // puramente visual, ver el Timer más abajo.
   property string actionBusyDots: ""
-  property real actionProgressPct: -1
-  property real actionTotalBytes: 0
-  property var actionProgressDestPaths: []
 
   // clipboardPaths/clipboardMode viven ahora en state/ClipboardState.qml
   // (singleton) -- segundo slice de la capa state/, mismo patrón que
@@ -179,8 +171,8 @@ Item {
   // cuarto slice de la capa state/. Lógica sin cambios en
   // logic/ConflictActions.qml y demás.
 
-  property int dropHoverIndex: -1
-  property string dropHoverPath: ""
+  // dropHoverIndex/dropHoverPath viven ahora en state/DropHoverState.qml --
+  // decimoséptimo slice de la capa state/.
 
   // contextMenuOpen/X/Y/Actions viven ahora en state/ContextMenuState.qml,
   // paletteOpen/Query/Index en state/PaletteState.qml, y previewOpen/
@@ -216,12 +208,8 @@ Item {
   // como si fuera la fecha de borrado, y no había forma de saber de dónde
   // venía cada cosa sin mirar el .trashinfo a mano.
   property var trashInfo: ({})
-  property var mounts: []
-  // Ubicaciones de red (SFTP/SMB/WebDAV/FTP) montadas vía GVfs -- cada
-  // una es un directorio real bajo $XDG_RUNTIME_DIR/gvfs/, list-dir.sh la
-  // navega igual que cualquier carpeta local sin cambios. Ver
-  // list-network-mounts.sh y la sección "NETWORK" de la barra lateral.
-  property var networkMounts: []
+  // mounts/networkMounts viven ahora en state/MountsState.qml --
+  // decimoquinto slice de la capa state/.
 
   // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- root.currentPath
   // NUNCA cambia mientras esto está activo (sigue siendo la carpeta real
@@ -244,22 +232,13 @@ Item {
     { label: "Trash", path: root.homeDir + "/.local/share/Trash/files" }
   ]
 
-  property var bookmarks: []
   property string bookmarksFile: root.homeDir + "/.local/state/omafiles/bookmarks.json"
   property string recentFile: root.homeDir + "/.local/state/omafiles/recent.json"
-  // { path, name } -- más reciente primero, tope 20. Persistido aparte
-  // (no en bookmarks.json, semántica distinta: esto lo escribe la propia
-  // app sola al abrir ficheros, el usuario no lo edita a mano).
-  property var recentFiles: []
-  property bool recentLoaded: false
   property string sessionFile: root.homeDir + "/.local/state/omafiles/session.json"
   property string bulkRenameHistoryFile: root.homeDir + "/.local/state/omafiles/bulk-rename-history.json"
-  // Patrones usados de verdad en Bulk rename, más reciente primero, tope
-  // 8 -- mostrados como accesos rápidos en el propio diálogo en vez de
-  // tener que volver a teclearlos cada vez.
-  property var bulkRenameHistory: []
-  property bool bulkRenameHistoryLoaded: false
-  property bool bookmarksLoaded: false
+  // bookmarks/recentFiles/recentLoaded/bulkRenameHistory/
+  // bulkRenameHistoryLoaded/bookmarksLoaded viven ahora en
+  // state/BookmarksState.qml -- decimosexto slice de la capa state/.
 
   readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
   readonly property var videoExt: ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]
@@ -281,9 +260,8 @@ Item {
 
   // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
   property string thumbCacheDir: root.homeDir + "/.cache/omafiles/thumbnails"
-  property var videoThumbReady: ({}) // "ruta|mtime" -> fichero .jpg local
-  property var thumbQueue: []
-  property bool thumbBusy: false
+  // videoThumbReady/thumbQueue/thumbBusy viven ahora en
+  // state/VideoThumbState.qml -- decimocuarto slice de la capa state/.
 
   // simpleHash/thumbKeyFor/videoThumbPath: movidas a Utils.js (funciones
   // puras). `basePath`/cacheDir ya no son opcionales -- cada llamada de
@@ -460,10 +438,10 @@ Item {
     if (root.inArchive) { root.inArchive = false; root.archivePath = ""; root.archiveSubPath = "" }
     root.currentPath = path
     selectionOps.selectOnly(-1)
-    root.renamingIndex = -1
-    root.creatingFolder = false
-    root.creatingFile = false
-    root.editingPath = false
+    EditModeState.renamingIndex = -1
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = false
+    EditModeState.editingPath = false
     // list.contentY nunca se corrige solo: si venías desplazado hacia abajo
     // en la carpeta anterior, esa posición de scroll se queda fija aunque
     // el listado nuevo no tenga nada ahí -- se ve como un hueco vacío
@@ -600,9 +578,9 @@ Item {
       tabOps.saveActiveTab()
     }
 
-    if (!root.bookmarksLoaded) persistence.loadBookmarks()
-    if (!root.recentLoaded) persistence.loadRecent()
-    if (!root.bulkRenameHistoryLoaded) persistence.loadBulkRenameHistory()
+    if (!BookmarksState.bookmarksLoaded) persistence.loadBookmarks()
+    if (!BookmarksState.recentLoaded) persistence.loadRecent()
+    if (!BookmarksState.bulkRenameHistoryLoaded) persistence.loadBulkRenameHistory()
     mountOps.refreshMounts()
     mountOps.refreshNetworkMounts()
     // Cubre los dos casos restantes: primera carga con target (currentPath
@@ -622,10 +600,10 @@ Item {
     panel.visible = false
     root.closingFromHost = false
     root.stopDirWatch()
-    root.renamingIndex = -1
-    root.creatingFolder = false
-    root.creatingFile = false
-    root.editingPath = false
+    EditModeState.renamingIndex = -1
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = false
+    EditModeState.editingPath = false
     root.pendingDeleteNames = []
     ContextMenuState.contextMenuOpen = false
     // keepLoaded:true mantiene vivo el componente entre cierres -- sin
@@ -669,14 +647,6 @@ Item {
   function runAction(cmd, busyLabel, onSuccess) {
     return actionEngine.runAction(cmd, busyLabel, onSuccess)
   }
-
-  // Callback pendiente del runAction en curso -- ver actionProc.onExited.
-  property var _actionOnSuccess: null
-  // true mientras se procesa un cancelAction() explícito -- así
-  // actionProc.onExited no muestra "Action failed" por un proceso que el
-  // propio usuario mandó parar (sale con código != 0 por la señal, pero
-  // eso no es un fallo real).
-  property bool _actionCancelled: false
 
   function chainCmds(cmds) {
     return actionEngine.chainCmds(cmds)
@@ -923,6 +893,15 @@ Item {
     var slash = item.path.lastIndexOf("/")
     root.pendingSelectNames = [item.name]
     root.navigateTo(slash > 0 ? item.path.substring(0, slash) : "/")
+  }
+
+  // Doble clic en un reciente -- a diferencia de openRecent() (navega y
+  // selecciona), esto lo abre de verdad con la app por defecto, igual que
+  // hace enter() con una fila normal. addRecent() lo vuelve a subir al
+  // principio de la lista, igual que si se acabara de abrir ahora mismo.
+  function launchRecent(item) {
+    root.openWithDefault(item.path)
+    bookmarkOps.addRecent(item.path, item.name)
   }
 
   function bookmarkActions(bookmark) {
@@ -1320,12 +1299,12 @@ Item {
           id: sidebar
           width: 160
           height: parent.height
-          bookmarks: root.bookmarks
-          recentFiles: root.recentFiles
-          mounts: root.mounts
-          networkMounts: root.networkMounts
+          bookmarks: BookmarksState.bookmarks
+          recentFiles: BookmarksState.recentFiles
+          mounts: MountsState.mounts
+          networkMounts: MountsState.networkMounts
           currentPath: root.currentPath
-          dropHoverPath: root.dropHoverPath
+          dropHoverPath: DropHoverState.dropHoverPath
           positionRelativeTo: card
           iconForBookmark: bookmarkOps.iconForBookmark
           iconFor: root.iconFor
@@ -1337,6 +1316,7 @@ Item {
           networkMountActionsFor: bookmarkOps.networkMountActions
           onBookmarkOpened: function (bookmark) { root.openBookmark(bookmark) }
           onRecentOpened: function (item) { root.openRecent(item) }
+          onRecentLaunched: function (item) { root.launchRecent(item) }
           onRecentRemoveRequested: function (path) { bookmarkOps.removeRecent(path) }
           onRecentClearRequested: bookmarkOps.clearRecent()
           onMountActivated: function (mount) {
@@ -1346,7 +1326,7 @@ Item {
           onNetworkMountOpened: function (mount) { root.navigateTo(mount.path) }
           onConnectRequested: mountOps.startConnectToServer()
           onFilesDropped: function (drop, destPath) { dragDropOps.handleFilesDropped(drop, destPath) }
-          onDropHoverChanged: function (path) { root.dropHoverPath = path }
+          onDropHoverChanged: function (path) { DropHoverState.dropHoverPath = path }
         }
 
         Rectangle {
@@ -1481,14 +1461,14 @@ Item {
               MouseArea {
                 // Detrás de las migas de pan: clic en hueco vacío -> editar ruta a mano.
                 anchors.fill: parent
-                visible: !root.editingPath
+                visible: !EditModeState.editingPath
                 cursorShape: Qt.IBeamCursor
                 onClicked: searchOps.startEditPath()
               }
 
               BreadcrumbSegments {
                 id: breadcrumbRow
-                visible: !root.editingPath
+                visible: !EditModeState.editingPath
                 anchors.fill: parent
                 segments: root.pathSegments()
                 activePath: root.currentPath
@@ -1496,7 +1476,7 @@ Item {
 
               TextField {
                 id: pathField
-                visible: root.editingPath
+                visible: EditModeState.editingPath
                 anchors.fill: parent
                 verticalPadding: 2
                 Accessible.role: Accessible.EditableText
@@ -1507,7 +1487,7 @@ Item {
                     root.navigateTo(text)
                     event.accepted = true
                   } else if (event.key === Qt.Key_Escape) {
-                    root.editingPath = false
+                    EditModeState.editingPath = false
                     event.accepted = true
                   }
                 }
@@ -1519,7 +1499,7 @@ Item {
             id: activeInputRows
             root: root
             list: list
-            renameOps: renameOps
+            conflictActions: conflictActions
             searchOps: searchOps
             selectionOps: selectionOps
           }
@@ -1540,8 +1520,8 @@ Item {
             // la de la única fila visible, o 0 si ninguna lo está, así
             // que basta un término en vez de sumar los tres por separado.
             height: activePanel.height - navRow.height
-              - (root.creatingFolder || root.creatingFile || root.searching ? activeInputRows.height + mainColumn.spacing : 0)
-              - statusText.height - mainColumn.spacing * (2 + (root.creatingFolder || root.creatingFile || root.searching ? 1 : 0))
+              - (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? activeInputRows.height + mainColumn.spacing : 0)
+              - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? 1 : 0))
 
             ActiveFileList {
               id: list
@@ -1568,6 +1548,8 @@ Item {
               extractConflictConfirm: extractConflictConfirm
               compressConflictConfirm: compressConflictConfirm
               bulkRenameConflictConfirm: bulkRenameConflictConfirm
+              newFileConflictConfirm: newFileConflictConfirm
+              newFolderConflictConfirm: newFolderConflictConfirm
             }
 
           }
@@ -1640,7 +1622,7 @@ Item {
         open: DialogsState.bulkRenameOpen
         selectedCount: SelectionState.selectedIndices.length
         pattern: DialogsState.bulkRenamePattern
-        history: root.bulkRenameHistory
+        history: BookmarksState.bulkRenameHistory
         onCloseRequested: DialogsState.bulkRenameOpen = false
         onRenameRequested: function (pattern) { DialogsState.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
         onFocusReturnRequested: list.forceActiveFocus()
@@ -1704,7 +1686,7 @@ Item {
       // "sigue vivo" (puntos animados) + Cancel, no una barra de porcentaje.
       BorderSurface {
         id: actionBusyCard
-        visible: root.actionBusy
+        visible: ActionState.actionBusy
         width: Math.min(parent.width - 80, 420)
         height: actionBusyColumn.implicitHeight + contentTopInset + contentBottomInset
         anchors.horizontalCenter: parent.horizontalCenter
@@ -1737,7 +1719,7 @@ Item {
               // startCopyProgress/actionProgressPct); puntos animados
               // para cualquier otra acción, que no tiene un "tamaño
               // total" con el que calcular nada.
-              text: root.actionLabel + (root.actionProgressPct >= 0 ? " " + Math.round(root.actionProgressPct) + "%" : root.actionBusyDots)
+              text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : root.actionBusyDots)
               font.pixelSize: Style.font.subtitle
               font.family: Style.font.family
               color: Color.menu.text
@@ -1756,14 +1738,14 @@ Item {
           }
 
           Rectangle {
-            visible: root.actionProgressPct >= 0
+            visible: ActionState.actionProgressPct >= 0
             width: parent.width
             height: 3
             radius: height / 2
             color: Qt.darker(Color.menu.text, 2.5)
 
             Rectangle {
-              width: parent.width * (root.actionProgressPct / 100)
+              width: parent.width * (ActionState.actionProgressPct / 100)
               height: parent.height
               radius: height / 2
               color: Color.accent
@@ -1775,7 +1757,7 @@ Item {
       }
 
       Timer {
-        running: root.actionBusy
+        running: ActionState.actionBusy
         repeat: true
         interval: 400
         onTriggered: root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
@@ -1814,6 +1796,7 @@ Item {
             ? "Send \"" + root.pendingDeleteNames[0] + "\" to trash?"
             : "Send " + root.pendingDeleteNames.length + " items to trash?")
         confirmText: "Delete"
+        cancelText: "Cancel"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: root.pendingDeleteNames = []
@@ -1829,10 +1812,43 @@ Item {
           ? "\"" + ConflictState.pendingRename.newPath.substring(ConflictState.pendingRename.newPath.lastIndexOf("/") + 1) + "\" already exists here. Overwrite?"
           : ""
         confirmText: "Overwrite"
+        cancelText: "Cancel"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: renameOps.cancelPendingRename()
         onConfirmed: renameOps.runPendingRename(true)
+      }
+
+      ConfirmDialog {
+        id: newFileConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: ConflictState.newFileConflictOpen
+        message: ConflictState.pendingNewFile
+          ? "\"" + ConflictState.pendingNewFile.name + "\" already exists here. Overwrite?"
+          : ""
+        confirmText: "Overwrite"
+        cancelText: "Cancel"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: renameOps.cancelPendingNewFile()
+        onConfirmed: renameOps.runPendingNewFile(true)
+      }
+
+      ConfirmDialog {
+        id: newFolderConflictConfirm
+        anchors.fill: parent
+        z: 10
+        opened: ConflictState.newFolderConflictOpen
+        message: ConflictState.pendingNewFolder
+          ? "\"" + ConflictState.pendingNewFolder.name + "\" already exists here. Overwrite?"
+          : ""
+        confirmText: "Overwrite"
+        cancelText: "Cancel"
+        background: Color.menu.background
+        foreground: Color.menu.text
+        onCanceled: renameOps.cancelPendingNewFolder()
+        onConfirmed: renameOps.runPendingNewFolder(true)
       }
 
       ConfirmDialog {
@@ -1844,6 +1860,7 @@ Item {
           ? "\"" + ConflictState.extractConflictNames[0] + "\" already exists here and will be overwritten."
           : ConflictState.extractConflictNames.length + " items already exist here and will be overwritten."
         confirmText: "Overwrite"
+        cancelText: "Cancel"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: archiveActions.cancelPendingExtract()
@@ -1857,6 +1874,7 @@ Item {
         opened: ConflictState.compressConflictOpen
         message: ConflictState.pendingCompress ? "\"" + ConflictState.pendingCompress.archiveName + "\" already exists. Overwrite it?" : ""
         confirmText: "Overwrite"
+        cancelText: "Cancel"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: archiveActions.cancelPendingCompress()
@@ -1872,6 +1890,7 @@ Item {
           ? "1 rename would collide with an existing name and will be skipped. Rename the rest?"
           : ConflictState.bulkRenameConflictCount + " renames would collide with existing or duplicate names and will be skipped. Rename the rest?"
         confirmText: "Continue"
+        cancelText: "Cancel"
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: fileOps.cancelPendingBulkRename()

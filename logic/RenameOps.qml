@@ -12,9 +12,9 @@ Item {
   function startRename(index) {
     if (root.inArchive) return
     if (index < 0 || index >= root.visibleEntries.length) return
-    root.creatingFolder = false
-    root.creatingFile = false
-    root.renamingIndex = index
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = false
+    EditModeState.renamingIndex = index
   }
 
   function runPendingRename(overwrite) {
@@ -44,64 +44,74 @@ Item {
 
   function startNewFolder() {
     if (root.inArchive) return
-    root.renamingIndex = -1
+    EditModeState.renamingIndex = -1
     root.searching = false
-    root.creatingFile = false
-    root.creatingFolder = true
+    EditModeState.creatingFile = false
+    EditModeState.creatingFolder = true
   }
 
   function startNewFile() {
     if (root.inArchive) return
-    root.renamingIndex = -1
+    EditModeState.renamingIndex = -1
     root.searching = false
-    root.creatingFolder = false
-    root.creatingFile = true
+    EditModeState.creatingFolder = false
+    EditModeState.creatingFile = true
   }
 
-  function commitNewFile(name) {
-    root.creatingFile = false
-    name = name.trim()
-    if (!name) return
-    var path = root.joinPath(root.currentPath, name)
-    // Comprobación de existencia ANTES del touch -- bug real corregido
-    // aquí: touch es idempotente (éxito silencioso sobre un fichero que
-    // ya existía), así que sin este guard un "New file" con un nombre en
-    // conflicto no creaba nada nuevo pero SÍ registraba un undo de "new
-    // file" -- un Ctrl+Z posterior mandaba a la papelera el fichero
-    // PREEXISTENTE de verdad (con su contenido real), no uno vacío recién
-    // creado. Recuperable vía papelera, pero sorprendente y no lo que
-    // pedía el README (conflictos tratados, no ignorados en silencio).
-    var newFileCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; touch -- " + Util.shellQuote(path)
+  // commitNewFile()/commitNewFolder() (comprobar si ya existe algo con
+  // ese nombre) viven en logic/ConflictActions.qml, junto a
+  // newFileCheckProc/newFolderCheckProc -- mismo patrón que commitRename/
+  // renameCheckProc. Estas dos son la ejecución real (con overwrite=true
+  // si el usuario confirmó sobrescribir en el diálogo de conflicto).
+  function runPendingNewFile(overwrite) {
+    var pending = ConflictState.pendingNewFile
+    ConflictState.pendingNewFile = null
+    ConflictState.newFileConflictOpen = false
+    if (!pending) return
+    // overwrite: -rf primero (puede ser una carpeta entera, no solo un
+    // fichero) y luego touch -- coherente con el "-f" que ya usan
+    // paste/drop al sobrescribir (fuerza sin pasar por la papelera).
+    var newFileCmd = (overwrite ? "rm -rf -- " + Util.shellQuote(pending.path) + " && " : "")
+      + "touch -- " + Util.shellQuote(pending.path)
     root.runAction(newFileCmd, undefined, function () {
       // gio trash en vez de rm: si el usuario ya escribió algo antes de
       // deshacer, va a la papelera en vez de perderse sin recuperación.
-      root.pushUndo("new file \"" + name + "\"", function () {
-        return root.runAction("gio trash -- " + Util.shellQuote(path))
+      // No intenta restaurar lo que hubiera sobrescrito -- mismo límite
+      // que ya tiene pegar/soltar con overwrite.
+      root.pushUndo("new file \"" + pending.name + "\"", function () {
+        return root.runAction("gio trash -- " + Util.shellQuote(pending.path))
       }, function () {
         return root.runAction(newFileCmd)
       })
     })
   }
 
-  function commitNewFolder(name) {
-    root.creatingFolder = false
-    root.creatingFile = false
-    name = name.trim()
-    if (!name) return
-    var path = root.joinPath(root.currentPath, name)
-    // Mismo motivo que commitNewFile: "mkdir -p" no falla si la carpeta
-    // ya existe, y sin este guard un Ctrl+Z posterior podía rmdir una
-    // carpeta preexistente (vacía) que no tenía nada que ver con esta
-    // acción.
-    var newFolderCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; mkdir -p -- " + Util.shellQuote(path)
+  function cancelPendingNewFile() {
+    ConflictState.pendingNewFile = null
+    ConflictState.newFileConflictOpen = false
+  }
+
+  function runPendingNewFolder(overwrite) {
+    var pending = ConflictState.pendingNewFolder
+    ConflictState.pendingNewFolder = null
+    ConflictState.newFolderConflictOpen = false
+    if (!pending) return
+    var newFolderCmd = (overwrite ? "rm -rf -- " + Util.shellQuote(pending.path) + " && " : "")
+      + "mkdir -p -- " + Util.shellQuote(pending.path)
     root.runAction(newFolderCmd, undefined, function () {
       // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
-      // deshacer, falla en vez de borrar contenido a lo tonto.
-      root.pushUndo("new folder \"" + name + "\"", function () {
-        return root.runAction("rmdir -- " + Util.shellQuote(path))
+      // deshacer, falla en vez de borrar contenido a lo tonto. No
+      // intenta restaurar lo que hubiera sobrescrito.
+      root.pushUndo("new folder \"" + pending.name + "\"", function () {
+        return root.runAction("rmdir -- " + Util.shellQuote(pending.path))
       }, function () {
         return root.runAction(newFolderCmd)
       })
     })
+  }
+
+  function cancelPendingNewFolder() {
+    ConflictState.pendingNewFolder = null
+    ConflictState.newFolderConflictOpen = false
   }
 }

@@ -1,4 +1,5 @@
 import QtQuick
+import "../state"
 
 // Marcadores, recientes, historial de renombrado en lote e iconos de
 // unidades/red -- lógica de negocio que vivía en Omafiles.qml pese a no
@@ -18,44 +19,44 @@ Item {
   // navegar por carpetas -- para eso ya están el historial y las
   // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
   function addRecent(path, name) {
-    var next = root.recentFiles.filter(function (r) { return r.path !== path })
+    var next = BookmarksState.recentFiles.filter(function (r) { return r.path !== path })
     next.unshift({ path: path, name: name })
     if (next.length > 20) next = next.slice(0, 20)
-    root.recentFiles = next
+    BookmarksState.recentFiles = next
     persistence.saveRecent()
   }
 
   function removeRecent(path) {
-    root.recentFiles = root.recentFiles.filter(function (r) { return r.path !== path })
+    BookmarksState.recentFiles = BookmarksState.recentFiles.filter(function (r) { return r.path !== path })
     persistence.saveRecent()
   }
 
   function clearRecent() {
-    root.recentFiles = []
+    BookmarksState.recentFiles = []
     persistence.saveRecent()
   }
 
   function addBulkRenameHistory(pattern) {
     pattern = pattern.trim()
     if (!pattern) return
-    var next = root.bulkRenameHistory.filter(function (p) { return p !== pattern })
+    var next = BookmarksState.bulkRenameHistory.filter(function (p) { return p !== pattern })
     next.unshift(pattern)
     if (next.length > 8) next = next.slice(0, 8)
-    root.bulkRenameHistory = next
+    BookmarksState.bulkRenameHistory = next
     persistence.saveBulkRenameHistory()
   }
 
   // ---------- Marcadores / iconos de unidades ----------
   function removeBookmark(path) {
-    root.bookmarks = root.bookmarks.filter(function (b) { return b.path !== path })
+    BookmarksState.bookmarks = BookmarksState.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
   }
 
   // type: "dir" (por defecto, compatible con marcadores guardados antes
   // de que existiera este campo -- todos eran de carpeta) o "file".
   function addBookmark(path, label, type) {
-    if (root.bookmarks.some(function (b) { return b.path === path })) return
-    root.bookmarks = root.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
+    if (BookmarksState.bookmarks.some(function (b) { return b.path === path })) return
+    BookmarksState.bookmarks = BookmarksState.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
     persistence.saveBookmarks()
   }
 
@@ -80,7 +81,7 @@ Item {
   }
 
   function isBookmarked(path) {
-    return root.bookmarks.some(function (b) { return b.path === path })
+    return BookmarksState.bookmarks.some(function (b) { return b.path === path })
   }
 
   function iconForMount(mount) {

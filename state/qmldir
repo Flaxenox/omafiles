@@ -10,3 +10,10 @@ singleton ChmodState 1.0 ChmodState.qml
 singleton PropertiesState 1.0 PropertiesState.qml
 singleton PreviewContentState 1.0 PreviewContentState.qml
 singleton DialogsState 1.0 DialogsState.qml
+singleton ActionState 1.0 ActionState.qml
+singleton SortState 1.0 SortState.qml
+singleton VideoThumbState 1.0 VideoThumbState.qml
+singleton MountsState 1.0 MountsState.qml
+singleton BookmarksState 1.0 BookmarksState.qml
+singleton DropHoverState 1.0 DropHoverState.qml
+singleton EditModeState 1.0 EditModeState.qml

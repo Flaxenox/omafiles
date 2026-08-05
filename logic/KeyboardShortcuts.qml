@@ -30,6 +30,8 @@ Item {
   property Item hostExtractConflictConfirm: null
   property Item hostCompressConflictConfirm: null
   property Item hostBulkRenameConflictConfirm: null
+  property Item hostNewFileConflictConfirm: null
+  property Item hostNewFolderConflictConfirm: null
 
   function handlePress(event) {
     if (PaletteState.paletteOpen) return
@@ -66,6 +68,14 @@ Item {
       if (hostBulkRenameConflictConfirm.handleKey(event)) event.accepted = true
       return
     }
+    if (ConflictState.newFileConflictOpen) {
+      if (hostNewFileConflictConfirm.handleKey(event)) event.accepted = true
+      return
+    }
+    if (ConflictState.newFolderConflictOpen) {
+      if (hostNewFolderConflictConfirm.handleKey(event)) event.accepted = true
+      return
+    }
     if (ConflictState.pasteConflictOpen) {
       if (event.key === Qt.Key_Escape) { hostClipboardOps.cancelPasteConflict(); event.accepted = true }
       return
@@ -100,7 +110,7 @@ Item {
       }
       return
     }
-    if (hostRoot.creatingFolder || hostRoot.creatingFile || hostRoot.renamingIndex >= 0 || hostRoot.editingPath || hostRoot.searching) return
+    if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath || hostRoot.searching) return
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 

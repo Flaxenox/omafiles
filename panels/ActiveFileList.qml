@@ -51,6 +51,8 @@ Item {
   property Item extractConflictConfirm: null
   property Item compressConflictConfirm: null
   property Item bulkRenameConflictConfirm: null
+  property Item newFileConflictConfirm: null
+  property Item newFolderConflictConfirm: null
 
   property alias contentY: listView.contentY
   property alias originY: listView.originY
@@ -82,6 +84,8 @@ Item {
     hostExtractConflictConfirm: extractConflictConfirm
     hostCompressConflictConfirm: compressConflictConfirm
     hostBulkRenameConflictConfirm: bulkRenameConflictConfirm
+    hostNewFileConflictConfirm: newFileConflictConfirm
+    hostNewFolderConflictConfirm: newFolderConflictConfirm
   }
 
             // Misma línea que separa cabecera y lista en los paneles de
@@ -337,7 +341,7 @@ Item {
                 ? Util.fileUrl(root.joinPath(root.currentPath, PreviewContentState.previewEntry.name)) : ""
               videoThumbSource: {
                 if (!PreviewContentState.previewEntry || !root.isVideo(PreviewContentState.previewEntry)) return ""
-                var p = root.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, root.currentPath)] || ""
+                var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, root.currentPath)] || ""
                 return p ? Util.fileUrl(p) : ""
               }
               highlightedText: PreviewContentState.previewHighlighted

@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell.Io
+import "../state"
 import "../Utils.js" as Utils
 
 // Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) --
@@ -13,18 +14,18 @@ Item {
   function requestVideoThumb(entry, basePath) {
     basePath = basePath || root.currentPath
     var key = Utils.thumbKeyFor(entry, basePath)
-    if (root.videoThumbReady[key]) return
-    if (root.thumbQueue.some(function (q) { return Utils.thumbKeyFor(q.entry, q.basePath) === key })) return
-    root.thumbQueue = root.thumbQueue.concat([{ entry: entry, basePath: basePath }])
+    if (VideoThumbState.videoThumbReady[key]) return
+    if (VideoThumbState.thumbQueue.some(function (q) { return Utils.thumbKeyFor(q.entry, q.basePath) === key })) return
+    VideoThumbState.thumbQueue = VideoThumbState.thumbQueue.concat([{ entry: entry, basePath: basePath }])
     processThumbQueue()
   }
 
   function processThumbQueue() {
-    if (root.thumbBusy || root.thumbQueue.length === 0) return
-    root.thumbBusy = true
-    var next = root.thumbQueue.slice()
+    if (VideoThumbState.thumbBusy || VideoThumbState.thumbQueue.length === 0) return
+    VideoThumbState.thumbBusy = true
+    var next = VideoThumbState.thumbQueue.slice()
     var queued = next.shift()
-    root.thumbQueue = next
+    VideoThumbState.thumbQueue = next
     var entry = queued.entry
     var basePath = queued.basePath
     var src = root.joinPath(basePath, entry.name)
@@ -50,11 +51,11 @@ Item {
       // (nueva key por mtime, o simplemente request() de nuevo) puede
       // reintentar.
       if (exitCode === 0) {
-        var ready = Object.assign({}, root.videoThumbReady)
+        var ready = Object.assign({}, VideoThumbState.videoThumbReady)
         ready[thumbProc.currentKey] = thumbProc.currentDest
-        root.videoThumbReady = ready
+        VideoThumbState.videoThumbReady = ready
       }
-      root.thumbBusy = false
+      VideoThumbState.thumbBusy = false
       processThumbQueue()
     }
   }

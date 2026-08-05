@@ -11,6 +11,12 @@ QtObject {
   property var pendingRename: null // { oldPath, newPath }
   property bool renameConflictOpen: false
 
+  property var pendingNewFile: null // { path, name }
+  property bool newFileConflictOpen: false
+
+  property var pendingNewFolder: null // { path, name }
+  property bool newFolderConflictOpen: false
+
   property var pasteConflictNames: []
   property bool pasteConflictOpen: false
 

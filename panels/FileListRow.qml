@@ -49,7 +49,7 @@ CursorSurface {
   foreground: Color.menu.text
   accent: Color.accent
   hasCursor: mouseArea.containsMouse
-  current: hostSelectionOps.isSelected(index) || hostRoot.dropHoverIndex === index
+  current: hostSelectionOps.isSelected(index) || DropHoverState.dropHoverIndex === index
 
   DropArea {
     // Solo las carpetas son destino válido de un drop --
@@ -59,11 +59,11 @@ CursorSurface {
     keys: ["text/uri-list"]
     onEntered: function (drag) {
       if (!drag.hasUrls) { drag.accepted = false; return }
-      hostRoot.dropHoverIndex = index
+      DropHoverState.dropHoverIndex = index
     }
-    onExited: if (hostRoot.dropHoverIndex === index) hostRoot.dropHoverIndex = -1
+    onExited: if (DropHoverState.dropHoverIndex === index) DropHoverState.dropHoverIndex = -1
     onDropped: function (drop) {
-      hostRoot.dropHoverIndex = -1
+      DropHoverState.dropHoverIndex = -1
       hostDragDropOps.handleFilesDropped(drop, hostRoot.joinPath(hostRoot.currentPath, modelData.name))
     }
   }
@@ -79,7 +79,7 @@ CursorSurface {
 
     readonly property bool isVid: hostRoot.isVideo(modelData)
     readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, hostRoot.currentPath) : ""
-    readonly property string vidThumb: vidKey ? (hostRoot.videoThumbReady[vidKey] || "") : ""
+    readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
     Component.onCompleted: if (isVid) hostVideoThumbs.requestVideoThumb(modelData)
 
@@ -95,12 +95,12 @@ CursorSurface {
       thumbSource: hostRoot.isImage(modelData) ? Util.fileUrl(hostRoot.joinPath(hostRoot.currentPath, modelData.name))
         : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
       metaText: hostFileMeta.metaFor(modelData)
-      showNameText: hostRoot.renamingIndex !== index
+      showNameText: EditModeState.renamingIndex !== index
     }
 
     TextField {
       id: renameField
-      visible: hostRoot.renamingIndex === index
+      visible: EditModeState.renamingIndex === index
       Accessible.role: Accessible.EditableText
       Accessible.name: "Rename"
       // Misma X que nameCol dentro de FileRowVisual
@@ -119,7 +119,7 @@ CursorSurface {
           hostConflictActions.commitRename(text)
           event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
-          hostRoot.renamingIndex = -1
+          EditModeState.renamingIndex = -1
           event.accepted = true
         }
       }
@@ -144,7 +144,7 @@ CursorSurface {
     anchors.leftMargin: 24
     anchors.rightMargin: Style.spacing.rowPaddingX
     hoverEnabled: true
-    visible: hostRoot.renamingIndex !== index
+    visible: EditModeState.renamingIndex !== index
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     cursorShape: Qt.PointingHandCursor
     drag.target: dragProxy

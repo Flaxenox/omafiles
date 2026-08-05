@@ -3,6 +3,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "../shared"
+import "../state"
 import "../Utils.js" as Utils
 
 // Delegado de los paneles "de fondo" (todas las pestañas salvo la activa),
@@ -311,7 +312,7 @@ Item {
 
         readonly property bool isVid: hostRoot.isVideo(modelData)
         readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
-        readonly property string vidThumb: vidKey ? (hostRoot.videoThumbReady[vidKey] || "") : ""
+        readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
         Component.onCompleted: if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
 

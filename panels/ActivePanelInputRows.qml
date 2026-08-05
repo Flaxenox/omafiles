@@ -1,10 +1,11 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../state"
 
 // Filas de "nueva carpeta"/"nuevo fichero"/"búsqueda" del panel activo,
 // vigésimo componente extraído de Omafiles.qml. Las tres son mutuamente
-// excluyentes (root.creatingFolder/creatingFile/searching -- cada
+// excluyentes (EditModeState.creatingFolder/creatingFile/searching -- cada
 // startNewFolder()/startNewFile()/startSearch() en Omafiles.qml apaga las
 // otras dos antes de encender la suya), así que como Column con las tres
 // Row visible-condicional, la altura total de este componente (accesible
@@ -20,7 +21,7 @@ Column {
   // devuelve el foco al ocultarse (Escape/Enter), y sin pasarlo explícito
   // no es visible desde este fichero.
   property Item list: null
-  property Item renameOps: null
+  property Item conflictActions: null
   property Item searchOps: null
   property Item selectionOps: null
   width: parent.width
@@ -28,7 +29,7 @@ Column {
 
   Row {
     id: newFolderRow
-    visible: root.creatingFolder
+    visible: EditModeState.creatingFolder
     width: parent.width
     height: Style.spacing.controlHeight
     spacing: Style.spacing.controlGap
@@ -43,10 +44,10 @@ Column {
       onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
       Keys.onPressed: function (event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-          renameOps.commitNewFolder(text)
+          conflictActions.commitNewFolder(text)
           event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
-          root.creatingFolder = false
+          EditModeState.creatingFolder = false
           event.accepted = true
         }
       }
@@ -58,13 +59,13 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       Accessible.role: Accessible.Button
       Accessible.name: "Create folder"
-      onClicked: renameOps.commitNewFolder(newFolderField.text)
+      onClicked: conflictActions.commitNewFolder(newFolderField.text)
     }
   }
 
   Row {
     id: newFileRow
-    visible: root.creatingFile
+    visible: EditModeState.creatingFile
     width: parent.width
     height: Style.spacing.controlHeight
     spacing: Style.spacing.controlGap
@@ -79,10 +80,10 @@ Column {
       onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
       Keys.onPressed: function (event) {
         if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-          renameOps.commitNewFile(text)
+          conflictActions.commitNewFile(text)
           event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
-          root.creatingFile = false
+          EditModeState.creatingFile = false
           event.accepted = true
         }
       }
@@ -94,7 +95,7 @@ Column {
       anchors.verticalCenter: parent.verticalCenter
       Accessible.role: Accessible.Button
       Accessible.name: "Create file"
-      onClicked: renameOps.commitNewFile(newFileField.text)
+      onClicked: conflictActions.commitNewFile(newFileField.text)
     }
   }
 

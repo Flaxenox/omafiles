@@ -128,7 +128,7 @@ Item {
     command: [root.pluginDir + "/list-mounts.sh"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.mounts = Utils.parseMounts(text)
+      onStreamFinished: MountsState.mounts = Utils.parseMounts(text)
     }
   }
 
@@ -213,7 +213,7 @@ Item {
     command: [root.pluginDir + "/list-network-mounts.sh"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.networkMounts = Utils.parseNetworkMounts(text)
+      onStreamFinished: MountsState.networkMounts = Utils.parseNetworkMounts(text)
     }
   }
 
@@ -259,7 +259,7 @@ Item {
         // gio no imprime la ruta local igual que udisksctl -- se relista
         // y se entra al mount que no estaba antes (el que acaba de
         // aparecer) en vez de parsear la salida de "gio mount".
-        networkMountsAfterConnectProc.beforePaths = root.networkMounts.map(function (m) { return m.path })
+        networkMountsAfterConnectProc.beforePaths = MountsState.networkMounts.map(function (m) { return m.path })
         networkMountsAfterConnectProc.running = true
       } else {
         DialogsState.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
@@ -279,7 +279,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         var parsed = Utils.parseNetworkMounts(text)
-        root.networkMounts = parsed
+        MountsState.networkMounts = parsed
         var before = networkMountsAfterConnectProc.beforePaths
         var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
         if (fresh.length > 0) root.navigateTo(fresh[0].path)

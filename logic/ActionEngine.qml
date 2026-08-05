@@ -81,10 +81,10 @@ Item {
       Quickshell.execDetached(["notify-send", "Omafiles", "Still busy with the previous action — try again in a moment"])
       return false
     }
-    root.actionLabel = busyLabel || ""
-    root.actionBusy = !!busyLabel
-    root._actionOnSuccess = onSuccess || null
-    root._actionCancelled = false
+    ActionState.actionLabel = busyLabel || ""
+    ActionState.actionBusy = !!busyLabel
+    ActionState._actionOnSuccess = onSuccess || null
+    ActionState._actionCancelled = false
     // "setsid" delante de bash: lo convierte en líder de una sesión/grupo
     // de procesos nuevo (su PGID pasa a ser su propio PID) en vez de
     // compartir el grupo de Quickshell. Sin esto, cancelAction() solo podía
@@ -116,11 +116,22 @@ Item {
     // esté corriendo dentro), no solo al primero.
     var pid = actionProc.processId
     if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
-    root._actionCancelled = true
+    // Cancelar a mitad de una copia/movimiento ENTRE DISCOS (mv no puede
+    // hacer un rename atómico, así que copia y borra el origen) deja un
+    // fichero parcial a medio escribir en el destino -- bug real
+    // (josema: "cancelé al 30% y se quedó ese 30% de la peli"). Solo se
+    // limpia cuando es UN único fichero/carpeta (actionProgressDestPaths
+    // con 1 elemento): en un lote de varios, SIGTERM puede matar justo el
+    // que estaba a medias mientras los anteriores ya habían terminado
+    // bien -- borrar TODOS los destPaths a ciegas borraría también esos.
+    if (ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length === 1) {
+      Quickshell.execDetached(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
+    }
+    ActionState._actionCancelled = true
     actionProc.running = false
-    root.actionBusy = false
-    root.actionLabel = ""
-    root.actionProgressPct = -1
+    ActionState.actionBusy = false
+    ActionState.actionLabel = ""
+    ActionState.actionProgressPct = -1
     root.refresh()
     root.refreshTick += 1
   }
@@ -131,9 +142,9 @@ Item {
   // para cualquier otra acción, que es lo que queremos: chmod/comprimir/
   // renombrar no tienen un "tamaño total" que tenga sentido mostrar así.
   function startCopyProgress(sourcePaths, destPaths) {
-    root.actionProgressPct = 0
-    root.actionTotalBytes = 0
-    root.actionProgressDestPaths = destPaths
+    ActionState.actionProgressPct = 0
+    ActionState.actionTotalBytes = 0
+    ActionState.actionProgressDestPaths = destPaths
     var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
     actionProgressTotalProc.command = ["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"]
     actionProgressTotalProc.running = true
@@ -147,21 +158,21 @@ Item {
       onStreamFinished: actionProc.errorText = text
     }
     onExited: function (exitCode) {
-      root.actionBusy = false
-      root.actionLabel = ""
-      root.actionProgressPct = -1
-      root.actionTotalBytes = 0
-      root.actionProgressDestPaths = []
+      ActionState.actionBusy = false
+      ActionState.actionLabel = ""
+      ActionState.actionProgressPct = -1
+      ActionState.actionTotalBytes = 0
+      ActionState.actionProgressDestPaths = []
       root.refresh()
       // Una acción (borrar, mover, pegar...) puede afectar a cualquier
       // panel, no solo al activo -- refreshTick es la señal para que los
       // paneles no activos (cada uno con su propio Process de listado, ver
       // el Repeater de paneles) se refresquen también.
       root.refreshTick += 1
-      var cb = root._actionOnSuccess
-      root._actionOnSuccess = null
-      var wasCancelled = root._actionCancelled
-      root._actionCancelled = false
+      var cb = ActionState._actionOnSuccess
+      ActionState._actionOnSuccess = null
+      var wasCancelled = ActionState._actionCancelled
+      ActionState._actionCancelled = false
       if (exitCode === 0) {
         if (cb) cb()
       } else if (!wasCancelled) {
@@ -181,7 +192,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         var n = parseInt(text.trim(), 10)
-        root.actionTotalBytes = isNaN(n) ? 0 : n
+        ActionState.actionTotalBytes = isNaN(n) ? 0 : n
       }
     }
   }
@@ -195,10 +206,10 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (root.actionTotalBytes <= 0) return
+        if (ActionState.actionTotalBytes <= 0) return
         var n = parseInt(text.trim(), 10)
         if (isNaN(n)) return
-        root.actionProgressPct = Math.min(100, n / root.actionTotalBytes * 100)
+        ActionState.actionProgressPct = Math.min(100, n / ActionState.actionTotalBytes * 100)
       }
     }
   }
@@ -210,10 +221,10 @@ Item {
     id: actionProgressPollTimer
     interval: 600
     repeat: true
-    running: root.actionBusy && root.actionTotalBytes > 0 && root.actionProgressDestPaths.length > 0
+    running: ActionState.actionBusy && ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length > 0
     onTriggered: {
       if (actionProgressPollProc.running) return
-      var quoted = root.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
+      var quoted = ActionState.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
       actionProgressPollProc.command = ["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"]
       actionProgressPollProc.running = true
     }
