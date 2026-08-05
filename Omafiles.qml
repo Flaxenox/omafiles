@@ -1434,28 +1434,6 @@ Item {
     root.renamingIndex = index
   }
 
-  function commitRename(newName) {
-    var index = root.renamingIndex
-    root.renamingIndex = -1
-    // Defensa en profundidad: startRename() ya bloquea EMPEZAR un
-    // renombrado dentro de un archivo, pero no cubre el caso de empezar
-    // a renombrar FUERA, no confirmar, y entrar en un .zip mientras
-    // tanto -- renamingIndex se queda apuntando a un índice que ahora
-    // pertenece a una entrada del archivo, y sin este guard commitRename
-    // ejecutaría mv sobre currentPath/<nombre-del-zip>, que puede
-    // coincidir por casualidad con un fichero real.
-    if (root.inArchive) return
-    if (index < 0 || index >= root.visibleEntries.length) return
-    var oldName = root.visibleEntries[index].name
-    newName = newName.trim()
-    if (!newName || newName === oldName) return
-    var oldPath = root.joinPath(root.currentPath, oldName)
-    var newPath = root.joinPath(root.currentPath, newName)
-    root.pendingRename = { oldPath: oldPath, newPath: newPath }
-    renameCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"]
-    renameCheckProc.running = true
-  }
-
   function runPendingRename(overwrite) {
     var r = root.pendingRename
     root.pendingRename = null
@@ -1650,30 +1628,6 @@ Item {
     Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
   }
 
-  function paste() {
-    if (root.inArchive) return
-    if (root.clipboardPaths.length === 0) {
-      // Nada copiado desde DENTRO de Omafiles -- probar el portapapeles
-      // del sistema (copiar en Nautilus/el navegador/un chat/etc. y
-      // pegar aquí). Se trata siempre como "copy", nunca "cut": un
-      // text/uri-list suelto no lleva esa distinción (a diferencia del
-      // x-special/gnome-copied-files propio de GTK, que no todas las
-      // apps que copian rutas escriben).
-      systemClipboardReadProc.command = ["wl-paste", "-t", "text/uri-list"]
-      systemClipboardReadProc.running = true
-      return
-    }
-    var destPaths = root.clipboardPaths.map(function (src) {
-      var name = src.substring(src.lastIndexOf("/") + 1)
-      return root.joinPath(root.currentPath, name)
-    })
-    var checkCmd = destPaths.map(function (p) {
-      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
-    }).join("; ")
-    pasteCheckProc.command = ["bash", "-c", checkCmd]
-    pasteCheckProc.running = true
-  }
-
   // mode: "all" (sin conflictos, tal cual) | "overwrite" | "skip"
   function runPaste(mode) {
     var conflictSet = {}
@@ -1752,28 +1706,6 @@ Item {
   // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
   // `isMove` viene de DragEvent.source !== null (arrastre interno) --
   // arrastres que vienen de fuera siempre copian, nunca mueven el origen.
-  function startDropInto(destDir, sourcePaths, isMove) {
-    if (!destDir) return
-    sourcePaths = sourcePaths.filter(function (src) {
-      var srcDir = src.substring(0, src.lastIndexOf("/"))
-      // Evita soltar sobre la propia carpeta de origen (no-op) o dentro de
-      // sí mismo si el fichero arrastrado es en realidad una carpeta.
-      return src !== destDir && srcDir !== destDir && (destDir + "/").indexOf(src + "/") !== 0
-    })
-    if (sourcePaths.length === 0) return
-    root.dropPendingSources = sourcePaths
-    root.dropTargetDir = destDir
-    root.dropIsMove = isMove
-    var destPaths = sourcePaths.map(function (src) {
-      return root.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
-    })
-    var checkCmd = destPaths.map(function (p) {
-      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
-    }).join("; ")
-    dropCheckProc.command = ["bash", "-c", checkCmd]
-    dropCheckProc.running = true
-  }
-
   // mode: "all" (sin conflictos) | "overwrite" | "skip"
   function runDrop(mode) {
     var conflictSet = {}
@@ -1838,7 +1770,7 @@ Item {
     if (paths.length === 0) { drop.accepted = false; return }
     var isMove = drop.source !== null && drop.source !== undefined
     drop.accept(isMove ? Qt.MoveAction : Qt.CopyAction)
-    root.startDropInto(destDir, paths, isMove)
+    conflictActions.startDropInto(destDir, paths, isMove)
   }
 
   function toggleHidden() {
@@ -1903,7 +1835,7 @@ Item {
       { label: "Copy", enabled: hasSelection, run: function () { root.copySelected() } },
       { label: "Cut", enabled: hasSelection, run: function () { root.cutSelected() } },
       { label: "Copy path", enabled: hasSelection, run: function () { root.copyPathFor(root.selectedEntries()) } },
-      { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { root.paste() } },
+      { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
       { label: "Select all", run: function () { root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
       { label: "Select none", enabled: hasSelection, run: function () { root.selectNone() } },
@@ -1928,7 +1860,7 @@ Item {
       { label: "Forward", enabled: root.navHistoryIndex < root.navHistory.length - 1, run: function () { root.navForward() } },
       { label: "Edit path", run: function () { root.startEditPath() } },
       { label: "Search", run: function () { root.startSearch() } },
-      { label: "Compress to .zip", enabled: hasSelection, run: function () { root.compressSelected() } },
+      { label: "Compress to .zip", enabled: hasSelection, run: function () { conflictActions.compressSelected() } },
       { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
       { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(root.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) root.makeLinkFor(entry) } },
@@ -1940,7 +1872,7 @@ Item {
       cmds.push({ label: "Restore", enabled: hasSelection, run: function () { root.restoreFromTrash() } })
     }
     if (entry && entry.type !== "dir" && root.isArchive(entry)) {
-      cmds.push({ label: "Extract here", run: function () { root.extractHere(entry) } })
+      cmds.push({ label: "Extract here", run: function () { conflictActions.extractHere(entry) } })
     }
     if (entry && root.isIso(entry)) {
       cmds.push({ label: "Mount ISO", run: function () { root.mountIso(entry) } })
@@ -2025,31 +1957,6 @@ Item {
     })
   }
 
-  function compressSelected() {
-    if (root.inArchive) return
-    var entries = root.selectedEntries()
-    if (entries.length === 0) return
-    var archiveName = entries.length === 1
-      ? entries[0].name.replace(/\/$/, "") + ".zip"
-      : "selected-files.zip"
-    var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
-    // "rm -f" antes del zip: si el usuario confirma sobrescribir un
-    // archiveName ya existente, que sea un reemplazo real -- sin el rm,
-    // "zip -r" AÑADE/actualiza entradas dentro del zip existente en vez de
-    // sustituirlo, así que confirmar "overwrite" no dejaba en realidad un
-    // zip limpio con solo lo seleccionado ahora.
-    // "./" delante del nombre del zip + "--" delante de la lista: un
-    // archivo real llamado, por ejemplo, "-rf" (nombre válido en Linux)
-    // se interpretaría como flags de zip en vez de como nombre de fichero.
-    // zip no admite "--" antes del propio nombre del zip (error "can't use
-    // -- before archive name"), de ahí el "./" en su lugar.
-    var cmd = "cd -- " + Util.shellQuote(root.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
-      + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
-    root.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    compressCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"]
-    compressCheckProc.running = true
-  }
-
   function runPendingCompress() {
     var p = root.pendingCompress
     root.pendingCompress = null
@@ -2090,38 +1997,6 @@ Item {
     mountIsoProc.running = true
   }
 
-  function extractHere(entry) {
-    var ext = root.extOf(entry.name)
-    var path = Util.shellQuote(root.joinPath(root.currentPath, entry.name))
-    var dir = Util.shellQuote(root.currentPath)
-    var cmd, listCmd
-    // Todas fuerzan sobrescritura (-o/-y/-o+) -- necesario para que
-    // runPendingExtract pueda de verdad sobrescribir tras confirmar el
-    // aviso de conflicto de abajo. listCmd usa el modo "lista plana" de
-    // cada herramienta (nombre por línea, sin cabecera) para saber qué se
-    // pisaría, sin necesidad de parsear tablas.
-    if (ext === "zip") { cmd = "unzip -o -q " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
-    else if (ext === "7z") { cmd = "7z x -y " + path + " -o" + dir; listCmd = "7z l -ba -slt -- " + path + " | grep '^Path = ' | sed 's/^Path = //'" }
-    else if (ext === "rar") { cmd = "unrar x -o+ " + path + " " + dir + "/"; listCmd = "unrar lb -- " + path }
-    // Sin "--" a propósito, a diferencia de las otras tres -- con "tf"
-    // (forma corta agrupada de -t -f) tar toma el token SIGUIENTE como
-    // argumento directo de -f, así que un "--" ahí se interpreta como el
-    // propio nombre de fichero a abrir y tar falla con "--: No such file
-    // or directory". Bug real: esto hacía que la comprobación de
-    // conflictos SIEMPRE fallara en silencio para tar/tar.gz/tar.bz2/
-    // tar.xz (listCmd no devolvía nada -> 0 conflictos detectados
-    // siempre), aunque zip/7z/rar no se vieran afectados.
-    else if (root.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
-    else return
-    // Antes esto sobrescribía sin preguntar, a diferencia de pegar/soltar/
-    // renombrar (que sí comprueban conflictos). Antes de extraer, se lista
-    // el contenido del archivo y se comprueba si algún elemento de primer
-    // nivel ya existe en la carpeta actual.
-    root.pendingExtract = { entry: entry, cmd: cmd }
-    extractListProc.command = ["bash", "-c", listCmd]
-    extractListProc.running = true
-  }
-
   function runPendingExtract() {
     var p = root.pendingExtract
     root.pendingExtract = null
@@ -2141,44 +2016,6 @@ Item {
     if (root.inArchive) return
     root.bulkRenamePattern = "{name}{ext}"
     root.bulkRenameOpen = true
-  }
-
-  function commitBulkRename() {
-    var entries = root.selectedEntries()
-    root.bulkRenameOpen = false
-    if (entries.length === 0) return
-    var pattern = root.bulkRenamePattern
-    root.addBulkRenameHistory(pattern)
-    var pairs = entries.map(function (e, i) {
-      var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
-      var base = ext ? e.name.slice(0, -ext.length) : e.name
-      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
-      return {
-        oldName: e.name, newName: newName,
-        oldPath: root.joinPath(root.currentPath, e.name),
-        newPath: root.joinPath(root.currentPath, newName)
-      }
-    })
-    root.pendingBulkRename = pairs
-    // Antes esto usaba "mv -n" a ciegas: un patrón que produce un nombre ya
-    // existente (o que dos ítems de la propia selección acaben con el
-    // mismo nombre nuevo) hacía que mv -n no tocara ESE ítem en concreto,
-    // sin ningún aviso de cuál se había quedado sin renombrar. Ahora se
-    // comprueban antes los conflictos con lo que ya existe en disco...
-    var targetCounts = {}
-    pairs.forEach(function (p) {
-      if (p.newName === p.oldName) return
-      targetCounts[p.newPath] = (targetCounts[p.newPath] || 0) + 1
-    })
-    // ...y también los conflictos DENTRO de la propia selección (dos
-    // ítems que el patrón deja con el mismo nombre nuevo).
-    root.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
-    var checkCmd = pairs.map(function (p) {
-      if (p.newName === p.oldName) return "true"
-      return "test -e " + Util.shellQuote(p.newPath) + " && printf '%s\\n' " + Util.shellQuote(p.newName)
-    }).join("; ")
-    bulkRenameCheckProc.command = ["bash", "-c", checkCmd]
-    bulkRenameCheckProc.running = true
   }
 
   function runPendingBulkRename() {
@@ -2364,7 +2201,7 @@ Item {
     actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
     actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
     actions.push({ label: "Copy path" + suffix, action: function () { root.copyPathFor(entries) } })
-    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { root.paste() } })
+    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
 
     if (!multi) {
       actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
@@ -2373,16 +2210,16 @@ Item {
       if (!root.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
-      actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
+      actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
       if (root.isArchive(entries[0])) {
-        actions.push({ label: "Extract here", action: function () { root.extractHere(entries[0]) } })
+        actions.push({ label: "Extract here", action: function () { conflictActions.extractHere(entries[0]) } })
       }
       if (root.isIso(entries[0])) {
         actions.push({ label: "Mount", action: function () { root.mountIso(entries[0]) } })
       }
     } else {
       actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
-      actions.push({ label: "Compress to .zip", action: function () { root.compressSelected() } })
+      actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
     }
 
     actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })
@@ -2402,7 +2239,7 @@ Item {
       // muertas en el menú de hueco vacío.
       actions.push({ label: "New folder", action: function () { root.startNewFolder() } })
       actions.push({ label: "New file", action: function () { root.startNewFile() } })
-      actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { root.paste() } })
+      actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
     }
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
     actions.push({ label: "Refresh", action: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } })
@@ -2937,144 +2774,9 @@ Item {
     }
   }
 
-  Process {
-    id: renameCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") root.renameConflictOpen = true
-        else root.runPendingRename(false)
-      }
-    }
-  }
-
-  Process {
-    id: systemClipboardReadProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Bug real: RFC 2483 exige CRLF entre URIs de un text/uri-list,
-        // y las apps GTK reales (Nautilus, selectores de fichero,
-        // Firefox...) lo escriben así -- sin quitar el "\r" que queda
-        // pegado al final de cada línea, decodeURIComponent lo dejaba
-        // colado en el path, pasteCheckProc.test -e nunca lo encontraba,
-        // y pegar desde fuera de Omafiles fallaba en silencio sin ningún
-        // aviso.
-        var uris = String(text || "").split("\n").map(function (l) { return l.replace(/\r$/, "") }).filter(function (l) { return l.length > 0 })
-        var paths = uris.map(function (u) {
-          return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
-        }).filter(function (p) { return p.length > 0 })
-        // Vacío = portapapeles del sistema sin uris (o sin nada) -- no
-        // hay nada que avisar, paste() ya no hacía nada tampoco antes en
-        // este caso.
-        if (paths.length === 0) return
-        root.clipboardPaths = paths
-        root.clipboardMode = "copy"
-        root.paste()
-      }
-    }
-  }
-
-  Process {
-    id: pasteCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          root.runPaste("all")
-        } else {
-          root.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          root.pasteConflictOpen = true
-        }
-      }
-    }
-  }
-
-  Process {
-    id: dropCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          root.runDrop("all")
-        } else {
-          root.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          root.dropConflictOpen = true
-        }
-      }
-    }
-  }
-
-  Process {
-    id: compressCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") root.compressConflictOpen = true
-        else root.runPendingCompress()
-      }
-    }
-  }
-
-  Process {
-    id: bulkRenameCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        var total = conflicts.length + root.bulkRenameInternalDupes
-        if (total === 0) {
-          root.runPendingBulkRename()
-        } else {
-          root.bulkRenameConflictCount = total
-          root.bulkRenameConflictOpen = true
-        }
-      }
-    }
-  }
-
-  // Lista el contenido del archivo antes de extraer (nombre por línea vía
-  // el modo "lista plana" de cada herramienta) para poder comprobar
-  // conflictos -- ver extractHere().
-  Process {
-    id: extractListProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var top = {}
-        String(text || "").split("\n").forEach(function (line) {
-          var name = line.replace(/\/+$/, "")
-          if (!name) return
-          var slash = name.indexOf("/")
-          top[slash >= 0 ? name.substring(0, slash) : name] = true
-        })
-        var names = Object.keys(top)
-        if (names.length === 0) { root.runPendingExtract(); return }
-        var checkCmd = names.map(function (n) {
-          return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
-        }).join("; ")
-        extractConflictCheckProc.command = ["bash", "-c", checkCmd]
-        extractConflictCheckProc.running = true
-      }
-    }
-  }
-
-  Process {
-    id: extractConflictCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          root.runPendingExtract()
-        } else {
-          root.extractConflictNames = conflicts
-          root.extractConflictOpen = true
-        }
-      }
-    }
+  ConflictActions {
+    id: conflictActions
+    root: root
   }
 
   PreviewLoader {
@@ -4181,7 +3883,7 @@ Item {
                   root.cutSelected()
                   event.accepted = true
                 } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                  root.paste()
+                  conflictActions.paste()
                   event.accepted = true
                 } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
                   root.redoLast()
@@ -4286,7 +3988,7 @@ Item {
                     onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
                     Keys.onPressed: function (event) {
                       if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        root.commitRename(text)
+                        conflictActions.commitRename(text)
                         event.accepted = true
                       } else if (event.key === Qt.Key_Escape) {
                         root.renamingIndex = -1
@@ -4556,7 +4258,7 @@ Item {
         pattern: root.bulkRenamePattern
         history: root.bulkRenameHistory
         onCloseRequested: root.bulkRenameOpen = false
-        onRenameRequested: function (pattern) { root.bulkRenamePattern = pattern; root.commitBulkRename() }
+        onRenameRequested: function (pattern) { root.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
         onFocusReturnRequested: list.forceActiveFocus()
       }
 
