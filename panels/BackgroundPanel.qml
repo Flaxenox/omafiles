@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 import "../state"
-import "../services"
+import "../logic"
 import "../Utils.js" as Utils
 
 // Delegado de los paneles "de fondo" (todas las pestañas salvo la activa),
@@ -37,9 +37,24 @@ Item {
   // opacidad, sin tocar colores del tema.
   opacity: 0.72
 
-  property var entries: []
-  property string pathError: ""
-  property bool loaded: false
+  // El listado en sí vive en DirLister (Fase 1.6, josema) -- mismo
+  // mecanismo que usa el panel activo (NavigationController), pero con
+  // su propia instancia: varias pestañas de fondo pueden estar listando
+  // rutas distintas a la vez, así que no pueden compartir un único
+  // Process. entries/pathError/loaded ya no son propiedades propias de
+  // bgPanel -- se leen directo de dirLister en todo el fichero.
+  DirLister {
+    id: dirLister
+    pluginDir: hostRoot.pluginDir
+    trashDir: hostRoot.trashDir
+    showHidden: hostRoot.showHidden
+    sortOps: hostSortOps
+    // hostRoot.tabEntriesCache es lo que _goToPath() consulta al entrar
+    // en una ruta que un panel de fondo ya tenía lista -- solo lo
+    // rellenan los paneles de fondo (ver NavigationController, que NO
+    // escribe aquí), mismo comportamiento de siempre.
+    onListed: hostRoot.tabEntriesCache[bgPanel.modelData.path] = dirLister.entries
+  }
 
   // Pasar el ratón por encima hace que este panel se vuelva el activo (el
   // que tiene lazo de selección, menú contextual, y responde a los atajos
@@ -70,17 +85,7 @@ Item {
   function refreshMe() {
     if (!bgPanel.visible) return
     bgPanel._lastRefreshedPath = bgPanel.modelData.path
-    bgPanel.pathError = ""
-    // Papelera: igual que hostRoot.refresh() con el panel activo -- no es una
-    // carpeta real, agrega la de casa más la de cualquier otro disco
-    // montado (list-trash.sh), así que list-dir.sh a secas contra
-    // trashDir solo ve la de casa y con eso vacía se veía como "papelera
-    // vacía" hasta que este panel pasaba a ser el activo.
-    if (bgPanel.modelData.path === hostRoot.trashDir) {
-      bgListProc.start([hostRoot.pluginDir + "/list-trash.sh", hostRoot.showHidden ? "1" : "0"])
-    } else {
-      bgListProc.start([hostRoot.pluginDir + "/list-dir.sh", bgPanel.modelData.path, hostRoot.showHidden ? "1" : "0"])
-    }
+    dirLister.list(bgPanel.modelData.path)
   }
 
   onVisibleChanged: if (visible) bgPanel.refreshMe()
@@ -99,91 +104,6 @@ Item {
     function onRefreshTickChanged() { bgPanel.refreshMe() }
   }
   Component.onCompleted: bgPanel.refreshMe()
-
-  // Reasigna bgPanel.entries SOLO si el contenido de verdad cambió --
-  // igual que root._applyEntries() en Omafiles.qml (mismo bug real): la
-  // ListView no compara el contenido de un array modelo, solo la
-  // referencia, así que reasignar aunque los datos sean idénticos
-  // dispara un relayout completo. Al pasar de panel activo a panel de
-  // fondo (Escape, hover a otro panel...), este mismo bgListProc se
-  // relanza vía refreshMe() (ver onVisibleChanged más abajo) aunque el
-  // contenido casi siempre sea el mismo que ya tenía -- ESE relayout
-  // innecesario era el salto real reportado por josema en la dirección
-  // "principal a secundaria".
-  function _applyEntries(parsed) {
-    if (JSON.stringify(parsed) !== JSON.stringify(bgPanel.entries)) bgPanel.entries = parsed
-    bgPanel.loaded = true
-  }
-
-  ProcessRunner {
-    id: bgListProc
-    onFinished: function (result) {
-      if (result.exitCode === 2) bgPanel.pathError = "Permission denied"
-      else if (result.exitCode === 3) bgPanel.pathError = "This folder no longer exists"
-      else if (result.exitCode === 4) bgPanel.pathError = "Not a folder"
-      else if (result.exitCode !== 0) bgPanel.pathError = "Couldn't open this folder"
-      var parsed = hostSortOps.sortEntries(Utils.parseEntries(result.stdout))
-      hostRoot.tabEntriesCache[bgPanel.modelData.path] = parsed
-      if (bgPanel.modelData.path === hostRoot.trashDir) {
-        if (Object.keys(TrashState.trashInfo).length > 0) {
-          // Ya hay trashInfo cargada -- de este mismo panel en una
-          // visita anterior, del panel activo, o de OTRO panel de
-          // fondo (TrashState.trashInfo es compartida entre todos, ver
-          // bgTrashInfoProc más abajo: trash-info.sh siempre devuelve
-          // TODA la papelera, no depende de qué panel pregunte).
-          // Pintar ya con eso; el trashInfoProc que sigue solo la
-          // refresca por detrás sin bloquear el primer pintado.
-          bgPanel._applyEntries(parsed)
-        } else {
-          // Primera vez que se ve la papelera en toda la sesión -- sin
-          // nada previo que enseñar, esperar a que trash-info.sh
-          // termine para pintar ya con el texto final ("Deleted X ago
-          // · from ...") de una sola vez. Si se pintara ya con solo el
-          // tamaño y esa parte llegara un instante después, el texto
-          // más largo haría crecer bgFileRow y todas las filas de
-          // debajo saltarían de sitio (parpadeo real, reportado por
-          // josema).
-          bgPanel._waitingForTrashInfo = true
-          bgPanel._pendingEntries = parsed
-        }
-        bgTrashInfoProc.start([hostRoot.pluginDir + "/trash-info.sh"])
-      } else {
-        bgPanel._applyEntries(parsed)
-      }
-    }
-  }
-
-  // Ver el comentario en bgListProc.onStreamFinished -- guardan las
-  // entries leídas mientras se espera al primer trash-info.sh de la
-  // sesión, para pintar las dos cosas juntas en una sola pasada.
-  property bool _waitingForTrashInfo: false
-  property var _pendingEntries: []
-
-  // TrashState.trashInfo es COMPARTIDA entre el panel activo y todos los
-  // paneles de fondo -- antes cada panel tenía su propia copia, y al
-  // pasar de fondo a activo (con solo pasar el ratón por encima, ver
-  // HoverHandler más abajo) la copia del panel activo empezaba vacía
-  // otra vez y tardaba un instante en recargar, aunque el panel de fondo
-  // ya la tuviera lista justo al lado -- ESE era el parpadeo real en la
-  // transición (reportado por josema), no el primer pintado en sí. Con
-  // una sola copia compartida, quien llegue primero (activo o cualquier
-  // panel de fondo) la deja lista para todos los demás.
-  ProcessRunner {
-    id: bgTrashInfoProc
-    onFinished: function (result) {
-      var fields = String(result.stdout || "").split("\u0000")
-      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-      var info = {}
-      for (var i = 0; i + 3 < fields.length; i += 4) {
-        info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
-      }
-      TrashState.trashInfo = info
-      if (bgPanel._waitingForTrashInfo) {
-        bgPanel._waitingForTrashInfo = false
-        bgPanel._applyEntries(bgPanel._pendingEntries)
-      }
-    }
-  }
 
   DropArea {
     anchors.fill: parent
@@ -241,11 +161,11 @@ Item {
 
   Text {
     id: bgErrorText
-    visible: bgPanel.pathError !== ""
+    visible: dirLister.pathError !== ""
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.sm
     width: parent.width
-    text: bgPanel.pathError
+    text: dirLister.pathError
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.urgent
@@ -260,7 +180,7 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     clip: true
-    model: bgPanel.entries
+    model: dirLister.entries
     boundsBehavior: Flickable.StopAtBounds
 
     delegate: CursorSurface {
@@ -357,7 +277,7 @@ Item {
   }
 
   EmptyState {
-    visible: bgPanel.pathError === "" && bgPanel.entries.length === 0
+    visible: dirLister.pathError === "" && dirLister.entries.length === 0
     centerOn: bgList
     message: bgPanel.modelData.path === hostRoot.trashDir ? "Trash is empty" : "Nothing here yet"
   }
@@ -367,7 +287,7 @@ Item {
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    text: bgPanel.entries.length + (bgPanel.entries.length === 1 ? " item" : " items")
+    text: dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.menu.text
