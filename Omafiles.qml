@@ -3729,101 +3729,28 @@ Item {
                   // Misma cabecera que el panel activo (atrás/adelante/casa/
                   // subir) -- josema pidió que las dos se vean iguales, no
                   // solo el panel activo con navegación completa.
-                  Button {
-                    width: Style.spacing.controlHeight
-                    height: Style.spacing.controlHeight
-                    foreground: (bgPanel.modelData.historyIndex || 0) <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-                    onClicked: root.navTabBack(bgPanel.index)
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Back"
-
-                    OpticalGlyph {
-                      anchors.centerIn: parent
-                      // md-arrow_left, mismo glyph que el panel activo.
-                      text: "\u{F004D}"
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.icon
-                      color: parent.foreground
-                    }
-                  }
-
-                  Button {
-                    width: Style.spacing.controlHeight
-                    height: Style.spacing.controlHeight
-                    readonly property var hist: bgPanel.modelData.history || [bgPanel.modelData.path]
-                    foreground: (bgPanel.modelData.historyIndex || 0) >= hist.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-                    onClicked: root.navTabForward(bgPanel.index)
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Forward"
-
-                    OpticalGlyph {
-                      anchors.centerIn: parent
-                      // md-arrow_right, mismo glyph que el panel activo.
-                      text: "\u{F0054}"
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.icon
-                      color: parent.foreground
-                    }
-                  }
-
-                  Button {
-                    width: Style.spacing.controlHeight
-                    height: Style.spacing.controlHeight
-                    foreground: bgPanel.modelData.path === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-                    Accessible.role: Accessible.Button
-                    Accessible.name: "Up"
-                    onClicked: {
+                  PanelNavButtons {
+                    canGoBack: (bgPanel.modelData.historyIndex || 0) > 0
+                    canGoForward: (bgPanel.modelData.historyIndex || 0) < (bgPanel.modelData.history || [bgPanel.modelData.path]).length - 1
+                    canGoUp: bgPanel.modelData.path !== "/"
+                    onBackRequested: root.navTabBack(bgPanel.index)
+                    onForwardRequested: root.navTabForward(bgPanel.index)
+                    onUpRequested: {
                       var p = bgPanel.modelData.path
                       var idx = p.lastIndexOf("/")
                       root.navigateTabTo(bgPanel.index, idx > 0 ? p.substring(0, idx) : "/")
-                    }
-
-                    OpticalGlyph {
-                      anchors.centerIn: parent
-                      text: "󰅃"
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.icon
-                      color: parent.foreground
                     }
                   }
 
                   // Migas de pan completas, igual que en el panel activo --
                   // antes solo se veía el nombre de la carpeta actual, sin
                   // el resto de la ruta.
-                  Row {
+                  BreadcrumbSegments {
                     id: bgBreadcrumbRow
                     width: parent.width - 3 * Style.spacing.controlHeight - 3 * Style.spacing.controlGap
                     height: parent.height
-                    spacing: Style.spacing.xs
-                    clip: true
-
-                    Repeater {
-                      model: root.pathSegmentsFor(bgPanel.modelData.path)
-
-                      Row {
-                        required property var modelData
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.spacing.xs
-
-                        Text {
-                          text: modelData.label
-                          font.pixelSize: Style.font.title
-                          font.family: Style.font.family
-                          font.bold: modelData.path === bgPanel.modelData.path
-                          color: Color.menu.text
-                          opacity: modelData.path === bgPanel.modelData.path ? 1.0 : 0.5
-                        }
-
-                        Text {
-                          visible: modelData.path !== bgPanel.modelData.path
-                          text: "›"
-                          font.pixelSize: Style.font.title
-                          font.family: Style.font.family
-                          color: Color.menu.text
-                          opacity: 0.4
-                        }
-                      }
-                    }
+                    segments: root.pathSegmentsFor(bgPanel.modelData.path)
+                    activePath: bgPanel.modelData.path
                   }
                 }
 
@@ -3959,33 +3886,10 @@ Item {
                   }
                 }
 
-                // Mismo estado vacío que el panel activo -- ver el
-                // comentario junto a su versión (busca "Style.font.displayLarge")
-                // para la referencia real (Menu.qml/Emojis.qml).
-                Column {
+                EmptyState {
                   visible: bgPanel.pathError === "" && bgPanel.entries.length === 0
-                  anchors.centerIn: bgList
-                  spacing: Style.spacing.sm
-
-                  Text {
-                    text: "\u{F0209}"
-                    color: Color.menu.selectedText
-                    opacity: 0.8
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.displayLarge
-                    horizontalAlignment: Text.AlignHCenter
-                    width: bgList.width
-                  }
-
-                  Text {
-                    text: bgPanel.modelData.path === root.trashDir ? "Trash is empty" : "Nothing here yet"
-                    color: Color.menu.text
-                    opacity: 0.7
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.title
-                    horizontalAlignment: Text.AlignHCenter
-                    width: bgList.width
-                  }
+                  centerOn: bgList
+                  message: bgPanel.modelData.path === root.trashDir ? "Trash is empty" : "Nothing here yet"
                 }
 
                 Text {
@@ -4043,60 +3947,14 @@ Item {
             height: Style.spacing.controlHeight
             spacing: Style.spacing.controlGap
 
-            Button {
-              width: Style.spacing.controlHeight
-              height: Style.spacing.controlHeight
+            PanelNavButtons {
               anchors.verticalCenter: parent.verticalCenter
-              foreground: root.navHistoryIndex <= 0 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-              onClicked: root.navBack()
-              Accessible.role: Accessible.Button
-              Accessible.name: "Back"
-
-              OpticalGlyph {
-                anchors.centerIn: parent
-                // md-arrow_left, verificado contra el cmap real de la fuente.
-                text: "\u{F004D}"
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.foreground
-              }
-            }
-
-            Button {
-              width: Style.spacing.controlHeight
-              height: Style.spacing.controlHeight
-              anchors.verticalCenter: parent.verticalCenter
-              foreground: root.navHistoryIndex >= root.navHistory.length - 1 ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-              onClicked: root.navForward()
-              Accessible.role: Accessible.Button
-              Accessible.name: "Forward"
-
-              OpticalGlyph {
-                anchors.centerIn: parent
-                // md-arrow_right, verificado contra el cmap real de la fuente.
-                text: "\u{F0054}"
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.foreground
-              }
-            }
-
-            Button {
-              width: Style.spacing.controlHeight
-              height: Style.spacing.controlHeight
-              anchors.verticalCenter: parent.verticalCenter
-              foreground: root.currentPath === "/" ? Qt.darker(Color.menu.text, 1.6) : Color.menu.text
-              onClicked: root.goUp()
-              Accessible.role: Accessible.Button
-              Accessible.name: "Up"
-
-              OpticalGlyph {
-                anchors.centerIn: parent
-                text: "󰅃"
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.foreground
-              }
+              canGoBack: root.navHistoryIndex > 0
+              canGoForward: root.navHistoryIndex < root.navHistory.length - 1
+              canGoUp: root.currentPath !== "/"
+              onBackRequested: root.navBack()
+              onForwardRequested: root.navForward()
+              onUpRequested: root.goUp()
             }
 
             Item {
@@ -4112,44 +3970,12 @@ Item {
                 onClicked: root.startEditPath()
               }
 
-              Row {
+              BreadcrumbSegments {
                 id: breadcrumbRow
                 visible: !root.editingPath
                 anchors.fill: parent
-                spacing: Style.spacing.xs
-                clip: true
-
-                Repeater {
-                  model: root.pathSegments()
-
-                  Row {
-                    required property var modelData
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spacing.xs
-
-                    // Sin MouseArea propio a propósito -- josema no quería
-                    // navegación por segmento (ya están los botones de
-                    // atrás/subir para eso), solo texto que deje pasar el
-                    // clic al MouseArea de detrás (editar ruta a mano).
-                    Text {
-                      text: modelData.label
-                      font.pixelSize: Style.font.title
-                      font.family: Style.font.family
-                      font.bold: modelData.path === root.currentPath
-                      color: Color.menu.text
-                      opacity: modelData.path === root.currentPath ? 1.0 : 0.5
-                    }
-
-                    Text {
-                      visible: modelData.path !== root.currentPath
-                      text: "›"
-                      font.pixelSize: Style.font.title
-                      font.family: Style.font.family
-                      color: Color.menu.text
-                      opacity: 0.4
-                    }
-                  }
-                }
+                segments: root.pathSegments()
+                activePath: root.currentPath
               }
 
               TextField {
@@ -4964,47 +4790,12 @@ Item {
               color: Color.urgent
             }
 
-            // Estado vacío -- mismo patrón (icono grande + mensaje, Column
-            // centrada) que usan de verdad Menu.qml y Emojis.qml para "sin
-            // resultados", no algo inventado; antes esto solo se notaba por
-            // "0 items" en la barra de estado de abajo, sin nada en el
-            // propio hueco de la lista.
-            Column {
+            EmptyState {
               visible: root.currentPathError === "" && root.visibleEntries.length === 0
-              // Centrado sobre "list" (la ListView), no sobre "parent" --
-              // parent también incluye navRow/listSep por encima, así que
-              // centrarse en él daba una posición vertical distinta a la
-              // del mismo estado vacío en bgPanel (centrado en bgList, que
-              // SÍ excluye su cabecera). Al pasar el ratón, este panel pasa
-              // de renderizarse como bgPanel a activePanel y el icono/texto
-              // saltaba de sitio -- mismo id "list" ya trae el ancho
-              // correcto (fórmula 0.55/preview incluida), así que basta con
-              // anclarse a él en vez de repetir la fórmula a mano.
-              anchors.centerIn: list
-              width: list.width
-              spacing: Style.spacing.sm
-
-              Text {
-                text: "\u{F0209}"
-                color: Color.menu.selectedText
-                opacity: 0.8
-                font.family: Style.font.family
-                font.pixelSize: Style.font.displayLarge
-                horizontalAlignment: Text.AlignHCenter
-                width: parent.width
-              }
-
-              Text {
-                text: root.searchQuery
-                  ? "No results for “" + root.searchQuery + "”"
-                  : (root.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
-                color: Color.menu.text
-                opacity: 0.7
-                font.family: Style.font.family
-                font.pixelSize: Style.font.title
-                horizontalAlignment: Text.AlignHCenter
-                width: parent.width
-              }
+              centerOn: list
+              message: root.searchQuery
+                ? "No results for “" + root.searchQuery + "”"
+                : (root.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
             }
 
             // Rectángulo visual del lazo -- después de la ListView en el
