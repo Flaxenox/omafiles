@@ -1,7 +1,6 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Montar/expulsar unidades (udisksctl) + conectar/desconectar unidades de
@@ -18,22 +17,21 @@ Item {
   property Item tabOps: null
 
   function refreshMounts() {
-    mountsProc.running = true
+    mountsProc.start([root.pluginDir + "/list-mounts.sh"])
   }
 
   function refreshNetworkMounts() {
-    networkMountsProc.running = true
+    networkMountsProc.start([root.pluginDir + "/list-network-mounts.sh"])
   }
 
   function disconnectNetworkMount(mount) {
-    if (networkUnmountProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still disconnecting a network location — try again in a moment"])
+    if (networkUnmountProc.busy) {
+      Notifier.notify("Still disconnecting a network location — try again in a moment")
       return
     }
     networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
     networkUnmountProc.tabIndex = TabsState.activeTabIndex
-    networkUnmountProc.command = ["gio", "mount", "-u", mount.path]
-    networkUnmountProc.running = true
+    networkUnmountProc.start(["gio", "mount", "-u", mount.path])
   }
 
   function startConnectToServer() {
@@ -57,15 +55,11 @@ Item {
     if (!uri) return
     DialogsState.connectServerError = ""
     DialogsState.networkConnecting = true
-    networkMountProc.errorText = ""
-    networkMountProc.command = ["setsid", "gio", "mount", "--", uri]
-    networkMountProc.running = true
+    networkMountProc.start(["gio", "mount", "--", uri], true)
   }
 
   function cancelNetworkConnect() {
-    var pid = networkMountProc.processId
-    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
-    networkMountProc.running = false
+    networkMountProc.cancel()
     DialogsState.networkConnecting = false
   }
 
@@ -77,33 +71,31 @@ Item {
     // Aviso explícito en vez de un return mudo -- sin esto, el segundo
     // clic no hacía nada visible y parecía que la app había ignorado la
     // pulsación, igual que le pasaba antes a runAction() (ver ahí).
-    if (ejectProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still ejecting a drive — try again in a moment"])
+    if (ejectProc.busy) {
+      Notifier.notify("Still ejecting a drive — try again in a moment")
       return
     }
     var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
-    ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
     ejectProc.mountPath = mount.path
     ejectProc.wasInside = wasInside
     ejectProc.tabIndex = TabsState.activeTabIndex
     ejectProc.device = mount.device
-    ejectProc.running = true
+    ejectProc.start(["udisksctl", "unmount", "-b", mount.device])
   }
 
   // udisksctl imprime "Mounted /dev/sdX at /run/media/user/Label." -- se
   // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
   // es la unidad recién montada.
   function mountDevice(mount) {
-    if (mountProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting a drive — try again in a moment"])
+    if (mountProc.busy) {
+      Notifier.notify("Still mounting a drive — try again in a moment")
       return
     }
-    // Capturado aquí (no releído en onExited) -- si el ratón pasa a otro
+    // Capturado aquí (no releído en onFinished) -- si el ratón pasa a otro
     // panel mientras el montaje tarda, el resultado debe navegar el
     // panel que lo pidió, no el que resulte estar activo cuando termine.
     mountProc.tabIndex = TabsState.activeTabIndex
-    mountProc.command = ["udisksctl", "mount", "-b", mount.device]
-    mountProc.running = true
+    mountProc.start(["udisksctl", "mount", "-b", mount.device])
   }
 
   // A diferencia de isArchive() (enterArchive(), navegación de solo
@@ -114,124 +106,85 @@ Item {
   // otra unidad extraíble en cuanto se monta (list-mounts.sh ya distingue
   // el icono por fstype=iso9660) y se expulsa igual que una.
   function mountIso(entry) {
-    if (mountIsoProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting an ISO — try again in a moment"])
+    if (mountIsoProc.busy) {
+      Notifier.notify("Still mounting an ISO — try again in a moment")
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.command = ["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)]
-    mountIsoProc.running = true
+    mountIsoProc.start(["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)])
   }
 
-  Process {
+  ProcessRunner {
     id: mountsProc
-    command: [root.pluginDir + "/list-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: MountsState.mounts = Utils.parseMounts(text)
-    }
+    onFinished: function (result) { MountsState.mounts = Utils.parseMounts(result.stdout) }
   }
 
-  Process {
+  ProcessRunner {
     id: ejectProc
     property string mountPath: ""
     property bool wasInside: false
     property int tabIndex: -1
-    property string errorText: ""
     property string device: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: ejectProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode === 0) {
+    onFinished: function (result) {
+      if (result.exitCode === 0) {
         if (ejectProc.wasInside) tabOps.navigateTabTo(ejectProc.tabIndex, root.homeDir)
         // Un .iso montado con mountIso() deja el /dev/loopN asociado al
         // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
         // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
         // device para siempre hasta reiniciar.
         if (ejectProc.device.indexOf("/dev/loop") === 0) {
-          Quickshell.execDetached(["udisksctl", "loop-delete", "-b", ejectProc.device])
+          Detached.run(["udisksctl", "loop-delete", "-b", ejectProc.device])
         }
         refreshMounts()
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not eject: " + (ejectProc.errorText || "device busy")])
+        Notifier.notify("Could not eject: " + (result.stderr || "device busy"))
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: mountProc
-    property string outputText: ""
-    property string errorText: ""
     property int tabIndex: -1
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountProc.outputText = text
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountProc.errorText = text
-    }
-    onExited: function (exitCode) {
+    onFinished: function (result) {
       refreshMounts()
-      if (exitCode === 0) {
-        var match = mountProc.outputText.match(/ at (\/[^\s.]+)/)
+      if (result.exitCode === 0) {
+        var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountProc.tabIndex, match[1])
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
+        Notifier.notify("Could not mount: " + (result.stderr || "unknown error"))
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: mountIsoProc
-    property string outputText: ""
-    property string errorText: ""
     property int tabIndex: -1
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountIsoProc.outputText = text
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountIsoProc.errorText = text
-    }
-    onExited: function (exitCode) {
+    onFinished: function (result) {
       refreshMounts()
-      if (exitCode === 0) {
-        var match = mountIsoProc.outputText.match(/ at (\/[^\s.]+)/)
+      if (result.exitCode === 0) {
+        var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountIsoProc.tabIndex, match[1])
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount ISO: " + (mountIsoProc.errorText || "unknown error")])
+        Notifier.notify("Could not mount ISO: " + (result.stderr || "unknown error"))
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: networkMountsProc
-    command: [root.pluginDir + "/list-network-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: MountsState.networkMounts = Utils.parseNetworkMounts(text)
-    }
+    onFinished: function (result) { MountsState.networkMounts = Utils.parseNetworkMounts(result.stdout) }
   }
 
-  Process {
+  ProcessRunner {
     id: networkUnmountProc
     property bool wasInside: false
     property int tabIndex: -1
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: networkUnmountProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode === 0) {
+    onFinished: function (result) {
+      if (result.exitCode === 0) {
         if (networkUnmountProc.wasInside) tabOps.navigateTabTo(networkUnmountProc.tabIndex, root.homeDir)
         refreshNetworkMounts()
       } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not disconnect: " + (networkUnmountProc.errorText || "unknown error")])
+        Notifier.notify("Could not disconnect: " + (result.stderr || "unknown error"))
       }
     }
   }
@@ -245,24 +198,19 @@ Item {
   // por ejemplo) -- si se queda colgado esperando una contraseña que
   // nunca llega, el usuario tiene el botón Cancelar del diálogo
   // (cancelNetworkConnect/setsid, mismo mecanismo que cancelAction()).
-  Process {
+  ProcessRunner {
     id: networkMountProc
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: networkMountProc.errorText = text
-    }
-    onExited: function (exitCode) {
+    onFinished: function (result) {
       DialogsState.networkConnecting = false
-      if (exitCode === 0) {
+      if (result.exitCode === 0) {
         DialogsState.connectServerOpen = false
         // gio no imprime la ruta local igual que udisksctl -- se relista
         // y se entra al mount que no estaba antes (el que acaba de
         // aparecer) en vez de parsear la salida de "gio mount".
         networkMountsAfterConnectProc.beforePaths = MountsState.networkMounts.map(function (m) { return m.path })
-        networkMountsAfterConnectProc.running = true
+        networkMountsAfterConnectProc.start([root.pluginDir + "/list-network-mounts.sh"])
       } else {
-        DialogsState.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
+        DialogsState.connectServerError = result.stderr.trim() || "Could not connect"
       }
     }
   }
@@ -271,19 +219,15 @@ Item {
   // solo para encontrar CUÁL de los mounts es el nuevo (comparando contra
   // los que ya había antes) y navegar directamente a él -- refreshNetworkMounts()
   // normal no distingue cuál acaba de aparecer.
-  Process {
+  ProcessRunner {
     id: networkMountsAfterConnectProc
     property var beforePaths: []
-    command: [root.pluginDir + "/list-network-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = Utils.parseNetworkMounts(text)
-        MountsState.networkMounts = parsed
-        var before = networkMountsAfterConnectProc.beforePaths
-        var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
-        if (fresh.length > 0) root.navigateTo(fresh[0].path)
-      }
+    onFinished: function (result) {
+      var parsed = Utils.parseNetworkMounts(result.stdout)
+      MountsState.networkMounts = parsed
+      var before = networkMountsAfterConnectProc.beforePaths
+      var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
+      if (fresh.length > 0) root.navigateTo(fresh[0].path)
     }
   }
 }

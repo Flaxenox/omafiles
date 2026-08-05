@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import Quickshell
+import "../services"
 
 // Pestañas (cada una un panel visible, lado a lado) + historial
 // atrás/adelante de la pestaña ACTIVA -- vigesimoprimer y último
@@ -11,7 +11,7 @@ import Quickshell
 // antes de que el usuario vea nada (con el payload real, o restaurando
 // la sesión anterior vía Persistence.loadSession()).
 QtObject {
-  readonly property string _initialHome: Quickshell.env("HOME")
+  readonly property string _initialHome: Env.get("HOME")
   property var tabs: [{ path: _initialHome, history: [_initialHome], historyIndex: 0 }]
   property int activeTabIndex: 0
   // Historial atrás/adelante de la pestaña ACTIVA -- cada pestaña guarda

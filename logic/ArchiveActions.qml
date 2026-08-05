@@ -1,8 +1,7 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Modo "dentro de un archivo" (zip/7z/rar/tar, navegación de solo lectura
@@ -38,8 +37,7 @@ Item {
   function refreshArchiveListing() {
     selectionOps.selectOnly(-1)
     list.contentY = list.originY
-    archiveListProc.command = [root.pluginDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath]
-    archiveListProc.running = true
+    archiveListProc.start([root.pluginDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
   }
 
   // Extrae SOLO ese fichero a una caché temporal (no todo el archivo) y lo
@@ -59,8 +57,7 @@ Item {
     else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out
-    archiveOpenProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd]
-    archiveOpenProc.running = true
+    archiveOpenProc.start(["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])
   }
 
   function isArchive(entry) {
@@ -101,36 +98,28 @@ Item {
     ConflictState.extractConflictNames = []
   }
 
-  Process {
+  ProcessRunner {
     id: archiveListProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var s = String(text || "")
-        var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
-        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-        var parsed = []
-        for (var i = 0; i + 1 < fields.length; i += 2) {
-          parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
-        }
-        root.entries = sortOps.sortEntries(parsed)
-        list.positionViewAtBeginning()
-        selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+    onFinished: function (result) {
+      var s = String(result.stdout || "")
+      var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
+      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+      var parsed = []
+      for (var i = 0; i + 1 < fields.length; i += 2) {
+        parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
       }
+      root.entries = sortOps.sortEntries(parsed)
+      list.positionViewAtBeginning()
+      selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
     }
   }
 
-  Process {
+  ProcessRunner {
     id: archiveOpenProc
     property string outPath: ""
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: archiveOpenProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode !== 0) {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't open file from archive: " + (archiveOpenProc.errorText.trim() || "unknown error")])
+    onFinished: function (result) {
+      if (result.exitCode !== 0) {
+        Notifier.notify("Couldn't open file from archive: " + (result.stderr.trim() || "unknown error"))
         return
       }
       root.openWithDefault(archiveOpenProc.outPath)

@@ -1,7 +1,7 @@
 import QtQuick
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Carga de la vista previa (Espacio) -- decimoséptimo componente extraído
@@ -40,8 +40,7 @@ Item {
     PreviewContentState.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (PreviewContentState.previewIsText && !root.isImage(entry)) {
       PreviewContentState._previewTextOwner = reqId
-      previewProc.command = ["head", "-c", "4000", path]
-      previewProc.running = true
+      previewProc.start(["head", "-c", "4000", path])
       // Resaltado de sintaxis SOLO para extensiones de código conocidas
       // (codeExt) -- .txt/.conf/sin extensión se quedan en texto plano, no
       // hay lenguaje real que adivinar ahí. Se lanza en paralelo al texto
@@ -51,8 +50,7 @@ Item {
       // parpadeo ni hueco en blanco de por medio.
       if (root.codeExt.indexOf(ext) >= 0) {
         PreviewContentState._previewHighlightOwner = reqId
-        highlightPreviewProc.command = [root.pluginDir + "/highlight-preview.sh", path, "4000", ext]
-        highlightPreviewProc.running = true
+        highlightPreviewProc.start([root.pluginDir + "/highlight-preview.sh", path, "4000", ext])
       }
     }
     if (root.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
@@ -69,53 +67,42 @@ Item {
       // páginas del PDF (de 10 páginas en adelante ya sería "page-01.png"),
       // así que se renombra al único fichero que haya salido en vez de
       // adivinar el nombre exacto.
-      pdfPreviewProc.command = ["bash", "-c",
+      pdfPreviewProc.start(["bash", "-c",
         "test -e " + Util.shellQuote(outFile) + " && exit 0; mkdir -p -- " + Util.shellQuote(outDir)
         + " && pdftoppm -png -f 1 -l 1 -scale-to 1000 -- " + Util.shellQuote(path) + " " + Util.shellQuote(outDir + "/page")
-        + " && mv -f -- " + Util.shellQuote(outDir) + "/page-*.png " + Util.shellQuote(outFile)]
-      pdfPreviewProc.running = true
+        + " && mv -f -- " + Util.shellQuote(outDir) + "/page-*.png " + Util.shellQuote(outFile)])
     }
     if (root.isAudio(entry)) {
       PreviewContentState._previewAudioOwner = reqId
-      audioInfoProc.command = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path]
-      audioInfoProc.running = true
+      audioInfoProc.start(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path])
     }
   }
 
-  Process {
+  ProcessRunner {
     id: previewProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      // Descarta si el usuario ya pasó a otro ítem mientras "head" estaba
-      // en vuelo -- mismo guard que propertiesDuProc, ver previewRequestId.
-      onStreamFinished: if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId) PreviewContentState.previewText = text
-    }
+    // Descarta si el usuario ya pasó a otro ítem mientras "head" estaba
+    // en vuelo -- mismo guard que propertiesDuProc, ver previewRequestId.
+    onFinished: function (result) { if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId) PreviewContentState.previewText = result.stdout }
   }
 
-  Process {
+  ProcessRunner {
     id: highlightPreviewProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      // Vacío/fallido -> previewHighlighted se queda "" y la UI cae al
-      // Text plano (previewText) sin más -- ver el "visible:" de cada
-      // bloque en el panel de previsualización.
-      onStreamFinished: if (PreviewContentState._previewHighlightOwner === PreviewContentState.previewRequestId) PreviewContentState.previewHighlighted = text
-    }
+    // Vacío/fallido -> previewHighlighted se queda "" y la UI cae al
+    // Text plano (previewText) sin más -- ver el "visible:" de cada
+    // bloque en el panel de previsualización.
+    onFinished: function (result) { if (PreviewContentState._previewHighlightOwner === PreviewContentState.previewRequestId) PreviewContentState.previewHighlighted = result.stdout }
   }
 
-  Process {
+  ProcessRunner {
     id: pdfPreviewProc
     property string outFile: ""
-    onExited: function (exitCode) {
-      if (exitCode === 0 && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) PreviewContentState.previewPdfImage = pdfPreviewProc.outFile
+    onFinished: function (result) {
+      if (result.exitCode === 0 && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) PreviewContentState.previewPdfImage = pdfPreviewProc.outFile
     }
   }
 
-  Process {
+  ProcessRunner {
     id: audioInfoProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: if (PreviewContentState._previewAudioOwner === PreviewContentState.previewRequestId) PreviewContentState.previewAudioInfo = fileMeta.parseAudioInfo(text)
-    }
+    onFinished: function (result) { if (PreviewContentState._previewAudioOwner === PreviewContentState.previewRequestId) PreviewContentState.previewAudioInfo = fileMeta.parseAudioInfo(result.stdout) }
   }
 }

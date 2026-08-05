@@ -15,11 +15,9 @@ QtObject {
   property real actionProgressPct: -1
   property real actionTotalBytes: 0
   property var actionProgressDestPaths: []
-  // Callback pendiente del runAction en curso -- ver actionProc.onExited
-  // en ActionEngine.qml.
+  // Callback pendiente del runAction en curso -- ver actionProc.onFinished
+  // en ActionEngine.qml. (_actionCancelled desapareció en la Fase 1.5:
+  // ProcessRunner.finished ya lleva `cancelled` en el resultado, ver
+  // services/ProcessRunner.qml.)
   property var _actionOnSuccess: null
-  // true mientras se procesa un cancelAction() explícito -- evita que
-  // actionProc.onExited muestre "Action failed" por un proceso que el
-  // propio usuario mandó parar.
-  property bool _actionCancelled: false
 }

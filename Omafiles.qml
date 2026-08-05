@@ -1,5 +1,4 @@
 import Quickshell
-import Quickshell.Io
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -8,6 +7,7 @@ import "panels"
 import "logic"
 import "shared"
 import "state"
+import "services"
 import "Utils.js" as Utils
 
 // Omafiles -- explorador de archivos para Omarchy.
@@ -21,7 +21,7 @@ import "Utils.js" as Utils
 Item {
   id: root
 
-  property string homeDir: Quickshell.env("HOME")
+  property string homeDir: Env.get("HOME")
   property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
   property string currentPath: homeDir
   // tabs/activeTabIndex/navHistory/navHistoryIndex viven ahora en
@@ -144,8 +144,8 @@ Item {
     || ChmodState.chmodOpen || PropertiesState.propertiesOpen || DialogsState.connectServerOpen
 
   // actionBusy/actionLabel/actionProgressPct/actionTotalBytes/
-  // actionProgressDestPaths/_actionOnSuccess/_actionCancelled viven ahora
-  // en state/ActionState.qml -- duodécimo slice de la capa state/, completa
+  // actionProgressDestPaths/_actionOnSuccess viven ahora en
+  // state/ActionState.qml -- duodécimo slice de la capa state/, completa
   // la migración de logic/ActionEngine.qml (undoStack/redoStack ya estaban
   // en state/UndoState.qml). actionBusyDots se queda aquí -- animación
   // puramente visual, ver el Timer más abajo.
@@ -270,11 +270,10 @@ Item {
     // list-trash.sh/trash-roots.sh. No es una carpeta real única, así
     // que no puede pasar por list-dir.sh a secas como el resto.
     if (root.currentPath === root.trashDir) {
-      listProc.command = [root.pluginDir + "/list-trash.sh", root.showHidden ? "1" : "0"]
+      listProc.start([root.pluginDir + "/list-trash.sh", root.showHidden ? "1" : "0"])
     } else {
-      listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
+      listProc.start([root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"])
     }
-    listProc.running = true
   }
 
   // Reasigna root.entries SOLO si el contenido de verdad cambió --
@@ -365,14 +364,12 @@ Item {
   // silencioso -- mismo patrón de "opcional, degrada con gracia" que
   // ffmpegthumbnailer/pygmentize/pdftoppm.
   function startDirWatch(path) {
-    dirWatchProc.running = false
-    dirWatchProc.command = ["inotifywait", "-m", "-q", "-e",
-      "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path]
-    dirWatchProc.running = true
+    dirWatchProc.start(["inotifywait", "-m", "-q", "-e",
+      "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path])
   }
 
   function stopDirWatch() {
-    dirWatchProc.running = false
+    dirWatchProc.stop()
   }
 
 
@@ -469,12 +466,31 @@ Item {
   }
 
   // Usado por BackgroundPanel (doble clic sobre un fichero en un panel de
-  // fondo) -- openProc solo es visible por id dentro de este fichero, así
-  // que un componente en otro .qml necesita esta función en vez de tocarlo
-  // directo.
+  // fondo) y launchRecent() para no depender de Quickshell directamente
+  // fuera de services/.
+  // Detached (execDetached de verdad, sin pipes de stdout/stderr ni
+  // seguimiento) + gtk-launch, NO xdg-open ni gio open -- tercer intento
+  // real en la misma sesión (Fase 1.5, josema) hasta encontrar algo
+  // fiable:
+  //  1. xdg-open (Detached): bajo Hyprland (XDG_CURRENT_DESKTOP=Hyprland,
+  //     no reconocido como gnome/kde/...) cae en su rama "generic", que
+  //     ejecuta el Exec= del .desktop a mano IGNORANDO Terminal=true --
+  //     para apps como nvim.desktop eso lanza nvim sin terminal ni TTY,
+  //     colgado para siempre sin que se vea nada.
+  //  2. gio open (ProcessRunner, con o sin "bash -c" de por medio, con o
+  //     sin setsid): sí respeta Terminal=true en pruebas manuales desde
+  //     una shell normal, pero lanzado desde el Process de Quickshell el
+  //     terminal que abre por dentro para Terminal=true no sobrevivía de
+  //     forma fiable (a veces sí, la mayoría no) -- no se encontró la
+  //     causa exacta, pero mismo patrón de siempre: Quickshell.Io.Process
+  //     con StdioCollector no es de fiar para lanzar algo que a su vez
+  //     bifurca una app de larga duración.
+  //  3. gtk-launch vía Detached (esta): mismo mecanismo YA verificado
+  //     fiable en OpenWithOps.launchWith() ("Abrir con..."), que sí
+  //     respeta Terminal=true. Solo falta resolver primero el id del
+  //     .desktop por defecto (gtk-launch necesita un id, no una ruta).
   function openWithDefault(path) {
-    openProc.command = ["xdg-open", path]
-    openProc.running = true
+    Detached.run(["bash", "-c", 'id=$(xdg-mime query default "$(xdg-mime query filetype "$1")"); [ -n "$id" ] && exec gtk-launch "$id" "$1"', "_", path])
   }
 
   function enter(entry) {
@@ -496,8 +512,7 @@ Item {
       mountOps.mountIso(entry)
     } else {
       var openPath = root.joinPath(root.currentPath, entry.name)
-      openProc.command = ["xdg-open", openPath]
-      openProc.running = true
+      root.openWithDefault(openPath)
       bookmarkOps.addRecent(openPath, entry.name)
     }
   }
@@ -649,8 +664,8 @@ Item {
   }
 
   function openTerminalHere() {
-    openProc.command = ["xdg-terminal-exec", "--dir=" + root.currentPath]
-    openProc.running = true
+    // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
+    openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])
   }
 
   function paletteCommands() {
@@ -967,25 +982,18 @@ Item {
   // scripts/install-integrations.sh), así que llamarlo en cada arranque
   // del shell es barato y seguro.
   Component.onCompleted: {
-    installIntegrationsProc.command = [root.pluginDir + "/scripts/install-integrations.sh"]
-    installIntegrationsProc.running = true
-  }
-
-  Process {
-    id: installIntegrationsProc
+    Detached.run([root.pluginDir + "/scripts/install-integrations.sh"])
   }
 
   // "close_write" (fichero cerrado tras escribir) en vez de fiarse solo
   // de "modify" -- así una copia grande en curso no dispara un refresh
   // por cada bloque escrito, solo cuando el fichero realmente queda
   // listo. inotifywait -m no termina nunca solo (modo monitor); se mata
-  // explícitamente (running=false) al navegar a otra carpeta o cerrar
-  // la ventana, ver startDirWatch()/stopDirWatch().
-  Process {
+  // explícitamente (stop()) al navegar a otra carpeta o cerrar la
+  // ventana, ver startDirWatch()/stopDirWatch().
+  ProcessWatcher {
     id: dirWatchProc
-    stdout: SplitParser {
-      onRead: dirWatchDebounce.restart()
-    }
+    onLineRead: dirWatchDebounce.restart()
   }
 
   Timer {
@@ -1016,62 +1024,56 @@ Item {
     onTriggered: { mountOps.refreshMounts(); mountOps.refreshNetworkMounts() }
   }
 
-  Process {
+  ProcessRunner {
     id: listProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = sortOps.sortEntries(Utils.parseEntries(text))
-        if (root.currentPath === root.trashDir) {
-          if (Object.keys(TrashState.trashInfo).length > 0) {
-            // Ya hay trashInfo cargada -- de este mismo panel en una
-            // visita anterior de esta sesión, o COMPARTIDA desde un panel
-            // de fondo que ya la tenía (ver BackgroundPanel.qml/
-            // bgTrashInfoProc). Pintar ya con eso; el trashInfoProc de
-            // abajo solo la refresca por detrás sin bloquear el pintado.
-            root._applyEntries(parsed)
-          } else {
-            // Primera vez que se ve la papelera en TODA la sesión (ni
-            // siquiera un panel de fondo la había cargado antes de que
-            // esta pestaña pasara a activa) -- esperar a que
-            // trash-info.sh termine para pintar ya con el texto final
-            // ("Deleted X ago · from ...") de una sola vez. Mismo bug/
-            // mismo motivo que BackgroundPanel.qml -- root.entries
-            // saliendo primero con solo el tamaño y esa parte llegando
-            // un instante después hacía crecer las filas y saltar todo
-            // lo de debajo (parpadeo real, reportado por josema; esta
-            // rama concreta -- panel ACTIVO, no de fondo -- es la que
-            // se me había escapado en el primer intento de arreglarlo).
-            root._pendingListEntries = parsed
-            root._waitingForTrashInfo = true
-          }
-          trashInfoProc.command = [root.pluginDir + "/trash-info.sh"]
-          trashInfoProc.running = true
-        } else {
-          // NO se limpia TrashState.trashInfo al salir de la papelera -- es
-          // COMPARTIDA entre el panel activo y todos los de fondo (ver
-          // BackgroundPanel.qml/bgTrashInfoProc), así que vaciarla aquí
-          // sin más se la quitaba también a un panel de FONDO que
-          // siguiera mostrando la papelera en ese mismo instante. Ese
-          // vacío + el rellenado casi inmediato que le seguía (el panel
-          // de fondo lo notaba y volvía a pedir trash-info.sh) era el
-          // salto real reportado por josema: el texto "Deleted X ago..."
-          // desaparecía y volvía en unas décimas de segundo cada vez que
-          // se cambiaba de pestaña, aunque fuera hacia una carpeta
-          // normal. Dejarla con datos obsoletos sin más uso no hace daño
-          // -- metaFor() solo la consulta cuando la ruta ES la papelera.
-          root._applyEntries(parsed)
-        }
-      }
-    }
     // stdout ya deja entries vacío (list-dir.sh no imprime nada si falla);
-    // esto solo añade el porqué, según el código de salida documentado en
-    // list-dir.sh.
-    onExited: function (exitCode, exitStatus) {
-      if (exitCode === 2) root.currentPathError = "Permission denied"
-      else if (exitCode === 3) root.currentPathError = "This folder no longer exists"
-      else if (exitCode === 4) root.currentPathError = "Not a folder"
-      else if (exitCode !== 0) root.currentPathError = "Couldn't open this folder"
+    // exitCode solo añade el porqué, según el código de salida documentado
+    // en list-dir.sh.
+    onFinished: function (result) {
+      if (result.exitCode === 2) root.currentPathError = "Permission denied"
+      else if (result.exitCode === 3) root.currentPathError = "This folder no longer exists"
+      else if (result.exitCode === 4) root.currentPathError = "Not a folder"
+      else if (result.exitCode !== 0) root.currentPathError = "Couldn't open this folder"
+      var parsed = sortOps.sortEntries(Utils.parseEntries(result.stdout))
+      if (root.currentPath === root.trashDir) {
+        if (Object.keys(TrashState.trashInfo).length > 0) {
+          // Ya hay trashInfo cargada -- de este mismo panel en una
+          // visita anterior de esta sesión, o COMPARTIDA desde un panel
+          // de fondo que ya la tenía (ver BackgroundPanel.qml/
+          // bgTrashInfoProc). Pintar ya con eso; el trashInfoProc de
+          // abajo solo la refresca por detrás sin bloquear el pintado.
+          root._applyEntries(parsed)
+        } else {
+          // Primera vez que se ve la papelera en TODA la sesión (ni
+          // siquiera un panel de fondo la había cargado antes de que
+          // esta pestaña pasara a activa) -- esperar a que
+          // trash-info.sh termine para pintar ya con el texto final
+          // ("Deleted X ago · from ...") de una sola vez. Mismo bug/
+          // mismo motivo que BackgroundPanel.qml -- root.entries
+          // saliendo primero con solo el tamaño y esa parte llegando
+          // un instante después hacía crecer las filas y saltar todo
+          // lo de debajo (parpadeo real, reportado por josema; esta
+          // rama concreta -- panel ACTIVO, no de fondo -- es la que
+          // se me había escapado en el primer intento de arreglarlo).
+          root._pendingListEntries = parsed
+          root._waitingForTrashInfo = true
+        }
+        trashInfoProc.start([root.pluginDir + "/trash-info.sh"])
+      } else {
+        // NO se limpia TrashState.trashInfo al salir de la papelera -- es
+        // COMPARTIDA entre el panel activo y todos los de fondo (ver
+        // BackgroundPanel.qml/bgTrashInfoProc), así que vaciarla aquí
+        // sin más se la quitaba también a un panel de FONDO que
+        // siguiera mostrando la papelera en ese mismo instante. Ese
+        // vacío + el rellenado casi inmediato que le seguía (el panel
+        // de fondo lo notaba y volvía a pedir trash-info.sh) era el
+        // salto real reportado por josema: el texto "Deleted X ago..."
+        // desaparecía y volvía en unas décimas de segundo cada vez que
+        // se cambiaba de pestaña, aunque fuera hacia una carpeta
+        // normal. Dejarla con datos obsoletos sin más uso no hace daño
+        // -- metaFor() solo la consulta cuando la ruta ES la papelera.
+        root._applyEntries(parsed)
+      }
     }
   }
 
@@ -1169,27 +1171,29 @@ Item {
     mountOps: mountOps
   }
 
-  Process {
+  ProcessRunner {
     id: trashInfoProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var fields = String(text || "").split("\u0000")
-        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-        var info = {}
-        for (var i = 0; i + 3 < fields.length; i += 4) {
-          info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
-        }
-        TrashState.trashInfo = info
-        if (root._waitingForTrashInfo) {
-          root._waitingForTrashInfo = false
-          root._applyEntries(root._pendingListEntries)
-        }
+    onFinished: function (result) {
+      var fields = String(result.stdout || "").split("\u0000")
+      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+      var info = {}
+      for (var i = 0; i + 3 < fields.length; i += 4) {
+        info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
+      }
+      TrashState.trashInfo = info
+      if (root._waitingForTrashInfo) {
+        root._waitingForTrashInfo = false
+        root._applyEntries(root._pendingListEntries)
       }
     }
   }
 
-  Process {
+  // Lanzador compartido para abrir con la app por defecto / abrir una
+  // terminal aquí -- ver openWithDefault()/openTerminalHere() más
+  // arriba. ProcessRunner (con seguimiento), no Detached: bug real
+  // documentado ahí (gio open vs xdg-open bajo Hyprland, envuelto en
+  // bash -c).
+  ProcessRunner {
     id: openProc
   }
 

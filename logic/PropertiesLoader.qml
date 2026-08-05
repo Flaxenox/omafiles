@@ -1,7 +1,7 @@
 import QtQuick
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Carga de metadatos de fichero (permisos y propiedades) -- decimoctavo
@@ -30,8 +30,7 @@ Item {
     ChmodState.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
     ChmodState.chmodRecursive = false
     var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(root.currentPath, e.name)) }).join(" ")
-    chmodStatProc.command = ["bash", "-c", "stat -c%a -- " + paths]
-    chmodStatProc.running = true
+    chmodStatProc.start(["bash", "-c", "stat -c%a -- " + paths])
     ChmodState.chmodOpen = true
   }
 
@@ -60,8 +59,7 @@ Item {
       return Util.shellQuote(root.joinPath(root.currentPath, e.name))
     }).join(" ")
     PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
-    propertiesDuProc.command = ["bash", "-c", "du -shc -- " + quoted + " | tail -n1"]
-    propertiesDuProc.running = true
+    propertiesDuProc.start(["bash", "-c", "du -shc -- " + quoted + " | tail -n1"])
   }
 
   function showProperties(entry) {
@@ -77,8 +75,7 @@ Item {
     PropertiesState.propertiesMtime = ""
     PropertiesState.propertiesOpen = true
     PropertiesState._propertiesStatOwner = PropertiesState.propertiesRequestId
-    propertiesStatProc.command = ["stat", "-c", "%A %a\t%U:%G\t%y", "--", path]
-    propertiesStatProc.running = true
+    propertiesStatProc.start(["stat", "-c", "%A %a\t%U:%G\t%y", "--", path])
     // Deliberadamente NO se toca propertiesDuProc si entry no es carpeta
     // (el tamaño ya se conoce sin proceso). Un "du" anterior de una
     // carpeta puede seguir corriendo en ese caso -- por eso el guard de
@@ -86,61 +83,51 @@ Item {
     // cuando SÍ se relanza.
     if (entry.type === "dir") {
       PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
-      propertiesDuProc.command = ["du", "-sh", "--", path]
-      propertiesDuProc.running = true
+      propertiesDuProc.start(["du", "-sh", "--", path])
     }
   }
 
-  Process {
+  ProcessRunner {
     id: chmodStatProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var lines = String(text || "").trim().split("\n").filter(function (l) { return l.length > 0 })
-        if (lines.length === 0) return
-        var allSame = lines.every(function (l) { return l === lines[0] })
-        ChmodState.chmodMixed = !allSame
-        ChmodState.chmodMode = allSame ? lines[0] : ""
-        // stat conserva el orden de los argumentos -- lines[i] es el modo
-        // de ChmodState.chmodNames[i]. Guardado para poder deshacer (ver
-        // commitChmod/chmodOriginalModes).
-        var orig = {}
-        for (var i = 0; i < ChmodState.chmodNames.length && i < lines.length; i++) orig[ChmodState.chmodNames[i]] = lines[i]
-        ChmodState.chmodOriginalModes = orig
-      }
+    onFinished: function (result) {
+      var lines = String(result.stdout || "").trim().split("\n").filter(function (l) { return l.length > 0 })
+      if (lines.length === 0) return
+      var allSame = lines.every(function (l) { return l === lines[0] })
+      ChmodState.chmodMixed = !allSame
+      ChmodState.chmodMode = allSame ? lines[0] : ""
+      // stat conserva el orden de los argumentos -- lines[i] es el modo
+      // de ChmodState.chmodNames[i]. Guardado para poder deshacer (ver
+      // commitChmod/chmodOriginalModes).
+      var orig = {}
+      for (var i = 0; i < ChmodState.chmodNames.length && i < lines.length; i++) orig[ChmodState.chmodNames[i]] = lines[i]
+      ChmodState.chmodOriginalModes = orig
     }
   }
 
-  Process {
+  ProcessRunner {
     id: propertiesStatProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Descarta la respuesta si el usuario ya cambió a otro ítem
-        // mientras este "stat" estaba en vuelo (ver propertiesRequestId).
-        if (PropertiesState._propertiesStatOwner !== PropertiesState.propertiesRequestId) return
-        var parts = String(text || "").trim().split("\t")
-        PropertiesState.propertiesPerms = parts[0] || ""
-        PropertiesState.propertiesOwner = parts[1] || ""
-        PropertiesState.propertiesMtime = parts[2] || ""
-      }
+    onFinished: function (result) {
+      // Descarta la respuesta si el usuario ya cambió a otro ítem
+      // mientras este "stat" estaba en vuelo (ver propertiesRequestId).
+      if (PropertiesState._propertiesStatOwner !== PropertiesState.propertiesRequestId) return
+      var parts = String(result.stdout || "").trim().split("\t")
+      PropertiesState.propertiesPerms = parts[0] || ""
+      PropertiesState.propertiesOwner = parts[1] || ""
+      PropertiesState.propertiesMtime = parts[2] || ""
     }
   }
 
-  Process {
+  ProcessRunner {
     id: propertiesDuProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Mismo guard que propertiesStatProc -- este es el que de verdad
-        // importa: un "du" de una carpeta grande puede tardar segundos, y
-        // sin esto su resultado tardío pisaba el tamaño del ítem que el
-        // usuario esté mirando ahora, aunque ya no tenga nada que ver con
-        // la carpeta que se estaba midiendo.
-        if (PropertiesState._propertiesDuOwner !== PropertiesState.propertiesRequestId) return
-        PropertiesState.propertiesSize = String(text || "").split("\t")[0] || ""
-        PropertiesState.propertiesSizeLoading = false
-      }
+    onFinished: function (result) {
+      // Mismo guard que propertiesStatProc -- este es el que de verdad
+      // importa: un "du" de una carpeta grande puede tardar segundos, y
+      // sin esto su resultado tardío pisaba el tamaño del ítem que el
+      // usuario esté mirando ahora, aunque ya no tenga nada que ver con
+      // la carpeta que se estaba midiendo.
+      if (PropertiesState._propertiesDuOwner !== PropertiesState.propertiesRequestId) return
+      PropertiesState.propertiesSize = String(result.stdout || "").split("\t")[0] || ""
+      PropertiesState.propertiesSizeLoading = false
     }
   }
 }

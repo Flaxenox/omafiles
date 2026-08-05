@@ -1,0 +1,4 @@
+module Omafiles.Services
+singleton Env 1.0 Env.qml
+singleton Notifier 1.0 Notifier.qml
+singleton Detached 1.0 Detached.qml

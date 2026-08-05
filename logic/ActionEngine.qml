@@ -1,8 +1,7 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 
 // El motor central de acciones de fichero (renombrar/borrar/copiar/mover/
 // comprimir/extraer/chmod/enlace, todo pasa por aquí) + deshacer/rehacer +
@@ -43,14 +42,14 @@ Item {
     var started = entry.undo()
     if (started === false) {
       UndoState.undoStack = UndoState.undoStack.concat([entry])
-      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't undo \"" + entry.label + "\": still busy with another action"])
+      Notifier.notify("Couldn't undo \"" + entry.label + "\": still busy with another action")
       return
     }
     // Solo pasa a la pila de redo si de verdad lleva forma de rehacerse
     // -- no todas las entradas del undoStack tienen redoFn (ver el
     // comentario junto a pushUndo).
     if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
-    Quickshell.execDetached(["notify-send", "Omafiles", "Undoing: " + entry.label])
+    Notifier.notify("Undoing: " + entry.label)
   }
 
   function redoLast() {
@@ -60,14 +59,14 @@ Item {
     var started = entry.redo()
     if (started === false) {
       UndoState.redoStack = UndoState.redoStack.concat([entry])
-      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't redo \"" + entry.label + "\": still busy with another action"])
+      Notifier.notify("Couldn't redo \"" + entry.label + "\": still busy with another action")
       return
     }
     // De vuelta a undoStack SIN pasar por pushUndo() -- eso vaciaría
     // redoStack, que es justo lo que no queremos en pleno ciclo
     // deshacer/rehacer/deshacer.
     UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
-    Quickshell.execDetached(["notify-send", "Omafiles", "Redoing: " + entry.label])
+    Notifier.notify("Redoing: " + entry.label)
   }
 
   function runAction(cmd, busyLabel, onSuccess) {
@@ -77,22 +76,19 @@ Item {
     // (doble clic, o una tecla de más durante una operación larga) le
     // cambiaba el comando y lo reiniciaba, cortando la operación en curso
     // a media copia sin ningún aviso.
-    if (actionProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still busy with the previous action — try again in a moment"])
+    if (actionProc.busy) {
+      Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
     }
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     ActionState._actionOnSuccess = onSuccess || null
-    ActionState._actionCancelled = false
-    // "setsid" delante de bash: lo convierte en líder de una sesión/grupo
-    // de procesos nuevo (su PGID pasa a ser su propio PID) en vez de
-    // compartir el grupo de Quickshell. Sin esto, cancelAction() solo podía
+    // group:true -- el comando corre en su propio grupo de procesos en vez
+    // de compartir el de Quickshell. Sin esto, cancelAction() solo podría
     // matar el "bash -c" en sí -- cualquier cp/mv/zip que ese bash hubiera
     // lanzado como hijo se quedaba huérfano y seguía corriendo de fondo
     // como si nada, aunque la UI ya diera la acción por cancelada.
-    actionProc.command = ["setsid", "bash", "-c", cmd]
-    actionProc.running = true
+    actionProc.start(["bash", "-c", cmd], true)
     return true
   }
 
@@ -110,12 +106,10 @@ Item {
   }
 
   function cancelAction() {
-    // actionProc.running = false solo mata el "setsid bash -c ..." en sí;
-    // con el grupo de procesos propio que le da setsid en runAction(), esto
-    // manda la señal a TODO el grupo (setsid + bash + el cp/mv/zip real que
-    // esté corriendo dentro), no solo al primero.
-    var pid = actionProc.processId
-    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
+    // actionProc.cancel() manda la señal a TODO el grupo de procesos
+    // (el "bash -c" + el cp/mv/zip real que esté corriendo dentro, ver
+    // group:true en runAction()), no solo al primero.
+    actionProc.cancel()
     // Cancelar a mitad de una copia/movimiento ENTRE DISCOS (mv no puede
     // hacer un rename atómico, así que copia y borra el origen) deja un
     // fichero parcial a medio escribir en el destino -- bug real
@@ -125,10 +119,8 @@ Item {
     // que estaba a medias mientras los anteriores ya habían terminado
     // bien -- borrar TODOS los destPaths a ciegas borraría también esos.
     if (ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length === 1) {
-      Quickshell.execDetached(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
+      Detached.run(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
     }
-    ActionState._actionCancelled = true
-    actionProc.running = false
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
@@ -146,18 +138,12 @@ Item {
     ActionState.actionTotalBytes = 0
     ActionState.actionProgressDestPaths = destPaths
     var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-    actionProgressTotalProc.command = ["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"]
-    actionProgressTotalProc.running = true
+    actionProgressTotalProc.start(["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"])
   }
 
-  Process {
+  ProcessRunner {
     id: actionProc
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: actionProc.errorText = text
-    }
-    onExited: function (exitCode) {
+    onFinished: function (result) {
       ActionState.actionBusy = false
       ActionState.actionLabel = ""
       ActionState.actionProgressPct = -1
@@ -171,29 +157,24 @@ Item {
       root.refreshTick += 1
       var cb = ActionState._actionOnSuccess
       ActionState._actionOnSuccess = null
-      var wasCancelled = ActionState._actionCancelled
-      ActionState._actionCancelled = false
-      if (exitCode === 0) {
+      if (result.exitCode === 0) {
         if (cb) cb()
-      } else if (!wasCancelled) {
+      } else if (!result.cancelled) {
         // Antes esto se tragaba en silencio -- un mv/cp/chmod/zip/unzip que
         // fallara (permisos, disco lleno, archivo corrupto...) se veía
         // exactamente igual que uno que había ido bien.
-        Quickshell.execDetached(["notify-send", "Omafiles", "Action failed: " + (actionProc.errorText.trim() || "unknown error")])
+        Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
       }
     }
   }
 
   // Tamaño total del origen, UNA vez al principio de una copia/movimiento
   // -- ver startCopyProgress().
-  Process {
+  ProcessRunner {
     id: actionProgressTotalProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var n = parseInt(text.trim(), 10)
-        ActionState.actionTotalBytes = isNaN(n) ? 0 : n
-      }
+    onFinished: function (result) {
+      var n = parseInt(result.stdout.trim(), 10)
+      ActionState.actionTotalBytes = isNaN(n) ? 0 : n
     }
   }
 
@@ -201,16 +182,13 @@ Item {
   // actionBusy+actionTotalBytes>0 -- ver el Timer de abajo, que es quien
   // decide CUÁNDO relanzar esto (no tiene sentido más de un sondeo a la
   // vez si el anterior tarda más que el intervalo).
-  Process {
+  ProcessRunner {
     id: actionProgressPollProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (ActionState.actionTotalBytes <= 0) return
-        var n = parseInt(text.trim(), 10)
-        if (isNaN(n)) return
-        ActionState.actionProgressPct = Math.min(100, n / ActionState.actionTotalBytes * 100)
-      }
+    onFinished: function (result) {
+      if (ActionState.actionTotalBytes <= 0) return
+      var n = parseInt(result.stdout.trim(), 10)
+      if (isNaN(n)) return
+      ActionState.actionProgressPct = Math.min(100, n / ActionState.actionTotalBytes * 100)
     }
   }
 
@@ -223,10 +201,9 @@ Item {
     repeat: true
     running: ActionState.actionBusy && ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length > 0
     onTriggered: {
-      if (actionProgressPollProc.running) return
+      if (actionProgressPollProc.busy) return
       var quoted = ActionState.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-      actionProgressPollProc.command = ["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"]
-      actionProgressPollProc.running = true
+      actionProgressPollProc.start(["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"])
     }
   }
 }

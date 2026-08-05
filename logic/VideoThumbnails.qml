@@ -1,6 +1,6 @@
 import QtQuick
-import Quickshell.Io
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) --
@@ -32,15 +32,14 @@ Item {
     var dest = Utils.videoThumbPath(entry, basePath, root.thumbCacheDir)
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
-    thumbProc.command = ["bash", root.pluginDir + "/thumbnail-video.sh", src, dest]
-    thumbProc.running = true
+    thumbProc.start(["bash", root.pluginDir + "/thumbnail-video.sh", src, dest])
   }
 
-  Process {
+  ProcessRunner {
     id: thumbProc
     property string currentKey: ""
     property string currentDest: ""
-    onExited: function (exitCode) {
+    onFinished: function (result) {
       // Bug real: antes se marcaba "lista" pase lo que pase, aunque
       // ffmpegthumbnailer fallara (formato raro, fichero corrupto, sin
       // memoria un instante) -- requestVideoThumb() nunca reintentaba
@@ -50,7 +49,7 @@ Item {
       // si el proceso terminó bien, así una próxima visita a la carpeta
       // (nueva key por mtime, o simplemente request() de nuevo) puede
       // reintentar.
-      if (exitCode === 0) {
+      if (result.exitCode === 0) {
         var ready = Object.assign({}, VideoThumbState.videoThumbReady)
         ready[thumbProc.currentKey] = thumbProc.currentDest
         VideoThumbState.videoThumbReady = ready

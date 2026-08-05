@@ -1,7 +1,7 @@
 import QtQuick
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 
 // Comprobación de conflicto antes de ejecutar una acción que puede
 // sobrescribir algo -- decimonoveno componente extraído de Omafiles.qml,
@@ -35,8 +35,7 @@ Item {
       // text/uri-list suelto no lleva esa distinción (a diferencia del
       // x-special/gnome-copied-files propio de GTK, que no todas las apps
       // que copian rutas escriben).
-      systemClipboardReadProc.command = ["wl-paste", "-t", "text/uri-list"]
-      systemClipboardReadProc.running = true
+      systemClipboardReadProc.start(["wl-paste", "-t", "text/uri-list"])
       return
     }
     var destPaths = ClipboardState.clipboardPaths.map(function (src) {
@@ -46,8 +45,7 @@ Item {
     var checkCmd = destPaths.map(function (p) {
       return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
     }).join("; ")
-    pasteCheckProc.command = ["bash", "-c", checkCmd]
-    pasteCheckProc.running = true
+    pasteCheckProc.start(["bash", "-c", checkCmd])
   }
 
   function startDropInto(destDir, sourcePaths, isMove) {
@@ -68,8 +66,7 @@ Item {
     var checkCmd = destPaths.map(function (p) {
       return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
     }).join("; ")
-    dropCheckProc.command = ["bash", "-c", checkCmd]
-    dropCheckProc.running = true
+    dropCheckProc.start(["bash", "-c", checkCmd])
   }
 
   function compressSelected() {
@@ -93,8 +90,7 @@ Item {
     var cmd = "cd -- " + Util.shellQuote(root.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    compressCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"]
-    compressCheckProc.running = true
+    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"])
   }
 
   function commitBulkRename() {
@@ -131,8 +127,7 @@ Item {
       if (p.newName === p.oldName) return "true"
       return "test -e " + Util.shellQuote(p.newPath) + " && printf '%s\\n' " + Util.shellQuote(p.newName)
     }).join("; ")
-    bulkRenameCheckProc.command = ["bash", "-c", checkCmd]
-    bulkRenameCheckProc.running = true
+    bulkRenameCheckProc.start(["bash", "-c", checkCmd])
   }
 
   function extractHere(entry) {
@@ -163,8 +158,7 @@ Item {
     // el contenido del archivo y se comprueba si algún elemento de primer
     // nivel ya existe en la carpeta actual.
     ConflictState.pendingExtract = { entry: entry, cmd: cmd }
-    extractListProc.command = ["bash", "-c", listCmd]
-    extractListProc.running = true
+    extractListProc.start(["bash", "-c", listCmd])
   }
 
   function commitRename(newName) {
@@ -185,18 +179,14 @@ Item {
     var oldPath = root.joinPath(root.currentPath, oldName)
     var newPath = root.joinPath(root.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
-    renameCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"]
-    renameCheckProc.running = true
+    renameCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"])
   }
 
-  Process {
+  ProcessRunner {
     id: renameCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") ConflictState.renameConflictOpen = true
-        else renameOps.runPendingRename(false)
-      }
+    onFinished: function (result) {
+      if (result.stdout.trim() === "1") ConflictState.renameConflictOpen = true
+      else renameOps.runPendingRename(false)
     }
   }
 
@@ -214,18 +204,14 @@ Item {
     if (!name) return
     var path = root.joinPath(root.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
-    newFileCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"]
-    newFileCheckProc.running = true
+    newFileCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
 
-  Process {
+  ProcessRunner {
     id: newFileCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") ConflictState.newFileConflictOpen = true
-        else renameOps.runPendingNewFile(false)
-      }
+    onFinished: function (result) {
+      if (result.stdout.trim() === "1") ConflictState.newFileConflictOpen = true
+      else renameOps.runPendingNewFile(false)
     }
   }
 
@@ -236,127 +222,104 @@ Item {
     if (!name) return
     var path = root.joinPath(root.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
-    newFolderCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"]
-    newFolderCheckProc.running = true
+    newFolderCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
 
-  Process {
+  ProcessRunner {
     id: newFolderCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") ConflictState.newFolderConflictOpen = true
-        else renameOps.runPendingNewFolder(false)
-      }
+    onFinished: function (result) {
+      if (result.stdout.trim() === "1") ConflictState.newFolderConflictOpen = true
+      else renameOps.runPendingNewFolder(false)
     }
   }
 
-  Process {
+  ProcessRunner {
     id: systemClipboardReadProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        // Bug real: RFC 2483 exige CRLF entre URIs de un text/uri-list, y
-        // las apps GTK reales (Nautilus, selectores de fichero,
-        // Firefox...) lo escriben así -- sin quitar el "\r" que queda
-        // pegado al final de cada línea, decodeURIComponent lo dejaba
-        // colado en el path, pasteCheckProc.test -e nunca lo encontraba, y
-        // pegar desde fuera de Omafiles fallaba en silencio sin ningún
-        // aviso.
-        var uris = String(text || "").split("\n").map(function (l) { return l.replace(/\r$/, "") }).filter(function (l) { return l.length > 0 })
-        var paths = uris.map(function (u) {
-          return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
-        }).filter(function (p) { return p.length > 0 })
-        // Vacío = portapapeles del sistema sin uris (o sin nada) -- no hay
-        // nada que avisar, paste() ya no hacía nada tampoco antes en este
-        // caso.
-        if (paths.length === 0) return
-        ClipboardState.clipboardPaths = paths
-        ClipboardState.clipboardMode = "copy"
-        paste()
-      }
+    onFinished: function (result) {
+      // Bug real: RFC 2483 exige CRLF entre URIs de un text/uri-list, y
+      // las apps GTK reales (Nautilus, selectores de fichero,
+      // Firefox...) lo escriben así -- sin quitar el "\r" que queda
+      // pegado al final de cada línea, decodeURIComponent lo dejaba
+      // colado en el path, pasteCheckProc.test -e nunca lo encontraba, y
+      // pegar desde fuera de Omafiles fallaba en silencio sin ningún
+      // aviso.
+      var uris = String(result.stdout || "").split("\n").map(function (l) { return l.replace(/\r$/, "") }).filter(function (l) { return l.length > 0 })
+      var paths = uris.map(function (u) {
+        return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
+      }).filter(function (p) { return p.length > 0 })
+      // Vacío = portapapeles del sistema sin uris (o sin nada) -- no hay
+      // nada que avisar, paste() ya no hacía nada tampoco antes en este
+      // caso.
+      if (paths.length === 0) return
+      ClipboardState.clipboardPaths = paths
+      ClipboardState.clipboardMode = "copy"
+      paste()
     }
   }
 
-  Process {
+  ProcessRunner {
     id: extractListProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var top = {}
-        String(text || "").split("\n").forEach(function (line) {
-          var name = line.replace(/\/+$/, "")
-          if (!name) return
-          var slash = name.indexOf("/")
-          top[slash >= 0 ? name.substring(0, slash) : name] = true
-        })
-        var names = Object.keys(top)
-        if (names.length === 0) { archiveActions.runPendingExtract(); return }
-        var checkCmd = names.map(function (n) {
-          return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
-        }).join("; ")
-        extractConflictCheckProc.command = ["bash", "-c", checkCmd]
-        extractConflictCheckProc.running = true
-      }
+    onFinished: function (result) {
+      var top = {}
+      String(result.stdout || "").split("\n").forEach(function (line) {
+        var name = line.replace(/\/+$/, "")
+        if (!name) return
+        var slash = name.indexOf("/")
+        top[slash >= 0 ? name.substring(0, slash) : name] = true
+      })
+      var names = Object.keys(top)
+      if (names.length === 0) { archiveActions.runPendingExtract(); return }
+      var checkCmd = names.map(function (n) {
+        return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
+      }).join("; ")
+      extractConflictCheckProc.start(["bash", "-c", checkCmd])
     }
   }
 
-  Process {
+  ProcessRunner {
     id: extractConflictCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          archiveActions.runPendingExtract()
-        } else {
-          ConflictState.extractConflictNames = conflicts
-          ConflictState.extractConflictOpen = true
-        }
+    onFinished: function (result) {
+      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
+      if (conflicts.length === 0) {
+        archiveActions.runPendingExtract()
+      } else {
+        ConflictState.extractConflictNames = conflicts
+        ConflictState.extractConflictOpen = true
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: bulkRenameCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        var total = conflicts.length + ConflictState.bulkRenameInternalDupes
-        if (total === 0) {
-          fileOps.runPendingBulkRename()
-        } else {
-          ConflictState.bulkRenameConflictCount = total
-          ConflictState.bulkRenameConflictOpen = true
-        }
+    onFinished: function (result) {
+      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
+      var total = conflicts.length + ConflictState.bulkRenameInternalDupes
+      if (total === 0) {
+        fileOps.runPendingBulkRename()
+      } else {
+        ConflictState.bulkRenameConflictCount = total
+        ConflictState.bulkRenameConflictOpen = true
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: compressCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (text.trim() === "1") ConflictState.compressConflictOpen = true
-        else archiveActions.runPendingCompress()
-      }
+    onFinished: function (result) {
+      if (result.stdout.trim() === "1") ConflictState.compressConflictOpen = true
+      else archiveActions.runPendingCompress()
     }
   }
 
-  Process {
+  ProcessRunner {
     id: dropCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          runDrop("all")
-        } else {
-          ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          ConflictState.dropConflictOpen = true
-        }
+    onFinished: function (result) {
+      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
+      if (conflicts.length === 0) {
+        runDrop("all")
+      } else {
+        ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+        ConflictState.dropConflictOpen = true
       }
     }
   }
@@ -416,18 +379,15 @@ Item {
     ConflictState.dropTargetDir = ""
   }
 
-  Process {
+  ProcessRunner {
     id: pasteCheckProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        if (conflicts.length === 0) {
-          clipboardOps.runPaste("all")
-        } else {
-          ConflictState.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          ConflictState.pasteConflictOpen = true
-        }
+    onFinished: function (result) {
+      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
+      if (conflicts.length === 0) {
+        clipboardOps.runPaste("all")
+      } else {
+        ConflictState.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+        ConflictState.pasteConflictOpen = true
       }
     }
   }

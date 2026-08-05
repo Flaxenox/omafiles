@@ -1,6 +1,6 @@
 import QtQuick
-import Quickshell.Io
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Búsqueda (filtro en vivo + búsqueda profunda en subcarpetas), ocultos,
@@ -50,8 +50,7 @@ Item {
     if (!root.searchQuery) return
     root.deepSearchRoot = root.currentPath
     list.contentY = list.originY
-    deepSearchProc.command = [root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"]
-    deepSearchProc.running = true
+    deepSearchProc.start([root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"])
   }
 
   function goTop() {
@@ -67,22 +66,19 @@ Item {
     list.positionViewAtIndex(last, ListView.Contain)
   }
 
-  Process {
+  ProcessRunner {
     id: deepSearchProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = Utils.parseEntries(text)
-        // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
-        // que había más de 200 coincidencias reales; se descarta el que
-        // sobra y se avisa en la barra de estado en vez de dar la lista
-        // por completa en silencio.
-        root.searchTruncated = parsed.length > 200
-        if (root.searchTruncated) parsed = parsed.slice(0, 200)
-        root.entries = sortOps.sortEntries(parsed)
-        list.positionViewAtBeginning()
-        selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
-      }
+    onFinished: function (result) {
+      var parsed = Utils.parseEntries(result.stdout)
+      // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
+      // que había más de 200 coincidencias reales; se descarta el que
+      // sobra y se avisa en la barra de estado en vez de dar la lista
+      // por completa en silencio.
+      root.searchTruncated = parsed.length > 200
+      if (root.searchTruncated) parsed = parsed.slice(0, 200)
+      root.entries = sortOps.sortEntries(parsed)
+      list.positionViewAtBeginning()
+      selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
     }
   }
 }

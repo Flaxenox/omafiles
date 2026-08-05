@@ -1,8 +1,7 @@
 import QtQuick
-import Quickshell
-import Quickshell.Io
 import qs.Commons
 import "../state"
+import "../services"
 
 // Persistencia en disco (marcadores, recientes, sesión de pestañas,
 // historial de renombrado en bloque) -- decimosexto componente extraído
@@ -21,18 +20,18 @@ Item {
   // Escritura fire-and-forget de un JSON a disco -- mkdir -p por si la
   // carpeta ~/.local/state/omafiles/ aún no existe. Ninguna de las 4
   // llamadas de más abajo necesita saber cuándo termina ni capturar
-  // stdout/stderr, así que Quickshell.execDetached() basta -- antes cada
-  // una tenía su propio Process vacío (`Process { id: saveXProc }`, sin
-  // stdout/stderr, solo para asignarle `.command` en caliente), 4 copias
-  // del mismo patrón de 4 líneas.
+  // stdout/stderr, así que Detached.run() basta -- antes cada una tenía
+  // su propio Process vacío (`Process { id: saveXProc }`, sin stdout/
+  // stderr, solo para asignarle `.command` en caliente), 4 copias del
+  // mismo patrón de 4 líneas.
   function _saveJson(path, data) {
     var dir = path.substring(0, path.lastIndexOf("/"))
     var json = JSON.stringify(data)
-    Quickshell.execDetached(["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(path)])
+    Detached.run(["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(path)])
   }
 
   function loadBookmarks() {
-    loadBookmarksProc.running = true
+    loadBookmarksProc.start(["cat", root.bookmarksFile])
   }
 
   function saveBookmarks() {
@@ -40,7 +39,7 @@ Item {
   }
 
   function loadRecent() {
-    loadRecentProc.running = true
+    loadRecentProc.start(["cat", root.recentFile])
   }
 
   function saveRecent() {
@@ -53,7 +52,7 @@ Item {
   // el propio handler de loadSessionProc en cuanto sabe la ruta real, no
   // aquí (evita listar homeDir de más si sí había sesión).
   function loadSession() {
-    loadSessionProc.running = true
+    loadSessionProc.start(["cat", root.sessionFile])
   }
 
   // Solo guarda la ruta de cada pestaña -- no historial/preview/scroll,
@@ -67,81 +66,65 @@ Item {
   }
 
   function loadBulkRenameHistory() {
-    loadBulkRenameHistoryProc.running = true
+    loadBulkRenameHistoryProc.start(["cat", root.bulkRenameHistoryFile])
   }
 
   function saveBulkRenameHistory() {
     _saveJson(root.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
   }
 
-  Process {
+  ProcessRunner {
     id: loadBookmarksProc
-    command: ["cat", root.bookmarksFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        BookmarksState.bookmarksLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          BookmarksState.bookmarks = parsed
-        } else {
-          BookmarksState.bookmarks = root.defaultBookmarks
-          saveBookmarks()
-        }
+    onFinished: function (result) {
+      BookmarksState.bookmarksLoaded = true
+      var parsed = null
+      try { parsed = JSON.parse(result.stdout) } catch (e) { parsed = null }
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        BookmarksState.bookmarks = parsed
+      } else {
+        BookmarksState.bookmarks = root.defaultBookmarks
+        saveBookmarks()
       }
     }
   }
 
-  Process {
+  ProcessRunner {
     id: loadRecentProc
-    command: ["cat", root.recentFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        BookmarksState.recentLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        BookmarksState.recentFiles = Array.isArray(parsed) ? parsed : []
-      }
+    onFinished: function (result) {
+      BookmarksState.recentLoaded = true
+      var parsed = null
+      try { parsed = JSON.parse(result.stdout) } catch (e) { parsed = null }
+      BookmarksState.recentFiles = Array.isArray(parsed) ? parsed : []
     }
   }
 
-  Process {
+  ProcessRunner {
     id: loadSessionProc
-    command: ["cat", root.sessionFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        var savedTabs = (parsed && Array.isArray(parsed.tabs))
-          ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
-          : []
-        if (savedTabs.length > 0) {
-          TabsState.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
-          TabsState.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, TabsState.tabs.length - 1))
-          root.currentPath = TabsState.tabs[TabsState.activeTabIndex].path
-          TabsState.navHistory = [root.currentPath]
-          TabsState.navHistoryIndex = 0
-        }
-        root.refresh()
-        if (!ArchiveState.inArchive) root.startDirWatch(root.currentPath)
+    onFinished: function (result) {
+      var parsed = null
+      try { parsed = JSON.parse(result.stdout) } catch (e) { parsed = null }
+      var savedTabs = (parsed && Array.isArray(parsed.tabs))
+        ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
+        : []
+      if (savedTabs.length > 0) {
+        TabsState.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
+        TabsState.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, TabsState.tabs.length - 1))
+        root.currentPath = TabsState.tabs[TabsState.activeTabIndex].path
+        TabsState.navHistory = [root.currentPath]
+        TabsState.navHistoryIndex = 0
       }
+      root.refresh()
+      if (!ArchiveState.inArchive) root.startDirWatch(root.currentPath)
     }
   }
 
-  Process {
+  ProcessRunner {
     id: loadBulkRenameHistoryProc
-    command: ["cat", root.bulkRenameHistoryFile]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        BookmarksState.bulkRenameHistoryLoaded = true
-        var parsed = null
-        try { parsed = JSON.parse(text) } catch (e) { parsed = null }
-        BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
-      }
+    onFinished: function (result) {
+      BookmarksState.bulkRenameHistoryLoaded = true
+      var parsed = null
+      try { parsed = JSON.parse(result.stdout) } catch (e) { parsed = null }
+      BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
     }
   }
 }

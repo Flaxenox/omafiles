@@ -1,9 +1,9 @@
 import QtQuick
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "../shared"
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Delegado de los paneles "de fondo" (todas las pestañas salvo la activa),
@@ -77,11 +77,10 @@ Item {
     // trashDir solo ve la de casa y con eso vacía se veía como "papelera
     // vacía" hasta que este panel pasaba a ser el activo.
     if (bgPanel.modelData.path === hostRoot.trashDir) {
-      bgListProc.command = [hostRoot.pluginDir + "/list-trash.sh", hostRoot.showHidden ? "1" : "0"]
+      bgListProc.start([hostRoot.pluginDir + "/list-trash.sh", hostRoot.showHidden ? "1" : "0"])
     } else {
-      bgListProc.command = [hostRoot.pluginDir + "/list-dir.sh", bgPanel.modelData.path, hostRoot.showHidden ? "1" : "0"]
+      bgListProc.start([hostRoot.pluginDir + "/list-dir.sh", bgPanel.modelData.path, hostRoot.showHidden ? "1" : "0"])
     }
-    bgListProc.running = true
   }
 
   onVisibleChanged: if (visible) bgPanel.refreshMe()
@@ -116,47 +115,41 @@ Item {
     bgPanel.loaded = true
   }
 
-  Process {
+  ProcessRunner {
     id: bgListProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = hostSortOps.sortEntries(Utils.parseEntries(text))
-        hostRoot.tabEntriesCache[bgPanel.modelData.path] = parsed
-        if (bgPanel.modelData.path === hostRoot.trashDir) {
-          if (Object.keys(TrashState.trashInfo).length > 0) {
-            // Ya hay trashInfo cargada -- de este mismo panel en una
-            // visita anterior, del panel activo, o de OTRO panel de
-            // fondo (TrashState.trashInfo es compartida entre todos, ver
-            // bgTrashInfoProc más abajo: trash-info.sh siempre devuelve
-            // TODA la papelera, no depende de qué panel pregunte).
-            // Pintar ya con eso; el trashInfoProc que sigue solo la
-            // refresca por detrás sin bloquear el primer pintado.
-            bgPanel._applyEntries(parsed)
-          } else {
-            // Primera vez que se ve la papelera en toda la sesión -- sin
-            // nada previo que enseñar, esperar a que trash-info.sh
-            // termine para pintar ya con el texto final ("Deleted X ago
-            // · from ...") de una sola vez. Si se pintara ya con solo el
-            // tamaño y esa parte llegara un instante después, el texto
-            // más largo haría crecer bgFileRow y todas las filas de
-            // debajo saltarían de sitio (parpadeo real, reportado por
-            // josema).
-            bgPanel._waitingForTrashInfo = true
-            bgPanel._pendingEntries = parsed
-          }
-          bgTrashInfoProc.command = [hostRoot.pluginDir + "/trash-info.sh"]
-          bgTrashInfoProc.running = true
-        } else {
+    onFinished: function (result) {
+      if (result.exitCode === 2) bgPanel.pathError = "Permission denied"
+      else if (result.exitCode === 3) bgPanel.pathError = "This folder no longer exists"
+      else if (result.exitCode === 4) bgPanel.pathError = "Not a folder"
+      else if (result.exitCode !== 0) bgPanel.pathError = "Couldn't open this folder"
+      var parsed = hostSortOps.sortEntries(Utils.parseEntries(result.stdout))
+      hostRoot.tabEntriesCache[bgPanel.modelData.path] = parsed
+      if (bgPanel.modelData.path === hostRoot.trashDir) {
+        if (Object.keys(TrashState.trashInfo).length > 0) {
+          // Ya hay trashInfo cargada -- de este mismo panel en una
+          // visita anterior, del panel activo, o de OTRO panel de
+          // fondo (TrashState.trashInfo es compartida entre todos, ver
+          // bgTrashInfoProc más abajo: trash-info.sh siempre devuelve
+          // TODA la papelera, no depende de qué panel pregunte).
+          // Pintar ya con eso; el trashInfoProc que sigue solo la
+          // refresca por detrás sin bloquear el primer pintado.
           bgPanel._applyEntries(parsed)
+        } else {
+          // Primera vez que se ve la papelera en toda la sesión -- sin
+          // nada previo que enseñar, esperar a que trash-info.sh
+          // termine para pintar ya con el texto final ("Deleted X ago
+          // · from ...") de una sola vez. Si se pintara ya con solo el
+          // tamaño y esa parte llegara un instante después, el texto
+          // más largo haría crecer bgFileRow y todas las filas de
+          // debajo saltarían de sitio (parpadeo real, reportado por
+          // josema).
+          bgPanel._waitingForTrashInfo = true
+          bgPanel._pendingEntries = parsed
         }
+        bgTrashInfoProc.start([hostRoot.pluginDir + "/trash-info.sh"])
+      } else {
+        bgPanel._applyEntries(parsed)
       }
-    }
-    onExited: function (exitCode, exitStatus) {
-      if (exitCode === 2) bgPanel.pathError = "Permission denied"
-      else if (exitCode === 3) bgPanel.pathError = "This folder no longer exists"
-      else if (exitCode === 4) bgPanel.pathError = "Not a folder"
-      else if (exitCode !== 0) bgPanel.pathError = "Couldn't open this folder"
     }
   }
 
@@ -175,22 +168,19 @@ Item {
   // transición (reportado por josema), no el primer pintado en sí. Con
   // una sola copia compartida, quien llegue primero (activo o cualquier
   // panel de fondo) la deja lista para todos los demás.
-  Process {
+  ProcessRunner {
     id: bgTrashInfoProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var fields = String(text || "").split("\u0000")
-        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-        var info = {}
-        for (var i = 0; i + 3 < fields.length; i += 4) {
-          info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
-        }
-        TrashState.trashInfo = info
-        if (bgPanel._waitingForTrashInfo) {
-          bgPanel._waitingForTrashInfo = false
-          bgPanel._applyEntries(bgPanel._pendingEntries)
-        }
+    onFinished: function (result) {
+      var fields = String(result.stdout || "").split("\u0000")
+      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
+      var info = {}
+      for (var i = 0; i + 3 < fields.length; i += 4) {
+        info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
+      }
+      TrashState.trashInfo = info
+      if (bgPanel._waitingForTrashInfo) {
+        bgPanel._waitingForTrashInfo = false
+        bgPanel._applyEntries(bgPanel._pendingEntries)
       }
     }
   }
