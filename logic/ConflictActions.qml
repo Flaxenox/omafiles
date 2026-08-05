@@ -18,6 +18,11 @@ import qs.Commons
 // solo habría cambiado de sitio ese único call site sin unir nada más.
 Item {
   property Item root: null
+  property Item archiveActions: null
+  property Item fileOps: null
+  property Item renameOps: null
+  property Item clipboardOps: null
+  property Item dragDropOps: null
 
   function paste() {
     if (root.inArchive) return
@@ -188,7 +193,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         if (text.trim() === "1") root.renameConflictOpen = true
-        else root.runPendingRename(false)
+        else renameOps.runPendingRename(false)
       }
     }
   }
@@ -233,7 +238,7 @@ Item {
           top[slash >= 0 ? name.substring(0, slash) : name] = true
         })
         var names = Object.keys(top)
-        if (names.length === 0) { root.runPendingExtract(); return }
+        if (names.length === 0) { archiveActions.runPendingExtract(); return }
         var checkCmd = names.map(function (n) {
           return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
         }).join("; ")
@@ -250,7 +255,7 @@ Item {
       onStreamFinished: {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
         if (conflicts.length === 0) {
-          root.runPendingExtract()
+          archiveActions.runPendingExtract()
         } else {
           root.extractConflictNames = conflicts
           root.extractConflictOpen = true
@@ -267,7 +272,7 @@ Item {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
         var total = conflicts.length + root.bulkRenameInternalDupes
         if (total === 0) {
-          root.runPendingBulkRename()
+          fileOps.runPendingBulkRename()
         } else {
           root.bulkRenameConflictCount = total
           root.bulkRenameConflictOpen = true
@@ -282,7 +287,7 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         if (text.trim() === "1") root.compressConflictOpen = true
-        else root.runPendingCompress()
+        else archiveActions.runPendingCompress()
       }
     }
   }
@@ -294,7 +299,7 @@ Item {
       onStreamFinished: {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
         if (conflicts.length === 0) {
-          root.runDrop("all")
+          dragDropOps.runDrop("all")
         } else {
           root.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
           root.dropConflictOpen = true
@@ -310,7 +315,7 @@ Item {
       onStreamFinished: {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
         if (conflicts.length === 0) {
-          root.runPaste("all")
+          clipboardOps.runPaste("all")
         } else {
           root.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
           root.pasteConflictOpen = true

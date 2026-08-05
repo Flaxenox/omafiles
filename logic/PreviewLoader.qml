@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import qs.Commons
-import "Utils.js" as Utils
+import "../Utils.js" as Utils
 
 // Carga de la vista previa (Espacio) -- decimoséptimo componente extraído
 // de Omafiles.qml. Junta loadPreview()/togglePreview() con los cuatro
@@ -12,6 +12,8 @@ import "Utils.js" as Utils
 // es quien los rellena.
 Item {
   property Item root: null
+  property Item videoThumbs: null
+  property Item fileMeta: null
 
   function togglePreview() {
     if (root.previewOpen) {
@@ -52,7 +54,7 @@ Item {
         highlightPreviewProc.running = true
       }
     }
-    if (root.isVideo(entry)) root.requestVideoThumb(entry)
+    if (root.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
     if (root.isPdf(entry)) {
       // Cacheado por hash(ruta+mtime), igual que las miniaturas de vídeo --
       // no vuelve a renderizar la primera página si ya existe de una vista
@@ -112,7 +114,7 @@ Item {
     id: audioInfoProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: if (root._previewAudioOwner === root.previewRequestId) root.previewAudioInfo = root.parseAudioInfo(text)
+      onStreamFinished: if (root._previewAudioOwner === root.previewRequestId) root.previewAudioInfo = fileMeta.parseAudioInfo(text)
     }
   }
 }

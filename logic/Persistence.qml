@@ -14,6 +14,7 @@ import qs.Commons
 // buscarlo con un id propio.
 Item {
   property Item root: null
+  property Item tabOps: null
 
   function loadBookmarks() {
     loadBookmarksProc.running = true
@@ -51,7 +52,7 @@ Item {
   // de Quickshell gracias a keepLoaded) y no vale la pena la complejidad de
   // restaurarlo tras un reinicio real del shell.
   function saveSession() {
-    root.saveActiveTab()
+    tabOps.saveActiveTab()
     var snapshot = root.tabs.map(function (t) { return { path: t.path } })
     var json = JSON.stringify({ tabs: snapshot, activeTabIndex: root.activeTabIndex })
     var dir = root.sessionFile.substring(0, root.sessionFile.lastIndexOf("/"))

@@ -1,7 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import qs.Commons
-import "Utils.js" as Utils
+import "../Utils.js" as Utils
 
 // Carga de metadatos de fichero (permisos y propiedades) -- decimoctavo
 // componente extraído de Omafiles.qml. Junta startChmod()/showProperties()/

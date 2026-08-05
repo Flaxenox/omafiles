@@ -3,6 +3,10 @@ import Quickshell.Io
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "dialogs"
+import "panels"
+import "logic"
+import "shared"
 import "Utils.js" as Utils
 
 // Omafiles -- explorador de archivos para Omarchy.
@@ -56,6 +60,20 @@ Item {
   // solo fichero es simplemente un array de 1.
   property var pendingSelectNames: []
 
+  // Posición de scroll pendiente de restaurar EN CUANTO termine el
+  // próximo listProc -- ver el comentario largo junto a
+  // positionViewAtBeginning() en listProc, quien lo consume. -1 = nada
+  // pendiente (sentinel, ya que 0 es una posición de scroll válida en sí
+  // misma).
+  property real _pendingScrollY: -1
+
+  // Ver listProc.onStreamFinished -- cuando se entra en la papelera sin
+  // trashInfo previa cargada (ni siquiera compartida desde un panel de
+  // fondo), las entries recién listadas se guardan aquí hasta que
+  // trashInfoProc termine, en vez de pintarlas ya con el texto a medias.
+  property bool _waitingForTrashInfo: false
+  property var _pendingListEntries: []
+
   // ---------- Paneles ----------
   // Cada pestaña abierta se ve a la vez como un panel propio, lado a lado
   // (sustituye a la vista dividida de antes, que era un segundo panel fijo
@@ -64,62 +82,6 @@ Item {
   // marquee, menú contextual...); el resto son paneles sencillos (solo
   // navegar con doble clic y arrastrar), cada uno con su propio listado.
   property int refreshTick: 0
-
-  // Cierra la pestaña/panel en `index`, sea o no la activa (la × de cada
-  // panel puede estar en uno que no es el que tiene el foco ahora mismo).
-  function closeTabAt(index) {
-    if (root.tabs.length <= 1) { root.requestClose(); return }
-    if (index === root.activeTabIndex) { root.closeTab(); return }
-    var next = root.tabs.slice()
-    next.splice(index, 1)
-    root.tabs = next
-    if (root.activeTabIndex > index) root.activeTabIndex -= 1
-  }
-
-  // Navegar DENTRO de un panel que no es el activo -- no toca
-  // root.currentPath/root.entries (esos son solo del panel activo), solo el
-  // propio objeto de esa pestaña. Mantiene su historial igual que
-  // navigateTo mantiene el de la pestaña activa.
-  function navigateTabTo(index, path) {
-    if (!path || index < 0 || index >= root.tabs.length) return
-    path = path.replace(/\/+$/, "") || "/"
-    if (index === root.activeTabIndex) { root.navigateTo(path); return }
-    var next = root.tabs.slice()
-    var tab = next[index]
-    if (path === tab.path) return
-    var h = (tab.history || [tab.path]).slice(0, (tab.historyIndex !== undefined ? tab.historyIndex : 0) + 1)
-    h.push(path)
-    next[index] = { path: path, history: h, historyIndex: h.length - 1 }
-    root.tabs = next
-  }
-
-  // Atrás/adelante para un panel que no es el activo -- mismo concepto que
-  // navBack/navForward, pero leyendo/escribiendo el historial guardado en
-  // ese objeto de pestaña en concreto en vez de root.navHistory (que es
-  // solo el de la activa).
-  function navTabBack(index) {
-    if (index === root.activeTabIndex) { root.navBack(); return }
-    if (index < 0 || index >= root.tabs.length) return
-    var tab = root.tabs[index]
-    var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
-    if (hIdx <= 0) return
-    var hist = tab.history || [tab.path]
-    var next = root.tabs.slice()
-    next[index] = { path: hist[hIdx - 1], history: hist, historyIndex: hIdx - 1 }
-    root.tabs = next
-  }
-
-  function navTabForward(index) {
-    if (index === root.activeTabIndex) { root.navForward(); return }
-    if (index < 0 || index >= root.tabs.length) return
-    var tab = root.tabs[index]
-    var hist = tab.history || [tab.path]
-    var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
-    if (hIdx >= hist.length - 1) return
-    var next = root.tabs.slice()
-    next[index] = { path: hist[hIdx + 1], history: hist, historyIndex: hIdx + 1 }
-    root.tabs = next
-  }
 
   // ---------- Deshacer/Rehacer (Ctrl+Z / Ctrl+Shift+Z) ----------
   // Pila simple de acciones reversibles: renombrar, nueva carpeta/fichero,
@@ -136,47 +98,15 @@ Item {
   property var redoStack: []
 
   function pushUndo(label, undoFn, redoFn) {
-    root.undoStack = root.undoStack.concat([{ label: label, undo: undoFn, redo: redoFn }]).slice(-20)
-    root.redoStack = []
+    actionEngine.pushUndo(label, undoFn, redoFn)
   }
 
   function undoLast() {
-    if (root.undoStack.length === 0) return
-    var entry = root.undoStack[root.undoStack.length - 1]
-    root.undoStack = root.undoStack.slice(0, -1)
-    // entry.undo() devuelve lo que runAction() devuelve: false si se
-    // descartó por haber otra acción en curso. Antes esto decía "Undone"
-    // pase lo que pase, incluso cuando el undo ni siquiera llegó a
-    // lanzarse, Y la entrada se perdía de la pila igual. Ahora, si no
-    // llegó a lanzarse, se devuelve a la pila para poder reintentarlo.
-    var started = entry.undo()
-    if (started === false) {
-      root.undoStack = root.undoStack.concat([entry])
-      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't undo \"" + entry.label + "\": still busy with another action"])
-      return
-    }
-    // Solo pasa a la pila de redo si de verdad lleva forma de rehacerse
-    // -- no todas las entradas del undoStack tienen redoFn (ver el
-    // comentario junto a pushUndo).
-    if (entry.redo) root.redoStack = root.redoStack.concat([entry]).slice(-20)
-    Quickshell.execDetached(["notify-send", "Omafiles", "Undoing: " + entry.label])
+    actionEngine.undoLast()
   }
 
   function redoLast() {
-    if (root.redoStack.length === 0) return
-    var entry = root.redoStack[root.redoStack.length - 1]
-    root.redoStack = root.redoStack.slice(0, -1)
-    var started = entry.redo()
-    if (started === false) {
-      root.redoStack = root.redoStack.concat([entry])
-      Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't redo \"" + entry.label + "\": still busy with another action"])
-      return
-    }
-    // De vuelta a undoStack SIN pasar por pushUndo() -- eso vaciaría
-    // redoStack, que es justo lo que no queremos en pleno ciclo
-    // deshacer/rehacer/deshacer.
-    root.undoStack = root.undoStack.concat([entry]).slice(-20)
-    Quickshell.execDetached(["notify-send", "Omafiles", "Redoing: " + entry.label])
+    actionEngine.redoLast()
   }
 
   // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
@@ -455,6 +385,7 @@ Item {
   readonly property var archiveExt: ["zip", "tar", "gz", "xz", "rar", "7z", "bz2", "zst"]
   readonly property var codeExt: ["js", "ts", "py", "lua", "sh", "c", "cpp", "h", "rs", "go", "html", "css", "json", "qml", "md", "yml", "yaml", "toml"]
 
+  // ---------- Tipo de fichero (extensión/icono) ----------
   function extOf(name) {
     var idx = name.lastIndexOf(".")
     return idx > 0 ? name.substring(idx + 1).toLowerCase() : ""
@@ -498,31 +429,7 @@ Item {
   // puras). `basePath`/cacheDir ya no son opcionales -- cada llamada de
   // aquí en adelante los pasa explícitos (ver comentario en Utils.js).
 
-  function requestVideoThumb(entry, basePath) {
-    basePath = basePath || root.currentPath
-    var key = Utils.thumbKeyFor(entry, basePath)
-    if (root.videoThumbReady[key]) return
-    if (root.thumbQueue.some(function (q) { return Utils.thumbKeyFor(q.entry, q.basePath) === key })) return
-    root.thumbQueue = root.thumbQueue.concat([{ entry: entry, basePath: basePath }])
-    root.processThumbQueue()
-  }
-
-  function processThumbQueue() {
-    if (root.thumbBusy || root.thumbQueue.length === 0) return
-    root.thumbBusy = true
-    var next = root.thumbQueue.slice()
-    var queued = next.shift()
-    root.thumbQueue = next
-    var entry = queued.entry
-    var basePath = queued.basePath
-    var src = root.joinPath(basePath, entry.name)
-    var dest = Utils.videoThumbPath(entry, basePath, root.thumbCacheDir)
-    thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
-    thumbProc.currentDest = dest
-    thumbProc.command = ["bash", root.pluginDir + "/thumbnail-video.sh", src, dest]
-    thumbProc.running = true
-  }
-
+  // ---------- Selección (individual + lazo) ----------
   function isSelected(index) {
     return root.selectedIndices.indexOf(index) >= 0
   }
@@ -637,12 +544,13 @@ Item {
       .map(function (i) { return root.visibleEntries[i] })
   }
 
+  // ---------- Refresco / vigilancia de directorio ----------
   function refresh() {
     // Centralizado aquí para que TODO lo que ya llama a refresh() (toggle
     // de ocultos, el "Refresh" de la paleta, el onExited de las acciones
     // de fichero...) recargue lo correcto sin tener que acordarse de
     // comprobar inArchive en cada sitio.
-    if (root.inArchive) { root.refreshArchiveListing(); return }
+    if (root.inArchive) { archiveActions.refreshArchiveListing(); return }
     root.currentPathError = ""
     // La Papelera agrega la de casa MÁS la de cualquier otro disco
     // montado que tenga la suya propia (spec de XDG Trash) -- ver
@@ -654,6 +562,85 @@ Item {
       listProc.command = [root.pluginDir + "/list-dir.sh", root.currentPath, root.showHidden ? "1" : "0"]
     }
     listProc.running = true
+  }
+
+  // Reasigna root.entries SOLO si el contenido de verdad cambió --
+  // QML/ListView no compara el contenido de un array modelo, solo la
+  // referencia, así que reasignar aunque los datos sean idénticos
+  // dispara un relayout completo (recrea TODAS las filas desde cero).
+  // Con pocas filas no se nota, pero con la papelera (agrega varios
+  // discos, puede tener bastantes más filas, con subtítulos que a veces
+  // envuelven a dos líneas) ese relayout tarda lo bastante como para
+  // verse -- root.entries ya se había puesto al instante desde
+  // tabEntriesCache en _goToPath, y este listProc "trae una copia fresca
+  // por detrás" (ver el comentario ahí) que con la papelera llega
+  // notablemente más tarde que con una carpeta normal, así que el doble
+  // pintado (caché -> fresco) deja de fundirse en un solo frame y se ve
+  // como un salto real (reportado por josema; mis tres intentos
+  // anteriores -- trashInfo compartida, carrera de scroll, esperar a
+  // trashInfo también en el panel activo -- atacaban mecanismos reales
+  // pero no ESTE, que es el que de verdad causaba el salto).
+  function _applyEntries(parsed) {
+    var changed = JSON.stringify(parsed) !== JSON.stringify(root.entries)
+    if (changed) root.entries = parsed
+    root._finishListLoad(changed)
+  }
+
+  // Ver listProc.onStreamFinished -- lo que queda por hacer una vez
+  // root.entries ya está puesto (con la papelera, puede ser justo
+  // después de trashInfoProc en vez de inmediatamente). resetView: false
+  // cuando _applyEntries() decidió que el contenido no había cambiado de
+  // verdad -- en ese caso list.contentY ya estaba bien (nadie lo tocó) y
+  // no hace falta el reset+restauración de scroll de abajo.
+  function _finishListLoad(resetView) {
+    if (resetView) {
+      // El array de arriba es un objeto nuevo, no una mutación del
+      // anterior -- QML/Qt no siempre reancla bien el origen interno de
+      // ListView (originY) al reemplazar el modelo entero así, sobre todo
+      // si la lista anterior era más corta. `list.contentY = 0` (puesto
+      // ANTES de lanzar este proceso, en toggleHidden/navigateTo/etc) no
+      // basta porque corre contra el modelo VIEJO -- esto es lo que
+      // realmente deja el hueco arriba del todo. positionViewAtBeginning()
+      // es la forma correcta de QML de resetear origen+contentY juntos,
+      // justo cuando el modelo nuevo ya está puesto.
+      list.positionViewAtBeginning()
+      // TabOps._restoreTabScroll() pone list.contentY a la posición
+      // guardada justo DESPUÉS de pedir la navegación -- pero esa misma
+      // navegación es la que dispara este listProc asíncrono, que siempre
+      // acaba resetéandolo con el positionViewAtBeginning() de arriba. Si
+      // este Process tarda más que esa restauración síncrona (la papelera,
+      // que agrega varios discos, tarda notablemente más que una carpeta
+      // normal), gana la carrera al revés. root._pendingScrollY es la
+      // forma de que quien pidió la restauración sobreviva a este reset,
+      // aplicándose EN el mismo tick que positionViewAtBeginning en vez de
+      // antes.
+      if (root._pendingScrollY >= 0) {
+        list.contentY = root._pendingScrollY
+      }
+    }
+    root._pendingScrollY = -1
+    root.loaded = true
+    var selectNames = root.pendingSelectNames
+    root.pendingSelectNames = []
+    var foundIndices = []
+    if (selectNames.length > 0) {
+      for (var i = 0; i < root.visibleEntries.length; i++) {
+        if (selectNames.indexOf(root.visibleEntries[i].name) >= 0) foundIndices.push(i)
+      }
+    }
+    if (foundIndices.length > 0) {
+      // selectOnly() ya cubría el caso de 1 (el de siempre: marcador de
+      // fichero, reciente, la mayoría de ShowItems reales). Varios a la
+      // vez (ShowItems con multi-selección real en el llamador, ver
+      // dbus-filemanager1.py) no tenían forma de aplicarse antes -- se
+      // resaltaban todos, con el primero como "principal".
+      root.selectedIndex = foundIndices[0]
+      root.anchorIndex = foundIndices[0]
+      root.selectedIndices = foundIndices
+      if (root.previewOpen && foundIndices.length > 1) root.previewOpen = false
+    } else if (root.selectedIndex >= root.visibleEntries.length) {
+      root.selectedIndex = root.visibleEntries.length - 1
+    }
   }
 
   // Refresco en vivo del panel ACTIVO -- antes nada se refrescaba solo:
@@ -675,14 +662,8 @@ Item {
     dirWatchProc.running = false
   }
 
-  function refreshMounts() {
-    mountsProc.running = true
-  }
 
-  function refreshNetworkMounts() {
-    networkMountsProc.running = true
-  }
-
+  // ---------- Recientes / historial ----------
   // Llamado al abrir un fichero de verdad (enter()/launchWith(), NO al
   // navegar por carpetas -- para eso ya están el historial y las
   // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
@@ -714,6 +695,7 @@ Item {
     persistence.saveBulkRenameHistory()
   }
 
+  // ---------- Marcadores / iconos de unidades ----------
   function removeBookmark(path) {
     root.bookmarks = root.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
@@ -770,92 +752,13 @@ Item {
   function networkMountActions(mount) {
     return [
       { label: "Open", action: function () { root.navigateTo(mount.path) } },
-      { label: "Open in new tab", action: function () { root.openInNewTab(mount.path) } },
-      { label: "Disconnect", destructive: true, action: function () { root.disconnectNetworkMount(mount) } }
+      { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } },
+      { label: "Disconnect", destructive: true, action: function () { mountOps.disconnectNetworkMount(mount) } }
     ]
   }
 
-  function disconnectNetworkMount(mount) {
-    if (networkUnmountProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still disconnecting a network location — try again in a moment"])
-      return
-    }
-    networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
-    networkUnmountProc.tabIndex = root.activeTabIndex
-    networkUnmountProc.command = ["gio", "mount", "-u", mount.path]
-    networkUnmountProc.running = true
-  }
 
-  function startConnectToServer() {
-    root.connectServerUri = ""
-    root.connectServerError = ""
-    root.connectServerOpen = true
-  }
-
-  function cancelConnectToServer() {
-    root.connectServerOpen = false
-  }
-
-  // "setsid" + matar el grupo entero al cancelar, mismo motivo que
-  // runAction()/cancelAction(): gio mount puede quedarse esperando
-  // credenciales que nunca van a llegar (esta app no tiene un diálogo de
-  // usuario/contraseña -- ver comentario largo en connectServerOpen más
-  // abajo en el fichero, junto al diálogo), y sin esto Cancelar no
-  // conseguiría matar el proceso de verdad.
-  function commitConnectToServer() {
-    var uri = root.connectServerUri.trim()
-    if (!uri) return
-    root.connectServerError = ""
-    root.networkConnecting = true
-    networkMountProc.errorText = ""
-    networkMountProc.command = ["setsid", "gio", "mount", "--", uri]
-    networkMountProc.running = true
-  }
-
-  function cancelNetworkConnect() {
-    var pid = networkMountProc.processId
-    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
-    networkMountProc.running = false
-    root.networkConnecting = false
-  }
-
-  function ejectMount(mount) {
-    // Sin esta guardia, hacer doble clic en "Expulsar" reasignaba
-    // ejectProc.command a mitad de la primera llamada, reiniciándola --
-    // mismo problema que runAction() ya evitaba para las acciones de
-    // fichero, pero este proceso no lo tenía.
-    // Aviso explícito en vez de un return mudo -- sin esto, el segundo
-    // clic no hacía nada visible y parecía que la app había ignorado la
-    // pulsación, igual que le pasaba antes a runAction() (ver ahí).
-    if (ejectProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still ejecting a drive — try again in a moment"])
-      return
-    }
-    var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
-    ejectProc.command = ["udisksctl", "unmount", "-b", mount.device]
-    ejectProc.mountPath = mount.path
-    ejectProc.wasInside = wasInside
-    ejectProc.tabIndex = root.activeTabIndex
-    ejectProc.device = mount.device
-    ejectProc.running = true
-  }
-
-  // udisksctl imprime "Mounted /dev/sdX at /run/media/user/Label." -- se
-  // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
-  // es la unidad recién montada.
-  function mountDevice(mount) {
-    if (mountProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting a drive — try again in a moment"])
-      return
-    }
-    // Capturado aquí (no releído en onExited) -- si el ratón pasa a otro
-    // panel mientras el montaje tarda, el resultado debe navegar el
-    // panel que lo pidió, no el que resulte estar activo cuando termine.
-    mountProc.tabIndex = root.activeTabIndex
-    mountProc.command = ["udisksctl", "mount", "-b", mount.device]
-    mountProc.running = true
-  }
-
+  // ---------- Papelera ----------
   function emptyTrash() {
     // "gio trash --empty" solo vacía la papelera de casa -- ahora que
     // la vista agrega la de cualquier disco montado (ver
@@ -869,6 +772,7 @@ Item {
 
   // naturalCompare: movida a Utils.js (función pura).
 
+  // ---------- Orden de la lista ----------
   function compareEntries(a, b) {
     var result = 0
     if (root.sortKey === "size") {
@@ -914,6 +818,7 @@ Item {
     root.entries = root.sortEntries(root.entries)
   }
 
+  // ---------- Navegación / historial / pestañas ----------
   function joinPath(base, name) {
     return base === "/" ? "/" + name : base + "/" + name
   }
@@ -980,114 +885,13 @@ Item {
     root._goToPath(root.navHistory[root.navHistoryIndex])
   }
 
-  function saveActiveTab() {
-    var next = root.tabs.slice()
-    next[root.activeTabIndex] = {
-      path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
-      previewOpen: root.previewOpen, previewEntry: root.previewEntry, scrollY: list.contentY,
-      inArchive: root.inArchive, archivePath: root.archivePath, archiveSubPath: root.archiveSubPath
-    }
-    root.tabs = next
-  }
-
-  // Restaura el historial atrás/adelante propio de `tab` como el "en curso"
-  // -- usado por switchToTab/closeTab al aterrizar en una pestaña que no es
-  // la que se acaba de crear (esa ya trae su historial propio desde cero).
-  function _restoreTabHistory(tab) {
-    root.navHistory = tab.history || [tab.path]
-    root.navHistoryIndex = tab.historyIndex !== undefined ? tab.historyIndex : 0
-  }
-
-  // La preview (foto/vídeo/texto) es del panel activo, y _goToPath la
-  // cierra siempre (selectOnly(-1) al navegar) -- sin esto, cambiar de
-  // pestaña se veía como si la preview se perdiera aunque la pestaña
-  // original la siguiera teniendo abierta. Se llama DESPUÉS de _goToPath,
-  // que ya dejó currentPath listo para que loadPreview lea el fichero
-  // correcto si es de texto.
-  // Bug real: navegar DENTRO de un comprimido (inArchive/archivePath/
-  // archiveSubPath) no era parte del estado guardado por pestaña -- al
-  // cambiar de pestaña con el ratón y volver, _goToPath() ya había
-  // salido del modo archivo sin que nada lo restaurase, así que la
-  // pestaña aterrizaba en la carpeta real que contiene el .zip en vez de
-  // en la ruta de dentro donde estaba navegando. Llamado DESPUÉS de
-  // _goToPath (que es quien limpia inArchive), mismo patrón que
-  // _restoreTabPreview/_restoreTabScroll.
-  function _restoreTabArchive(tab) {
-    if (tab.inArchive && tab.archivePath) {
-      root.inArchive = true
-      root.archivePath = tab.archivePath
-      root.archiveSubPath = tab.archiveSubPath || ""
-      root.refreshArchiveListing()
-    }
-  }
-
-  function _restoreTabPreview(tab) {
-    if (tab.previewOpen && tab.previewEntry) {
-      previewLoader.loadPreview(tab.previewEntry)
-    } else {
-      root.previewOpen = false
-    }
-  }
-
-  // _goToPath() siempre deja list.contentY = list.originY (arriba del
-  // todo) al navegar -- sin esto, volver a una pestaña en la que se había
-  // bajado en la lista aterrizaba siempre en la fila 0, perdiendo la
-  // posición aunque la carpeta en sí no hubiera cambiado. Se llama
-  // DESPUÉS de _goToPath, mismo motivo que _restoreTabPreview: para
-  // entonces el modelo (root.visibleEntries) ya está actualizado y
-  // contentHeight ya refleja el listado correcto.
-  function _restoreTabScroll(tab) {
-    list.contentY = tab.scrollY || list.originY
-  }
-
-  function switchToTab(index) {
-    if (index < 0 || index >= root.tabs.length || index === root.activeTabIndex) return
-    if (root.hasBlockingOverlay) return
-    root.saveActiveTab()
-    root.activeTabIndex = index
-    root._restoreTabHistory(root.tabs[index])
-    root._goToPath(root.tabs[index].path)
-    root._restoreTabArchive(root.tabs[index])
-    root._restoreTabPreview(root.tabs[index])
-    root._restoreTabScroll(root.tabs[index])
-  }
-
-  function newTab() {
-    root.saveActiveTab()
-    root.tabs = root.tabs.concat([{ path: root.currentPath, history: [root.currentPath], historyIndex: 0 }])
-    root.activeTabIndex = root.tabs.length - 1
-    root.navHistory = [root.currentPath]
-    root.navHistoryIndex = 0
-  }
-
-  // Para quien no use Ctrl+T -- una pestaña nueva ya apuntando a `path` (una
-  // fila de carpeta, un marcador, una unidad), no a la carpeta actual.
-  function openInNewTab(path) {
-    if (!path) return
-    root.saveActiveTab()
-    root.tabs = root.tabs.concat([{ path: path, history: [path], historyIndex: 0 }])
-    root.activeTabIndex = root.tabs.length - 1
-    root.navHistory = [path]
-    root.navHistoryIndex = 0
-    root._goToPath(path)
-  }
-
-  function closeTab() {
-    if (root.tabs.length <= 1) { root.requestClose(); return }
-    var next = root.tabs.slice()
-    next.splice(root.activeTabIndex, 1)
-    root.tabs = next
-    var newIndex = Math.min(root.activeTabIndex, next.length - 1)
-    root.activeTabIndex = newIndex
-    root._restoreTabHistory(root.tabs[newIndex])
-    root._goToPath(root.tabs[newIndex].path)
-    root._restoreTabArchive(root.tabs[newIndex])
-    root._restoreTabPreview(root.tabs[newIndex])
-    root._restoreTabScroll(root.tabs[newIndex])
-  }
-
-  function nextTab() {
-    root.switchToTab((root.activeTabIndex + 1) % root.tabs.length)
+  // Usado por BackgroundPanel (doble clic sobre un fichero en un panel de
+  // fondo) -- openProc solo es visible por id dentro de este fichero, así
+  // que un componente en otro .qml necesita esta función en vez de tocarlo
+  // directo.
+  function openWithDefault(path) {
+    openProc.command = ["xdg-open", path]
+    openProc.running = true
   }
 
   function enter(entry) {
@@ -1095,18 +899,18 @@ Item {
     if (root.inArchive) {
       if (entry.type === "dir") {
         root.archiveSubPath = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
-        root.refreshArchiveListing()
+        archiveActions.refreshArchiveListing()
       } else {
-        root.openFileInArchive(entry)
+        archiveActions.openFileInArchive(entry)
       }
       return
     }
     if (entry.type === "dir") {
       navigateTo(root.joinPath(root.currentPath, entry.name))
-    } else if (root.isArchive(entry)) {
-      root.enterArchive(root.joinPath(root.currentPath, entry.name))
-    } else if (root.isIso(entry)) {
-      root.mountIso(entry)
+    } else if (archiveActions.isArchive(entry)) {
+      archiveActions.enterArchive(root.joinPath(root.currentPath, entry.name))
+    } else if (archiveActions.isIso(entry)) {
+      mountOps.mountIso(entry)
     } else {
       var openPath = root.joinPath(root.currentPath, entry.name)
       openProc.command = ["xdg-open", openPath]
@@ -1115,55 +919,13 @@ Item {
     }
   }
 
-  function enterArchive(path) {
-    root.selectOnly(-1)
-    root.inArchive = true
-    root.archivePath = path
-    root.archiveSubPath = ""
-    root.refreshArchiveListing()
-  }
-
-  function exitArchive() {
-    root.inArchive = false
-    root.archivePath = ""
-    root.archiveSubPath = ""
-    root.refresh()
-  }
-
-  function refreshArchiveListing() {
-    root.selectOnly(-1)
-    list.contentY = list.originY
-    archiveListProc.command = [root.pluginDir + "/list-archive.sh", root.archivePath, root.archiveSubPath]
-    archiveListProc.running = true
-  }
-
-  // Extrae SOLO ese fichero a una caché temporal (no todo el archivo) y lo
-  // abre con la app por defecto -- "unzip -p"/"tar xO"/etc. vuelcan un
-  // único miembro a stdout sin tocar disco más que ese archivo de salida,
-  // igual de eficiente que abrir un fichero normal aunque el .zip sea
-  // enorme.
-  function openFileInArchive(entry) {
-    var full = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
-    var ext = root.extOf(root.archivePath)
-    var out = root.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(root.archivePath + "|" + full) + "/" + entry.name
-    var outDir = out.substring(0, out.lastIndexOf("/"))
-    var cmd
-    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
-    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (root.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(root.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else return
-    archiveOpenProc.outPath = out
-    archiveOpenProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd]
-    archiveOpenProc.running = true
-  }
 
   function goUp() {
     if (root.inArchive) {
-      if (root.archiveSubPath === "") { root.exitArchive(); return }
+      if (root.archiveSubPath === "") { archiveActions.exitArchive(); return }
       var slash = root.archiveSubPath.lastIndexOf("/")
       root.archiveSubPath = slash > 0 ? root.archiveSubPath.substring(0, slash) : ""
-      root.refreshArchiveListing()
+      archiveActions.refreshArchiveListing()
       return
     }
     if (root.currentPath === "/") return
@@ -1171,6 +933,7 @@ Item {
     navigateTo(idx > 0 ? root.currentPath.substring(0, idx) : "/")
   }
 
+  // ---------- Ciclo de vida (abrir/cerrar la ventana del host) ----------
   // Host-initiated open/close (`shell toggle`/`shell summon`/`shell hide`).
   // `payload` es "<ruta>" o "<ruta>\n<nombre-a-seleccionar>" en texto
   // plano (o "" / "{}" si no hay ninguna) -- la manda `scripts/open-path.sh`
@@ -1215,16 +978,16 @@ Item {
     } else if (targetPath) {
       // Ya estaba cargado antes (uso normal previo): abre en pestaña
       // nueva para no perder la ubicación en la que ya estaba el usuario.
-      root.newTab()
+      tabOps.newTab()
       root.navigateTo(targetPath)
-      root.saveActiveTab()
+      tabOps.saveActiveTab()
     }
 
     if (!root.bookmarksLoaded) persistence.loadBookmarks()
     if (!root.recentLoaded) persistence.loadRecent()
     if (!root.bulkRenameHistoryLoaded) persistence.loadBulkRenameHistory()
-    root.refreshMounts()
-    root.refreshNetworkMounts()
+    mountOps.refreshMounts()
+    mountOps.refreshNetworkMounts()
     // Cubre los dos casos restantes: primera carga con target (currentPath
     // recién puesto, arriba) y reabrir apuntando a un target (navigateTo ya
     // lo arrancó dentro de _goToPath, esto solo lo reafirma sobre la misma
@@ -1280,69 +1043,6 @@ Item {
     else root.close()
   }
 
-  function parseAudioInfo(text) {
-    var out = []
-    var data
-    try { data = JSON.parse(text) } catch (e) { return out }
-    var fmt = (data && data.format) || {}
-    var stream = (data && data.streams && data.streams[0]) || {}
-    var dur = parseFloat(fmt.duration || stream.duration || 0)
-    if (dur > 0) {
-      var mins = Math.floor(dur / 60)
-      var secs = Math.round(dur % 60)
-      out.push({ label: "Duration", value: mins + ":" + (secs < 10 ? "0" : "") + secs })
-    }
-    if (stream.codec_name) out.push({ label: "Codec", value: String(stream.codec_name).toUpperCase() })
-    if (fmt.bit_rate) out.push({ label: "Bitrate", value: Math.round(fmt.bit_rate / 1000) + " kbps" })
-    if (stream.sample_rate) out.push({ label: "Sample rate", value: Math.round(stream.sample_rate / 1000) + " kHz" })
-    if (stream.channels) {
-      out.push({ label: "Channels", value: stream.channels === 1 ? "Mono" : stream.channels === 2 ? "Stereo" : String(stream.channels) })
-    }
-    var tags = fmt.tags || {}
-    if (tags.artist) out.push({ label: "Artist", value: tags.artist })
-    if (tags.title) out.push({ label: "Title", value: tags.title })
-    if (tags.album) out.push({ label: "Album", value: tags.album })
-    return out
-  }
-
-  // formatSize/relativeTime: movidas a Utils.js (funciones puras).
-
-  // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
-  // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
-  // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
-  // basePath: la ruta del panel que está pintando esta fila -- por
-  // defecto root.currentPath (panel activo), pero un panel de fondo debe
-  // pasar la suya propia (bgPanel.modelData.path) o el aviso de "en la
-  // papelera" saldría según la carpeta del panel ACTIVO, no la de este
-  // panel (mismo tipo de bug ya documentado para thumbKeyFor/etc.).
-  function metaFor(entry, basePath) {
-    if (entry.link === "broken") return "Broken link"
-    var atPath = basePath !== undefined ? basePath : root.currentPath
-    if (atPath === root.trashDir) {
-      var parts = []
-      if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
-      // root.trashInfo solo se rellena para la papelera del panel ACTIVO
-      // (ver listProc) -- si este es un panel de fondo mostrando la
-      // papelera, simplemente no hay info extra que añadir todavía; se
-      // degrada a solo el tamaño en vez de mostrar algo incorrecto.
-      var info = root.trashInfo[entry.name]
-      if (info) {
-        var rel = Utils.relativeTime(info.epoch)
-        parts.push(rel ? "Deleted " + rel : "Deleted")
-        if (info.origPath) {
-          var slash = info.origPath.lastIndexOf("/")
-          parts.push("from " + (slash > 0 ? info.origPath.substring(0, slash) : "/"))
-        }
-      }
-      return parts.join(" · ")
-    }
-    var parts = []
-    if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
-    var rel = Utils.relativeTime(entry.mtime)
-    if (rel) parts.push(rel)
-    return parts.join(" · ")
-  }
-
   // onSuccess (opcional) se llama SOLO si el comando termina con exit 0 --
   // úsalo para todo lo que no deba pasar si la acción en realidad falló
   // (sobre todo pushUndo: un undo registrado para algo que nunca ocurrió en
@@ -1350,29 +1050,7 @@ Item {
   // false si se descartó porque ya había otra acción en marcha (el llamador
   // decide si eso merece avisar al usuario).
   function runAction(cmd, busyLabel, onSuccess) {
-    // actionProc es un único proceso compartido por todas las acciones de
-    // fichero (renombrar, borrar, copiar/mover, comprimir...). Sin esta
-    // guardia, una segunda llamada mientras la primera sigue en marcha
-    // (doble clic, o una tecla de más durante una operación larga) le
-    // cambiaba el comando y lo reiniciaba, cortando la operación en curso
-    // a media copia sin ningún aviso.
-    if (actionProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still busy with the previous action — try again in a moment"])
-      return false
-    }
-    root.actionLabel = busyLabel || ""
-    root.actionBusy = !!busyLabel
-    root._actionOnSuccess = onSuccess || null
-    root._actionCancelled = false
-    // "setsid" delante de bash: lo convierte en líder de una sesión/grupo
-    // de procesos nuevo (su PGID pasa a ser su propio PID) en vez de
-    // compartir el grupo de Quickshell. Sin esto, cancelAction() solo podía
-    // matar el "bash -c" en sí -- cualquier cp/mv/zip que ese bash hubiera
-    // lanzado como hijo se quedaba huérfano y seguía corriendo de fondo
-    // como si nada, aunque la UI ya diera la acción por cancelada.
-    actionProc.command = ["setsid", "bash", "-c", cmd]
-    actionProc.running = true
-    return true
+    return actionEngine.runAction(cmd, busyLabel, onSuccess)
   }
 
   // Callback pendiente del runAction en curso -- ver actionProc.onExited.
@@ -1383,441 +1061,16 @@ Item {
   // eso no es un fallo real).
   property bool _actionCancelled: false
 
-  // Une comandos de una operación por lotes (pegar/soltar/borrar N archivos,
-  // renombrado masivo...) para que el fallo de uno no se coma los demás.
-  // Antes se unían con "&&": en cuanto el ítem 2 de 5 fallaba (ya no
-  // existía, permiso denegado...) los ítems 3-5 no se llegaban a intentar
-  // y encima no había ningún aviso. Con esto se intentan todos, y si alguno
-  // falla el proceso sale con estado != 0 para que actionProc lo reporte
-  // (ver runAction/actionProc más arriba) -- sin decir cuál en concreto,
-  // pero ya no se pierden en silencio.
   function chainCmds(cmds) {
-    if (cmds.length <= 1) return cmds[0] || "true"
-    return "st=0; " + cmds.map(function (c) { return "{ " + c + "; } || st=1" }).join("; ") + "; exit $st"
+    return actionEngine.chainCmds(cmds)
   }
 
   function cancelAction() {
-    // actionProc.running = false solo mata el "setsid bash -c ..." en sí;
-    // con el grupo de procesos propio que le da setsid en runAction(), esto
-    // manda la señal a TODO el grupo (setsid + bash + el cp/mv/zip real que
-    // esté corriendo dentro), no solo al primero.
-    var pid = actionProc.processId
-    if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
-    root._actionCancelled = true
-    actionProc.running = false
-    root.actionBusy = false
-    root.actionLabel = ""
-    root.actionProgressPct = -1
-    root.refresh()
-    root.refreshTick += 1
+    actionEngine.cancelAction()
   }
 
-  // Lanza el sondeo de progreso para una copia/movimiento -- llamar justo
-  // antes de runAction() con los mismos origen/destino. Sin esto
-  // actionProgressPct se queda en -1 (sin barra, solo puntos animados)
-  // para cualquier otra acción, que es lo que queremos: chmod/comprimir/
-  // renombrar no tienen un "tamaño total" que tenga sentido mostrar así.
   function startCopyProgress(sourcePaths, destPaths) {
-    root.actionProgressPct = 0
-    root.actionTotalBytes = 0
-    root.actionProgressDestPaths = destPaths
-    var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-    actionProgressTotalProc.command = ["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"]
-    actionProgressTotalProc.running = true
-  }
-
-  function startRename(index) {
-    if (root.inArchive) return
-    if (index < 0 || index >= root.visibleEntries.length) return
-    root.creatingFolder = false
-    root.creatingFile = false
-    root.renamingIndex = index
-  }
-
-  function runPendingRename(overwrite) {
-    var r = root.pendingRename
-    root.pendingRename = null
-    root.renameConflictOpen = false
-    if (!r) return
-    var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
-    // Igual que en makeLinkFor: el undo solo se registra si el "mv" de
-    // verdad ocurrió. Antes se registraba siempre, incluso cuando runAction
-    // lo descartaba por haber otra acción en curso (el rename ya se había
-    // dado por hecho en la UI -- el input se cerraba igual).
-    var renameCmd = "mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath)
-    runAction(renameCmd, undefined, function () {
-      root.pushUndo("rename to \"" + oldName + "\"", function () {
-        return root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
-      }, function () {
-        return root.runAction(renameCmd)
-      })
-    })
-  }
-
-  function cancelPendingRename() {
-    root.pendingRename = null
-    root.renameConflictOpen = false
-  }
-
-  function startNewFolder() {
-    if (root.inArchive) return
-    root.renamingIndex = -1
-    root.searching = false
-    root.creatingFile = false
-    root.creatingFolder = true
-  }
-
-  function startNewFile() {
-    if (root.inArchive) return
-    root.renamingIndex = -1
-    root.searching = false
-    root.creatingFolder = false
-    root.creatingFile = true
-  }
-
-  function commitNewFile(name) {
-    root.creatingFile = false
-    name = name.trim()
-    if (!name) return
-    var path = root.joinPath(root.currentPath, name)
-    // Comprobación de existencia ANTES del touch -- bug real corregido
-    // aquí: touch es idempotente (éxito silencioso sobre un fichero que
-    // ya existía), así que sin este guard un "New file" con un nombre en
-    // conflicto no creaba nada nuevo pero SÍ registraba un undo de "new
-    // file" -- un Ctrl+Z posterior mandaba a la papelera el fichero
-    // PREEXISTENTE de verdad (con su contenido real), no uno vacío recién
-    // creado. Recuperable vía papelera, pero sorprendente y no lo que
-    // pedía el README (conflictos tratados, no ignorados en silencio).
-    var newFileCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; touch -- " + Util.shellQuote(path)
-    runAction(newFileCmd, undefined, function () {
-      // gio trash en vez de rm: si el usuario ya escribió algo antes de
-      // deshacer, va a la papelera en vez de perderse sin recuperación.
-      root.pushUndo("new file \"" + name + "\"", function () {
-        return root.runAction("gio trash -- " + Util.shellQuote(path))
-      }, function () {
-        return root.runAction(newFileCmd)
-      })
-    })
-  }
-
-  function commitNewFolder(name) {
-    root.creatingFolder = false
-    root.creatingFile = false
-    name = name.trim()
-    if (!name) return
-    var path = root.joinPath(root.currentPath, name)
-    // Mismo motivo que commitNewFile: "mkdir -p" no falla si la carpeta
-    // ya existe, y sin este guard un Ctrl+Z posterior podía rmdir una
-    // carpeta preexistente (vacía) que no tenía nada que ver con esta
-    // acción.
-    var newFolderCmd = "if [ -e " + Util.shellQuote(path) + " ]; then echo " + Util.shellQuote("\"" + name + "\" already exists") + " >&2; exit 1; fi; mkdir -p -- " + Util.shellQuote(path)
-    runAction(newFolderCmd, undefined, function () {
-      // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
-      // deshacer, falla en vez de borrar contenido a lo tonto.
-      root.pushUndo("new folder \"" + name + "\"", function () {
-        return root.runAction("rmdir -- " + Util.shellQuote(path))
-      }, function () {
-        return root.runAction(newFolderCmd)
-      })
-    })
-  }
-
-  function requestDelete() {
-    if (root.inArchive) return
-    var names = root.selectedEntries().map(function (e) { return e.name })
-    if (names.length === 0) return
-    root.pendingDeleteNames = names
-  }
-
-  function confirmDelete() {
-    var names = root.pendingDeleteNames
-    root.pendingDeleteNames = []
-    if (names.length === 0) return
-    if (root.currentPath === root.trashDir) {
-      // Borrado permanente -- no hay undo posible. root.trashInfo (ver
-      // trash-info.sh) sabe la raíz física real de cada ítem -- puede
-      // ser la papelera de casa o la de cualquier otro disco montado,
-      // ya no se puede asumir root.trashDir a secas como antes de
-      // agregar varias papeleras.
-      var cmds = names.map(function (n) {
-        var info = root.trashInfo[n]
-        if (!info) return "true"
-        return "rm -rf -- " + Util.shellQuote(info.trashRoot + "/files/" + n) +
-          "; rm -f -- " + Util.shellQuote(info.trashRoot + "/info/" + n + ".trashinfo")
-      })
-      runAction(root.chainCmds(cmds))
-    } else {
-      var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(root.currentPath, n)) }).join(" ")
-      // Rutas originales absolutas capturadas AQUÍ (no dentro de los
-      // closures de más abajo) -- root.currentPath puede haber cambiado
-      // para cuando el usuario pulse deshacer, mucho más tarde.
-      var origPaths = names.map(function (n) { return root.joinPath(root.currentPath, n) })
-      var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      var deleteCmd = "gio trash -- " + quoted
-      runAction(deleteCmd, "", function () {
-        // Solo se registra el undo si el borrado a papelera confirmó éxito
-        // -- antes se registraba siempre, así que un "gio trash" fallido
-        // (permiso denegado, etc.) dejaba un undo que restauraba algo que
-        // nunca llegó a borrarse.
-        root.pushUndo(label, function () {
-          // restore-by-origpath.sh busca en TODAS las papeleras activas
-          // (no solo la de casa) el .trashinfo cuya ruta original
-          // coincide, así funciona igual borre desde donde borre --
-          // root.trashInfo (usado por el botón "Restore" normal) no
-          // sirve aquí porque solo se rellena mientras se está VIENDO
-          // la Papelera, y el usuario puede deshacer mucho después sin
-          // haber entrado nunca en ella.
-          var restoreCmds = origPaths.map(function (p) {
-            return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(p)
-          })
-          return root.runAction(root.chainCmds(restoreCmds))
-        }, function () {
-          return root.runAction(deleteCmd)
-        })
-      })
-    }
-  }
-
-  function copySelected() {
-    if (root.inArchive) return
-    var entries = root.selectedEntries()
-    if (entries.length === 0) return
-    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
-    root.clipboardMode = "copy"
-    root.syncClipboardToSystem()
-  }
-
-  function cutSelected() {
-    if (root.inArchive) return
-    var entries = root.selectedEntries()
-    if (entries.length === 0) return
-    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
-    root.clipboardMode = "cut"
-    root.syncClipboardToSystem()
-  }
-
-  // Antes clipboardPaths era solo interno -- copiar en Omafiles y pegar
-  // en otra app (o al revés) no funcionaba. text/uri-list es el tipo MIME
-  // más ampliamente reconocido (gestores de archivos, navegadores, apps
-  // de chat...) -- wl-copy solo puede servir un tipo por invocación, así
-  // que se prioriza compatibilidad amplia sobre poder distinguir cut/copy
-  // de cara a OTRAS apps (Omafiles sí distingue cut/copy para sus propias
-  // acciones vía clipboardMode; esto es solo para interoperar con fuera).
-  // Ruta(s) como texto plano al portapapeles -- para pegar en una
-  // terminal/chat/otra app, no confundir con copySelected() (que copia
-  // los FICHEROS para pegarlos con paste()). Varias seleccionadas ->
-  // una ruta por línea.
-  function copyPathFor(entries) {
-    if (!entries || entries.length === 0) return
-    var paths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
-    Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
-  }
-
-  function syncClipboardToSystem() {
-    if (root.clipboardPaths.length === 0) {
-      Quickshell.execDetached(["wl-copy", "-c"])
-      return
-    }
-    // \r\n entre URIs (RFC 2483), no \n a secas -- el DnD mimeData de más
-    // abajo (dragMimeDataFor) ya lo hacía bien; esto lo iguala para que
-    // cualquier app externa que lea el portapapeles reciba el mismo
-    // formato spec-correcto sea cual sea el camino (copiar o arrastrar).
-    var uris = root.clipboardPaths.map(function (p) {
-      return "file://" + p.split("/").map(encodeURIComponent).join("/")
-    }).join("\r\n")
-    Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
-  }
-
-  // mode: "all" (sin conflictos, tal cual) | "overwrite" | "skip"
-  function runPaste(mode) {
-    var conflictSet = {}
-    root.pasteConflictNames.forEach(function (n) { conflictSet[n] = true })
-    var sources = root.clipboardPaths.filter(function (src) {
-      if (mode !== "skip") return true
-      var name = src.substring(src.lastIndexOf("/") + 1)
-      return !conflictSet[name]
-    })
-    root.pasteConflictOpen = false
-    root.pasteConflictNames = []
-    if (sources.length > 0) {
-      var noClobber = mode !== "overwrite"
-      var isCut = root.clipboardMode === "cut"
-      var pairs = sources.map(function (src) {
-        var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: root.joinPath(root.currentPath, name) }
-      })
-      var cmds = pairs.map(function (p) {
-        var verb = isCut ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
-        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
-      })
-      var busyVerb = isCut ? "Moving " : "Copying "
-      var busyLabel = pairs.length === 1
-        ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
-        : busyVerb + pairs.length + " items…"
-      var pasteMoveCmd = root.chainCmds(cmds)
-      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
-      runAction(pasteMoveCmd, busyLabel, function () {
-        if (!isCut) return
-        var label = pairs.length === 1
-          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-          : "move " + pairs.length + " items"
-        root.pushUndo(label, function () {
-          var undoCmds = pairs.map(function (p) {
-            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
-          })
-          return root.runAction(root.chainCmds(undoCmds))
-        }, function () {
-          return root.runAction(pasteMoveCmd)
-        })
-      })
-    }
-    if (root.clipboardMode === "cut") {
-      root.clipboardPaths = []
-      root.clipboardMode = ""
-    }
-  }
-
-  function cancelPasteConflict() {
-    root.pasteConflictOpen = false
-    root.pasteConflictNames = []
-  }
-
-  // ---------- Arrastrar y soltar ----------
-  function urlToPath(url) {
-    var s = String(url)
-    if (s.indexOf("file://") === 0) s = s.substring(7)
-    try { return decodeURIComponent(s) } catch (e) { return s }
-  }
-
-  // MimeData del/los ficheros que arranca a arrastrar la fila `index` --
-  // si esa fila ya forma parte de una selección múltiple, arrastra toda la
-  // selección (igual que Nautilus); si no, solo esa fila.
-  function dragMimeDataFor(index) {
-    var indices = (root.isSelected(index) && root.selectedIndices.length > 1) ? root.selectedIndices : [index]
-    var paths = indices
-      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
-      .map(function (i) { return root.joinPath(root.currentPath, root.visibleEntries[i].name) })
-    var data = {}
-    data["text/uri-list"] = paths.map(function (p) { return Util.fileUrl(p) }).join("\r\n")
-    return data
-  }
-
-  // Ficheros soltados sobre `destDir` (una fila de carpeta, un marcador,
-  // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
-  // `isMove` viene de DragEvent.source !== null (arrastre interno) --
-  // arrastres que vienen de fuera siempre copian, nunca mueven el origen.
-  // mode: "all" (sin conflictos) | "overwrite" | "skip"
-  function runDrop(mode) {
-    var conflictSet = {}
-    root.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
-    var sources = root.dropPendingSources.filter(function (src) {
-      if (mode !== "skip") return true
-      var name = src.substring(src.lastIndexOf("/") + 1)
-      return !conflictSet[name]
-    })
-    root.dropConflictOpen = false
-    root.dropConflictNames = []
-    if (sources.length > 0) {
-      var noClobber = mode !== "overwrite"
-      var destDir = root.dropTargetDir
-      var isMove = root.dropIsMove
-      var pairs = sources.map(function (src) {
-        var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: root.joinPath(destDir, name) }
-      })
-      var cmds = pairs.map(function (p) {
-        var verb = isMove ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
-        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
-      })
-      var busyVerb = isMove ? "Moving " : "Copying "
-      var busyLabel = pairs.length === 1
-        ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
-        : busyVerb + pairs.length + " items…"
-      var dropMoveCmd = root.chainCmds(cmds)
-      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
-      runAction(dropMoveCmd, busyLabel, function () {
-        if (!isMove) return
-        var label = pairs.length === 1
-          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-          : "move " + pairs.length + " items"
-        root.pushUndo(label, function () {
-          var undoCmds = pairs.map(function (p) {
-            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
-          })
-          return root.runAction(root.chainCmds(undoCmds))
-        }, function () {
-          return root.runAction(dropMoveCmd)
-        })
-      })
-    }
-    root.dropPendingSources = []
-    root.dropTargetDir = ""
-  }
-
-  function cancelDropConflict() {
-    root.dropConflictOpen = false
-    root.dropConflictNames = []
-    root.dropPendingSources = []
-    root.dropTargetDir = ""
-  }
-
-  // Llamado desde cada DropArea (fila de carpeta, marcador, unidad, fondo
-  // de la lista) con el DragEvent real y la carpeta destino ya resuelta.
-  function handleFilesDropped(drop, destDir) {
-    if (root.inArchive) { drop.accepted = false; return }
-    if (!drop.hasUrls) { drop.accepted = false; return }
-    var paths = drop.urls.map(function (u) { return root.urlToPath(u) }).filter(function (p) { return p.length > 0 })
-    if (paths.length === 0) { drop.accepted = false; return }
-    var isMove = drop.source !== null && drop.source !== undefined
-    drop.accept(isMove ? Qt.MoveAction : Qt.CopyAction)
-    conflictActions.startDropInto(destDir, paths, isMove)
-  }
-
-  function toggleHidden() {
-    root.showHidden = !root.showHidden
-    list.contentY = list.originY
-    root.refresh()
-    root.refreshTick += 1
-  }
-
-  function startEditPath() {
-    root.editingPath = true
-  }
-
-  function startSearch() {
-    if (root.inArchive) return
-    root.creatingFolder = false
-    root.creatingFile = false
-    root.searching = true
-    root.searchQuery = ""
-    root.searchTruncated = false
-    list.contentY = list.originY
-  }
-
-  function exitSearch() {
-    root.searching = false
-    root.searchQuery = ""
-    root.deepSearchRoot = ""
-    root.searchTruncated = false
-    list.contentY = list.originY
-    root.refresh()
-    root.selectOnly(-1)
-  }
-
-  function runDeepSearch() {
-    if (!root.searchQuery) return
-    root.deepSearchRoot = root.currentPath
-    list.contentY = list.originY
-    deepSearchProc.command = [root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"]
-    deepSearchProc.running = true
-  }
-
-  function goTop() {
-    if (root.visibleEntries.length > 0) root.selectOnly(0)
-  }
-
-  function goBottom() {
-    if (root.visibleEntries.length > 0) root.selectOnly(root.visibleEntries.length - 1)
+    actionEngine.startCopyProgress(sourcePaths, destPaths)
   }
 
   function openTerminalHere() {
@@ -1829,19 +1082,19 @@ Item {
     var hasSelection = root.selectedIndices.length > 0
     var entry = root.selectedIndices.length === 1 ? root.visibleEntries[root.selectedIndex] : null
     var cmds = [
-      { label: "New folder", run: function () { root.startNewFolder() } },
-      { label: "New file", run: function () { root.startNewFile() } },
-      { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { root.startRename(root.selectedIndex) } },
-      { label: "Copy", enabled: hasSelection, run: function () { root.copySelected() } },
-      { label: "Cut", enabled: hasSelection, run: function () { root.cutSelected() } },
-      { label: "Copy path", enabled: hasSelection, run: function () { root.copyPathFor(root.selectedEntries()) } },
+      { label: "New folder", run: function () { renameOps.startNewFolder() } },
+      { label: "New file", run: function () { renameOps.startNewFile() } },
+      { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { renameOps.startRename(root.selectedIndex) } },
+      { label: "Copy", enabled: hasSelection, run: function () { clipboardOps.copySelected() } },
+      { label: "Cut", enabled: hasSelection, run: function () { clipboardOps.cutSelected() } },
+      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathFor(root.selectedEntries()) } },
       { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
-      { label: "Delete", enabled: hasSelection, run: function () { root.requestDelete() } },
+      { label: "Delete", enabled: hasSelection, run: function () { deleteOps.requestDelete() } },
       { label: "Select all", run: function () { root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
       { label: "Select none", enabled: hasSelection, run: function () { root.selectNone() } },
       { label: "Invert selection", run: function () { root.invertSelection() } },
-      { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { root.toggleHidden() } },
-      { label: "Refresh", run: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } },
+      { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
+      { label: "Refresh", run: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { root.setSort("name") } },
       { label: "Sort by size", run: function () { root.setSort("size") } },
       { label: "Sort by date", run: function () { root.setSort("mtime") } },
@@ -1853,29 +1106,29 @@ Item {
         enabled: root.redoStack.length > 0, run: function () { root.redoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
-      { label: "Connect to server...", run: function () { root.startConnectToServer() } },
-      { label: "New panel", run: function () { root.newTab() } },
-      { label: "Close this panel", enabled: root.tabs.length > 1, run: function () { root.closeTab() } },
+      { label: "Connect to server...", run: function () { mountOps.startConnectToServer() } },
+      { label: "New panel", run: function () { tabOps.newTab() } },
+      { label: "Close this panel", enabled: root.tabs.length > 1, run: function () { tabOps.closeTab() } },
       { label: "Back", enabled: root.navHistoryIndex > 0, run: function () { root.navBack() } },
       { label: "Forward", enabled: root.navHistoryIndex < root.navHistory.length - 1, run: function () { root.navForward() } },
-      { label: "Edit path", run: function () { root.startEditPath() } },
-      { label: "Search", run: function () { root.startSearch() } },
+      { label: "Edit path", run: function () { searchOps.startEditPath() } },
+      { label: "Search", run: function () { searchOps.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { conflictActions.compressSelected() } },
-      { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { root.startBulkRename() } },
+      { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { fileOps.startBulkRename() } },
       { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(root.selectedEntries()) } },
-      { label: "Make link", enabled: !!entry, run: function () { if (entry) root.makeLinkFor(entry) } },
+      { label: "Make link", enabled: !!entry, run: function () { if (entry) fileOps.makeLinkFor(entry) } },
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
       { label: "Keyboard shortcuts", run: function () { root.shortcutsHelpOpen = true } }
     ]
     if (root.currentPath === root.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
-      cmds.push({ label: "Restore", enabled: hasSelection, run: function () { root.restoreFromTrash() } })
+      cmds.push({ label: "Restore", enabled: hasSelection, run: function () { fileOps.restoreFromTrash() } })
     }
-    if (entry && entry.type !== "dir" && root.isArchive(entry)) {
+    if (entry && entry.type !== "dir" && archiveActions.isArchive(entry)) {
       cmds.push({ label: "Extract here", run: function () { conflictActions.extractHere(entry) } })
     }
-    if (entry && root.isIso(entry)) {
-      cmds.push({ label: "Mount ISO", run: function () { root.mountIso(entry) } })
+    if (entry && archiveActions.isIso(entry)) {
+      cmds.push({ label: "Mount ISO", run: function () { mountOps.mountIso(entry) } })
     }
     if (entry) {
       var fullPath = root.joinPath(root.currentPath, entry.name)
@@ -1883,7 +1136,7 @@ Item {
         cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name, entry.type) } })
       }
       if (entry.type === "dir") {
-        cmds.push({ label: "Open in new tab", run: function () { root.openInNewTab(fullPath) } })
+        cmds.push({ label: "Open in new tab", run: function () { tabOps.openInNewTab(fullPath) } })
       }
     }
     // Bug real corregido aquí: a diferencia de itemActions() (menú
@@ -1930,219 +1183,6 @@ Item {
     cmd.run()
   }
 
-  function showOpenWith(entry) {
-    if (!entry || entry.type === "dir") return
-    root.openWithEntry = entry
-    root.openWithApps = []
-    openWithProc.command = [root.pluginDir + "/open-with-list.sh", root.joinPath(root.currentPath, entry.name)]
-    openWithProc.running = true
-    root.openWithOpen = true
-  }
-
-  function launchWith(desktopId) {
-    if (root.openWithEntry) {
-      var openPath = root.joinPath(root.currentPath, root.openWithEntry.name)
-      Quickshell.execDetached(["gtk-launch", desktopId, openPath])
-      root.addRecent(openPath, root.openWithEntry.name)
-    }
-    root.openWithOpen = false
-    root.openWithEntry = null
-  }
-
-  function parseOpenWithApps(text) {
-    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-    return lines.map(function (l) {
-      var parts = l.split("\t")
-      return { name: parts[0], id: parts[1] }
-    })
-  }
-
-  function runPendingCompress() {
-    var p = root.pendingCompress
-    root.pendingCompress = null
-    root.compressConflictOpen = false
-    if (!p) return
-    runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
-  }
-
-  function cancelPendingCompress() {
-    root.pendingCompress = null
-    root.compressConflictOpen = false
-  }
-
-  function isArchive(entry) {
-    if (entry.type === "dir") return false
-    var ext = root.extOf(entry.name)
-    return ext === "zip" || ext === "7z" || ext === "rar" || root.tarExt.indexOf(ext) >= 0
-  }
-
-  function isIso(entry) {
-    return entry.type !== "dir" && root.extOf(entry.name) === "iso"
-  }
-
-  // A diferencia de isArchive() (enterArchive(), navegación de solo
-  // lectura sin montar nada de verdad), un .iso se monta como un
-  // dispositivo loop real -- así lo que haya dentro (un instalador, por
-  // ejemplo) se puede ejecutar/copiar igual que en cualquier carpeta
-  // normal, no solo mirarlo. Aparece en la barra lateral como cualquier
-  // otra unidad extraíble en cuanto se monta (list-mounts.sh ya distingue
-  // el icono por fstype=iso9660) y se expulsa igual que una.
-  function mountIso(entry) {
-    if (mountIsoProc.running) {
-      Quickshell.execDetached(["notify-send", "Omafiles", "Still mounting an ISO — try again in a moment"])
-      return
-    }
-    mountIsoProc.tabIndex = root.activeTabIndex
-    mountIsoProc.command = ["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)]
-    mountIsoProc.running = true
-  }
-
-  function runPendingExtract() {
-    var p = root.pendingExtract
-    root.pendingExtract = null
-    root.extractConflictOpen = false
-    root.extractConflictNames = []
-    if (!p) return
-    runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
-  }
-
-  function cancelPendingExtract() {
-    root.pendingExtract = null
-    root.extractConflictOpen = false
-    root.extractConflictNames = []
-  }
-
-  function startBulkRename() {
-    if (root.inArchive) return
-    root.bulkRenamePattern = "{name}{ext}"
-    root.bulkRenameOpen = true
-  }
-
-  function runPendingBulkRename() {
-    var pairs = root.pendingBulkRename
-    root.pendingBulkRename = null
-    root.bulkRenameConflictOpen = false
-    if (!pairs) return
-    // Antes bulk rename era la única operación de riesgo (junto a chmod)
-    // sin ningún undo -- un patrón {n}/{name}/{ext} mal escrito podía
-    // renombrar decenas de ficheros de golpe sin red de seguridad.
-    var toRename = pairs.filter(function (p) { return p.newName !== p.oldName })
-    var cmds = toRename.map(function (p) {
-      return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
-    })
-    if (cmds.length === 0) return
-    var bulkRenameCmd = root.chainCmds(cmds)
-    runAction(bulkRenameCmd, "Renaming " + cmds.length + " items…", function () {
-      var label = toRename.length === 1 ? "rename \"" + toRename[0].oldName + "\"" : "bulk rename " + toRename.length + " items"
-      root.pushUndo(label, function () {
-        var undoCmds = toRename.map(function (p) {
-          return "mv -n -- " + Util.shellQuote(p.newPath) + " " + Util.shellQuote(p.oldPath)
-        })
-        return root.runAction(root.chainCmds(undoCmds))
-      }, function () {
-        return root.runAction(bulkRenameCmd)
-      })
-    })
-  }
-
-  function cancelPendingBulkRename() {
-    root.pendingBulkRename = null
-    root.bulkRenameConflictOpen = false
-  }
-
-  function commitChmod(mode) {
-    root.chmodOpen = false
-    mode = mode.trim()
-    if (!/^[0-7]{3,4}$/.test(mode) || root.chmodNames.length === 0) return
-    // -R es inofensivo sobre un fichero suelto (no baja a ningún sitio),
-    // así que se puede aplicar al comando entero sin separar ficheros de
-    // carpetas -- más simple que dos ramas de chainCmds distintas.
-    var flag = root.chmodRecursive ? "-R " : ""
-    var cmds = root.chmodNames.map(function (n) {
-      return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
-    })
-    var label = root.chmodNames.length === 1
-      ? "Setting permissions for \"" + root.chmodNames[0] + "\"…"
-      : "Setting permissions for " + root.chmodNames.length + " items…"
-    // chmod era, junto a bulk rename, la única acción de riesgo real
-    // (más aún con -R) sin ningún undo. Restaura el modo original de
-    // cada ítem seleccionado -- NO el de su contenido si se aplicó
-    // recursivo, ver el comentario de chmodOriginalModes.
-    var names = root.chmodNames
-    var originalModes = root.chmodOriginalModes
-    var chmodCmd = root.chainCmds(cmds)
-    runAction(chmodCmd, label, function () {
-      var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
-      root.pushUndo(undoLabel, function () {
-        var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
-          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
-        })
-        if (undoCmds.length === 0) return false
-        return root.runAction(root.chainCmds(undoCmds))
-      }, function () {
-        return root.runAction(chmodCmd)
-      })
-    })
-  }
-
-  // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
-  function chmodDigit(ownerIdx) {
-    var mode = String(root.chmodMode || "0")
-    while (mode.length < 3) mode = "0" + mode
-    return parseInt(mode.substring(mode.length - 3).charAt(ownerIdx) || "0", 10)
-  }
-
-  function chmodBitSet(ownerIdx, bit) {
-    return (root.chmodDigit(ownerIdx) & bit) !== 0
-  }
-
-  function toggleChmodBit(ownerIdx, bit) {
-    var mode = String(root.chmodMode || "0")
-    while (mode.length < 3) mode = "0" + mode
-    var digits = mode.substring(mode.length - 3)
-    var arr = [digits.charCodeAt(0) - 48, digits.charCodeAt(1) - 48, digits.charCodeAt(2) - 48]
-    arr[ownerIdx] = arr[ownerIdx] ^ bit
-    root.chmodMode = "" + arr[0] + arr[1] + arr[2]
-  }
-
-  function makeLinkFor(entry) {
-    if (root.inArchive) return
-    if (!entry) return
-    var target = root.joinPath(root.currentPath, entry.name)
-    var linkName = "Link to " + entry.name
-    var linkPath = root.joinPath(root.currentPath, linkName)
-    // El undo solo se registra si "ln -s" confirmó éxito -- antes se
-    // registraba a ciegas, así que si ya existía un archivo con el nombre
-    // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z
-    // posterior lo borraba igualmente aunque no tuviera nada que ver con
-    // el enlace que se intentó crear.
-    var makeLinkCmd = "ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath)
-    runAction(makeLinkCmd, undefined, function () {
-      root.pushUndo("make link \"" + linkName + "\"", function () {
-        return root.runAction("rm -- " + Util.shellQuote(linkPath))
-      }, function () {
-        return root.runAction(makeLinkCmd)
-      })
-    })
-  }
-
-  function restoreFromTrash() {
-    var entries = root.selectedEntries()
-    if (entries.length === 0) return
-    // root.trashInfo (ver trash-info.sh) ya sabe la ruta original
-    // absoluta de cada ítem, resuelta correctamente incluso para la
-    // papelera de otro disco (donde Path= es relativo al punto de
-    // montaje, no a casa) -- restore-by-origpath.sh la usa para
-    // localizar el .trashinfo correcto sin asumir una única papelera.
-    var cmds = entries
-      .filter(function (e) { return !!root.trashInfo[e.name] })
-      .map(function (e) {
-        return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(root.trashInfo[e.name].origPath)
-      })
-    if (cmds.length === 0) return
-    runAction(root.chainCmds(cmds), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
-  }
-
   function openContextMenu(x, y, actions) {
     root.contextMenuActions = actions
     root.contextMenuX = Math.min(x, 680)
@@ -2166,8 +1206,8 @@ Item {
     var actions = []
 
     if (inTrash) {
-      actions.push({ label: "Restore" + suffix, action: function () { root.restoreFromTrash() } })
-      actions.push({ label: "Delete permanently" + suffix, destructive: true, action: function () { root.requestDelete() } })
+      actions.push({ label: "Restore" + suffix, action: function () { fileOps.restoreFromTrash() } })
+      actions.push({ label: "Delete permanently" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
       return actions
     }
 
@@ -2191,41 +1231,41 @@ Item {
         // ya lo hace paletteCommands() para el mismo caso.
         var dirFullPath = root.joinPath(root.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
-          root.openInNewTab(dirFullPath)
+          tabOps.openInNewTab(dirFullPath)
         } })
       } else {
-        actions.push({ label: "Open with...", action: function () { root.showOpenWith(entries[0]) } })
+        actions.push({ label: "Open with...", action: function () { openWithOps.showOpenWith(entries[0]) } })
       }
     }
 
-    actions.push({ label: "Copy" + suffix, action: function () { root.copySelected() } })
-    actions.push({ label: "Cut" + suffix, action: function () { root.cutSelected() } })
-    actions.push({ label: "Copy path" + suffix, action: function () { root.copyPathFor(entries) } })
+    actions.push({ label: "Copy" + suffix, action: function () { clipboardOps.copySelected() } })
+    actions.push({ label: "Cut" + suffix, action: function () { clipboardOps.cutSelected() } })
+    actions.push({ label: "Copy path" + suffix, action: function () { clipboardOps.copyPathFor(entries) } })
     if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
 
     if (!multi) {
-      actions.push({ label: "Rename", action: function () { root.startRename(root.selectedIndex) } })
-      actions.push({ label: "Make link", action: function () { root.makeLinkFor(entries[0]) } })
+      actions.push({ label: "Rename", action: function () { renameOps.startRename(root.selectedIndex) } })
+      actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
       var fullPath = root.joinPath(root.currentPath, entries[0].name)
       if (!root.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
       actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
-      if (root.isArchive(entries[0])) {
+      if (archiveActions.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { conflictActions.extractHere(entries[0]) } })
       }
-      if (root.isIso(entries[0])) {
-        actions.push({ label: "Mount", action: function () { root.mountIso(entries[0]) } })
+      if (archiveActions.isIso(entries[0])) {
+        actions.push({ label: "Mount", action: function () { mountOps.mountIso(entries[0]) } })
       }
     } else {
-      actions.push({ label: "Bulk rename...", action: function () { root.startBulkRename() } })
+      actions.push({ label: "Bulk rename...", action: function () { fileOps.startBulkRename() } })
       actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
     }
 
     actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })
-    actions.push({ label: "Delete" + suffix, destructive: true, action: function () { root.requestDelete() } })
+    actions.push({ label: "Delete" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
-    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
+    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     return actions
   }
 
@@ -2237,12 +1277,12 @@ Item {
       // Dentro de un archivo estas ya son no-op (cada función se
       // protege sola), pero se quitan de aquí para no enseñar entradas
       // muertas en el menú de hueco vacío.
-      actions.push({ label: "New folder", action: function () { root.startNewFolder() } })
-      actions.push({ label: "New file", action: function () { root.startNewFile() } })
+      actions.push({ label: "New folder", action: function () { renameOps.startNewFolder() } })
+      actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
       actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
     }
-    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { root.toggleHidden() } })
-    actions.push({ label: "Refresh", action: function () { root.refresh(); root.refreshMounts(); root.refreshNetworkMounts() } })
+    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
+    actions.push({ label: "Refresh", action: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } })
     return actions
   }
 
@@ -2273,7 +1313,7 @@ Item {
       { label: "Open", action: function () { root.openBookmark(bookmark) } }
     ]
     if (bookmark.type !== "file") {
-      actions.push({ label: "Open in new tab", action: function () { root.openInNewTab(bookmark.path) } })
+      actions.push({ label: "Open in new tab", action: function () { tabOps.openInNewTab(bookmark.path) } })
     }
     if (bookmark.path === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
@@ -2284,17 +1324,17 @@ Item {
 
   function mountActions(mount) {
     if (!mount.mounted) {
-      return [{ label: "Mount", action: function () { root.mountDevice(mount) } }]
+      return [{ label: "Mount", action: function () { mountOps.mountDevice(mount) } }]
     }
     var actions = [
       { label: "Open", action: function () { root.navigateTo(mount.path) } },
-      { label: "Open in new tab", action: function () { root.openInNewTab(mount.path) } }
+      { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } }
     ]
     if (!root.isBookmarked(mount.path)) {
       actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label, "dir") } })
     }
     if (mount.removable) {
-      actions.push({ label: "Eject", destructive: true, action: function () { root.ejectMount(mount) } })
+      actions.push({ label: "Eject", destructive: true, action: function () { mountOps.ejectMount(mount) } })
     }
     return actions
   }
@@ -2384,7 +1424,7 @@ Item {
     interval: 7000
     repeat: true
     running: root.opened
-    onTriggered: { root.refreshMounts(); root.refreshNetworkMounts() }
+    onTriggered: { mountOps.refreshMounts(); mountOps.refreshNetworkMounts() }
   }
 
   Process {
@@ -2392,49 +1432,46 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.entries = root.sortEntries(Utils.parseEntries(text))
-        // Refresca la info de la papelera junto con el listado -- entrar
-        // en Trash/files o borrar/restaurar algo estando ya dentro debe
-        // mantener origen/fecha al día. Se limpia al salir para no dejar
-        // datos obsoletos si se vuelve a entrar más tarde con contenido
-        // distinto.
+        var parsed = root.sortEntries(Utils.parseEntries(text))
         if (root.currentPath === root.trashDir) {
+          if (Object.keys(root.trashInfo).length > 0) {
+            // Ya hay trashInfo cargada -- de este mismo panel en una
+            // visita anterior de esta sesión, o COMPARTIDA desde un panel
+            // de fondo que ya la tenía (ver BackgroundPanel.qml/
+            // bgTrashInfoProc). Pintar ya con eso; el trashInfoProc de
+            // abajo solo la refresca por detrás sin bloquear el pintado.
+            root._applyEntries(parsed)
+          } else {
+            // Primera vez que se ve la papelera en TODA la sesión (ni
+            // siquiera un panel de fondo la había cargado antes de que
+            // esta pestaña pasara a activa) -- esperar a que
+            // trash-info.sh termine para pintar ya con el texto final
+            // ("Deleted X ago · from ...") de una sola vez. Mismo bug/
+            // mismo motivo que BackgroundPanel.qml -- root.entries
+            // saliendo primero con solo el tamaño y esa parte llegando
+            // un instante después hacía crecer las filas y saltar todo
+            // lo de debajo (parpadeo real, reportado por josema; esta
+            // rama concreta -- panel ACTIVO, no de fondo -- es la que
+            // se me había escapado en el primer intento de arreglarlo).
+            root._pendingListEntries = parsed
+            root._waitingForTrashInfo = true
+          }
           trashInfoProc.command = [root.pluginDir + "/trash-info.sh"]
           trashInfoProc.running = true
-        } else if (Object.keys(root.trashInfo).length > 0) {
-          root.trashInfo = ({})
-        }
-        // El array de arriba es un objeto nuevo, no una mutación del
-        // anterior -- QML/Qt no siempre reancla bien el origen interno de
-        // ListView (originY) al reemplazar el modelo entero así, sobre todo
-        // si la lista anterior era más corta. `list.contentY = 0` (puesto
-        // ANTES de lanzar este proceso, en toggleHidden/navigateTo/etc) no
-        // basta porque corre contra el modelo VIEJO -- esto es lo que
-        // realmente deja el hueco arriba del todo. positionViewAtBeginning()
-        // es la forma correcta de QML de resetear origen+contentY juntos,
-        // justo cuando el modelo nuevo ya está puesto.
-        list.positionViewAtBeginning()
-        root.loaded = true
-        var selectNames = root.pendingSelectNames
-        root.pendingSelectNames = []
-        var foundIndices = []
-        if (selectNames.length > 0) {
-          for (var i = 0; i < root.visibleEntries.length; i++) {
-            if (selectNames.indexOf(root.visibleEntries[i].name) >= 0) foundIndices.push(i)
-          }
-        }
-        if (foundIndices.length > 0) {
-          // selectOnly() ya cubría el caso de 1 (el de siempre: marcador
-          // de fichero, reciente, la mayoría de ShowItems reales). Varios
-          // a la vez (ShowItems con multi-selección real en el llamador,
-          // ver dbus-filemanager1.py) no tenían forma de aplicarse antes
-          // -- se resaltaban todos, con el primero como "principal".
-          root.selectedIndex = foundIndices[0]
-          root.anchorIndex = foundIndices[0]
-          root.selectedIndices = foundIndices
-          if (root.previewOpen && foundIndices.length > 1) root.previewOpen = false
-        } else if (root.selectedIndex >= root.visibleEntries.length) {
-          root.selectedIndex = root.visibleEntries.length - 1
+        } else {
+          // NO se limpia root.trashInfo al salir de la papelera -- es
+          // COMPARTIDA entre el panel activo y todos los de fondo (ver
+          // BackgroundPanel.qml/bgTrashInfoProc), así que vaciarla aquí
+          // sin más se la quitaba también a un panel de FONDO que
+          // siguiera mostrando la papelera en ese mismo instante. Ese
+          // vacío + el rellenado casi inmediato que le seguía (el panel
+          // de fondo lo notaba y volvía a pedir trash-info.sh) era el
+          // salto real reportado por josema: el texto "Deleted X ago..."
+          // desaparecía y volvía en unas décimas de segundo cada vez que
+          // se cambiaba de pestaña, aunque fuera hacia una carpeta
+          // normal. Dejarla con datos obsoletos sin más uso no hace daño
+          // -- metaFor() solo la consulta cuando la ruta ES la papelera.
+          root._applyEntries(parsed)
         }
       }
     }
@@ -2449,41 +1486,65 @@ Item {
     }
   }
 
-  Process {
-    id: archiveListProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var s = String(text || "")
-        var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
-        if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-        var parsed = []
-        for (var i = 0; i + 1 < fields.length; i += 2) {
-          parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
-        }
-        root.entries = root.sortEntries(parsed)
-        list.positionViewAtBeginning()
-        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
-      }
-    }
+  ArchiveActions {
+    id: archiveActions
+    root: root
+    list: list
   }
 
-  Process {
-    id: archiveOpenProc
-    property string outPath: ""
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: archiveOpenProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode !== 0) {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't open file from archive: " + (archiveOpenProc.errorText.trim() || "unknown error")])
-        return
-      }
-      openProc.command = ["xdg-open", archiveOpenProc.outPath]
-      openProc.running = true
-    }
+  FileOps {
+    id: fileOps
+    root: root
+  }
+
+  VideoThumbnails {
+    id: videoThumbs
+    root: root
+  }
+
+  RenameOps {
+    id: renameOps
+    root: root
+  }
+
+  ClipboardOps {
+    id: clipboardOps
+    root: root
+  }
+
+  DragDropOps {
+    id: dragDropOps
+    root: root
+    conflictActions: conflictActions
+  }
+
+  SearchOps {
+    id: searchOps
+    root: root
+    list: list
+  }
+
+  OpenWithOps {
+    id: openWithOps
+    root: root
+  }
+
+  FileMeta {
+    id: fileMeta
+    root: root
+  }
+
+  DeleteOps {
+    id: deleteOps
+    root: root
+  }
+
+  TabOps {
+    id: tabOps
+    root: root
+    list: list
+    archiveActions: archiveActions
+    previewLoader: previewLoader
   }
 
   Process {
@@ -2498,25 +1559,10 @@ Item {
           info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
         }
         root.trashInfo = info
-      }
-    }
-  }
-
-  Process {
-    id: deepSearchProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = Utils.parseEntries(text)
-        // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
-        // que había más de 200 coincidencias reales; se descarta el que
-        // sobra y se avisa en la barra de estado en vez de dar la lista
-        // por completa en silencio.
-        root.searchTruncated = parsed.length > 200
-        if (root.searchTruncated) parsed = parsed.slice(0, 200)
-        root.entries = root.sortEntries(parsed)
-        list.positionViewAtBeginning()
-        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+        if (root._waitingForTrashInfo) {
+          root._waitingForTrashInfo = false
+          root._applyEntries(root._pendingListEntries)
+        }
       }
     }
   }
@@ -2525,300 +1571,44 @@ Item {
     id: openProc
   }
 
-  Process {
-    id: mountsProc
-    command: [root.pluginDir + "/list-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.mounts = Utils.parseMounts(text)
-    }
-  }
-
-  Process {
-    id: ejectProc
-    property string mountPath: ""
-    property bool wasInside: false
-    property int tabIndex: -1
-    property string errorText: ""
-    property string device: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: ejectProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode === 0) {
-        if (ejectProc.wasInside) root.navigateTabTo(ejectProc.tabIndex, root.homeDir)
-        // Un .iso montado con mountIso() deja el /dev/loopN asociado al
-        // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
-        // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
-        // device para siempre hasta reiniciar.
-        if (ejectProc.device.indexOf("/dev/loop") === 0) {
-          Quickshell.execDetached(["udisksctl", "loop-delete", "-b", ejectProc.device])
-        }
-        root.refreshMounts()
-      } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not eject: " + (ejectProc.errorText || "device busy")])
-      }
-    }
-  }
-
-  Process {
-    id: mountProc
-    property string outputText: ""
-    property string errorText: ""
-    property int tabIndex: -1
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountProc.outputText = text
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      root.refreshMounts()
-      if (exitCode === 0) {
-        var match = mountProc.outputText.match(/ at (\/[^\s.]+)/)
-        if (match) root.navigateTabTo(mountProc.tabIndex, match[1])
-      } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount: " + (mountProc.errorText || "unknown error")])
-      }
-    }
-  }
-
-  Process {
-    id: mountIsoProc
-    property string outputText: ""
-    property string errorText: ""
-    property int tabIndex: -1
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountIsoProc.outputText = text
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: mountIsoProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      root.refreshMounts()
-      if (exitCode === 0) {
-        var match = mountIsoProc.outputText.match(/ at (\/[^\s.]+)/)
-        if (match) root.navigateTabTo(mountIsoProc.tabIndex, match[1])
-      } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not mount ISO: " + (mountIsoProc.errorText || "unknown error")])
-      }
-    }
-  }
-
-  Process {
-    id: networkMountsProc
-    command: [root.pluginDir + "/list-network-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.networkMounts = Utils.parseNetworkMounts(text)
-    }
-  }
-
-  Process {
-    id: networkUnmountProc
-    property bool wasInside: false
-    property int tabIndex: -1
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: networkUnmountProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      if (exitCode === 0) {
-        if (networkUnmountProc.wasInside) root.navigateTabTo(networkUnmountProc.tabIndex, root.homeDir)
-        root.refreshNetworkMounts()
-      } else {
-        Quickshell.execDetached(["notify-send", "Omafiles", "Could not disconnect: " + (networkUnmountProc.errorText || "unknown error")])
-      }
-    }
-  }
-
-  // Sin -a/--anonymous ni forma de pasar contraseña: si el servidor pide
-  // credenciales, gio necesita un GMountOperation interactivo que esta
-  // app no implementa (sería un sub-proyecto en sí mismo, tipo el diálogo
-  // "Conectar a servidor" + llavero de Nautilus). Funciona bien para SFTP
-  // con clave SSH ya configurada, o cualquier servidor con credenciales
-  // ya guardadas en el llavero de una conexión anterior (con Nautilus,
-  // por ejemplo) -- si se queda colgado esperando una contraseña que
-  // nunca llega, el usuario tiene el botón Cancelar del diálogo
-  // (cancelNetworkConnect/setsid, mismo mecanismo que cancelAction()).
-  Process {
-    id: networkMountProc
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: networkMountProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      root.networkConnecting = false
-      if (exitCode === 0) {
-        root.connectServerOpen = false
-        // gio no imprime la ruta local igual que udisksctl -- se relista
-        // y se entra al mount que no estaba antes (el que acaba de
-        // aparecer) en vez de parsear la salida de "gio mount".
-        networkMountsAfterConnectProc.beforePaths = root.networkMounts.map(function (m) { return m.path })
-        networkMountsAfterConnectProc.running = true
-      } else {
-        root.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
-      }
-    }
-  }
-
-  // Segunda pasada de list-network-mounts.sh tras un connect con éxito,
-  // solo para encontrar CUÁL de los mounts es el nuevo (comparando contra
-  // los que ya había antes) y navegar directamente a él -- refreshNetworkMounts()
-  // normal no distingue cuál acaba de aparecer.
-  Process {
-    id: networkMountsAfterConnectProc
-    property var beforePaths: []
-    command: [root.pluginDir + "/list-network-mounts.sh"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var parsed = Utils.parseNetworkMounts(text)
-        root.networkMounts = parsed
-        var before = networkMountsAfterConnectProc.beforePaths
-        var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
-        if (fresh.length > 0) root.navigateTo(fresh[0].path)
-      }
-    }
-  }
+          MountActions {
+            id: mountOps
+            root: root
+            tabOps: tabOps
+          }
 
   Persistence {
     id: persistence
     root: root
+    tabOps: tabOps
   }
 
-  Process {
-    id: actionProc
-    property string errorText: ""
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: actionProc.errorText = text
-    }
-    onExited: function (exitCode) {
-      root.actionBusy = false
-      root.actionLabel = ""
-      root.actionProgressPct = -1
-      root.actionTotalBytes = 0
-      root.actionProgressDestPaths = []
-      root.refresh()
-      // Una acción (borrar, mover, pegar...) puede afectar a cualquier
-      // panel, no solo al activo -- refreshTick es la señal para que los
-      // paneles no activos (cada uno con su propio Process de listado, ver
-      // el Repeater de paneles) se refresquen también.
-      root.refreshTick += 1
-      var cb = root._actionOnSuccess
-      root._actionOnSuccess = null
-      var wasCancelled = root._actionCancelled
-      root._actionCancelled = false
-      if (exitCode === 0) {
-        if (cb) cb()
-      } else if (!wasCancelled) {
-        // Antes esto se tragaba en silencio -- un mv/cp/chmod/zip/unzip que
-        // fallara (permisos, disco lleno, archivo corrupto...) se veía
-        // exactamente igual que uno que había ido bien.
-        Quickshell.execDetached(["notify-send", "Omafiles", "Action failed: " + (actionProc.errorText.trim() || "unknown error")])
-      }
-    }
-  }
-
-  // Tamaño total del origen, UNA vez al principio de una copia/movimiento
-  // -- ver startCopyProgress().
-  Process {
-    id: actionProgressTotalProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var n = parseInt(text.trim(), 10)
-        root.actionTotalBytes = isNaN(n) ? 0 : n
-      }
-    }
-  }
-
-  // Sondeo periódico de cuánto hay ya en el destino mientras
-  // actionBusy+actionTotalBytes>0 -- ver el Timer de abajo, que es quien
-  // decide CUÁNDO relanzar esto (no tiene sentido más de un sondeo a la
-  // vez si el anterior tarda más que el intervalo).
-  Process {
-    id: actionProgressPollProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (root.actionTotalBytes <= 0) return
-        var n = parseInt(text.trim(), 10)
-        if (isNaN(n)) return
-        root.actionProgressPct = Math.min(100, n / root.actionTotalBytes * 100)
-      }
-    }
-  }
-
-  Timer {
-    // Un sondeo "du" sobre destinos grandes no es instantáneo -- esta
-    // guardia (en vez de solo "repeat: true") evita amontonar sondeos si
-    // uno tarda más que el intervalo.
-    id: actionProgressPollTimer
-    interval: 600
-    repeat: true
-    running: root.actionBusy && root.actionTotalBytes > 0 && root.actionProgressDestPaths.length > 0
-    onTriggered: {
-      if (actionProgressPollProc.running) return
-      var quoted = root.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-      actionProgressPollProc.command = ["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"]
-      actionProgressPollProc.running = true
-    }
+  ActionEngine {
+    id: actionEngine
+    root: root
   }
 
   ConflictActions {
     id: conflictActions
     root: root
+    archiveActions: archiveActions
+    fileOps: fileOps
+    renameOps: renameOps
+    clipboardOps: clipboardOps
+    dragDropOps: dragDropOps
   }
 
   PreviewLoader {
     id: previewLoader
     root: root
+    videoThumbs: videoThumbs
+    fileMeta: fileMeta
   }
 
-  Process {
-    id: openWithProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.openWithApps = root.parseOpenWithApps(text)
-    }
-  }
 
   PropertiesLoader {
     id: propertiesLoader
     root: root
-  }
-
-  Process {
-    id: thumbProc
-    property string currentKey: ""
-    property string currentDest: ""
-    onExited: function (exitCode) {
-      // Bug real: antes se marcaba "lista" pase lo que pase, aunque
-      // ffmpegthumbnailer fallara (formato raro, fichero corrupto, sin
-      // memoria un instante) -- requestVideoThumb() nunca reintentaba
-      // porque videoThumbReady[key] ya era verdadero (con una ruta que
-      // en realidad no existe), así que ese vídeo se quedaba sin
-      // miniatura real el resto de la sesión. Ahora solo se marca lista
-      // si el proceso terminó bien, así una próxima visita a la carpeta
-      // (nueva key por mtime, o simplemente request() de nuevo) puede
-      // reintentar.
-      if (exitCode === 0) {
-        var ready = Object.assign({}, root.videoThumbReady)
-        ready[thumbProc.currentKey] = thumbProc.currentDest
-        root.videoThumbReady = ready
-      }
-      root.thumbBusy = false
-      root.processThumbQueue()
-    }
   }
 
   Timer {
@@ -2898,12 +1688,12 @@ Item {
           onRecentRemoveRequested: function (path) { root.removeRecent(path) }
           onRecentClearRequested: root.clearRecent()
           onMountActivated: function (mount) {
-            if (!mount.mounted) root.mountDevice(mount)
+            if (!mount.mounted) mountOps.mountDevice(mount)
             else root.navigateTo(mount.path)
           }
           onNetworkMountOpened: function (mount) { root.navigateTo(mount.path) }
-          onConnectRequested: root.startConnectToServer()
-          onFilesDropped: function (drop, destPath) { root.handleFilesDropped(drop, destPath) }
+          onConnectRequested: mountOps.startConnectToServer()
+          onFilesDropped: function (drop, destPath) { dragDropOps.handleFilesDropped(drop, destPath) }
           onDropHoverChanged: function (path) { root.dropHoverPath = path }
         }
 
@@ -2969,288 +1759,13 @@ Item {
             Repeater {
               model: root.tabs
 
-              Item {
-                id: bgPanel
-                required property var modelData
-                required property int index
-                visible: index !== root.activeTabIndex
-                x: panelsRow.slotX(index)
-                y: 0
-                width: panelsRow.slotWidth
-                height: panelsRow.height
-                // Atenuado respecto al panel activo -- con "el panel activo
-                // es el que tiene el ratón encima" (ver HoverHandler más
-                // abajo), sin ninguna señal visual era fácil no darse
-                // cuenta de a qué panel le estaban llegando los atajos de
-                // teclado y actuar sobre el equivocado sin querer. Solo
-                // opacidad, sin tocar colores del tema.
-                opacity: 0.72
-
-                property var entries: []
-                property string pathError: ""
-                property bool loaded: false
-
-                // Pasar el ratón por encima hace que este panel se vuelva
-                // el activo (el que tiene lazo de selección, menú
-                // contextual, y responde a los atajos de teclado j/k/F2/
-                // Supr/etc.) -- sin esto solo se podía "activar" un panel
-                // haciendo clic dentro, y josema quería que baste con
-                // colocar el cursor encima. HoverHandler en vez de
-                // MouseArea: no roba el evento a los MouseArea de las
-                // filas/botones de debajo, solo observa.
-                HoverHandler {
-                  // No cambiar de panel activo mientras el usuario tiene un
-                  // nombre a medio escribir (rename/nueva carpeta/nuevo
-                  // fichero/ruta editable) -- switchToTab -> _goToPath
-                  // resetea esos campos, y con hover-to-activate bastaba con
-                  // cruzar el ratón por el divisor para perder el texto sin
-                  // ningún clic de por medio. Tampoco con el menú
-                  // contextual abierto -- bug real: el menú se abre sobre
-                  // el panel activo de ESE momento, pero si el cursor
-                  // pasaba por otro panel de fondo de camino a una entrada
-                  // del menú (nada bloqueaba el hover solo por haber un
-                  // menú encima), la pestaña activa cambiaba a mitad de
-                  // acción y "Open in new tab"/Copy/etc. acababan actuando
-                  // sobre la carpeta equivocada.
-                  // El guard real vive ahora en switchToTab() (hasBlockingOverlay),
-                  // así cubre TODOS los diálogos, no solo estos dos.
-                  onHoveredChanged: if (hovered) root.switchToTab(bgPanel.index)
-                }
-
-                function refreshMe() {
-                  if (!bgPanel.visible) return
-                  bgPanel.pathError = ""
-                  // Papelera: igual que root.refresh() con el panel activo
-                  // -- no es una carpeta real, agrega la de casa más la de
-                  // cualquier otro disco montado (list-trash.sh), así que
-                  // list-dir.sh a secas contra trashDir solo ve la de casa
-                  // y con eso vacía se veía como "papelera vacía" hasta
-                  // que este panel pasaba a ser el activo.
-                  if (bgPanel.modelData.path === root.trashDir) {
-                    bgListProc.command = [root.pluginDir + "/list-trash.sh", root.showHidden ? "1" : "0"]
-                  } else {
-                    bgListProc.command = [root.pluginDir + "/list-dir.sh", bgPanel.modelData.path, root.showHidden ? "1" : "0"]
-                  }
-                  bgListProc.running = true
-                }
-
-                onVisibleChanged: if (visible) bgPanel.refreshMe()
-                onModelDataChanged: bgPanel.refreshMe()
-                Connections {
-                  target: root
-                  function onRefreshTickChanged() { bgPanel.refreshMe() }
-                }
-                Component.onCompleted: bgPanel.refreshMe()
-
-                Process {
-                  id: bgListProc
-                  stdout: StdioCollector {
-                    waitForEnd: true
-                    onStreamFinished: {
-                      bgPanel.entries = root.sortEntries(Utils.parseEntries(text))
-                      bgPanel.loaded = true
-                      root.tabEntriesCache[bgPanel.modelData.path] = bgPanel.entries
-                    }
-                  }
-                  onExited: function (exitCode, exitStatus) {
-                    if (exitCode === 2) bgPanel.pathError = "Permission denied"
-                    else if (exitCode === 3) bgPanel.pathError = "This folder no longer exists"
-                    else if (exitCode === 4) bgPanel.pathError = "Not a folder"
-                    else if (exitCode !== 0) bgPanel.pathError = "Couldn't open this folder"
-                  }
-                }
-
-                DropArea {
-                  anchors.fill: parent
-                  keys: ["text/uri-list"]
-                  onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
-                  onDropped: function (drop) { root.handleFilesDropped(drop, bgPanel.modelData.path) }
-                }
-
-                Row {
-                  id: bgHeaderRow
-                  anchors.top: parent.top
-                  width: parent.width
-                  height: Style.spacing.controlHeight
-                  spacing: Style.spacing.controlGap
-
-                  // Misma cabecera que el panel activo (atrás/adelante/casa/
-                  // subir) -- josema pidió que las dos se vean iguales, no
-                  // solo el panel activo con navegación completa.
-                  PanelNavButtons {
-                    canGoBack: (bgPanel.modelData.historyIndex || 0) > 0
-                    canGoForward: (bgPanel.modelData.historyIndex || 0) < (bgPanel.modelData.history || [bgPanel.modelData.path]).length - 1
-                    canGoUp: bgPanel.modelData.path !== "/"
-                    onBackRequested: root.navTabBack(bgPanel.index)
-                    onForwardRequested: root.navTabForward(bgPanel.index)
-                    onUpRequested: {
-                      var p = bgPanel.modelData.path
-                      var idx = p.lastIndexOf("/")
-                      root.navigateTabTo(bgPanel.index, idx > 0 ? p.substring(0, idx) : "/")
-                    }
-                  }
-
-                  // Migas de pan completas, igual que en el panel activo --
-                  // antes solo se veía el nombre de la carpeta actual, sin
-                  // el resto de la ruta.
-                  BreadcrumbSegments {
-                    id: bgBreadcrumbRow
-                    width: parent.width - 3 * Style.spacing.controlHeight - 3 * Style.spacing.controlGap
-                    height: parent.height
-                    segments: root.pathSegmentsFor(bgPanel.modelData.path)
-                    activePath: bgPanel.modelData.path
-                  }
-                }
-
-                PanelSeparator {
-                  id: bgHeaderSep
-                  anchors.top: bgHeaderRow.bottom
-                  // Mismo hueco que separa navRow de listContainer en el
-                  // panel activo (mainColumn.spacing, no Style.spacing.sm)
-                  // -- con sm quedaba visiblemente más alto que la línea
-                  // del panel activo.
-                  anchors.topMargin: mainColumn.spacing
-                  width: parent.width
-                  foreground: Color.menu.text
-                  strength: 0.15
-                }
-
-                Text {
-                  id: bgErrorText
-                  visible: bgPanel.pathError !== ""
-                  anchors.top: bgHeaderSep.bottom
-                  anchors.topMargin: Style.spacing.sm
-                  width: parent.width
-                  text: bgPanel.pathError
-                  font.pixelSize: Style.font.subtitle
-                  font.family: Style.font.family
-                  color: Color.urgent
-                }
-
-                ListView {
-                  id: bgList
-                  anchors.top: bgErrorText.visible ? bgErrorText.bottom : bgHeaderSep.bottom
-                  anchors.topMargin: Style.spacing.md
-                  anchors.bottom: bgStatusText.top
-                  anchors.bottomMargin: mainColumn.spacing
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  clip: true
-                  model: bgPanel.entries
-                  boundsBehavior: Flickable.StopAtBounds
-
-                  delegate: CursorSurface {
-                    id: bgRowSurface
-                    required property var modelData
-                    required property int index
-                    width: bgList.width
-                    implicitHeight: bgRowContent.implicitHeight + Style.spacing.md * 2
-                    foreground: Color.menu.text
-                    accent: Color.accent
-                    hasCursor: bgRowMouse.containsMouse
-                    // El fill/borde de hover ya es semitransparente de por
-                    // sí (Style.hoverFillFor) -- bgPanel entero va a
-                    // opacity:0.72 para marcarse como "no es el panel
-                    // activo", y sin esto esa opacidad se multiplica TAMBIÉN
-                    // sobre el hover, quedando doblemente débil/desvaído en
-                    // vez del mismo aspecto que tiene en el panel activo.
-                    // 1/0.72 cancela justo la opacidad del padre solo
-                    // mientras esta fila concreta tiene el cursor encima.
-                    opacity: hasCursor ? 1 / 0.72 : 1
-
-                    DropArea {
-                      visible: modelData.type === "dir"
-                      anchors.fill: parent
-                      keys: ["text/uri-list"]
-                      onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
-                      onDropped: function (drop) {
-                        root.handleFilesDropped(drop, root.joinPath(bgPanel.modelData.path, modelData.name))
-                      }
-                    }
-
-                    Item {
-                      id: bgRowContent
-                      anchors.left: parent.left
-                      anchors.right: parent.right
-                      anchors.verticalCenter: parent.verticalCenter
-                      anchors.leftMargin: 0
-                      anchors.rightMargin: Style.spacing.rowPaddingX
-                      implicitHeight: bgFileRow.implicitHeight
-
-                      readonly property bool isVid: root.isVideo(modelData)
-                      readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
-                      readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
-
-                      Component.onCompleted: if (isVid) root.requestVideoThumb(modelData, bgPanel.modelData.path)
-
-                      FileRowVisual {
-                        id: bgFileRow
-                        anchors.fill: parent
-                        name: modelData.name
-                        isDir: modelData.type === "dir"
-                        isBroken: modelData.link === "broken"
-                        fileIconGlyph: root.iconFor(modelData)
-                        // La ruta es la de ESTE panel (bgPanel.modelData.path),
-                        // no root.currentPath -- ese es del panel activo, y
-                        // era justo lo que hacía fallar la miniatura aquí
-                        // cuando este panel no era el activo.
-                        thumbSource: root.isImage(modelData) ? Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
-                          : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
-                        metaText: root.metaFor(modelData, bgPanel.modelData.path)
-                      }
-                    }
-
-                    MouseArea {
-                      id: bgRowMouse
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      cursorShape: Qt.PointingHandCursor
-                      drag.target: bgDragProxy
-                      drag.axis: Drag.XAndYAxis
-                      onDoubleClicked: {
-                        if (modelData.type === "dir") {
-                          root.navigateTabTo(bgPanel.index, root.joinPath(bgPanel.modelData.path, modelData.name))
-                        } else {
-                          openProc.command = ["xdg-open", root.joinPath(bgPanel.modelData.path, modelData.name)]
-                          openProc.running = true
-                        }
-                      }
-                    }
-
-                    Item {
-                      id: bgDragProxy
-                      width: 1
-                      height: 1
-                      Drag.active: bgRowMouse.drag.active
-                      Drag.dragType: Drag.Automatic
-                      Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-                      Drag.proposedAction: Qt.MoveAction
-                      Drag.mimeData: {
-                        var data = {}
-                        data["text/uri-list"] = Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
-                        return data
-                      }
-                    }
-                  }
-                }
-
-                EmptyState {
-                  visible: bgPanel.pathError === "" && bgPanel.entries.length === 0
-                  centerOn: bgList
-                  message: bgPanel.modelData.path === root.trashDir ? "Trash is empty" : "Nothing here yet"
-                }
-
-                Text {
-                  id: bgStatusText
-                  anchors.bottom: parent.bottom
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  text: bgPanel.entries.length + (bgPanel.entries.length === 1 ? " item" : " items")
-                  font.pixelSize: Style.font.subtitle
-                  font.family: Style.font.family
-                  color: Color.menu.text
-                  opacity: 0.55
-                }
+              BackgroundPanel {
+                hostRoot: root
+                hostPanelsRow: panelsRow
+                hostVideoThumbs: videoThumbs
+                hostDragDropOps: dragDropOps
+                hostFileMeta: fileMeta
+                hostTabOps: tabOps
               }
             }
 
@@ -3315,7 +1830,7 @@ Item {
                 anchors.fill: parent
                 visible: !root.editingPath
                 cursorShape: Qt.IBeamCursor
-                onClicked: root.startEditPath()
+                onClicked: searchOps.startEditPath()
               }
 
               BreadcrumbSegments {
@@ -3347,127 +1862,12 @@ Item {
             }
           }
 
-          Row {
-            id: newFolderRow
-            visible: root.creatingFolder
-            width: parent.width
-            height: Style.spacing.controlHeight
-            spacing: Style.spacing.controlGap
-
-            TextField {
-              id: newFolderField
-              width: parent.width - 160
-              anchors.verticalCenter: parent.verticalCenter
-              placeholderText: "New folder name…"
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "New folder name"
-              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
-              Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.commitNewFolder(text)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  root.creatingFolder = false
-                  event.accepted = true
-                }
-              }
-            }
-
-            Button {
-              text: "Create"
-              bordered: true
-              anchors.verticalCenter: parent.verticalCenter
-              Accessible.role: Accessible.Button
-              Accessible.name: "Create folder"
-              onClicked: root.commitNewFolder(newFolderField.text)
-            }
-          }
-
-          Row {
-            id: newFileRow
-            visible: root.creatingFile
-            width: parent.width
-            height: Style.spacing.controlHeight
-            spacing: Style.spacing.controlGap
-
-            TextField {
-              id: newFileField
-              width: parent.width - 160
-              anchors.verticalCenter: parent.verticalCenter
-              placeholderText: "New file name…"
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "New file name"
-              onVisibleChanged: if (visible) { text = ""; forceActiveFocus() } else list.forceActiveFocus()
-              Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.commitNewFile(text)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  root.creatingFile = false
-                  event.accepted = true
-                }
-              }
-            }
-
-            Button {
-              text: "Create"
-              bordered: true
-              anchors.verticalCenter: parent.verticalCenter
-              Accessible.role: Accessible.Button
-              Accessible.name: "Create file"
-              onClicked: root.commitNewFile(newFileField.text)
-            }
-          }
-
-          Row {
-            id: searchRow
-            visible: root.searching
-            width: parent.width
-            height: Style.spacing.controlHeight
-            spacing: Style.spacing.controlGap
-
-            // Mismo sangrado que pathArea en navRow (dos botones cuadrados +
-            // sus huecos), para que el campo de búsqueda quede alineado bajo
-            // la ruta en vez de arrancar en el borde izquierdo.
-            Item {
-              width: 2 * Style.spacing.controlHeight + Style.spacing.controlGap
-              height: 1
-            }
-
-            Text {
-              text: "/"
-              anchors.verticalCenter: parent.verticalCenter
-              font.pixelSize: Style.font.title
-              font.family: Style.font.family
-              color: Color.menu.text
-              opacity: 0.6
-            }
-
-            TextField {
-              id: searchField
-              width: parent.width - 30
-              anchors.verticalCenter: parent.verticalCenter
-              verticalPadding: 2
-              placeholderText: "Search here… (Ctrl+Enter searches subfolders)"
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "Search"
-              text: root.searchQuery
-              onTextChanged: root.searchQuery = text
-              onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
-              Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_Escape) {
-                  root.exitSearch()
-                  event.accepted = true
-                } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) {
-                  root.runDeepSearch()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.searching = false
-                  root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
-                  event.accepted = true
-                }
-              }
-            }
+          ActivePanelInputRows {
+            id: activeInputRows
+            root: root
+            list: list
+            renameOps: renameOps
+            searchOps: searchOps
           }
 
           Item {
@@ -3481,709 +1881,37 @@ Item {
             // fila), pero el estado vacío, centrado en el alto total,
             // amplificaba ese único píxel a un desajuste visible al
             // cambiar entre panel activo/de fondo.
+            // Las tres filas de activeInputRows son mutuamente excluyentes
+            // (ver comentario del propio componente) -- su altura ya ES
+            // la de la única fila visible, o 0 si ninguna lo está, así
+            // que basta un término en vez de sumar los tres por separado.
             height: activePanel.height - navRow.height
-              - (root.creatingFolder ? newFolderRow.height + mainColumn.spacing : 0)
-              - (root.creatingFile ? newFileRow.height + mainColumn.spacing : 0)
-              - (root.searching ? searchRow.height + mainColumn.spacing : 0)
+              - (root.creatingFolder || root.creatingFile || root.searching ? activeInputRows.height + mainColumn.spacing : 0)
               - statusText.height - mainColumn.spacing * (2 + (root.creatingFolder || root.creatingFile || root.searching ? 1 : 0))
 
-            // Misma línea que separa cabecera y lista en los paneles de
-            // fondo (bgHeaderSep) -- va aquí dentro, no como hermana en la
-            // Column, para que el hueco entre separador y lista sea el
-            // mismo Style.spacing.sm de allí y no el mainColumn.spacing
-            // (más ancho) que la Column mete entre CUALQUIER par de hijos.
-            PanelSeparator {
-              id: listSep
-              anchors.top: parent.top
-              foreground: Color.menu.text
-              strength: 0.15
-            }
-
-            MouseArea {
-              // Detrás de la lista: clic derecho en hueco vacío -> menú contextual general.
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
-              acceptedButtons: Qt.RightButton
-              onClicked: function (mouse) {
-                var pos = mapToItem(card, mouse.x, mouse.y)
-                root.openContextMenu(pos.x, pos.y, root.emptyAreaActions())
-              }
-            }
-
-            // Detrás de la lista: soltar aquí (desde otra app, o un arrastre
-            // interno sobre hueco vacío en vez de encima de una fila) mete
-            // los ficheros en la carpeta abierta ahora mismo. Al ir ANTES
-            // que la ListView en el fichero, queda por debajo en el orden de
-            // pintado -- el DropArea de cada fila de carpeta, por encima,
-            // gana cuando el cursor está sobre ella.
-            DropArea {
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
-              keys: ["text/uri-list"]
-              onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
-              onDropped: function (drop) {
-                root.handleFilesDropped(drop, root.currentPath)
-              }
-            }
-
-            // Rueda del ratón: con `list.interactive` a false (para que
-            // arrastrar nunca haga scroll, solo dibuje el lazo), Flickable
-            // deja de procesar también la rueda -- se reimplementa aquí a
-            // mano. Sin onPressed/onClicked, así que un MouseArea sin
-            // control de wheel (ninguno de filas/footer/marqueeArea lo
-            // implementa) deja pasar el evento hasta este, detrás de todo;
-            // por eso uno solo, cubriendo toda la zona, basta para filas y
-            // huecos vacíos por igual.
-            MouseArea {
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
-              property real wheelAccumulator: 0
-              onWheel: function (wheel) {
-                var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
-                wheelAccumulator = step.remainder
-                if (step.steps === 0) return
-                // El suelo es list.originY, NO 0 -- ListView puede desplazar
-                // su origen con el reciclado de delegados (visto en vivo:
-                // originY llegó a valer cientos de píxeles tras scrollear
-                // mucho), y forzar contentY a 0 en ese caso deja justo el
-                // hueco vacío arriba del todo que reportaba el usuario.
-                var minY = list.originY
-                var maxY = minY + Math.max(0, list.contentHeight - list.height)
-                list.contentY = Math.max(minY, Math.min(maxY, list.contentY - step.steps * 60))
-              }
-            }
-
-            // Detrás de la ListView, solo el hueco de arriba (fuera de sus
-            // bounds, por el topMargin de `list` -- lo de abajo lo cubre el
-            // footer, dentro de la propia ListView, ver más abajo). Pulsar y
-            // arrastrar aquí dibuja un lazo de selección (como Nautilus/
-            // cualquier gestor de iconos) -- Ctrl mantenido pulsado suma a
-            // la selección previa en vez de reemplazarla.
-            MouseArea {
-              id: marqueeArea
-              anchors.top: parent.top
-              height: list.y
-              anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
-              acceptedButtons: Qt.LeftButton
-              onPressed: function (mouse) {
-                var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                var vp = mapToItem(list, mouse.x, mouse.y)
-                root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-              }
-              onPositionChanged: function (mouse) {
-                var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                var vp = mapToItem(list, mouse.x, mouse.y)
-                root.moveMarquee(p.x, p.y, vp.y)
-              }
-              onReleased: root.endMarquee()
-              onCanceled: root.endMarquee()
-            }
-
-            ListView {
+            ActiveFileList {
               id: list
-              anchors.top: listSep.bottom
-              // Hueco reservado encima de la primera fila -- sin esto no hay
-              // ningún píxel "vacío" por encima donde arrancar el lazo, la
-              // fila 0 empezaría justo en el borde. Solo desplaza la
-              // ListView, marqueeArea/DropArea de detrás siguen llegando
-              // hasta el borde real, así que ese hueco cae en ellos. Subido
-              // de sm a md (josema: poco aire entre la cabecera y la
-              // lista) -- mismo valor en bgList para que las dos alturas
-              // seguán coincidiendo exactas (ver el bug del -1px anterior).
-              anchors.topMargin: Style.spacing.md
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
-              clip: true
-              model: root.visibleEntries
-              focus: root.opened
-              // Sin esto, arrastrar con el click (botón izquierdo pulsado)
-              // hace scroll de la lista -- el mismo gesto que queremos
-              // libre por completo para el lazo de selección. Solo debe
-              // poder hacer scroll la rueda, nunca el arrastre. Como
-              // Flickable ata la rueda a esta misma propiedad, hay que
-              // reimplementarla a mano (ver wheelArea más abajo).
-              interactive: false
-              // Sin esto (default DragAndOvershootBounds), cualquier cambio
-              // en contentHeight mientras contentY está en el borde (el
-              // footer se recalcula constantemente a partir de
-              // measuredRowHeight) dispara una animación de rebote propia de
-              // Flickable que puede pasar a negativo antes de asentarse. Si
-              // el siguiente evento de rueda llega a mitad de esa animación,
-              // el contentY que se lee ya no es el real y el rebote se
-              // reinicia sobre un punto erróneo -- eso es lo que hacía crecer
-              // el hueco de arriba en cada ciclo de scroll. Con esto, el
-              // límite es duro e inmediato, sin animación que interrumpir.
-              boundsBehavior: Flickable.StopAtBounds
-
-              // Hueco de abajo para el lazo. Un MouseArea suelto detrás de
-              // la ListView (como el de arriba) NO sirve aquí: al ser
-              // Flickable, ListView se queda con cualquier press+arrastre en
-              // TODO su rectángulo -- incluido el hueco bajo la última fila,
-              // aunque ahí no haya ningún delegado -- antes de que le llegue
-              // a nada por detrás (y si se desactiva `interactive` para
-              // evitarlo, se pierde también el scroll con la rueda, que
-              // depende de la misma propiedad). La solución real es un
-              // footer: al ser contenido propio de la ListView (como las
-              // filas), gana el press igual que ellas.
-              footer: Item {
-                id: listFooter
-                width: list.width
-                // Altura FIJA a propósito -- nada que dependa de
-                // measuredRowHeight/contentHeight/visibleEntries.length, ni
-                // de ninguna otra propiedad que cambie durante el scroll. El
-                // footer es contenido propio de la ListView (participa en su
-                // recolocación/reciclado de delegados); atarlo a algo que se
-                // recalcula mientras se hace scroll es lo que dejaba
-                // `list.originY` desincronizado de 0 -- confirmado con un
-                // lector de depuración (originY llegó a valer 210 tras
-                // scrollear arriba/abajo varias veces), y eso es exactamente
-                // el hueco que aparecía arriba del todo. Con un número fijo
-                // el footer nunca se recalcula, así que no hay nada que
-                // pueda perturbar el origen.
-                height: 400
-
-                MouseArea {
-                  anchors.fill: parent
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
-                }
-              }
-
-              // Auto-scroll del lazo: si el cursor se queda pegado a un
-              // borde de la lista mientras se arrastra y hay más filas de
-              // las que caben en el viewport, hace scroll solo para poder
-              // seguir seleccionando más allá de lo visible -- como
-              // Nautilus/cualquier gestor con lazo. marqueeViewportY llega
-              // ya actualizado (vía mapToItem(list, ...)) desde cualquier
-              // catcher del lazo, así que esto no depende de dónde arrancó
-              // el arrastre.
-              Timer {
-                interval: 16
-                repeat: true
-                running: root.marqueeActive && list.contentHeight > list.height
-                  && (root.marqueeViewportY < 32 || root.marqueeViewportY > list.height - 32)
-                onTriggered: {
-                  var minY = list.originY
-                  var maxY = minY + Math.max(0, list.contentHeight - list.height)
-                  var step = 18
-                  if (root.marqueeViewportY < 32) {
-                    list.contentY = Math.max(minY, list.contentY - step)
-                    root.marqueeCurrentY = list.contentY
-                  } else {
-                    list.contentY = Math.min(maxY, list.contentY + step)
-                    root.marqueeCurrentY = list.contentY + list.height
-                  }
-                  root.updateMarqueeSelection(root.marqueeAdditive, root.marqueeBaseSelection)
-                }
-              }
-
-              Keys.onPressed: function (event) {
-                if (root.paletteOpen) return
-                if (root.openWithOpen) {
-                  if (event.key === Qt.Key_Escape) { root.openWithOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.chmodOpen) {
-                  if (event.key === Qt.Key_Escape) { root.chmodOpen = false; event.accepted = true }
-                  else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.commitChmod(root.chmodMode); event.accepted = true }
-                  return
-                }
-                if (root.contextMenuOpen) {
-                  if (event.key === Qt.Key_Escape) { root.contextMenuOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.pendingDeleteNames.length > 0) {
-                  if (deleteConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.renameConflictOpen) {
-                  if (renameConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.extractConflictOpen) {
-                  if (extractConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.compressConflictOpen) {
-                  if (compressConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.bulkRenameConflictOpen) {
-                  if (bulkRenameConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.pasteConflictOpen) {
-                  if (event.key === Qt.Key_Escape) { root.cancelPasteConflict(); event.accepted = true }
-                  return
-                }
-                if (root.dropConflictOpen) {
-                  if (event.key === Qt.Key_Escape) { root.cancelDropConflict(); event.accepted = true }
-                  return
-                }
-                if (root.propertiesOpen) {
-                  if (event.key === Qt.Key_Escape) { root.propertiesOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.shortcutsHelpOpen) {
-                  if (event.key === Qt.Key_Escape || event.key === Qt.Key_Question) { root.shortcutsHelpOpen = false; event.accepted = true }
-                  return
-                }
-                // Red de seguridad -- bulkRenameField normalmente tiene el
-                // foco y gestiona Escape/Enter él solo, pero si alguna vez
-                // no lo tiene, esto evita que j/k/Supr caigan en la lista de
-                // detrás con el diálogo todavía abierto encima.
-                if (root.bulkRenameOpen) {
-                  if (event.key === Qt.Key_Escape) { root.bulkRenameOpen = false; event.accepted = true }
-                  return
-                }
-                // Misma red de seguridad que bulkRenameOpen -- connectServerField
-                // gestiona Escape/Enter él solo mientras tiene el foco.
-                if (root.connectServerOpen) {
-                  if (event.key === Qt.Key_Escape) {
-                    if (root.networkConnecting) root.cancelNetworkConnect()
-                    else root.cancelConnectToServer()
-                    event.accepted = true
-                  }
-                  return
-                }
-                if (root.creatingFolder || root.creatingFile || root.renamingIndex >= 0 || root.editingPath || root.searching) return
-
-                var extend = (event.modifiers & Qt.ShiftModifier) !== 0
-
-                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.openTerminalHere()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  // Con 2+ pestañas, Escape cierra el panel activo (el que
-                  // tiene el cursor encima, gracias al HoverHandler de cada
-                  // panel) en vez de la ventana entera -- sustituye a la ×
-                  // que había antes en cada cabecera. closeTab() ya cae en
-                  // requestClose() si solo queda 1, así que el comportamiento
-                  // de siempre (Escape cierra la ventana) no cambia con una
-                  // sola pestaña abierta.
-                  if (root.previewOpen) root.previewOpen = false
-                  else root.closeTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
-                  root.goUp()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
-                  if (root.selectedIndex >= 0) root.enter(root.visibleEntries[root.selectedIndex])
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Space) {
-                  previewLoader.togglePreview()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Slash) {
-                  root.startSearch()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
-                  root.openPalette()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Question) {
-                  root.shortcutsHelpOpen = true
-                  event.accepted = true
-                } else if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
-                  root.goBottom()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_G && event.modifiers === Qt.NoModifier) {
-                  if (root.gPending) { root.goTop(); root.gPending = false }
-                  else { root.gPending = true; gTimer.restart() }
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
-                  var down = Math.min(root.visibleEntries.length - 1, root.selectedIndex + 1)
-                  if (extend) root.selectRange(down); else root.selectOnly(down)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && event.modifiers === Qt.NoModifier)) {
-                  var up = Math.max(0, root.selectedIndex - 1)
-                  if (extend) root.selectRange(up); else root.selectOnly(up)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.selectNone()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
-                  root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i })
-                  event.accepted = true
-                } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
-                  root.invertSelection()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_F2) {
-                  root.startRename(root.selectedIndex)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Delete) {
-                  root.requestDelete()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_F5) {
-                  root.refresh()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
-                  root.reverseSort()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
-                  root.cycleSort()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
-                  root.startEditPath()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.startNewFolder()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-                  // "New file" no tenía atajo propio, a diferencia de
-                  // "New folder" (Ctrl+Shift+N, arriba) -- solo estaba en
-                  // paleta/menú contextual.
-                  root.startNewFile()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
-                  // Antes alternaba la vista dividida; ahora cada pestaña ES
-                  // ya un panel visible, así que este atajo simplemente abre
-                  // uno nuevo (igual que Ctrl+T).
-                  root.newTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {
-                  root.navBack()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Right && (event.modifiers & Qt.AltModifier)) {
-                  root.navForward()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
-                  root.newTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_W && (event.modifiers & Qt.ControlModifier)) {
-                  root.closeTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)) {
-                  root.nextTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier)) {
-                  root.toggleHidden()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) {
-                  root.copySelected()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
-                  root.cutSelected()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                  conflictActions.paste()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.redoLast()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier)) {
-                  root.redoLast()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
-                  root.undoLast()
-                  event.accepted = true
-                }
-              }
-
-              delegate: CursorSurface {
-                id: rowSurface
-                required property var modelData
-                required property int index
-                width: list.width
-                implicitHeight: rowContent.implicitHeight + Style.spacing.md * 2
-                Accessible.role: Accessible.ListItem
-                Accessible.name: modelData.name + (modelData.type === "dir" ? ", folder" : ", file")
-                Accessible.selected: root.isSelected(index)
-                // Al reciclar delegados (recrea filas al hacer scroll),
-                // implicitHeight puede pasar por 0 durante un frame antes de
-                // que el layout del texto se asiente -- si se acepta ese
-                // valor de paso, measuredRowHeight (compartido por todas las
-                // filas) queda mal un instante, el footer recalcula su
-                // altura, contentHeight cambia en pleno scroll y eso es justo
-                // lo que hacía crecer el hueco de arriba en cada ciclo. Todas
-                // las filas miden lo mismo, así que quedarse con el máximo
-                // visto es seguro y nunca acepta un valor transitorio menor.
-                onHeightChanged: {
-                  if (height > root.measuredRowHeight) root.measuredRowHeight = height
-                }
-                foreground: Color.menu.text
-                accent: Color.accent
-                hasCursor: mouseArea.containsMouse
-                current: root.isSelected(index) || root.dropHoverIndex === index
-
-                DropArea {
-                  // Solo las carpetas son destino válido de un drop --
-                  // soltar sobre un fichero suelto no tiene sentido.
-                  anchors.fill: parent
-                  enabled: modelData.type === "dir"
-                  keys: ["text/uri-list"]
-                  onEntered: function (drag) {
-                    if (!drag.hasUrls) { drag.accepted = false; return }
-                    root.dropHoverIndex = index
-                  }
-                  onExited: if (root.dropHoverIndex === index) root.dropHoverIndex = -1
-                  onDropped: function (drop) {
-                    root.dropHoverIndex = -1
-                    root.handleFilesDropped(drop, root.joinPath(root.currentPath, modelData.name))
-                  }
-                }
-
-                Item {
-                  id: rowContent
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.leftMargin: 0
-                  anchors.rightMargin: Style.spacing.rowPaddingX
-                  implicitHeight: activeFileRow.implicitHeight
-
-                  readonly property bool isVid: root.isVideo(modelData)
-                  readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, root.currentPath) : ""
-                  readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
-
-                  Component.onCompleted: if (isVid) root.requestVideoThumb(modelData)
-
-                  FileRowVisual {
-                    id: activeFileRow
-                    anchors.fill: parent
-                    name: modelData.name
-                    isDir: modelData.type === "dir"
-                    isBroken: modelData.link === "broken"
-                    highlighted: rowSurface.current
-                    dimmed: root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
-                    fileIconGlyph: root.iconFor(modelData)
-                    thumbSource: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
-                      : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
-                    metaText: root.metaFor(modelData)
-                    showNameText: root.renamingIndex !== index
-                  }
-
-                  TextField {
-                    id: renameField
-                    visible: root.renamingIndex === index
-                    Accessible.role: Accessible.EditableText
-                    Accessible.name: "Rename"
-                    // Misma X que nameCol dentro de FileRowVisual
-                    // (thumbSlot.right + rowGap) -- ese id ya no es
-                    // visible desde aquí, así que se repite con la
-                    // misma constante conocida (Style.spacing.controlHeight,
-                    // el ancho fijo del icono) en vez de perseguir el id.
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    verticalPadding: 2
-                    onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
-                    Keys.onPressed: function (event) {
-                      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        conflictActions.commitRename(text)
-                        event.accepted = true
-                      } else if (event.key === Qt.Key_Escape) {
-                        root.renamingIndex = -1
-                        event.accepted = true
-                      }
-                    }
-                  }
-                }
-
-                MouseArea {
-                  id: mouseArea
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.right: parent.right
-                  anchors.left: parent.left
-                  // Huecos sin cubrir a los dos lados (el contenido visual --
-                  // icono, texto -- no se mueve, solo se reduce el área
-                  // interactiva) para que los MouseArea de gutter de abajo
-                  // puedan quedarse con el press ahí en vez de competir por
-                  // hover con este. Izquierda subida de 14 a 24 -- josema
-                  // probándolo en vivo dijo que sobraba distancia sin usar
-                  // entre el icono y la barra separadora. Derecha iguala
-                  // rowContent.anchors.rightMargin (rowPaddingX), que ya
-                  // deja ese hueco sin contenido visual.
-                  anchors.leftMargin: 24
-                  anchors.rightMargin: Style.spacing.rowPaddingX
-                  hoverEnabled: true
-                  visible: root.renamingIndex !== index
-                  acceptedButtons: Qt.LeftButton | Qt.RightButton
-                  cursorShape: Qt.PointingHandCursor
-                  drag.target: dragProxy
-                  drag.axis: Drag.XAndYAxis
-                  onPressed: function (mouse) {
-                    // Empezar a arrastrar un fichero que no formaba parte de
-                    // la selección debe arrastrar solo ese fichero (como
-                    // Nautilus) -- pero solo en clic simple: Ctrl/Shift+clic
-                    // siguen decidiendo la selección en onClicked, sin tocar
-                    // aquí el ancla de rango (selectRange).
-                    if (mouse.button === Qt.LeftButton && mouse.modifiers === Qt.NoModifier && !root.isSelected(index)) {
-                      root.selectOnly(index)
-                    }
-                    // Miniatura del arrastre: capturada aquí (no en
-                    // Drag.onActiveChanged) para que le dé tiempo a
-                    // completarse -- grabToImage es async (un frame) y para
-                    // cuando el movimiento supera el umbral de drag ya casi
-                    // siempre está lista.
-                    if (mouse.button === Qt.LeftButton) {
-                      rowContent.grabToImage(function (result) { dragProxy.Drag.imageSource = result.url })
-                    }
-                  }
-                  onClicked: function (mouse) {
-                    if (mouse.button === Qt.RightButton) {
-                      if (!root.isSelected(index)) root.selectOnly(index)
-                      var pos = mapToItem(card, mouse.x, mouse.y)
-                      root.openContextMenu(pos.x, pos.y, root.itemActions())
-                      return
-                    }
-                    if (mouse.modifiers & Qt.ControlModifier) root.toggleSelect(index)
-                    else if (mouse.modifiers & Qt.ShiftModifier) root.selectRange(index)
-                    else root.selectOnly(index)
-                  }
-                  // hasPendingEdit: no entrar (y sobre todo no entrar en
-                  // un archivo comprimido) mientras hay un renombrado/
-                  // nueva-carpeta/nuevo-fichero sin confirmar en esta
-                  // misma fila u otra -- ver commitRename() para el bug
-                  // real que esto evita.
-                  onDoubleClicked: if (!root.hasPendingEdit) root.enter(modelData)
-                }
-
-                // Proxy invisible que MouseArea.drag mueve -- lo único que
-                // importa de verdad es su Drag.active, que arranca el drag
-                // real (interno o hacia otra app) en cuanto se supera el
-                // umbral de movimiento.
-                Item {
-                  id: dragProxy
-                  width: 1
-                  height: 1
-                  Drag.active: mouseArea.drag.active
-                  Drag.dragType: Drag.Automatic
-                  Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-                  Drag.proposedAction: Qt.MoveAction
-                  Drag.mimeData: root.dragMimeDataFor(index)
-                }
-
-                // Gutters del lazo a los dos lados de la fila -- implementan
-                // el arranque/arrastre directamente (no confían en que el
-                // press "caiga" a algo detrás: en la franja izquierda, antes
-                // de este cambio, no había nada detrás salvo el MouseArea de
-                // la rueda, que se queda con cualquier click de todos modos
-                // aunque solo tenga onWheel). anchors.leftMargin de
-                // `mouseArea` (24) y anchors.rightMargin de `rowContent`
-                // (Style.spacing.rowPaddingX) dejan estos huecos libres de
-                // contenido visual, así que no roban nada al icono/texto.
-                MouseArea {
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.left: parent.left
-                  width: 24
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
-                }
-
-                MouseArea {
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.right: parent.right
-                  width: Style.spacing.rowPaddingX
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(list, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
-                }
-              }
-            }
-
-            // Aviso cuando list-dir.sh no ha podido listar currentPath --
-            // antes esto se veía igual que una carpeta vacía de verdad, sin
-            // ningún indicio de que el problema era de permisos.
-            Text {
-              visible: root.currentPathError !== ""
-              anchors.top: parent.top
-              anchors.topMargin: Style.spacing.lg
-              anchors.left: parent.left
-              text: root.currentPathError
-              font.family: Style.font.family
-              font.pixelSize: Style.font.subtitle
-              color: Color.urgent
-            }
-
-            EmptyState {
-              visible: root.currentPathError === "" && root.visibleEntries.length === 0
-              centerOn: list
-              message: root.searchQuery
-                ? "No results for “" + root.searchQuery + "”"
-                : (root.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
-            }
-
-            // Rectángulo visual del lazo -- después de la ListView en el
-            // fichero para quedar por encima al pintar (visible incluso
-            // cuando el lazo crece sobre filas ya dibujadas).
-            Rectangle {
-              visible: root.marqueeActive
-              x: Math.min(root.marqueeStartX, root.marqueeCurrentX)
-              y: Math.min(root.marqueeStartY, root.marqueeCurrentY) - list.contentY + list.y
-              width: Math.abs(root.marqueeCurrentX - root.marqueeStartX)
-              height: Math.abs(root.marqueeCurrentY - root.marqueeStartY)
-              color: Util.alpha(Color.accent, 0.12)
-              border.color: Color.accent
-              border.width: 1
-              z: 5
-            }
-
-            // ---------- Vista previa (Espacio) ----------
-            PreviewPanel {
               anchors.fill: parent
-              open: root.previewOpen
-              entryName: root.previewEntry ? root.previewEntry.name : ""
-              hasEntry: !!root.previewEntry
-              isImageEntry: root.previewEntry ? root.isImage(root.previewEntry) : false
-              isVideoEntry: root.previewEntry ? root.isVideo(root.previewEntry) : false
-              isTextEntry: !!root.previewEntry && !root.isImage(root.previewEntry) && root.previewIsText
-              isPdfEntry: root.previewEntry ? root.isPdf(root.previewEntry) : false
-              isAudioEntry: root.previewEntry ? root.isAudio(root.previewEntry) : false
-              imageSource: (root.previewEntry && root.isImage(root.previewEntry))
-                ? Util.fileUrl(root.joinPath(root.currentPath, root.previewEntry.name)) : ""
-              videoThumbSource: {
-                if (!root.previewEntry || !root.isVideo(root.previewEntry)) return ""
-                var p = root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)] || ""
-                return p ? Util.fileUrl(p) : ""
-              }
-              highlightedText: root.previewHighlighted
-              plainText: root.previewText
-              pdfImageSource: root.previewPdfImage ? Util.fileUrl(root.previewPdfImage) : ""
-              audioInfo: root.previewAudioInfo
-              fallbackSizeText: root.previewEntry ? Utils.formatSize(root.previewEntry.size) : ""
+              root: root
+              card: card
+              gTimer: gTimer
+              previewLoader: previewLoader
+              conflictActions: conflictActions
+              mountOps: mountOps
+              fileOps: fileOps
+              videoThumbs: videoThumbs
+              renameOps: renameOps
+              clipboardOps: clipboardOps
+              dragDropOps: dragDropOps
+              searchOps: searchOps
+              fileMeta: fileMeta
+              deleteOps: deleteOps
+              tabOps: tabOps
+              deleteConfirm: deleteConfirm
+              renameConflictConfirm: renameConflictConfirm
+              extractConflictConfirm: extractConflictConfirm
+              compressConflictConfirm: compressConflictConfirm
+              bulkRenameConflictConfirm: bulkRenameConflictConfirm
             }
 
           }
@@ -4269,9 +1997,9 @@ Item {
         connecting: root.networkConnecting
         uri: root.connectServerUri
         errorText: root.connectServerError
-        onConnectRequested: function (uri) { root.connectServerUri = uri; root.commitConnectToServer() }
-        onCancelConnectingRequested: root.cancelNetworkConnect()
-        onCloseRequested: root.cancelConnectToServer()
+        onConnectRequested: function (uri) { root.connectServerUri = uri; mountOps.commitConnectToServer() }
+        onCancelConnectingRequested: mountOps.cancelNetworkConnect()
+        onCloseRequested: mountOps.cancelConnectToServer()
         onFocusReturnRequested: list.forceActiveFocus()
       }
 
@@ -4285,9 +2013,9 @@ Item {
         hasDir: root.chmodHasDir
         recursive: root.chmodRecursive
         onCloseRequested: root.chmodOpen = false
-        onBitToggled: function (ownerIdx, bit) { root.toggleChmodBit(ownerIdx, bit) }
+        onBitToggled: function (ownerIdx, bit) { fileOps.toggleChmodBit(ownerIdx, bit) }
         onRecursiveToggled: root.chmodRecursive = !root.chmodRecursive
-        onApplyRequested: function (mode) { root.commitChmod(mode) }
+        onApplyRequested: function (mode) { fileOps.commitChmod(mode) }
       }
 
       // ---------- Propiedades ----------
@@ -4404,7 +2132,7 @@ Item {
         entry: root.openWithEntry
         apps: root.openWithApps
         onCloseRequested: root.openWithOpen = false
-        onAppSelected: function (appId) { root.launchWith(appId) }
+        onAppSelected: function (appId) { openWithOps.launchWith(appId) }
       }
 
       // ---------- Menú contextual ----------
@@ -4433,7 +2161,7 @@ Item {
         background: Color.menu.background
         foreground: Color.menu.text
         onCanceled: root.pendingDeleteNames = []
-        onConfirmed: root.confirmDelete()
+        onConfirmed: deleteOps.confirmDelete()
       }
 
       ConfirmDialog {
@@ -4447,8 +2175,8 @@ Item {
         confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
-        onCanceled: root.cancelPendingRename()
-        onConfirmed: root.runPendingRename(true)
+        onCanceled: renameOps.cancelPendingRename()
+        onConfirmed: renameOps.runPendingRename(true)
       }
 
       ConfirmDialog {
@@ -4462,8 +2190,8 @@ Item {
         confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
-        onCanceled: root.cancelPendingExtract()
-        onConfirmed: root.runPendingExtract()
+        onCanceled: archiveActions.cancelPendingExtract()
+        onConfirmed: archiveActions.runPendingExtract()
       }
 
       ConfirmDialog {
@@ -4475,8 +2203,8 @@ Item {
         confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
-        onCanceled: root.cancelPendingCompress()
-        onConfirmed: root.runPendingCompress()
+        onCanceled: archiveActions.cancelPendingCompress()
+        onConfirmed: archiveActions.runPendingCompress()
       }
 
       ConfirmDialog {
@@ -4490,8 +2218,8 @@ Item {
         confirmText: "Continue"
         background: Color.menu.background
         foreground: Color.menu.text
-        onCanceled: root.cancelPendingBulkRename()
-        onConfirmed: root.runPendingBulkRename()
+        onCanceled: fileOps.cancelPendingBulkRename()
+        onConfirmed: fileOps.runPendingBulkRename()
       }
 
       // ---------- Conflicto al pegar ----------
@@ -4499,9 +2227,9 @@ Item {
         anchors.fill: parent
         open: root.pasteConflictOpen
         names: root.pasteConflictNames
-        onOverwriteRequested: root.runPaste("overwrite")
-        onSkipRequested: root.runPaste("skip")
-        onCancelRequested: root.cancelPasteConflict()
+        onOverwriteRequested: clipboardOps.runPaste("overwrite")
+        onSkipRequested: clipboardOps.runPaste("skip")
+        onCancelRequested: clipboardOps.cancelPasteConflict()
       }
 
       // ---------- Conflicto al soltar (drag & drop) ----------
@@ -4509,9 +2237,9 @@ Item {
         anchors.fill: parent
         open: root.dropConflictOpen
         names: root.dropConflictNames
-        onOverwriteRequested: root.runDrop("overwrite")
-        onSkipRequested: root.runDrop("skip")
-        onCancelRequested: root.cancelDropConflict()
+        onOverwriteRequested: dragDropOps.runDrop("overwrite")
+        onSkipRequested: dragDropOps.runDrop("skip")
+        onCancelRequested: dragDropOps.cancelDropConflict()
       }
 
       // ---------- Paleta de comandos (: o Ctrl+P) ----------
