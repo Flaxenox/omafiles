@@ -23,6 +23,7 @@ Item {
   property Item hostSearchOps: null
   property Item hostDeleteOps: null
   property Item hostTabOps: null
+  property Item hostSortOps: null
   property Item hostSelectionOps: null
   property Item hostDeleteConfirm: null
   property Item hostRenameConflictConfirm: null
@@ -171,10 +172,10 @@ Item {
       hostRoot.refresh()
       event.accepted = true
     } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
-      hostRoot.reverseSort()
+      hostSortOps.reverseSort()
       event.accepted = true
     } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
-      hostRoot.cycleSort()
+      hostSortOps.cycleSort()
       event.accepted = true
     } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
       hostSearchOps.startEditPath()

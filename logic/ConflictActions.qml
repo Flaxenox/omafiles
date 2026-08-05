@@ -25,6 +25,7 @@ Item {
   property Item clipboardOps: null
   property Item dragDropOps: null
   property Item selectionOps: null
+  property Item bookmarkOps: null
 
   function paste() {
     if (root.inArchive) return
@@ -102,7 +103,7 @@ Item {
     DialogsState.bulkRenameOpen = false
     if (entries.length === 0) return
     var pattern = DialogsState.bulkRenamePattern
-    root.addBulkRenameHistory(pattern)
+    bookmarkOps.addBulkRenameHistory(pattern)
     var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name

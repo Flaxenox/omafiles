@@ -12,6 +12,7 @@ Item {
   // normal.
   property Item list: null
   property Item selectionOps: null
+  property Item sortOps: null
 
   function toggleHidden() {
     root.showHidden = !root.showHidden
@@ -77,7 +78,7 @@ Item {
         // por completa en silencio.
         root.searchTruncated = parsed.length > 200
         if (root.searchTruncated) parsed = parsed.slice(0, 200)
-        root.entries = root.sortEntries(parsed)
+        root.entries = sortOps.sortEntries(parsed)
         list.positionViewAtBeginning()
         selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }

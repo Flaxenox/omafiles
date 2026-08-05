@@ -8,6 +8,7 @@ import "../state"
 // Omafiles.qml.
 Item {
   property Item root: null
+  property Item bookmarkOps: null
 
   function showOpenWith(entry) {
     if (!entry || entry.type === "dir") return
@@ -22,7 +23,7 @@ Item {
     if (PreviewState.openWithEntry) {
       var openPath = root.joinPath(root.currentPath, PreviewState.openWithEntry.name)
       Quickshell.execDetached(["gtk-launch", desktopId, openPath])
-      root.addRecent(openPath, PreviewState.openWithEntry.name)
+      bookmarkOps.addRecent(openPath, PreviewState.openWithEntry.name)
     }
     PreviewState.openWithOpen = false
     PreviewState.openWithEntry = null

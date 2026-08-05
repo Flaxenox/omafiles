@@ -268,38 +268,16 @@ Item {
   readonly property var codeExt: ["js", "ts", "py", "lua", "sh", "c", "cpp", "h", "rs", "go", "html", "css", "json", "qml", "md", "yml", "yaml", "toml"]
 
   // ---------- Tipo de fichero (extensión/icono) ----------
-  function extOf(name) {
-    var idx = name.lastIndexOf(".")
-    return idx > 0 ? name.substring(idx + 1).toLowerCase() : ""
-  }
-
-  function iconFor(entry) {
-    var ext = extOf(entry.name)
-    if (ext === "iso") return "󰗮"
-    if (imageExt.indexOf(ext) >= 0) return "󰺰"
-    if (videoExt.indexOf(ext) >= 0) return "󰸬"
-    if (audioExt.indexOf(ext) >= 0) return "󰸪"
-    if (archiveExt.indexOf(ext) >= 0) return "󰗄"
-    if (ext === "pdf") return "󰈦"
-    if (codeExt.indexOf(ext) >= 0) return "󱀫"
-    return "󰈤"
-  }
-
-  function isImage(entry) {
-    return entry.type === "file" && imageExt.indexOf(extOf(entry.name)) >= 0
-  }
-
-  function isVideo(entry) {
-    return entry.type === "file" && videoExt.indexOf(extOf(entry.name)) >= 0
-  }
-
-  function isAudio(entry) {
-    return entry.type === "file" && audioExt.indexOf(extOf(entry.name)) >= 0
-  }
-
-  function isPdf(entry) {
-    return entry.type === "file" && extOf(entry.name) === "pdf"
-  }
+  // extOf/iconFor/isImage/isVideo/isAudio/isPdf viven ahora en
+  // logic/FileTypeUtils.qml -- envoltorios de una línea, ver el comentario
+  // de ese fichero (38 sitios de llamada externos, mismo criterio que
+  // ActionEngine).
+  function extOf(name) { return fileTypeUtils.extOf(name) }
+  function iconFor(entry) { return fileTypeUtils.iconFor(entry) }
+  function isImage(entry) { return fileTypeUtils.isImage(entry) }
+  function isVideo(entry) { return fileTypeUtils.isVideo(entry) }
+  function isAudio(entry) { return fileTypeUtils.isAudio(entry) }
+  function isPdf(entry) { return fileTypeUtils.isPdf(entry) }
 
   // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
   property string thumbCacheDir: root.homeDir + "/.cache/omafiles/thumbnails"
@@ -432,99 +410,11 @@ Item {
   }
 
 
-  // ---------- Recientes / historial ----------
-  // Llamado al abrir un fichero de verdad (enter()/launchWith(), NO al
-  // navegar por carpetas -- para eso ya están el historial y las
-  // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
-  function addRecent(path, name) {
-    var next = root.recentFiles.filter(function (r) { return r.path !== path })
-    next.unshift({ path: path, name: name })
-    if (next.length > 20) next = next.slice(0, 20)
-    root.recentFiles = next
-    persistence.saveRecent()
-  }
-
-  function removeRecent(path) {
-    root.recentFiles = root.recentFiles.filter(function (r) { return r.path !== path })
-    persistence.saveRecent()
-  }
-
-  function clearRecent() {
-    root.recentFiles = []
-    persistence.saveRecent()
-  }
-
-  function addBulkRenameHistory(pattern) {
-    pattern = pattern.trim()
-    if (!pattern) return
-    var next = root.bulkRenameHistory.filter(function (p) { return p !== pattern })
-    next.unshift(pattern)
-    if (next.length > 8) next = next.slice(0, 8)
-    root.bulkRenameHistory = next
-    persistence.saveBulkRenameHistory()
-  }
-
-  // ---------- Marcadores / iconos de unidades ----------
-  function removeBookmark(path) {
-    root.bookmarks = root.bookmarks.filter(function (b) { return b.path !== path })
-    persistence.saveBookmarks()
-  }
-
-  // type: "dir" (por defecto, compatible con marcadores guardados antes
-  // de que existiera este campo -- todos eran de carpeta) o "file".
-  function addBookmark(path, label, type) {
-    if (root.bookmarks.some(function (b) { return b.path === path })) return
-    root.bookmarks = root.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
-    persistence.saveBookmarks()
-  }
-
-  // Icono de la barra lateral -- Home/Trash por ruta especial, Imágenes/
-  // Vídeos/Música reutilizan el mismo glyph que ya usa iconFor() para esos
-  // tipos de fichero (así no hay que mantener dos catálogos de icono), y
-  // cualquier otra carpeta (Documents, Downloads, Projects, Almacén,
-  // marcadores añadidos a mano...) cae en la carpeta genérica.
-  function iconForBookmark(modelData) {
-    if (modelData.path === root.homeDir) return "\u{F015}"
-    if (modelData.path === root.trashDir) return "\u{F0A7A}"
-    // Marcador de fichero suelto (no carpeta) -- icono real por
-    // extensión, como en la lista principal, en vez de adivinar por
-    // nombre de etiqueta (eso solo tiene sentido para las carpetas
-    // especiales de abajo).
-    if (modelData.type === "file") return root.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
-    var label = modelData.label.toLowerCase()
-    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return root.iconFor({ name: "x.jpg" })
-    if (label.indexOf("video") >= 0) return root.iconFor({ name: "x.mp4" })
-    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return root.iconFor({ name: "x.mp3" })
-    return "\u{F024B}"
-  }
-
-  function isBookmarked(path) {
-    return root.bookmarks.some(function (b) { return b.path === path })
-  }
-
-  // parseMounts: movida a Utils.js (función pura).
-
-  function iconForMount(mount) {
-    if (mount.fstype === "iso9660") return root.iconFor({ type: "file", name: "x.iso" })
-    return mount.removable ? "\u{F0553}" : "\u{F02CA}"
-  }
-
-  // parseNetworkMounts: movida a Utils.js (función pura).
-
-  // U+F0870 (md-folder_network) -- ya verificado contra el cmap real de
-  // JetBrainsMono Nerd Font en una pasada anterior (ver notas de iconos
-  // de tipo de fichero/dispositivo), reservado entonces para esto mismo.
-  function iconForNetworkMount(mount) {
-    return "\u{F0870}"
-  }
-
-  function networkMountActions(mount) {
-    return [
-      { label: "Open", action: function () { root.navigateTo(mount.path) } },
-      { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } },
-      { label: "Disconnect", destructive: true, action: function () { mountOps.disconnectNetworkMount(mount) } }
-    ]
-  }
+  // addRecent/removeRecent/clearRecent/addBulkRenameHistory,
+  // removeBookmark/addBookmark/iconForBookmark/isBookmarked,
+  // iconForMount/iconForNetworkMount/networkMountActions viven ahora en
+  // logic/BookmarkOps.qml.
+  // parseMounts/parseNetworkMounts: movidas a Utils.js (funciones puras).
 
 
   // ---------- Papelera ----------
@@ -542,50 +432,8 @@ Item {
   // naturalCompare: movida a Utils.js (función pura).
 
   // ---------- Orden de la lista ----------
-  function compareEntries(a, b) {
-    var result = 0
-    if (root.sortKey === "size") {
-      result = a.size - b.size
-    } else if (root.sortKey === "mtime") {
-      result = a.mtime - b.mtime
-    } else if (root.sortKey === "type") {
-      var ea = root.extOf(a.name), eb = root.extOf(b.name)
-      result = ea < eb ? -1 : (ea > eb ? 1 : 0)
-    }
-    if (result === 0) {
-      result = Utils.naturalCompare(a.name.toLowerCase(), b.name.toLowerCase())
-    }
-    return root.sortDesc ? -result : result
-  }
-
-  // Las carpetas siempre van antes que los ficheros -- el criterio de orden
-  // elegido solo decide cómo se ordena cada grupo entre sí.
-  function sortEntries(list) {
-    var dirs = list.filter(function (e) { return e.type === "dir" })
-    var files = list.filter(function (e) { return e.type !== "dir" })
-    dirs.sort(root.compareEntries)
-    files.sort(root.compareEntries)
-    return dirs.concat(files)
-  }
-
-  function sortLabel() {
-    return root.sortKeyLabels[root.sortKey] + (root.sortDesc ? " ↓" : " ↑")
-  }
-
-  function setSort(key) {
-    root.sortKey = key
-    root.entries = root.sortEntries(root.entries)
-  }
-
-  function cycleSort() {
-    var idx = root.sortKeys.indexOf(root.sortKey)
-    root.setSort(root.sortKeys[(idx + 1) % root.sortKeys.length])
-  }
-
-  function reverseSort() {
-    root.sortDesc = !root.sortDesc
-    root.entries = root.sortEntries(root.entries)
-  }
+  // compareEntries/sortEntries/sortLabel/setSort/cycleSort/reverseSort
+  // viven ahora en logic/SortOps.qml.
 
   // ---------- Navegación / historial / pestañas ----------
   function joinPath(base, name) {
@@ -684,7 +532,7 @@ Item {
       var openPath = root.joinPath(root.currentPath, entry.name)
       openProc.command = ["xdg-open", openPath]
       openProc.running = true
-      root.addRecent(openPath, entry.name)
+      bookmarkOps.addRecent(openPath, entry.name)
     }
   }
 
@@ -864,11 +712,11 @@ Item {
       { label: "Invert selection", run: function () { selectionOps.invertSelection() } },
       { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
       { label: "Refresh", run: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
-      { label: "Sort by name", run: function () { root.setSort("name") } },
-      { label: "Sort by size", run: function () { root.setSort("size") } },
-      { label: "Sort by date", run: function () { root.setSort("mtime") } },
-      { label: "Sort by type", run: function () { root.setSort("type") } },
-      { label: "Reverse order", run: function () { root.reverseSort() } },
+      { label: "Sort by name", run: function () { sortOps.setSort("name") } },
+      { label: "Sort by size", run: function () { sortOps.setSort("size") } },
+      { label: "Sort by date", run: function () { sortOps.setSort("mtime") } },
+      { label: "Sort by type", run: function () { sortOps.setSort("type") } },
+      { label: "Reverse order", run: function () { sortOps.reverseSort() } },
       { label: UndoState.undoStack.length > 0 ? "Undo: " + UndoState.undoStack[UndoState.undoStack.length - 1].label : "Undo",
         enabled: UndoState.undoStack.length > 0, run: function () { root.undoLast() } },
       { label: UndoState.redoStack.length > 0 ? "Redo: " + UndoState.redoStack[UndoState.redoStack.length - 1].label : "Redo",
@@ -901,8 +749,8 @@ Item {
     }
     if (entry) {
       var fullPath = root.joinPath(root.currentPath, entry.name)
-      if (!root.isBookmarked(fullPath)) {
-        cmds.push({ label: "Add to bookmarks", run: function () { root.addBookmark(fullPath, entry.name, entry.type) } })
+      if (!bookmarkOps.isBookmarked(fullPath)) {
+        cmds.push({ label: "Add to bookmarks", run: function () { bookmarkOps.addBookmark(fullPath, entry.name, entry.type) } })
       }
       if (entry.type === "dir") {
         cmds.push({ label: "Open in new tab", run: function () { tabOps.openInNewTab(fullPath) } })
@@ -1016,8 +864,8 @@ Item {
       actions.push({ label: "Rename", action: function () { renameOps.startRename(SelectionState.selectedIndex) } })
       actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
       var fullPath = root.joinPath(root.currentPath, entries[0].name)
-      if (!root.isBookmarked(fullPath)) {
-        actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(fullPath, entries[0].name, entries[0].type) } })
+      if (!bookmarkOps.isBookmarked(fullPath)) {
+        actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
       actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
       if (archiveActions.isArchive(entries[0])) {
@@ -1087,7 +935,7 @@ Item {
     if (bookmark.path === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     }
-    actions.push({ label: "Remove bookmark", destructive: true, action: function () { root.removeBookmark(bookmark.path) } })
+    actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
     return actions
   }
 
@@ -1099,8 +947,8 @@ Item {
       { label: "Open", action: function () { root.navigateTo(mount.path) } },
       { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } }
     ]
-    if (!root.isBookmarked(mount.path)) {
-      actions.push({ label: "Add to bookmarks", action: function () { root.addBookmark(mount.path, mount.label, "dir") } })
+    if (!bookmarkOps.isBookmarked(mount.path)) {
+      actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(mount.path, mount.label, "dir") } })
     }
     if (mount.removable) {
       actions.push({ label: "Eject", destructive: true, action: function () { mountOps.ejectMount(mount) } })
@@ -1201,7 +1049,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var parsed = root.sortEntries(Utils.parseEntries(text))
+        var parsed = sortOps.sortEntries(Utils.parseEntries(text))
         if (root.currentPath === root.trashDir) {
           if (Object.keys(root.trashInfo).length > 0) {
             // Ya hay trashInfo cargada -- de este mismo panel en una
@@ -1260,6 +1108,7 @@ Item {
     root: root
     list: list
     selectionOps: selectionOps
+    sortOps: sortOps
   }
 
   FileOps {
@@ -1296,11 +1145,13 @@ Item {
     root: root
     list: list
     selectionOps: selectionOps
+    sortOps: sortOps
   }
 
   OpenWithOps {
     id: openWithOps
     root: root
+    bookmarkOps: bookmarkOps
   }
 
   FileMeta {
@@ -1326,6 +1177,24 @@ Item {
     id: selectionOps
     root: root
     previewLoader: previewLoader
+  }
+
+  SortOps {
+    id: sortOps
+    root: root
+  }
+
+  FileTypeUtils {
+    id: fileTypeUtils
+    root: root
+  }
+
+  BookmarkOps {
+    id: bookmarkOps
+    root: root
+    persistence: persistence
+    tabOps: tabOps
+    mountOps: mountOps
   }
 
   Process {
@@ -1378,6 +1247,7 @@ Item {
     clipboardOps: clipboardOps
     dragDropOps: dragDropOps
     selectionOps: selectionOps
+    bookmarkOps: bookmarkOps
   }
 
   PreviewLoader {
@@ -1458,18 +1328,18 @@ Item {
           currentPath: root.currentPath
           dropHoverPath: root.dropHoverPath
           positionRelativeTo: card
-          iconForBookmark: root.iconForBookmark
+          iconForBookmark: bookmarkOps.iconForBookmark
           iconFor: root.iconFor
-          iconForMount: root.iconForMount
-          iconForNetworkMount: root.iconForNetworkMount
+          iconForMount: bookmarkOps.iconForMount
+          iconForNetworkMount: bookmarkOps.iconForNetworkMount
           openContextMenu: root.openContextMenu
           bookmarkActionsFor: root.bookmarkActions
           mountActionsFor: root.mountActions
-          networkMountActionsFor: root.networkMountActions
+          networkMountActionsFor: bookmarkOps.networkMountActions
           onBookmarkOpened: function (bookmark) { root.openBookmark(bookmark) }
           onRecentOpened: function (item) { root.openRecent(item) }
-          onRecentRemoveRequested: function (path) { root.removeRecent(path) }
-          onRecentClearRequested: root.clearRecent()
+          onRecentRemoveRequested: function (path) { bookmarkOps.removeRecent(path) }
+          onRecentClearRequested: bookmarkOps.clearRecent()
           onMountActivated: function (mount) {
             if (!mount.mounted) mountOps.mountDevice(mount)
             else root.navigateTo(mount.path)
@@ -1549,6 +1419,7 @@ Item {
                 hostDragDropOps: dragDropOps
                 hostFileMeta: fileMeta
                 hostTabOps: tabOps
+                hostSortOps: sortOps
               }
             }
 
@@ -1692,6 +1563,7 @@ Item {
               deleteOps: deleteOps
               tabOps: tabOps
               selectionOps: selectionOps
+              sortOps: sortOps
               deleteConfirm: deleteConfirm
               renameConflictConfirm: renameConflictConfirm
               extractConflictConfirm: extractConflictConfirm
@@ -1724,7 +1596,7 @@ Item {
                   + (!root.searchQuery && root.entries.length > 5000 ? " · large folder, may be slow" : "")
                   + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
                   + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
-                  + " · sort: " + root.sortLabel()
+                  + " · sort: " + sortOps.sortLabel()
                 font.pixelSize: Style.font.subtitle
                 font.family: Style.font.family
                 color: Color.menu.text

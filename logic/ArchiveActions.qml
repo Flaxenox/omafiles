@@ -18,6 +18,7 @@ Item {
   // resetea su scroll igual que hace refresh() con una carpeta normal.
   property Item list: null
   property Item selectionOps: null
+  property Item sortOps: null
 
   function enterArchive(path) {
     selectionOps.selectOnly(-1)
@@ -112,7 +113,7 @@ Item {
         for (var i = 0; i + 1 < fields.length; i += 2) {
           parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
         }
-        root.entries = root.sortEntries(parsed)
+        root.entries = sortOps.sortEntries(parsed)
         list.positionViewAtBeginning()
         selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }

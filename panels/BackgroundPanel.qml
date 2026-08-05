@@ -21,6 +21,7 @@ Item {
   property Item hostDragDropOps: null
   property Item hostFileMeta: null
   property Item hostTabOps: null
+  property Item hostSortOps: null
   required property var modelData
   required property int index
   visible: index !== hostRoot.activeTabIndex
@@ -119,7 +120,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var parsed = hostRoot.sortEntries(Utils.parseEntries(text))
+        var parsed = hostSortOps.sortEntries(Utils.parseEntries(text))
         hostRoot.tabEntriesCache[bgPanel.modelData.path] = parsed
         if (bgPanel.modelData.path === hostRoot.trashDir) {
           if (Object.keys(hostRoot.trashInfo).length > 0) {

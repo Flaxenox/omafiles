@@ -44,6 +44,7 @@ Item {
   property Item fileMeta: null
   property Item deleteOps: null
   property Item tabOps: null
+  property Item sortOps: null
   property Item selectionOps: null
   property Item deleteConfirm: null
   property Item renameConflictConfirm: null
@@ -74,6 +75,7 @@ Item {
     hostSearchOps: searchOps
     hostDeleteOps: deleteOps
     hostTabOps: tabOps
+    hostSortOps: sortOps
     hostSelectionOps: selectionOps
     hostDeleteConfirm: deleteConfirm
     hostRenameConflictConfirm: renameConflictConfirm
