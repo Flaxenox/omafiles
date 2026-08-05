@@ -1,4 +1,3 @@
-import Quickshell
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -8,6 +7,7 @@ import "logic"
 import "shared"
 import "state"
 import "services"
+import "integrations/quickshell"
 
 // Omafiles -- explorador de archivos para Omarchy.
 // Ventana normal (FloatingWindow, tileable en Hyprland como cualquier otra
@@ -312,7 +312,7 @@ Item {
   // (interfaz org.freedesktop.FileManager1, con selección para ShowItems).
   function open(payload) {
     root.opened = true
-    panel.visible = true
+    hostBridge.show()
 
     var nlIdx = payload ? payload.indexOf("\n") : -1
     var folderPart = nlIdx >= 0 ? payload.substring(0, nlIdx) : payload
@@ -373,7 +373,7 @@ Item {
     persistence.saveSession()
     root.closingFromHost = true
     root.opened = false
-    panel.visible = false
+    hostBridge.close()
     root.closingFromHost = false
     root.stopDirWatch()
     EditModeState.renamingIndex = -1
@@ -410,7 +410,7 @@ Item {
   // consistente y el próximo `toggle` funcione bien -- mismo patrón que
   // dev-gallery/GalleryPanel.qml.
   function requestClose() {
-    if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.percius04.omafiles")
+    if (root.shell && typeof root.shell.hide === "function") hostBridge.hide()
     else root.close()
   }
 
@@ -938,8 +938,22 @@ Item {
     onTriggered: root.gPending = false
   }
 
-  FloatingWindow {
-    id: panel
+  // La ventana en sí (FloatingWindow de Quickshell) vive en
+  // integrations/quickshell/HostBridge.qml (Fase 2, josema) -- este
+  // fichero ya no importa Quickshell directamente. show()/hide()/close()
+  // son la API que usan open()/close()/requestClose() más arriba;
+  // closedExternally() cubre el cierre por el botón del gestor de
+  // ventanas (antes vivía como onVisibleChanged directo sobre
+  // FloatingWindow, mismo comportamiento, ahora cruzando la frontera vía
+  // señal).
+  HostBridge {
+    id: hostBridge
+    shell: root.shell
+    suppressExternalClose: root.closingFromHost
+    onClosedExternally: {
+      root.opened = false
+      hostBridge.hide()
+    }
 
     // Los Window de QtQuick nacen visible:true por defecto -- sin esto se
     // abriría solo con keepLoaded, antes de que open() lo pida.
@@ -949,17 +963,6 @@ Item {
     implicitWidth: 900
     implicitHeight: 620
     minimumSize: Qt.size(560, 380)
-
-    onVisibleChanged: {
-      // Cierre externo (botón de cerrar de la ventana, gestor de ventanas)
-      // que no pasó por close()/requestClose() -- avisa al shell para que
-      // su mapa de paneles abiertos no quede desincronizado. Mismo patrón
-      // que dev-gallery/GalleryPanel.qml.
-      if (!visible && !root.closingFromHost && root.opened) {
-        root.opened = false
-        if (root.shell && typeof root.shell.hide === "function") root.shell.hide("io.github.percius04.omafiles")
-      }
-    }
 
     BorderSurface {
       id: card
