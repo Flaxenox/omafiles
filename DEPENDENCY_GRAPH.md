@@ -2,7 +2,9 @@
 
 Generated from `property Item x: null` wiring between `logic/*.qml`
 components (UI element/dialog references excluded — this is
-component-to-component only). Verified acyclic 2026-08-05.
+component-to-component only). Verified acyclic 2026-08-05 (`core-v1-ready`
+milestone — includes `NavigationController`/`DirLister`, added in Fase
+1.6).
 
 ```mermaid
 graph LR
@@ -19,6 +21,7 @@ graph LR
   ConflictActions --> RenameOps
   ConflictActions --> SelectionOps
   DeleteOps --> SelectionOps
+  DirLister --> SortOps
   DragDropOps --> ConflictActions
   DragDropOps --> SelectionOps
   FileOps --> SelectionOps
@@ -35,6 +38,11 @@ graph LR
   KeyboardShortcuts --> SortOps
   KeyboardShortcuts --> TabOps
   MountActions --> TabOps
+  NavigationController --> ArchiveActions
+  NavigationController --> BookmarkOps
+  NavigationController --> MountActions
+  NavigationController --> SelectionOps
+  NavigationController --> SortOps
   OpenWithOps --> BookmarkOps
   Persistence --> TabOps
   PreviewLoader --> FileMeta
@@ -49,6 +57,11 @@ graph LR
 
 Leaf nodes (no `logic/` dependencies): `ActionEngine`, `FileMeta`,
 `FileTypeUtils`, `RenameOps`, `SortOps`, `VideoThumbnails`.
+
+Nothing in `logic/` references `NavigationController` or `DirLister` —
+both are only instantiated from `core/OmafilesContent.qml` (one
+`NavigationController`) and `panels/BackgroundPanel.qml` (one `DirLister`
+per background tab).
 
 Regenerate by checking, for each `logic/*.qml`:
 ```
