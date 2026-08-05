@@ -3526,448 +3526,37 @@ Item {
         spacing: Style.spacing.panelGap
 
         // ---------- Barra lateral: accesos anclados ----------
-        Column {
+        Sidebar {
           id: sidebar
           width: 160
           height: parent.height
-          spacing: Style.spacing.md
-
-          PanelSectionHeader {
-            text: "BOOKMARKS"
-            foreground: Color.menu.text
-            fontFamily: Style.font.family
-            fontSize: Style.font.subtitle
+          bookmarks: root.bookmarks
+          recentFiles: root.recentFiles
+          mounts: root.mounts
+          networkMounts: root.networkMounts
+          currentPath: root.currentPath
+          dropHoverPath: root.dropHoverPath
+          positionRelativeTo: card
+          iconForBookmark: root.iconForBookmark
+          iconFor: root.iconFor
+          iconForMount: root.iconForMount
+          iconForNetworkMount: root.iconForNetworkMount
+          openContextMenu: root.openContextMenu
+          bookmarkActionsFor: root.bookmarkActions
+          mountActionsFor: root.mountActions
+          networkMountActionsFor: root.networkMountActions
+          onBookmarkOpened: function (bookmark) { root.openBookmark(bookmark) }
+          onRecentOpened: function (item) { root.openRecent(item) }
+          onRecentRemoveRequested: function (path) { root.removeRecent(path) }
+          onRecentClearRequested: root.clearRecent()
+          onMountActivated: function (mount) {
+            if (!mount.mounted) root.mountDevice(mount)
+            else root.navigateTo(mount.path)
           }
-
-          Item {
-            width: 1
-            height: Style.spacing.xxs
-          }
-
-          Repeater {
-            model: root.bookmarks
-
-            CursorSurface {
-              required property var modelData
-              readonly property bool isCurrent: root.currentPath === modelData.path
-              width: sidebar.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: bookmarkMouse.containsMouse
-              current: isCurrent || root.dropHoverPath === modelData.path
-              Accessible.role: Accessible.ListItem
-              Accessible.name: "Bookmark, " + modelData.label
-              Accessible.selected: isCurrent
-
-              DropArea {
-                // Deshabilitado para marcadores de fichero -- soltar
-                // algo "sobre un fichero" no tiene destino real (a
-                // diferencia de una carpeta), destDir tendría que ser un
-                // directorio.
-                anchors.fill: parent
-                enabled: modelData.type !== "file"
-                keys: ["text/uri-list"]
-                onEntered: function (drag) {
-                  if (!drag.hasUrls) { drag.accepted = false; return }
-                  root.dropHoverPath = modelData.path
-                }
-                onExited: if (root.dropHoverPath === modelData.path) root.dropHoverPath = ""
-                onDropped: function (drop) {
-                  root.dropHoverPath = ""
-                  root.handleFilesDropped(drop, modelData.path)
-                }
-              }
-
-              OpticalGlyph {
-                id: bookmarkIcon
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                width: Style.font.title
-                height: Style.font.title
-                text: root.iconForBookmark(parent.modelData)
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: bookmarkIcon.right
-                anchors.leftMargin: Style.spacing.xs
-                text: parent.modelData.label
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-                elide: Text.ElideRight
-                width: sidebar.width - Style.spacing.sm * 2 - bookmarkIcon.width - Style.spacing.xs
-              }
-
-              MouseArea {
-                id: bookmarkMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function (mouse) {
-                  if (mouse.button === Qt.RightButton) {
-                    var pos = mapToItem(card, mouse.x, mouse.y)
-                    root.openContextMenu(pos.x, pos.y, root.bookmarkActions(modelData))
-                    return
-                  }
-                  root.openBookmark(modelData)
-                }
-              }
-            }
-          }
-
-          Item {
-            visible: root.recentFiles.length > 0
-            width: 1
-            height: Style.spacing.sm
-          }
-
-          PanelSeparator {
-            visible: root.recentFiles.length > 0
-            foreground: Color.menu.text
-            strength: 0.15
-          }
-
-          Item {
-            visible: root.recentFiles.length > 0
-            width: 1
-            height: Style.spacing.xs
-          }
-
-          PanelSectionHeader {
-            visible: root.recentFiles.length > 0
-            text: "RECENT"
-            foreground: Color.menu.text
-            fontFamily: Style.font.family
-            fontSize: Style.font.subtitle
-          }
-
-          Item {
-            visible: root.recentFiles.length > 0
-            width: 1
-            height: Style.spacing.xxs
-          }
-
-          Repeater {
-            model: root.recentFiles
-
-            CursorSurface {
-              required property var modelData
-              width: sidebar.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: recentMouse.containsMouse
-              Accessible.role: Accessible.ListItem
-              Accessible.name: "Recent file, " + modelData.name
-
-              OpticalGlyph {
-                id: recentIcon
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                width: Style.font.title
-                height: Style.font.title
-                text: root.iconFor({ type: "file", name: parent.modelData.name })
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: Color.menu.text
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: recentIcon.right
-                anchors.leftMargin: Style.spacing.xs
-                text: parent.modelData.name
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: Color.menu.text
-                elide: Text.ElideRight
-                width: sidebar.width - Style.spacing.sm * 2 - recentIcon.width - Style.spacing.xs
-              }
-
-              MouseArea {
-                id: recentMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function (mouse) {
-                  if (mouse.button === Qt.RightButton) {
-                    var pos = mapToItem(card, mouse.x, mouse.y)
-                    root.openContextMenu(pos.x, pos.y, [
-                      { label: "Open", action: function () { root.openRecent(modelData) } },
-                      { label: "Remove from recent", destructive: true, action: function () { root.removeRecent(modelData.path) } },
-                      { label: "Clear recent", destructive: true, action: function () { root.clearRecent() } }
-                    ])
-                    return
-                  }
-                  root.openRecent(modelData)
-                }
-              }
-            }
-          }
-
-          Item {
-            visible: root.mounts.length > 0
-            width: 1
-            height: Style.spacing.sm
-          }
-
-          PanelSeparator {
-            visible: root.mounts.length > 0
-            foreground: Color.menu.text
-            strength: 0.15
-          }
-
-          Item {
-            visible: root.mounts.length > 0
-            width: 1
-            height: Style.spacing.xs
-          }
-
-          PanelSectionHeader {
-            visible: root.mounts.length > 0
-            text: "DEVICES"
-            foreground: Color.menu.text
-            fontFamily: Style.font.family
-            fontSize: Style.font.subtitle
-          }
-
-          Item {
-            visible: root.mounts.length > 0
-            width: 1
-            height: Style.spacing.xxs
-          }
-
-          Repeater {
-            model: root.mounts
-
-            CursorSurface {
-              required property var modelData
-              readonly property bool isCurrent: root.currentPath === modelData.path
-              width: sidebar.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: mountMouse.containsMouse
-              current: isCurrent || root.dropHoverPath === modelData.path
-              Accessible.role: Accessible.ListItem
-              Accessible.name: modelData.label + (modelData.mounted ? "" : ", not mounted")
-              Accessible.selected: isCurrent
-
-              DropArea {
-                // Solo unidades ya montadas -- soltar en una sin montar no
-                // tiene destino real todavía.
-                anchors.fill: parent
-                enabled: modelData.mounted
-                keys: ["text/uri-list"]
-                onEntered: function (drag) {
-                  if (!drag.hasUrls) { drag.accepted = false; return }
-                  root.dropHoverPath = modelData.path
-                }
-                onExited: if (root.dropHoverPath === modelData.path) root.dropHoverPath = ""
-                onDropped: function (drop) {
-                  root.dropHoverPath = ""
-                  root.handleFilesDropped(drop, modelData.path)
-                }
-              }
-
-              OpticalGlyph {
-                id: mountIcon
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                width: Style.font.title
-                height: Style.font.title
-                opacity: parent.modelData.mounted ? 1.0 : 0.5
-                text: root.iconForMount(parent.modelData)
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: mountIcon.right
-                anchors.leftMargin: Style.spacing.xs
-                opacity: parent.modelData.mounted ? 1.0 : 0.5
-                text: parent.modelData.label
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-                elide: Text.ElideRight
-                width: sidebar.width - Style.spacing.sm * 2 - mountIcon.width - Style.spacing.xs
-              }
-
-              PanelToolTip {
-                visible: mountMouse.containsMouse && !parent.modelData.mounted
-                text: "Not mounted -- click to mount"
-              }
-
-              MouseArea {
-                id: mountMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function (mouse) {
-                  if (mouse.button === Qt.RightButton) {
-                    var pos = mapToItem(card, mouse.x, mouse.y)
-                    root.openContextMenu(pos.x, pos.y, root.mountActions(modelData))
-                    return
-                  }
-                  if (!modelData.mounted) root.mountDevice(modelData)
-                  else root.navigateTo(modelData.path)
-                }
-              }
-            }
-          }
-
-          Item {
-            width: 1
-            height: Style.spacing.sm
-          }
-
-          PanelSeparator {
-            foreground: Color.menu.text
-            strength: 0.15
-          }
-
-          Item {
-            width: 1
-            height: Style.spacing.xs
-          }
-
-          // A diferencia de DEVICES/marcadores, esta cabecera y la fila de
-          // "Connect to server..." se ven siempre, con mounts activos o
-          // sin ellos -- si dependieran de root.networkMounts.length > 0
-          // nadie podría descubrir la función la primera vez, cuando por
-          // definición todavía no hay ninguna conexión de red activa.
-          PanelSectionHeader {
-            text: "NETWORK"
-            foreground: Color.menu.text
-            fontFamily: Style.font.family
-            fontSize: Style.font.subtitle
-          }
-
-          Item {
-            width: 1
-            height: Style.spacing.xxs
-          }
-
-          Repeater {
-            model: root.networkMounts
-
-            CursorSurface {
-              required property var modelData
-              readonly property bool isCurrent: root.currentPath === modelData.path
-              width: sidebar.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: networkMountMouse.containsMouse
-              current: isCurrent
-              Accessible.role: Accessible.ListItem
-              Accessible.name: "Network location, " + modelData.label
-              Accessible.selected: isCurrent
-
-              OpticalGlyph {
-                id: networkMountIcon
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                width: Style.font.title
-                height: Style.font.title
-                text: root.iconForNetworkMount(parent.modelData)
-                fontFamily: Style.font.family
-                fontSize: Style.font.icon
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-              }
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: networkMountIcon.right
-                anchors.leftMargin: Style.spacing.xs
-                text: parent.modelData.label
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
-                elide: Text.ElideRight
-                width: sidebar.width - Style.spacing.sm * 2 - networkMountIcon.width - Style.spacing.xs
-              }
-
-              MouseArea {
-                id: networkMountMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                cursorShape: Qt.PointingHandCursor
-                onClicked: function (mouse) {
-                  if (mouse.button === Qt.RightButton) {
-                    var pos = mapToItem(card, mouse.x, mouse.y)
-                    root.openContextMenu(pos.x, pos.y, root.networkMountActions(modelData))
-                    return
-                  }
-                  root.navigateTo(modelData.path)
-                }
-              }
-            }
-          }
-
-          CursorSurface {
-            width: sidebar.width
-            implicitHeight: Style.spacing.controlHeight
-            foreground: Color.menu.text
-            accent: Color.accent
-            hasCursor: connectServerMouse.containsMouse
-            Accessible.role: Accessible.Button
-            Accessible.name: "Connect to server"
-
-            OpticalGlyph {
-              id: connectServerIcon
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.left: parent.left
-              anchors.leftMargin: Style.spacing.sm
-              width: Style.font.title
-              height: Style.font.title
-              text: "\u{F0490}"
-              fontFamily: Style.font.family
-              fontSize: Style.font.icon
-              color: Color.menu.text
-            }
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.left: connectServerIcon.right
-              anchors.leftMargin: Style.spacing.xs
-              text: "Connect…"
-              font.pixelSize: Style.font.title
-              font.family: Style.font.family
-              font.weight: Font.Medium
-              color: Color.menu.text
-              elide: Text.ElideRight
-              width: sidebar.width - Style.spacing.sm * 2 - connectServerIcon.width - Style.spacing.xs
-            }
-
-            MouseArea {
-              id: connectServerMouse
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.startConnectToServer()
-            }
-          }
+          onNetworkMountOpened: function (mount) { root.navigateTo(mount.path) }
+          onConnectRequested: root.startConnectToServer()
+          onFilesDropped: function (drop, destPath) { root.handleFilesDropped(drop, destPath) }
+          onDropHoverChanged: function (path) { root.dropHoverPath = path }
         }
 
         Rectangle {
@@ -4309,117 +3898,30 @@ Item {
                       anchors.left: parent.left
                       anchors.right: parent.right
                       anchors.verticalCenter: parent.verticalCenter
-                      // Sin margen a la izquierda -- igual que rowContent del
-                      // panel activo, para que el icono quede en la misma
-                      // columna que los botones de atrás/adelante/subir de
-                      // bgHeaderRow, justo encima.
                       anchors.leftMargin: 0
                       anchors.rightMargin: Style.spacing.rowPaddingX
-                      implicitHeight: Math.max(bgThumbSlot.height, bgNameCol.implicitHeight)
+                      implicitHeight: bgFileRow.implicitHeight
 
-                      Item {
-                        id: bgThumbSlot
-                        // Misma miniatura real que el panel activo -- antes
-                        // solo tenía los iconos genéricos de tipo, así que
-                        // las imágenes/vídeos se veían sin previsualizar
-                        // hasta que el cursor pasaba a ser el panel activo.
-                        readonly property bool isVid: root.isVideo(modelData)
-                        readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
-                        readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
-                        readonly property bool isDir: modelData.type === "dir"
-                        readonly property bool isBroken: modelData.link === "broken"
-                        // Alineado con el nombre (bgNameText), no con el
-                        // bloque de dos líneas -- mismo criterio que el
-                        // panel activo, con "y" explícito por el mismo
-                        // motivo (ver comentario junto a thumbSlot).
-                        anchors.left: parent.left
-                        y: bgNameCol.y + (bgNameText.height - height) / 2
-                        width: Style.spacing.controlHeight
-                        height: Style.spacing.controlHeight
+                      readonly property bool isVid: root.isVideo(modelData)
+                      readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
+                      readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
 
-                        Component.onCompleted: if (isVid) root.requestVideoThumb(modelData, bgPanel.modelData.path)
+                      Component.onCompleted: if (isVid) root.requestVideoThumb(modelData, bgPanel.modelData.path)
 
-                        Image {
-                          id: bgThumbImage
-                          anchors.fill: parent
-                          visible: status === Image.Ready
-                          // La ruta es la de ESTE panel (bgPanel.modelData.path),
-                          // no root.currentPath -- ese es del panel activo,
-                          // y era justo lo que hacía fallar la miniatura
-                          // aquí cuando este panel no era el activo.
-                          source: root.isImage(modelData) ? Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
-                            : (bgThumbSlot.vidThumb ? Util.fileUrl(bgThumbSlot.vidThumb) : "")
-                          fillMode: Image.PreserveAspectCrop
-                          asynchronous: true
-                          sourceSize.width: 32
-                          sourceSize.height: 32
-                        }
-
-                        OpticalGlyph {
-                          anchors.fill: parent
-                          visible: bgThumbSlot.isDir && !bgThumbSlot.isBroken
-                          text: "󰉋"
-                          fontFamily: Style.font.family
-                          fontSize: Style.font.iconLarge
-                          color: Color.menu.text
-                        }
-
-                        // Antes se ocultaba con "!bgThumbSlot.hasThumb", que
-                        // decide por EXTENSIÓN -- una imagen real pero lenta
-                        // de cargar (o con contenido corrupto, status nunca
-                        // llega a Ready) tenía hasThumb=true sin que la
-                        // Image de arriba se hiciera visible nunca, así que
-                        // la fila se quedaba sin icono ninguno. Ahora se basa
-                        // en el estado real de carga de la propia Image.
-                        OpticalGlyph {
-                          anchors.fill: parent
-                          visible: !bgThumbSlot.isDir && !bgThumbImage.visible && !bgThumbSlot.isBroken
-                          text: root.iconFor(modelData)
-                          fontFamily: Style.font.family
-                          fontSize: Style.font.iconLarge
-                          color: Color.menu.text
-                        }
-
-                        OpticalGlyph {
-                          anchors.fill: parent
-                          visible: bgThumbSlot.isBroken
-                          text: "\u{F033A}"
-                          fontFamily: Style.font.family
-                          fontSize: Style.font.iconLarge
-                          color: Color.urgent
-                        }
-                      }
-
-                      Column {
-                        id: bgNameCol
-                        anchors.left: bgThumbSlot.right
-                        anchors.leftMargin: Style.spacing.rowGap
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: Style.spacing.xs
-
-                        Text {
-                          id: bgNameText
-                          width: parent.width
-                          text: modelData.name + (modelData.type === "dir" ? "/" : "")
-                          font.pixelSize: Style.font.title
-                          font.family: Style.font.family
-                          font.weight: Font.Medium
-                          color: modelData.link === "broken" ? Color.urgent : Color.menu.text
-                          elide: Text.ElideRight
-                        }
-
-                        Text {
-                          readonly property string meta: root.metaFor(modelData, bgPanel.modelData.path)
-                          visible: meta.length > 0
-                          width: parent.width
-                          text: meta
-                          font.pixelSize: Style.font.bodySmall
-                          font.family: Style.font.family
-                          color: Color.menu.text
-                          opacity: 0.6
-                          elide: Text.ElideRight
-                        }
+                      FileRowVisual {
+                        id: bgFileRow
+                        anchors.fill: parent
+                        name: modelData.name
+                        isDir: modelData.type === "dir"
+                        isBroken: modelData.link === "broken"
+                        fileIconGlyph: root.iconFor(modelData)
+                        // La ruta es la de ESTE panel (bgPanel.modelData.path),
+                        // no root.currentPath -- ese es del panel activo, y
+                        // era justo lo que hacía fallar la miniatura aquí
+                        // cuando este panel no era el activo.
+                        thumbSource: root.isImage(modelData) ? Util.fileUrl(root.joinPath(bgPanel.modelData.path, modelData.name))
+                          : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
+                        metaText: root.metaFor(modelData, bgPanel.modelData.path)
                       }
                     }
 
@@ -5251,7 +4753,7 @@ Item {
                   // Solo las carpetas son destino válido de un drop --
                   // soltar sobre un fichero suelto no tiene sentido.
                   anchors.fill: parent
-                  enabled: thumbSlot.isDir
+                  enabled: modelData.type === "dir"
                   keys: ["text/uri-list"]
                   onEntered: function (drag) {
                     if (!drag.hasUrls) { drag.accepted = false; return }
@@ -5271,88 +4773,27 @@ Item {
                   anchors.verticalCenter: parent.verticalCenter
                   anchors.leftMargin: 0
                   anchors.rightMargin: Style.spacing.rowPaddingX
-                  implicitHeight: Math.max(thumbSlot.height, nameCol.implicitHeight)
+                  implicitHeight: activeFileRow.implicitHeight
 
-                  Item {
-                    id: thumbSlot
-                    // Miniatura real si la hay (imagen/vídeo); si no, icono
-                    // de carpeta o de tipo de fichero -- mismo glyph/fuente
-                    // que usa el menú de Omarchy.
-                    readonly property bool isVid: root.isVideo(modelData)
-                    readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, root.currentPath) : ""
-                    readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
-                    readonly property bool isDir: modelData.type === "dir"
-                    readonly property bool isBroken: modelData.link === "broken"
-                    // Mismo ancho que los botones de casita/subir de navRow
-                    // (Style.spacing.controlHeight), para que el icono quede
-                    // centrado en la misma columna que ellos. Vertical:
-                    // alineado con el nombre (nameText), no con el bloque
-                    // de dos líneas completo -- josema quería el icono a la
-                    // altura del nombre, con el peso/fecha colgando debajo.
-                    // "anchors.verticalCenter: nameText.verticalCenter" no
-                    // daba el resultado esperado aquí (probado y medido con
-                    // un overlay de depuración: seguía saliendo como si
-                    // centrara sobre nameCol entero, no sobre nameText) --
-                    // en vez de perseguir por qué, "y" explícito a partir de
-                    // nameCol.y (mismo marco de referencia que thumbSlot,
-                    // los dos son hijos directos de rowContent) es
-                    // inequívoco y ya verificado con el mismo overlay.
-                    anchors.left: parent.left
-                    y: nameCol.y + (nameText.height - height) / 2
-                    width: Style.spacing.controlHeight
-                    height: Style.spacing.controlHeight
+                  readonly property bool isVid: root.isVideo(modelData)
+                  readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, root.currentPath) : ""
+                  readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
 
-                    Component.onCompleted: if (isVid) root.requestVideoThumb(modelData)
+                  Component.onCompleted: if (isVid) root.requestVideoThumb(modelData)
 
-                    Image {
-                      id: thumbImage
-                      anchors.fill: parent
-                      visible: status === Image.Ready
-                      source: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
-                        : (thumbSlot.vidThumb ? Util.fileUrl(thumbSlot.vidThumb) : "")
-                      fillMode: Image.PreserveAspectCrop
-                      asynchronous: true
-                      sourceSize.width: 32
-                      sourceSize.height: 32
-                    }
-
-                    OpticalGlyph {
-                      anchors.fill: parent
-                      visible: thumbSlot.isDir && !thumbSlot.isBroken
-                      text: "󰉋"
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.iconLarge
-                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
-                    }
-
-                    // Antes se ocultaba con "!thumbSlot.hasThumb", que decide
-                    // por EXTENSIÓN -- una imagen real pero lenta de cargar
-                    // (o con contenido corrupto, status nunca llega a Ready)
-                    // tenía hasThumb=true sin que la Image de arriba se
-                    // hiciera visible nunca, así que la fila se quedaba sin
-                    // icono ninguno. Ahora se basa en el estado real de carga
-                    // de la propia Image.
-                    OpticalGlyph {
-                      anchors.fill: parent
-                      visible: !thumbSlot.isDir && !thumbImage.visible && !thumbSlot.isBroken
-                      text: root.iconFor(modelData)
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.iconLarge
-                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
-                    }
-
-                    // Enlace simbólico roto (md-link_variant_off, verificado
-                    // contra el cmap real de la fuente) -- antes se veía como
-                    // un fichero normal de 0 bytes fechado en 1970, sin
-                    // ningún indicio de que el destino ya no existe.
-                    OpticalGlyph {
-                      anchors.fill: parent
-                      visible: thumbSlot.isBroken
-                      text: "\u{F033A}"
-                      fontFamily: Style.font.family
-                      fontSize: Style.font.iconLarge
-                      color: Color.urgent
-                    }
+                  FileRowVisual {
+                    id: activeFileRow
+                    anchors.fill: parent
+                    name: modelData.name
+                    isDir: modelData.type === "dir"
+                    isBroken: modelData.link === "broken"
+                    highlighted: rowSurface.current
+                    dimmed: root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
+                    fileIconGlyph: root.iconFor(modelData)
+                    thumbSource: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
+                      : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
+                    metaText: root.metaFor(modelData)
+                    showNameText: root.renamingIndex !== index
                   }
 
                   TextField {
@@ -5360,8 +4801,13 @@ Item {
                     visible: root.renamingIndex === index
                     Accessible.role: Accessible.EditableText
                     Accessible.name: "Rename"
-                    anchors.left: thumbSlot.right
-                    anchors.leftMargin: Style.spacing.rowGap
+                    // Misma X que nameCol dentro de FileRowVisual
+                    // (thumbSlot.right + rowGap) -- ese id ya no es
+                    // visible desde aquí, así que se repite con la
+                    // misma constante conocida (Style.spacing.controlHeight,
+                    // el ancho fijo del icono) en vez de perseguir el id.
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     verticalPadding: 2
@@ -5376,46 +4822,6 @@ Item {
                       }
                     }
                   }
-
-                  // Fila de dos líneas (nombre + tamaño/fecha relativa) --
-                  // mismo patrón que el ejemplo real de fila compuesta de
-                  // Omarchy (icono + Column de título/subtítulo).
-                  Column {
-                    id: nameCol
-                    visible: root.renamingIndex !== index
-                    anchors.left: thumbSlot.right
-                    anchors.leftMargin: Style.spacing.rowGap
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.spacing.xs
-
-                    Text {
-                      id: nameText
-                      width: parent.width
-                      text: modelData.name + (modelData.type === "dir" ? "/" : "")
-                      font.pixelSize: Style.font.title
-                      font.family: Style.font.family
-                      font.weight: Font.Medium
-                      color: modelData.link === "broken" ? Color.urgent
-                        : root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
-                        ? Qt.darker(Color.menu.text, 1.6)
-                        : (rowSurface.current ? Color.menu.selectedText : Color.menu.text)
-                      elide: Text.ElideRight
-                    }
-
-                    Text {
-                      readonly property string meta: root.metaFor(modelData)
-                      visible: meta.length > 0
-                      width: parent.width
-                      text: meta
-                      font.pixelSize: Style.font.bodySmall
-                      font.family: Style.font.family
-                      color: rowSurface.current ? Color.menu.selectedText : Color.menu.text
-                      opacity: 0.6
-                      elide: Text.ElideRight
-                    }
-                  }
-
                 }
 
                 MouseArea {
@@ -5617,175 +5023,28 @@ Item {
             }
 
             // ---------- Vista previa (Espacio) ----------
-            BorderSurface {
-              id: previewPanel
-              visible: root.previewOpen
-              anchors.top: parent.top
-              anchors.bottom: parent.bottom
-              anchors.right: parent.right
-              width: parent.width * 0.45 - Style.spacing.rowGap
-              radius: Style.cornerRadius
-              color: Color.menu.selectedBackground
-              borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-              padding: Style.spacing.sm
-
-              MouseArea { anchors.fill: parent; onClicked: {} }
-
-              Column {
-                anchors.fill: parent
-                anchors.topMargin: previewPanel.contentTopInset
-                anchors.rightMargin: previewPanel.contentRightInset
-                anchors.bottomMargin: previewPanel.contentBottomInset
-                anchors.leftMargin: previewPanel.contentLeftInset
-                spacing: Style.spacing.sm
-
-                Text {
-                  width: parent.width
-                  text: root.previewEntry ? root.previewEntry.name : ""
-                  font.pixelSize: Style.font.title
-                  font.family: Style.font.family
-                  font.bold: true
-                  color: Color.menu.text
-                  elide: Text.ElideMiddle
-                }
-
-                PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-                Image {
-                  visible: root.previewEntry && root.isImage(root.previewEntry)
-                  width: parent.width
-                  height: parent.height - 60
-                  fillMode: Image.PreserveAspectFit
-                  asynchronous: true
-                  source: root.previewEntry && root.isImage(root.previewEntry)
-                    ? Util.fileUrl(root.joinPath(root.currentPath, root.previewEntry.name)) : ""
-                }
-
-                readonly property string previewVideoThumb: root.previewEntry && root.isVideo(root.previewEntry)
-                  ? (root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)] || "") : ""
-
-                Image {
-                  visible: root.previewEntry && root.isVideo(root.previewEntry) && parent.previewVideoThumb !== ""
-                  width: parent.width
-                  height: parent.height - 60
-                  fillMode: Image.PreserveAspectFit
-                  asynchronous: true
-                  source: parent.previewVideoThumb ? Util.fileUrl(parent.previewVideoThumb) : ""
-                }
-
-                Flickable {
-                  visible: root.previewEntry && !root.isImage(root.previewEntry) && root.previewIsText
-                  width: parent.width
-                  height: parent.height - 60
-                  clip: true
-                  contentWidth: width
-                  contentHeight: (root.previewHighlighted ? previewHighlightedItem : previewTextItem).implicitHeight
-
-                  // Resaltado de sintaxis cuando highlight-preview.sh
-                  // (Pygments) reconoció el lenguaje -- ver loadPreview().
-                  // Mismo Flickable/posición que el Text plano de abajo,
-                  // uno de los dos siempre queda oculto.
-                  Text {
-                    id: previewHighlightedItem
-                    visible: root.previewHighlighted.length > 0
-                    width: parent.width
-                    textFormat: Text.RichText
-                    text: root.previewHighlighted
-                    font.pixelSize: Style.font.subtitle
-                    font.family: "monospace"
-                    color: Color.menu.text
-                    wrapMode: Text.Wrap
-                  }
-
-                  Text {
-                    id: previewTextItem
-                    visible: root.previewHighlighted.length === 0
-                    width: parent.width
-                    text: root.previewText || "(empty)"
-                    font.pixelSize: Style.font.subtitle
-                    font.family: "monospace"
-                    color: Color.menu.text
-                    wrapMode: Text.Wrap
-                  }
-                }
-
-                Image {
-                  visible: root.previewEntry && root.isPdf(root.previewEntry) && root.previewPdfImage !== ""
-                  width: parent.width
-                  height: parent.height - 60
-                  fillMode: Image.PreserveAspectFit
-                  asynchronous: true
-                  source: root.previewPdfImage ? Util.fileUrl(root.previewPdfImage) : ""
-                }
-
-                Column {
-                  visible: root.previewEntry && root.isAudio(root.previewEntry) && root.previewAudioInfo.length > 0
-                  width: parent.width
-                  spacing: Style.spacing.sm
-
-                  Repeater {
-                    model: root.previewAudioInfo
-
-                    Row {
-                      required property var modelData
-                      width: parent.width
-                      spacing: Style.spacing.sm
-
-                      Text {
-                        // 84 no le llegaba a "Sample rate" (se pegaba con
-                        // el valor sin espacio, confirmado midiendo el
-                        // glyph real de la fuente) -- 120 deja margen de
-                        // sobra para cualquier etiqueta actual de esta
-                        // tabla al tamaño de fuente real de la app.
-                        width: 120
-                        text: parent.modelData.label
-                        font.pixelSize: Style.font.subtitle
-                        font.family: Style.font.family
-                        color: Color.menu.text
-                        opacity: 0.6
-                      }
-
-                      Text {
-                        width: parent.width - 120 - Style.spacing.sm
-                        text: parent.modelData.value
-                        font.pixelSize: Style.font.subtitle
-                        font.family: Style.font.family
-                        color: Color.menu.text
-                        elide: Text.ElideRight
-                      }
-                    }
-                  }
-                }
-
-                Column {
-                  visible: root.previewEntry && !root.isImage(root.previewEntry) && !root.previewIsText
-                    && !(root.isVideo(root.previewEntry) && root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)])
-                    && !(root.isPdf(root.previewEntry) && root.previewPdfImage !== "")
-                    && !(root.isAudio(root.previewEntry) && root.previewAudioInfo.length > 0)
-                  width: parent.width
-                  spacing: Style.spacing.sm
-
-                  Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: "No preview"
-                    font.pixelSize: Style.font.title
-                    font.family: Style.font.family
-                    color: Color.menu.text
-                    opacity: 0.5
-                  }
-
-                  Text {
-                    width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    text: root.previewEntry ? Utils.formatSize(root.previewEntry.size) : ""
-                    font.pixelSize: Style.font.title
-                    font.family: Style.font.family
-                    color: Color.menu.text
-                    opacity: 0.6
-                  }
-                }
+            PreviewPanel {
+              anchors.fill: parent
+              open: root.previewOpen
+              entryName: root.previewEntry ? root.previewEntry.name : ""
+              hasEntry: !!root.previewEntry
+              isImageEntry: root.previewEntry ? root.isImage(root.previewEntry) : false
+              isVideoEntry: root.previewEntry ? root.isVideo(root.previewEntry) : false
+              isTextEntry: !!root.previewEntry && !root.isImage(root.previewEntry) && root.previewIsText
+              isPdfEntry: root.previewEntry ? root.isPdf(root.previewEntry) : false
+              isAudioEntry: root.previewEntry ? root.isAudio(root.previewEntry) : false
+              imageSource: (root.previewEntry && root.isImage(root.previewEntry))
+                ? Util.fileUrl(root.joinPath(root.currentPath, root.previewEntry.name)) : ""
+              videoThumbSource: {
+                if (!root.previewEntry || !root.isVideo(root.previewEntry)) return ""
+                var p = root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)] || ""
+                return p ? Util.fileUrl(p) : ""
               }
+              highlightedText: root.previewHighlighted
+              plainText: root.previewText
+              pdfImageSource: root.previewPdfImage ? Util.fileUrl(root.previewPdfImage) : ""
+              audioInfo: root.previewAudioInfo
+              fallbackSizeText: root.previewEntry ? Utils.formatSize(root.previewEntry.size) : ""
             }
 
           }
