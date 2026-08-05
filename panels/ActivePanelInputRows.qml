@@ -22,6 +22,7 @@ Column {
   property Item list: null
   property Item renameOps: null
   property Item searchOps: null
+  property Item selectionOps: null
   width: parent.width
   spacing: Style.spacing.rowGap
 
@@ -141,7 +142,7 @@ Column {
           event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
           root.searching = false
-          root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+          selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
           event.accepted = true
         }
       }

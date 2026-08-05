@@ -1,28 +1,30 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import "../state"
 
 // Copiar/cortar/pegar (portapapeles interno + sincronizado con
 // wl-copy/wl-paste del sistema) -- decimoctavo componente extraído de
 // Omafiles.qml.
 Item {
   property Item root: null
+  property Item selectionOps: null
 
   function copySelected() {
     if (root.inArchive) return
-    var entries = root.selectedEntries()
+    var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
-    root.clipboardMode = "copy"
+    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    ClipboardState.clipboardMode = "copy"
     syncClipboardToSystem()
   }
 
   function cutSelected() {
     if (root.inArchive) return
-    var entries = root.selectedEntries()
+    var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    root.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
-    root.clipboardMode = "cut"
+    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    ClipboardState.clipboardMode = "cut"
     syncClipboardToSystem()
   }
 
@@ -44,7 +46,7 @@ Item {
   }
 
   function syncClipboardToSystem() {
-    if (root.clipboardPaths.length === 0) {
+    if (ClipboardState.clipboardPaths.length === 0) {
       Quickshell.execDetached(["wl-copy", "-c"])
       return
     }
@@ -52,7 +54,7 @@ Item {
     // abajo (dragMimeDataFor) ya lo hacía bien; esto lo iguala para que
     // cualquier app externa que lea el portapapeles reciba el mismo
     // formato spec-correcto sea cual sea el camino (copiar o arrastrar).
-    var uris = root.clipboardPaths.map(function (p) {
+    var uris = ClipboardState.clipboardPaths.map(function (p) {
       return "file://" + p.split("/").map(encodeURIComponent).join("/")
     }).join("\r\n")
     Quickshell.execDetached(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
@@ -61,17 +63,17 @@ Item {
   // mode: "all" (sin conflictos, tal cual) | "overwrite" | "skip"
   function runPaste(mode) {
     var conflictSet = {}
-    root.pasteConflictNames.forEach(function (n) { conflictSet[n] = true })
-    var sources = root.clipboardPaths.filter(function (src) {
+    ConflictState.pasteConflictNames.forEach(function (n) { conflictSet[n] = true })
+    var sources = ClipboardState.clipboardPaths.filter(function (src) {
       if (mode !== "skip") return true
       var name = src.substring(src.lastIndexOf("/") + 1)
       return !conflictSet[name]
     })
-    root.pasteConflictOpen = false
-    root.pasteConflictNames = []
+    ConflictState.pasteConflictOpen = false
+    ConflictState.pasteConflictNames = []
     if (sources.length > 0) {
       var noClobber = mode !== "overwrite"
-      var isCut = root.clipboardMode === "cut"
+      var isCut = ClipboardState.clipboardMode === "cut"
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
         return { src: src, dest: root.joinPath(root.currentPath, name) }
@@ -101,14 +103,14 @@ Item {
         })
       })
     }
-    if (root.clipboardMode === "cut") {
-      root.clipboardPaths = []
-      root.clipboardMode = ""
+    if (ClipboardState.clipboardMode === "cut") {
+      ClipboardState.clipboardPaths = []
+      ClipboardState.clipboardMode = ""
     }
   }
 
   function cancelPasteConflict() {
-    root.pasteConflictOpen = false
-    root.pasteConflictNames = []
+    ConflictState.pasteConflictOpen = false
+    ConflictState.pasteConflictNames = []
   }
 }

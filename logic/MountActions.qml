@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "../state"
 import "../Utils.js" as Utils
 
 // Montar/expulsar unidades (udisksctl) + conectar/desconectar unidades de
@@ -36,13 +37,13 @@ Item {
   }
 
   function startConnectToServer() {
-    root.connectServerUri = ""
-    root.connectServerError = ""
-    root.connectServerOpen = true
+    DialogsState.connectServerUri = ""
+    DialogsState.connectServerError = ""
+    DialogsState.connectServerOpen = true
   }
 
   function cancelConnectToServer() {
-    root.connectServerOpen = false
+    DialogsState.connectServerOpen = false
   }
 
   // "setsid" + matar el grupo entero al cancelar, mismo motivo que
@@ -52,10 +53,10 @@ Item {
   // abajo en el fichero, junto al diálogo), y sin esto Cancelar no
   // conseguiría matar el proceso de verdad.
   function commitConnectToServer() {
-    var uri = root.connectServerUri.trim()
+    var uri = DialogsState.connectServerUri.trim()
     if (!uri) return
-    root.connectServerError = ""
-    root.networkConnecting = true
+    DialogsState.connectServerError = ""
+    DialogsState.networkConnecting = true
     networkMountProc.errorText = ""
     networkMountProc.command = ["setsid", "gio", "mount", "--", uri]
     networkMountProc.running = true
@@ -65,7 +66,7 @@ Item {
     var pid = networkMountProc.processId
     if (pid) Quickshell.execDetached(["kill", "-TERM", "--", "-" + pid])
     networkMountProc.running = false
-    root.networkConnecting = false
+    DialogsState.networkConnecting = false
   }
 
   function ejectMount(mount) {
@@ -252,16 +253,16 @@ Item {
       onStreamFinished: networkMountProc.errorText = text
     }
     onExited: function (exitCode) {
-      root.networkConnecting = false
+      DialogsState.networkConnecting = false
       if (exitCode === 0) {
-        root.connectServerOpen = false
+        DialogsState.connectServerOpen = false
         // gio no imprime la ruta local igual que udisksctl -- se relista
         // y se entra al mount que no estaba antes (el que acaba de
         // aparecer) en vez de parsear la salida de "gio mount".
         networkMountsAfterConnectProc.beforePaths = root.networkMounts.map(function (m) { return m.path })
         networkMountsAfterConnectProc.running = true
       } else {
-        root.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
+        DialogsState.connectServerError = networkMountProc.errorText.trim() || "Could not connect"
       }
     }
   }

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "../state"
 
 // El motor central de acciones de fichero (renombrar/borrar/copiar/mover/
 // comprimir/extraer/chmod/enlace, todo pasa por aquí) + deshacer/rehacer +
@@ -23,18 +24,17 @@ Item {
   // lote, chmod y enlace. Copiar/comprimir se quedan fuera a propósito --
   // deshacerlos es más ambiguo (¿borrar la copia? ¿y si ya se movió/editó?)
   // que perder por error algo renombrado/movido/borrado/con permisos
-  // cambiados. undoStack/redoStack en sí se quedan como propiedades de
-  // root (se leen desde varios sitios como root.undoStack.length), solo
-  // estas tres funciones que las manipulan viven aquí.
+  // cambiados. undoStack/redoStack en sí viven en state/UndoState.qml
+  // (singleton) -- solo estas tres funciones que las manipulan viven aquí.
   function pushUndo(label, undoFn, redoFn) {
-    root.undoStack = root.undoStack.concat([{ label: label, undo: undoFn, redo: redoFn }]).slice(-20)
-    root.redoStack = []
+    UndoState.undoStack = UndoState.undoStack.concat([{ label: label, undo: undoFn, redo: redoFn }]).slice(-20)
+    UndoState.redoStack = []
   }
 
   function undoLast() {
-    if (root.undoStack.length === 0) return
-    var entry = root.undoStack[root.undoStack.length - 1]
-    root.undoStack = root.undoStack.slice(0, -1)
+    if (UndoState.undoStack.length === 0) return
+    var entry = UndoState.undoStack[UndoState.undoStack.length - 1]
+    UndoState.undoStack = UndoState.undoStack.slice(0, -1)
     // entry.undo() devuelve lo que runAction() devuelve: false si se
     // descartó por haber otra acción en curso. Antes esto decía "Undone"
     // pase lo que pase, incluso cuando el undo ni siquiera llegó a
@@ -42,31 +42,31 @@ Item {
     // llegó a lanzarse, se devuelve a la pila para poder reintentarlo.
     var started = entry.undo()
     if (started === false) {
-      root.undoStack = root.undoStack.concat([entry])
+      UndoState.undoStack = UndoState.undoStack.concat([entry])
       Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't undo \"" + entry.label + "\": still busy with another action"])
       return
     }
     // Solo pasa a la pila de redo si de verdad lleva forma de rehacerse
     // -- no todas las entradas del undoStack tienen redoFn (ver el
     // comentario junto a pushUndo).
-    if (entry.redo) root.redoStack = root.redoStack.concat([entry]).slice(-20)
+    if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
     Quickshell.execDetached(["notify-send", "Omafiles", "Undoing: " + entry.label])
   }
 
   function redoLast() {
-    if (root.redoStack.length === 0) return
-    var entry = root.redoStack[root.redoStack.length - 1]
-    root.redoStack = root.redoStack.slice(0, -1)
+    if (UndoState.redoStack.length === 0) return
+    var entry = UndoState.redoStack[UndoState.redoStack.length - 1]
+    UndoState.redoStack = UndoState.redoStack.slice(0, -1)
     var started = entry.redo()
     if (started === false) {
-      root.redoStack = root.redoStack.concat([entry])
+      UndoState.redoStack = UndoState.redoStack.concat([entry])
       Quickshell.execDetached(["notify-send", "Omafiles", "Couldn't redo \"" + entry.label + "\": still busy with another action"])
       return
     }
     // De vuelta a undoStack SIN pasar por pushUndo() -- eso vaciaría
     // redoStack, que es justo lo que no queremos en pleno ciclo
     // deshacer/rehacer/deshacer.
-    root.undoStack = root.undoStack.concat([entry]).slice(-20)
+    UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
     Quickshell.execDetached(["notify-send", "Omafiles", "Redoing: " + entry.label])
   }
 

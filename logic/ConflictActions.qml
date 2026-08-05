@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell.Io
 import qs.Commons
+import "../state"
 
 // Comprobación de conflicto antes de ejecutar una acción que puede
 // sobrescribir algo -- decimonoveno componente extraído de Omafiles.qml,
@@ -23,10 +24,11 @@ Item {
   property Item renameOps: null
   property Item clipboardOps: null
   property Item dragDropOps: null
+  property Item selectionOps: null
 
   function paste() {
     if (root.inArchive) return
-    if (root.clipboardPaths.length === 0) {
+    if (ClipboardState.clipboardPaths.length === 0) {
       // Nada copiado desde DENTRO de Omafiles -- probar el portapapeles
       // del sistema (copiar en Nautilus/el navegador/un chat/etc. y pegar
       // aquí). Se trata siempre como "copy", nunca "cut": un
@@ -37,7 +39,7 @@ Item {
       systemClipboardReadProc.running = true
       return
     }
-    var destPaths = root.clipboardPaths.map(function (src) {
+    var destPaths = ClipboardState.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
       return root.joinPath(root.currentPath, name)
     })
@@ -57,9 +59,9 @@ Item {
       return src !== destDir && srcDir !== destDir && (destDir + "/").indexOf(src + "/") !== 0
     })
     if (sourcePaths.length === 0) return
-    root.dropPendingSources = sourcePaths
-    root.dropTargetDir = destDir
-    root.dropIsMove = isMove
+    ConflictState.dropPendingSources = sourcePaths
+    ConflictState.dropTargetDir = destDir
+    ConflictState.dropIsMove = isMove
     var destPaths = sourcePaths.map(function (src) {
       return root.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
@@ -72,7 +74,7 @@ Item {
 
   function compressSelected() {
     if (root.inArchive) return
-    var entries = root.selectedEntries()
+    var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     var archiveName = entries.length === 1
       ? entries[0].name.replace(/\/$/, "") + ".zip"
@@ -90,16 +92,16 @@ Item {
     // -- before archive name"), de ahí el "./" en su lugar.
     var cmd = "cd -- " + Util.shellQuote(root.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
-    root.pendingCompress = { archiveName: archiveName, cmd: cmd }
+    ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
     compressCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"]
     compressCheckProc.running = true
   }
 
   function commitBulkRename() {
-    var entries = root.selectedEntries()
-    root.bulkRenameOpen = false
+    var entries = selectionOps.selectedEntries()
+    DialogsState.bulkRenameOpen = false
     if (entries.length === 0) return
-    var pattern = root.bulkRenamePattern
+    var pattern = DialogsState.bulkRenamePattern
     root.addBulkRenameHistory(pattern)
     var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
@@ -111,7 +113,7 @@ Item {
         newPath: root.joinPath(root.currentPath, newName)
       }
     })
-    root.pendingBulkRename = pairs
+    ConflictState.pendingBulkRename = pairs
     // Antes esto usaba "mv -n" a ciegas: un patrón que produce un nombre ya
     // existente (o que dos ítems de la propia selección acaben con el
     // mismo nombre nuevo) hacía que mv -n no tocara ESE ítem en concreto,
@@ -124,7 +126,7 @@ Item {
     })
     // ...y también los conflictos DENTRO de la propia selección (dos ítems
     // que el patrón deja con el mismo nombre nuevo).
-    root.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
+    ConflictState.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
     var checkCmd = pairs.map(function (p) {
       if (p.newName === p.oldName) return "true"
       return "test -e " + Util.shellQuote(p.newPath) + " && printf '%s\\n' " + Util.shellQuote(p.newName)
@@ -160,7 +162,7 @@ Item {
     // renombrar (que sí comprueban conflictos). Antes de extraer, se lista
     // el contenido del archivo y se comprueba si algún elemento de primer
     // nivel ya existe en la carpeta actual.
-    root.pendingExtract = { entry: entry, cmd: cmd }
+    ConflictState.pendingExtract = { entry: entry, cmd: cmd }
     extractListProc.command = ["bash", "-c", listCmd]
     extractListProc.running = true
   }
@@ -182,7 +184,7 @@ Item {
     if (!newName || newName === oldName) return
     var oldPath = root.joinPath(root.currentPath, oldName)
     var newPath = root.joinPath(root.currentPath, newName)
-    root.pendingRename = { oldPath: oldPath, newPath: newPath }
+    ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
     renameCheckProc.command = ["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"]
     renameCheckProc.running = true
   }
@@ -192,7 +194,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (text.trim() === "1") root.renameConflictOpen = true
+        if (text.trim() === "1") ConflictState.renameConflictOpen = true
         else renameOps.runPendingRename(false)
       }
     }
@@ -218,8 +220,8 @@ Item {
         // nada que avisar, paste() ya no hacía nada tampoco antes en este
         // caso.
         if (paths.length === 0) return
-        root.clipboardPaths = paths
-        root.clipboardMode = "copy"
+        ClipboardState.clipboardPaths = paths
+        ClipboardState.clipboardMode = "copy"
         paste()
       }
     }
@@ -257,8 +259,8 @@ Item {
         if (conflicts.length === 0) {
           archiveActions.runPendingExtract()
         } else {
-          root.extractConflictNames = conflicts
-          root.extractConflictOpen = true
+          ConflictState.extractConflictNames = conflicts
+          ConflictState.extractConflictOpen = true
         }
       }
     }
@@ -270,12 +272,12 @@ Item {
       waitForEnd: true
       onStreamFinished: {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-        var total = conflicts.length + root.bulkRenameInternalDupes
+        var total = conflicts.length + ConflictState.bulkRenameInternalDupes
         if (total === 0) {
           fileOps.runPendingBulkRename()
         } else {
-          root.bulkRenameConflictCount = total
-          root.bulkRenameConflictOpen = true
+          ConflictState.bulkRenameConflictCount = total
+          ConflictState.bulkRenameConflictOpen = true
         }
       }
     }
@@ -286,7 +288,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        if (text.trim() === "1") root.compressConflictOpen = true
+        if (text.trim() === "1") ConflictState.compressConflictOpen = true
         else archiveActions.runPendingCompress()
       }
     }
@@ -301,8 +303,8 @@ Item {
         if (conflicts.length === 0) {
           dragDropOps.runDrop("all")
         } else {
-          root.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          root.dropConflictOpen = true
+          ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+          ConflictState.dropConflictOpen = true
         }
       }
     }
@@ -317,8 +319,8 @@ Item {
         if (conflicts.length === 0) {
           clipboardOps.runPaste("all")
         } else {
-          root.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-          root.pasteConflictOpen = true
+          ConflictState.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+          ConflictState.pasteConflictOpen = true
         }
       }
     }

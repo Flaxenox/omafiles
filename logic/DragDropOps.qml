@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../state"
 
 // Arrastrar y soltar (dentro de la app, y desde/hacia otras) --
 // decimonoveno componente extraído de Omafiles.qml.
@@ -9,6 +10,7 @@ Item {
   // conflictos y llama a runDrop() -- handleFilesDropped() solo resuelve
   // el DragEvent en sí (aceptar/rechazar, mover vs copiar).
   property Item conflictActions: null
+  property Item selectionOps: null
 
   function urlToPath(url) {
     var s = String(url)
@@ -20,7 +22,7 @@ Item {
   // si esa fila ya forma parte de una selección múltiple, arrastra toda la
   // selección (igual que Nautilus); si no, solo esa fila.
   function dragMimeDataFor(index) {
-    var indices = (root.isSelected(index) && root.selectedIndices.length > 1) ? root.selectedIndices : [index]
+    var indices = (selectionOps.isSelected(index) && SelectionState.selectedIndices.length > 1) ? SelectionState.selectedIndices : [index]
     var paths = indices
       .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
       .map(function (i) { return root.joinPath(root.currentPath, root.visibleEntries[i].name) })
@@ -36,18 +38,18 @@ Item {
   // mode: "all" (sin conflictos) | "overwrite" | "skip"
   function runDrop(mode) {
     var conflictSet = {}
-    root.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
-    var sources = root.dropPendingSources.filter(function (src) {
+    ConflictState.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
+    var sources = ConflictState.dropPendingSources.filter(function (src) {
       if (mode !== "skip") return true
       var name = src.substring(src.lastIndexOf("/") + 1)
       return !conflictSet[name]
     })
-    root.dropConflictOpen = false
-    root.dropConflictNames = []
+    ConflictState.dropConflictOpen = false
+    ConflictState.dropConflictNames = []
     if (sources.length > 0) {
       var noClobber = mode !== "overwrite"
-      var destDir = root.dropTargetDir
-      var isMove = root.dropIsMove
+      var destDir = ConflictState.dropTargetDir
+      var isMove = ConflictState.dropIsMove
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
         return { src: src, dest: root.joinPath(destDir, name) }
@@ -77,15 +79,15 @@ Item {
         })
       })
     }
-    root.dropPendingSources = []
-    root.dropTargetDir = ""
+    ConflictState.dropPendingSources = []
+    ConflictState.dropTargetDir = ""
   }
 
   function cancelDropConflict() {
-    root.dropConflictOpen = false
-    root.dropConflictNames = []
-    root.dropPendingSources = []
-    root.dropTargetDir = ""
+    ConflictState.dropConflictOpen = false
+    ConflictState.dropConflictNames = []
+    ConflictState.dropPendingSources = []
+    ConflictState.dropTargetDir = ""
   }
 
   // Llamado desde cada DropArea (fila de carpeta, marcador, unidad, fondo

@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "../state"
 import "../Utils.js" as Utils
 
 // Modo "dentro de un archivo" (zip/7z/rar/tar, navegación de solo lectura
@@ -16,9 +17,10 @@ Item {
   // La ListView principal (id "list" en Omafiles.qml) -- refreshArchiveListing()
   // resetea su scroll igual que hace refresh() con una carpeta normal.
   property Item list: null
+  property Item selectionOps: null
 
   function enterArchive(path) {
-    root.selectOnly(-1)
+    selectionOps.selectOnly(-1)
     root.inArchive = true
     root.archivePath = path
     root.archiveSubPath = ""
@@ -33,7 +35,7 @@ Item {
   }
 
   function refreshArchiveListing() {
-    root.selectOnly(-1)
+    selectionOps.selectOnly(-1)
     list.contentY = list.originY
     archiveListProc.command = [root.pluginDir + "/list-archive.sh", root.archivePath, root.archiveSubPath]
     archiveListProc.running = true
@@ -71,31 +73,31 @@ Item {
   }
 
   function runPendingCompress() {
-    var p = root.pendingCompress
-    root.pendingCompress = null
-    root.compressConflictOpen = false
+    var p = ConflictState.pendingCompress
+    ConflictState.pendingCompress = null
+    ConflictState.compressConflictOpen = false
     if (!p) return
     root.runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
   }
 
   function cancelPendingCompress() {
-    root.pendingCompress = null
-    root.compressConflictOpen = false
+    ConflictState.pendingCompress = null
+    ConflictState.compressConflictOpen = false
   }
 
   function runPendingExtract() {
-    var p = root.pendingExtract
-    root.pendingExtract = null
-    root.extractConflictOpen = false
-    root.extractConflictNames = []
+    var p = ConflictState.pendingExtract
+    ConflictState.pendingExtract = null
+    ConflictState.extractConflictOpen = false
+    ConflictState.extractConflictNames = []
     if (!p) return
     root.runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
   }
 
   function cancelPendingExtract() {
-    root.pendingExtract = null
-    root.extractConflictOpen = false
-    root.extractConflictNames = []
+    ConflictState.pendingExtract = null
+    ConflictState.extractConflictOpen = false
+    ConflictState.extractConflictNames = []
   }
 
   Process {
@@ -112,7 +114,7 @@ Item {
         }
         root.entries = root.sortEntries(parsed)
         list.positionViewAtBeginning()
-        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+        selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }
     }
   }

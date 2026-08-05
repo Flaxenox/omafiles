@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../state"
 
 // Operaciones de fichero sueltas con undo propio: renombrado en lote,
 // chmod, crear enlace simbólico, restaurar de la papelera --
@@ -10,17 +11,18 @@ import qs.Commons
 // (root.runAction/root.pushUndo/root.chainCmds).
 Item {
   property Item root: null
+  property Item selectionOps: null
 
   function startBulkRename() {
     if (root.inArchive) return
-    root.bulkRenamePattern = "{name}{ext}"
-    root.bulkRenameOpen = true
+    DialogsState.bulkRenamePattern = "{name}{ext}"
+    DialogsState.bulkRenameOpen = true
   }
 
   function runPendingBulkRename() {
-    var pairs = root.pendingBulkRename
-    root.pendingBulkRename = null
-    root.bulkRenameConflictOpen = false
+    var pairs = ConflictState.pendingBulkRename
+    ConflictState.pendingBulkRename = null
+    ConflictState.bulkRenameConflictOpen = false
     if (!pairs) return
     // Antes bulk rename era la única operación de riesgo (junto a chmod)
     // sin ningún undo -- un patrón {n}/{name}/{ext} mal escrito podía
@@ -45,30 +47,30 @@ Item {
   }
 
   function cancelPendingBulkRename() {
-    root.pendingBulkRename = null
-    root.bulkRenameConflictOpen = false
+    ConflictState.pendingBulkRename = null
+    ConflictState.bulkRenameConflictOpen = false
   }
 
   function commitChmod(mode) {
-    root.chmodOpen = false
+    ChmodState.chmodOpen = false
     mode = mode.trim()
-    if (!/^[0-7]{3,4}$/.test(mode) || root.chmodNames.length === 0) return
+    if (!/^[0-7]{3,4}$/.test(mode) || ChmodState.chmodNames.length === 0) return
     // -R es inofensivo sobre un fichero suelto (no baja a ningún sitio),
     // así que se puede aplicar al comando entero sin separar ficheros de
     // carpetas -- más simple que dos ramas de chainCmds distintas.
-    var flag = root.chmodRecursive ? "-R " : ""
-    var cmds = root.chmodNames.map(function (n) {
+    var flag = ChmodState.chmodRecursive ? "-R " : ""
+    var cmds = ChmodState.chmodNames.map(function (n) {
       return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
     })
-    var label = root.chmodNames.length === 1
-      ? "Setting permissions for \"" + root.chmodNames[0] + "\"…"
-      : "Setting permissions for " + root.chmodNames.length + " items…"
+    var label = ChmodState.chmodNames.length === 1
+      ? "Setting permissions for \"" + ChmodState.chmodNames[0] + "\"…"
+      : "Setting permissions for " + ChmodState.chmodNames.length + " items…"
     // chmod era, junto a bulk rename, la única acción de riesgo real
     // (más aún con -R) sin ningún undo. Restaura el modo original de
     // cada ítem seleccionado -- NO el de su contenido si se aplicó
     // recursivo, ver el comentario de chmodOriginalModes.
-    var names = root.chmodNames
-    var originalModes = root.chmodOriginalModes
+    var names = ChmodState.chmodNames
+    var originalModes = ChmodState.chmodOriginalModes
     var chmodCmd = root.chainCmds(cmds)
     root.runAction(chmodCmd, label, function () {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
@@ -86,12 +88,12 @@ Item {
 
   // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
   function toggleChmodBit(ownerIdx, bit) {
-    var mode = String(root.chmodMode || "0")
+    var mode = String(ChmodState.chmodMode || "0")
     while (mode.length < 3) mode = "0" + mode
     var digits = mode.substring(mode.length - 3)
     var arr = [digits.charCodeAt(0) - 48, digits.charCodeAt(1) - 48, digits.charCodeAt(2) - 48]
     arr[ownerIdx] = arr[ownerIdx] ^ bit
-    root.chmodMode = "" + arr[0] + arr[1] + arr[2]
+    ChmodState.chmodMode = "" + arr[0] + arr[1] + arr[2]
   }
 
   function makeLinkFor(entry) {
@@ -116,7 +118,7 @@ Item {
   }
 
   function restoreFromTrash() {
-    var entries = root.selectedEntries()
+    var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
     // root.trashInfo (ver trash-info.sh) ya sabe la ruta original
     // absoluta de cada ítem, resuelta correctamente incluso para la

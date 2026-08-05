@@ -1,0 +1,12 @@
+module Omafiles.State
+singleton SelectionState 1.0 SelectionState.qml
+singleton ClipboardState 1.0 ClipboardState.qml
+singleton UndoState 1.0 UndoState.qml
+singleton ConflictState 1.0 ConflictState.qml
+singleton ContextMenuState 1.0 ContextMenuState.qml
+singleton PaletteState 1.0 PaletteState.qml
+singleton PreviewState 1.0 PreviewState.qml
+singleton ChmodState 1.0 ChmodState.qml
+singleton PropertiesState 1.0 PropertiesState.qml
+singleton PreviewContentState 1.0 PreviewContentState.qml
+singleton DialogsState 1.0 DialogsState.qml

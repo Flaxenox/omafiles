@@ -11,6 +11,7 @@ Item {
   // resetean su scroll igual que refresh()/navigateTo() con una carpeta
   // normal.
   property Item list: null
+  property Item selectionOps: null
 
   function toggleHidden() {
     root.showHidden = !root.showHidden
@@ -40,7 +41,7 @@ Item {
     root.searchTruncated = false
     list.contentY = list.originY
     root.refresh()
-    root.selectOnly(-1)
+    selectionOps.selectOnly(-1)
   }
 
   function runDeepSearch() {
@@ -52,11 +53,16 @@ Item {
   }
 
   function goTop() {
-    if (root.visibleEntries.length > 0) root.selectOnly(0)
+    if (root.visibleEntries.length === 0) return
+    selectionOps.selectOnly(0)
+    list.positionViewAtBeginning()
   }
 
   function goBottom() {
-    if (root.visibleEntries.length > 0) root.selectOnly(root.visibleEntries.length - 1)
+    if (root.visibleEntries.length === 0) return
+    var last = root.visibleEntries.length - 1
+    selectionOps.selectOnly(last)
+    list.positionViewAtIndex(last, ListView.Contain)
   }
 
   Process {
@@ -73,7 +79,7 @@ Item {
         if (root.searchTruncated) parsed = parsed.slice(0, 200)
         root.entries = root.sortEntries(parsed)
         list.positionViewAtBeginning()
-        root.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+        selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
       }
     }
   }

@@ -1,4 +1,5 @@
 import QtQuick
+import "../state"
 
 // Ciclo de vida de las pestañas/paneles: crear, cerrar, cambiar de activa,
 // navegar/deshacer-historial de una pestaña que NO es la activa --
@@ -74,7 +75,7 @@ Item {
     var next = root.tabs.slice()
     next[root.activeTabIndex] = {
       path: root.currentPath, history: root.navHistory, historyIndex: root.navHistoryIndex,
-      previewOpen: root.previewOpen, previewEntry: root.previewEntry, scrollY: list.contentY,
+      previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
       inArchive: root.inArchive, archivePath: root.archivePath, archiveSubPath: root.archiveSubPath
     }
     root.tabs = next
@@ -115,7 +116,7 @@ Item {
     if (tab.previewOpen && tab.previewEntry) {
       previewLoader.loadPreview(tab.previewEntry)
     } else {
-      root.previewOpen = false
+      PreviewState.previewOpen = false
     }
   }
 

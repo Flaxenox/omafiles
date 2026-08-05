@@ -7,6 +7,7 @@ import "dialogs"
 import "panels"
 import "logic"
 import "shared"
+import "state"
 import "Utils.js" as Utils
 
 // Omafiles -- explorador de archivos para Omarchy.
@@ -83,19 +84,9 @@ Item {
   // navegar con doble clic y arrastrar), cada uno con su propio listado.
   property int refreshTick: 0
 
-  // ---------- Deshacer/Rehacer (Ctrl+Z / Ctrl+Shift+Z) ----------
-  // Pila simple de acciones reversibles: renombrar, nueva carpeta/fichero,
-  // borrar (a la papelera), mover (cortar+pegar/arrastrar), renombrado en
-  // lote, chmod y enlace. Copiar/comprimir se quedan fuera a propósito --
-  // deshacerlos es más ambiguo (¿borrar la copia? ¿y si ya se movió/editó?)
-  // que perder por error algo renombrado/movido/borrado/con permisos
-  // cambiados.
-  property var undoStack: []
-  // redoFn es opcional -- solo las entradas que lo llevan aparecen en
-  // Ctrl+Shift+Z. Cualquier acción NUEVA (pushUndo de verdad, no un
-  // redo/undo de una ya existente) invalida el redo pendiente, mismo
-  // comportamiento que cualquier editor de texto.
-  property var redoStack: []
+  // undoStack/redoStack viven ahora en state/UndoState.qml (singleton) --
+  // tercer slice de la capa state/. Lógica sin cambios en
+  // logic/ActionEngine.qml.
 
   function pushUndo(label, undoFn, redoFn) {
     actionEngine.pushUndo(label, undoFn, redoFn)
@@ -111,26 +102,13 @@ Item {
 
   // Inyectado por el host (shell.qml) via duck-typing al cargar el plugin.
   property var shell: null
-  property int selectedIndex: -1
-  property var selectedIndices: []
-  property int anchorIndex: -1
   property bool showHidden: false
 
-  // ---------- Lazo de selección (arrastrar sobre hueco vacío) ----------
-  // Coordenadas en el espacio de contenido de la ListView (independientes
-  // del scroll), no del viewport -- así el rectángulo sigue correcto si
-  // el usuario arrastra hacia dentro de la zona con scroll.
-  property bool marqueeActive: false
-  property real marqueeStartX: 0
-  property real marqueeStartY: 0
-  property real marqueeCurrentX: 0
-  property real marqueeCurrentY: 0
-  property bool marqueeAdditive: false
-  property var marqueeBaseSelection: []
-  // Posición del cursor relativa al viewport de `list` (0 = arriba del
-  // todo, list.height = abajo del todo) -- para el auto-scroll cuando el
-  // lazo llega a un borde con más filas de las que caben en pantalla.
-  property real marqueeViewportY: 0
+  // selectedIndex/selectedIndices/anchorIndex/marquee* viven ahora en
+  // state/SelectionState.qml (singleton, pragma Singleton) -- primer
+  // piloto de la capa state/ (ver [[project_omafiles_architecture_rules]]),
+  // en vez de properties sueltas aquí pasadas por prop-drilling. La lógica
+  // que las manipula sigue en logic/SelectionOps.qml sin cambios.
   // Altura real medida de una fila (todas iguales, ver updateMarqueeSelection).
   // Sirve para calcular la altura del footer sin pasar por
   // list.contentHeight -- que en esta versión de Qt incluye al propio
@@ -153,7 +131,7 @@ Item {
   readonly property bool hasPendingEdit: root.renamingIndex >= 0 || root.creatingFolder || root.creatingFile || root.editingPath
 
   // Bug real (auditoría 2026-08-05): cualquier diálogo con un paso de
-  // "confirmar" que relee root.currentPath/root.selectedEntries() EN EL
+  // "confirmar" que relee root.currentPath/selectionOps.selectedEntries() EN EL
   // MOMENTO DEL CLIC (no al abrirse) puede acabar actuando sobre la
   // carpeta equivocada si la pestaña activa cambia mientras el diálogo
   // sigue abierto -- y nada impedía que cambiara, porque el hover-para-
@@ -165,11 +143,11 @@ Item {
   // switchToTab() cubre todos los casos de golpe: mientras cualquiera de
   // estos está abierto, la pestaña activa (y su currentPath) no se
   // puede mover por debajo del diálogo.
-  readonly property bool hasBlockingOverlay: root.hasPendingEdit || root.contextMenuOpen
-    || root.pendingDeleteNames.length > 0 || root.renameConflictOpen || root.pasteConflictOpen
-    || root.extractConflictOpen || root.compressConflictOpen || root.bulkRenameConflictOpen
-    || root.dropConflictOpen || root.paletteOpen || root.openWithOpen || root.bulkRenameOpen
-    || root.chmodOpen || root.propertiesOpen || root.connectServerOpen
+  readonly property bool hasBlockingOverlay: root.hasPendingEdit || ContextMenuState.contextMenuOpen
+    || root.pendingDeleteNames.length > 0 || ConflictState.renameConflictOpen || ConflictState.pasteConflictOpen
+    || ConflictState.extractConflictOpen || ConflictState.compressConflictOpen || ConflictState.bulkRenameConflictOpen
+    || ConflictState.dropConflictOpen || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
+    || ChmodState.chmodOpen || PropertiesState.propertiesOpen || DialogsState.connectServerOpen
 
   // Feedback de "en curso". cp/mv no reportan progreso ellos mismos, así
   // que para copiar/mover se ESTIMA por fuera: tamaño total del origen
@@ -186,136 +164,48 @@ Item {
   property real actionTotalBytes: 0
   property var actionProgressDestPaths: []
 
-  property var clipboardPaths: []
-  property string clipboardMode: "" // "copy" | "cut"
+  // clipboardPaths/clipboardMode viven ahora en state/ClipboardState.qml
+  // (singleton) -- segundo slice de la capa state/, mismo patrón que
+  // SelectionState. Lógica sin cambios en logic/ClipboardOps.qml.
 
   property var pendingDeleteNames: []
 
-  property var pendingRename: null // { oldPath, newPath }
-  property bool renameConflictOpen: false
+  // pendingRename/renameConflictOpen, pasteConflictNames/pasteConflictOpen,
+  // pendingExtract/extractConflictNames/extractConflictOpen,
+  // pendingCompress/compressConflictOpen, pendingBulkRename/
+  // bulkRenameInternalDupes/bulkRenameConflictCount/bulkRenameConflictOpen,
+  // dropPendingSources/dropTargetDir/dropIsMove/dropConflictNames/
+  // dropConflictOpen viven ahora en state/ConflictState.qml (singleton) --
+  // cuarto slice de la capa state/. Lógica sin cambios en
+  // logic/ConflictActions.qml y demás.
 
-  property var pasteConflictNames: []
-  property bool pasteConflictOpen: false
-
-  property var pendingExtract: null // { entry, cmd }
-  property var extractConflictNames: []
-  property bool extractConflictOpen: false
-
-  property var pendingCompress: null // { archiveName, cmd }
-  property bool compressConflictOpen: false
-
-  property var pendingBulkRename: null // [{ oldName, newName, oldPath, newPath }]
-  property int bulkRenameInternalDupes: 0
-  property int bulkRenameConflictCount: 0
-  property bool bulkRenameConflictOpen: false
-
-  // ---------- Arrastrar y soltar ----------
-  // Deliberadamente separado del portapapeles de Ctrl+C/X/V (clipboardPaths/
-  // clipboardMode) -- un drag no debe pisar lo que el usuario tenga copiado
-  // a mano. Interno (misma app) = mover; desde fuera (otra app) = copiar,
-  // decidido por DragEvent.source (null si el drag viene de fuera).
-  property var dropPendingSources: []
-  property string dropTargetDir: ""
-  property bool dropIsMove: false
-  property var dropConflictNames: []
-  property bool dropConflictOpen: false
   property int dropHoverIndex: -1
   property string dropHoverPath: ""
 
-  property bool contextMenuOpen: false
-  property real contextMenuX: 0
-  property real contextMenuY: 0
-  property var contextMenuActions: []
+  // contextMenuOpen/X/Y/Actions viven ahora en state/ContextMenuState.qml,
+  // paletteOpen/Query/Index en state/PaletteState.qml, y previewOpen/
+  // openWithOpen/openWithApps/openWithEntry en state/PreviewState.qml --
+  // quinto, sexto y séptimo slice de la capa state/.
 
   property bool gPending: false
 
-  property bool paletteOpen: false
-  property string paletteQuery: ""
-  property int paletteIndex: 0
+  // bulkRenameOpen/Pattern, shortcutsHelpOpen y connectServerOpen/Uri/
+  // Error/networkConnecting viven ahora en state/DialogsState.qml --
+  // undécimo slice de la capa state/.
 
-  property bool previewOpen: false
-  property bool openWithOpen: false
-  property var openWithApps: []
-  property var openWithEntry: null
+  // chmodOpen/Names/Mixed/Mode/HasDir/Recursive/OriginalModes viven ahora
+  // en state/ChmodState.qml -- octavo slice de la capa state/.
 
-  property bool bulkRenameOpen: false
-  property string bulkRenamePattern: "{name}{ext}"
-
-  property bool chmodOpen: false
-  // Lista de nombres en vez de un string suelto -- chmod ahora admite
-  // aplicar el mismo modo a toda la selección, no solo a un fichero.
-  property var chmodNames: []
-  // true si al abrir el diálogo los ítems seleccionados NO tenían todos
-  // el mismo modo octal -- chmodMode se deja en blanco en ese caso (no
-  // tiene sentido precargar el modo de "uno cualquiera" de ellos) y la UI
-  // avisa de que es una selección mixta.
-  property bool chmodMixed: false
-  property string chmodMode: ""
-  // true si al menos uno de los seleccionados es una carpeta -- controla
-  // si se muestra el toggle "Apply to subfolders" (chmod -R no tiene
-  // nada que ofrecer sobre una selección de solo ficheros).
-  property bool chmodHasDir: false
-  property bool chmodRecursive: false
-  // { "<nombre>": "<modo octal previo>" }, capturado por PropertiesLoader al
-  // abrir el diálogo -- para poder deshacer. Restaura solo el modo del
-  // propio ítem seleccionado, NO el de su contenido si se aplicó con
-  // -R -- capturar el árbol entero antes de cambiar nada sería mucho
-  // más caro (find+stat recursivo) para lo que pedía el hueco real
-  // (chmod era, junto a bulk rename, la única acción de riesgo sin
-  // ningún undo).
-  property var chmodOriginalModes: ({})
-
-  property bool shortcutsHelpOpen: false
-
-  property bool propertiesOpen: false
-  property var propertiesEntry: null
-  property string propertiesSize: ""
-  property bool propertiesSizeLoading: false
-  property string propertiesPerms: ""
-  property string propertiesOwner: ""
-  property string propertiesMtime: ""
-  // Guard de carrera: showProperties()/showPropertiesForSelection() suben
-  // este contador cada vez que se abre el panel para un ítem nuevo, y
-  // anotan ese número como "dueño" del stat/du que lanzan. Si el usuario
-  // cambia de selección antes de que un "du" lento de una carpeta grande
-  // termine, la respuesta tardía ya no coincide con propertiesRequestId
-  // (que para entonces ya subió) y se descarta en vez de sobreescribir el
-  // tamaño del ítem que se está mirando ahora con el de otro distinto.
-  property int propertiesRequestId: 0
-  property int _propertiesStatOwner: -1
-  property int _propertiesDuOwner: -1
-  // Selección múltiple: sin permisos/dueño/fecha (no tiene sentido combinar
-  // varios), solo cuenta de items y tamaño total.
-  property bool propertiesMulti: false
-  property int propertiesCount: 0
+  // propertiesOpen/Entry/Size/SizeLoading/Perms/Owner/Mtime/RequestId/
+  // _propertiesStatOwner/_propertiesDuOwner/Multi/Count viven ahora en
+  // state/PropertiesState.qml -- noveno slice de la capa state/.
 
   readonly property var tarExt: ["tar", "gz", "tgz", "bz2", "tbz", "xz", "txz"]
-  property var previewEntry: null
-  property string previewText: ""
-  property bool previewIsText: false
-  // HTML con estilos inline (Pygments, noclasses=True) para el fragmento
-  // en previsualización -- vacío si el lenguaje no se reconoce o
-  // highlight-preview.sh falla, en cuyo caso se cae al Text plano de
-  // siempre con previewText. Ver PreviewLoader.loadPreview().
-  property string previewHighlighted: ""
-  // Render de la primera página como PNG (pdftoppm) -- vacío mientras se
-  // genera o si pdftoppm falla, igual que videoThumbReady con los vídeos.
-  property string previewPdfImage: ""
-  // Metadatos de audio (ffprobe): duración/formato/bitrate/etc, mismo
-  // formato { label, value } que ya usa el Repeater de Properties.
-  property var previewAudioInfo: []
-  // Guard de carrera, mismo mecanismo que propertiesRequestId: loadPreview()
-  // sube este contador cada vez que se previsualiza un ítem nuevo y anota
-  // ese número como "dueño" de cada proceso que lanza (texto/resaltado/
-  // PDF/audio). Sin esto, seleccionar rápido un fichero A (con highlight-
-  // preview.sh/pdftoppm/ffprobe lento) y pasar a un fichero B antes de que
-  // termine dejaba que el resultado de A, al llegar tarde, se pintara
-  // encima de la previsualización de B.
-  property int previewRequestId: 0
-  property int _previewTextOwner: -1
-  property int _previewHighlightOwner: -1
-  property int _previewPdfOwner: -1
-  property int _previewAudioOwner: -1
+
+  // previewEntry/Text/IsText/Highlighted/PdfImage/AudioInfo/RequestId/
+  // _previewTextOwner/_previewHighlightOwner/_previewPdfOwner/
+  // _previewAudioOwner viven ahora en state/PreviewContentState.qml --
+  // décimo slice de la capa state/.
 
   property string trashDir: root.homeDir + "/.local/share/Trash/files"
   // { "<nombre en Trash/files>": { origPath, epoch } } -- leído de
@@ -332,14 +222,6 @@ Item {
   // navega igual que cualquier carpeta local sin cambios. Ver
   // list-network-mounts.sh y la sección "NETWORK" de la barra lateral.
   property var networkMounts: []
-  property bool connectServerOpen: false
-  property string connectServerUri: ""
-  property string connectServerError: ""
-  // "Conectando…" es un estado propio (no reutiliza actionBusy) porque
-  // gio mount puede quedarse colgado esperando credenciales que nunca
-  // van a llegar -- necesita su propio botón de Cancelar siempre visible,
-  // no compartir el mecanismo de acciones de fichero normal.
-  property bool networkConnecting: false
 
   // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- root.currentPath
   // NUNCA cambia mientras esto está activo (sigue siendo la carpeta real
@@ -430,119 +312,6 @@ Item {
   // aquí en adelante los pasa explícitos (ver comentario en Utils.js).
 
   // ---------- Selección (individual + lazo) ----------
-  function isSelected(index) {
-    return root.selectedIndices.indexOf(index) >= 0
-  }
-
-  function selectOnly(index) {
-    root.selectedIndex = index
-    root.anchorIndex = index
-    root.selectedIndices = index >= 0 ? [index] : []
-    if (root.previewOpen) {
-      if (index >= 0 && index < root.visibleEntries.length && root.visibleEntries[index].type !== "dir") {
-        previewLoader.loadPreview(root.visibleEntries[index])
-      } else {
-        root.previewOpen = false
-      }
-    }
-  }
-
-  function toggleSelect(index) {
-    var next = root.selectedIndices.slice()
-    var pos = next.indexOf(index)
-    if (pos >= 0) next.splice(pos, 1)
-    else next.push(index)
-    root.selectedIndices = next
-    root.selectedIndex = index
-    root.anchorIndex = index
-  }
-
-  function selectNone() {
-    root.selectOnly(-1)
-  }
-
-  function invertSelection() {
-    var current = root.selectedIndices
-    var next = []
-    for (var i = 0; i < root.visibleEntries.length; i++) {
-      if (current.indexOf(i) < 0) next.push(i)
-    }
-    root.selectedIndices = next
-    root.selectedIndex = next.length > 0 ? next[next.length - 1] : -1
-    root.anchorIndex = root.selectedIndex
-  }
-
-  function selectRange(index) {
-    var start = root.anchorIndex >= 0 ? root.anchorIndex : index
-    var from = Math.min(start, index)
-    var to = Math.max(start, index)
-    var next = []
-    for (var i = from; i <= to; i++) next.push(i)
-    root.selectedIndices = next
-    root.selectedIndex = index
-  }
-
-  // Arranca/mueve/termina el lazo -- compartido por todos los catchers que
-  // pueden recibir el press inicial (huecos de arriba/abajo/izquierda,
-  // gutters de cada fila) para no duplicar la lógica. `contentY` es la
-  // posición dentro de list.contentItem (mapToItem ya la da corregida por
-  // scroll); `viewportY` es la posición dentro de `list` sin corregir,
-  // para detectar si el cursor está pegado a un borde y hace falta
-  // auto-scroll.
-  function startMarquee(x, contentY, viewportY, ctrlHeld) {
-    root.marqueeAdditive = ctrlHeld
-    root.marqueeBaseSelection = ctrlHeld ? root.selectedIndices.slice() : []
-    if (!ctrlHeld) root.selectOnly(-1)
-    root.marqueeStartX = x
-    root.marqueeCurrentX = x
-    root.marqueeStartY = contentY
-    root.marqueeCurrentY = contentY
-    root.marqueeViewportY = viewportY
-    root.marqueeActive = true
-  }
-
-  function moveMarquee(x, contentY, viewportY) {
-    if (!root.marqueeActive) return
-    root.marqueeCurrentX = x
-    root.marqueeCurrentY = contentY
-    root.marqueeViewportY = viewportY
-    root.updateMarqueeSelection(root.marqueeAdditive, root.marqueeBaseSelection)
-  }
-
-  function endMarquee() {
-    root.marqueeActive = false
-  }
-
-  // Recalcula la selección a partir del rectángulo del lazo (marqueeStartY/
-  // marqueeCurrentY, en coordenadas de contenido). Filas de altura uniforme
-  // (nombres/metadatos no hacen wrap, siempre una línea) -- basta con
-  // dividir por la altura media en vez de inspeccionar los delegados reales
-  // de la ListView, más simple y ajeno a la virtualización.
-  function updateMarqueeSelection(additive, base) {
-    var total = root.visibleEntries.length
-    if (total === 0 || root.measuredRowHeight <= 0) return
-    var rowH = root.measuredRowHeight
-    var contentEnd = total * rowH
-    var top = Math.min(root.marqueeStartY, root.marqueeCurrentY)
-    var bottom = Math.max(root.marqueeStartY, root.marqueeCurrentY)
-    var picked = []
-    if (bottom > 0 && top < contentEnd) {
-      var firstIdx = Math.max(0, Math.floor(top / rowH))
-      var lastIdx = Math.min(total - 1, Math.ceil(bottom / rowH) - 1)
-      for (var i = firstIdx; i <= lastIdx; i++) picked.push(i)
-    }
-    var next = additive
-      ? base.concat(picked.filter(function (i) { return base.indexOf(i) < 0 }))
-      : picked
-    root.selectedIndices = next
-    root.selectedIndex = next.length > 0 ? next[next.length - 1] : -1
-  }
-
-  function selectedEntries() {
-    return root.selectedIndices
-      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
-      .map(function (i) { return root.visibleEntries[i] })
-  }
 
   // ---------- Refresco / vigilancia de directorio ----------
   function refresh() {
@@ -634,12 +403,12 @@ Item {
       // vez (ShowItems con multi-selección real en el llamador, ver
       // dbus-filemanager1.py) no tenían forma de aplicarse antes -- se
       // resaltaban todos, con el primero como "principal".
-      root.selectedIndex = foundIndices[0]
-      root.anchorIndex = foundIndices[0]
-      root.selectedIndices = foundIndices
-      if (root.previewOpen && foundIndices.length > 1) root.previewOpen = false
-    } else if (root.selectedIndex >= root.visibleEntries.length) {
-      root.selectedIndex = root.visibleEntries.length - 1
+      SelectionState.selectedIndex = foundIndices[0]
+      SelectionState.anchorIndex = foundIndices[0]
+      SelectionState.selectedIndices = foundIndices
+      if (PreviewState.previewOpen && foundIndices.length > 1) PreviewState.previewOpen = false
+    } else if (SelectionState.selectedIndex >= root.visibleEntries.length) {
+      SelectionState.selectedIndex = root.visibleEntries.length - 1
     }
   }
 
@@ -842,7 +611,7 @@ Item {
     // ejecuta es que el usuario se fue a otro sitio de verdad.
     if (root.inArchive) { root.inArchive = false; root.archivePath = ""; root.archiveSubPath = "" }
     root.currentPath = path
-    root.selectOnly(-1)
+    selectionOps.selectOnly(-1)
     root.renamingIndex = -1
     root.creatingFolder = false
     root.creatingFile = false
@@ -1010,28 +779,28 @@ Item {
     root.creatingFile = false
     root.editingPath = false
     root.pendingDeleteNames = []
-    root.contextMenuOpen = false
+    ContextMenuState.contextMenuOpen = false
     // keepLoaded:true mantiene vivo el componente entre cierres -- sin
     // resetear esto, la próxima vez que se abra la ventana aparecería el
     // mismo diálogo/panel todavía abierto de la sesión anterior.
-    root.propertiesOpen = false
-    root.shortcutsHelpOpen = false
-    root.chmodOpen = false
-    root.openWithOpen = false
-    root.bulkRenameOpen = false
-    root.previewOpen = false
+    PropertiesState.propertiesOpen = false
+    DialogsState.shortcutsHelpOpen = false
+    ChmodState.chmodOpen = false
+    PreviewState.openWithOpen = false
+    DialogsState.bulkRenameOpen = false
+    PreviewState.previewOpen = false
     root.searching = false
-    root.paletteOpen = false
-    root.renameConflictOpen = false
-    root.pasteConflictOpen = false
-    root.dropConflictOpen = false
-    root.extractConflictOpen = false
-    root.pendingExtract = null
-    root.compressConflictOpen = false
-    root.pendingCompress = null
-    root.bulkRenameConflictOpen = false
-    root.pendingBulkRename = null
-    root.connectServerOpen = false
+    PaletteState.paletteOpen = false
+    ConflictState.renameConflictOpen = false
+    ConflictState.pasteConflictOpen = false
+    ConflictState.dropConflictOpen = false
+    ConflictState.extractConflictOpen = false
+    ConflictState.pendingExtract = null
+    ConflictState.compressConflictOpen = false
+    ConflictState.pendingCompress = null
+    ConflictState.bulkRenameConflictOpen = false
+    ConflictState.pendingBulkRename = null
+    DialogsState.connectServerOpen = false
   }
 
   // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
@@ -1079,20 +848,20 @@ Item {
   }
 
   function paletteCommands() {
-    var hasSelection = root.selectedIndices.length > 0
-    var entry = root.selectedIndices.length === 1 ? root.visibleEntries[root.selectedIndex] : null
+    var hasSelection = SelectionState.selectedIndices.length > 0
+    var entry = SelectionState.selectedIndices.length === 1 ? root.visibleEntries[SelectionState.selectedIndex] : null
     var cmds = [
       { label: "New folder", run: function () { renameOps.startNewFolder() } },
       { label: "New file", run: function () { renameOps.startNewFile() } },
-      { label: "Rename", enabled: root.selectedIndices.length === 1, run: function () { renameOps.startRename(root.selectedIndex) } },
+      { label: "Rename", enabled: SelectionState.selectedIndices.length === 1, run: function () { renameOps.startRename(SelectionState.selectedIndex) } },
       { label: "Copy", enabled: hasSelection, run: function () { clipboardOps.copySelected() } },
       { label: "Cut", enabled: hasSelection, run: function () { clipboardOps.cutSelected() } },
-      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathFor(root.selectedEntries()) } },
-      { label: "Paste", enabled: root.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
+      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathFor(selectionOps.selectedEntries()) } },
+      { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { deleteOps.requestDelete() } },
-      { label: "Select all", run: function () { root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
-      { label: "Select none", enabled: hasSelection, run: function () { root.selectNone() } },
-      { label: "Invert selection", run: function () { root.invertSelection() } },
+      { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
+      { label: "Select none", enabled: hasSelection, run: function () { selectionOps.selectNone() } },
+      { label: "Invert selection", run: function () { selectionOps.invertSelection() } },
       { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
       { label: "Refresh", run: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { root.setSort("name") } },
@@ -1100,10 +869,10 @@ Item {
       { label: "Sort by date", run: function () { root.setSort("mtime") } },
       { label: "Sort by type", run: function () { root.setSort("type") } },
       { label: "Reverse order", run: function () { root.reverseSort() } },
-      { label: root.undoStack.length > 0 ? "Undo: " + root.undoStack[root.undoStack.length - 1].label : "Undo",
-        enabled: root.undoStack.length > 0, run: function () { root.undoLast() } },
-      { label: root.redoStack.length > 0 ? "Redo: " + root.redoStack[root.redoStack.length - 1].label : "Redo",
-        enabled: root.redoStack.length > 0, run: function () { root.redoLast() } },
+      { label: UndoState.undoStack.length > 0 ? "Undo: " + UndoState.undoStack[UndoState.undoStack.length - 1].label : "Undo",
+        enabled: UndoState.undoStack.length > 0, run: function () { root.undoLast() } },
+      { label: UndoState.redoStack.length > 0 ? "Redo: " + UndoState.redoStack[UndoState.redoStack.length - 1].label : "Redo",
+        enabled: UndoState.redoStack.length > 0, run: function () { root.redoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
       { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
       { label: "Connect to server...", run: function () { mountOps.startConnectToServer() } },
@@ -1114,11 +883,11 @@ Item {
       { label: "Edit path", run: function () { searchOps.startEditPath() } },
       { label: "Search", run: function () { searchOps.startSearch() } },
       { label: "Compress to .zip", enabled: hasSelection, run: function () { conflictActions.compressSelected() } },
-      { label: "Bulk rename...", enabled: root.selectedIndices.length > 1, run: function () { fileOps.startBulkRename() } },
-      { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(root.selectedEntries()) } },
+      { label: "Bulk rename...", enabled: SelectionState.selectedIndices.length > 1, run: function () { fileOps.startBulkRename() } },
+      { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(selectionOps.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) fileOps.makeLinkFor(entry) } },
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
-      { label: "Keyboard shortcuts", run: function () { root.shortcutsHelpOpen = true } }
+      { label: "Keyboard shortcuts", run: function () { DialogsState.shortcutsHelpOpen = true } }
     ]
     if (root.currentPath === root.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
@@ -1159,19 +928,19 @@ Item {
 
   function filteredPaletteCommands() {
     var all = root.paletteCommands()
-    if (!root.paletteQuery) return all
-    var q = root.paletteQuery.toLowerCase()
+    if (!PaletteState.paletteQuery) return all
+    var q = PaletteState.paletteQuery.toLowerCase()
     return all.filter(function (c) { return c.label.toLowerCase().indexOf(q) >= 0 })
   }
 
   function openPalette() {
-    root.paletteQuery = ""
-    root.paletteIndex = 0
-    root.paletteOpen = true
+    PaletteState.paletteQuery = ""
+    PaletteState.paletteIndex = 0
+    PaletteState.paletteOpen = true
   }
 
   function closePalette() {
-    root.paletteOpen = false
+    PaletteState.paletteOpen = false
   }
 
   function runPaletteCommand(index) {
@@ -1184,14 +953,14 @@ Item {
   }
 
   function openContextMenu(x, y, actions) {
-    root.contextMenuActions = actions
-    root.contextMenuX = Math.min(x, 680)
-    root.contextMenuY = y
-    root.contextMenuOpen = true
+    ContextMenuState.contextMenuActions = actions
+    ContextMenuState.contextMenuX = Math.min(x, 680)
+    ContextMenuState.contextMenuY = y
+    ContextMenuState.contextMenuOpen = true
   }
 
   function itemActions() {
-    var entries = root.selectedEntries()
+    var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return []
     // Dentro de un comprimido solo se navega/abre -- nada de lo demás
     // (renombrar/borrar/chmod/comprimir/copiar/enlazar/marcador) tiene
@@ -1241,10 +1010,10 @@ Item {
     actions.push({ label: "Copy" + suffix, action: function () { clipboardOps.copySelected() } })
     actions.push({ label: "Cut" + suffix, action: function () { clipboardOps.cutSelected() } })
     actions.push({ label: "Copy path" + suffix, action: function () { clipboardOps.copyPathFor(entries) } })
-    if (root.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
+    if (ClipboardState.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
 
     if (!multi) {
-      actions.push({ label: "Rename", action: function () { renameOps.startRename(root.selectedIndex) } })
+      actions.push({ label: "Rename", action: function () { renameOps.startRename(SelectionState.selectedIndex) } })
       actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
       var fullPath = root.joinPath(root.currentPath, entries[0].name)
       if (!root.isBookmarked(fullPath)) {
@@ -1279,7 +1048,7 @@ Item {
       // muertas en el menú de hueco vacío.
       actions.push({ label: "New folder", action: function () { renameOps.startNewFolder() } })
       actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
-      actions.push({ label: "Paste", enabled: root.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
+      actions.push({ label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
     }
     actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     actions.push({ label: "Refresh", action: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } })
@@ -1490,11 +1259,13 @@ Item {
     id: archiveActions
     root: root
     list: list
+    selectionOps: selectionOps
   }
 
   FileOps {
     id: fileOps
     root: root
+    selectionOps: selectionOps
   }
 
   VideoThumbnails {
@@ -1510,18 +1281,21 @@ Item {
   ClipboardOps {
     id: clipboardOps
     root: root
+    selectionOps: selectionOps
   }
 
   DragDropOps {
     id: dragDropOps
     root: root
     conflictActions: conflictActions
+    selectionOps: selectionOps
   }
 
   SearchOps {
     id: searchOps
     root: root
     list: list
+    selectionOps: selectionOps
   }
 
   OpenWithOps {
@@ -1537,6 +1311,7 @@ Item {
   DeleteOps {
     id: deleteOps
     root: root
+    selectionOps: selectionOps
   }
 
   TabOps {
@@ -1544,6 +1319,12 @@ Item {
     root: root
     list: list
     archiveActions: archiveActions
+    previewLoader: previewLoader
+  }
+
+  SelectionOps {
+    id: selectionOps
+    root: root
     previewLoader: previewLoader
   }
 
@@ -1596,6 +1377,7 @@ Item {
     renameOps: renameOps
     clipboardOps: clipboardOps
     dragDropOps: dragDropOps
+    selectionOps: selectionOps
   }
 
   PreviewLoader {
@@ -1609,6 +1391,7 @@ Item {
   PropertiesLoader {
     id: propertiesLoader
     root: root
+    selectionOps: selectionOps
   }
 
   Timer {
@@ -1868,6 +1651,7 @@ Item {
             list: list
             renameOps: renameOps
             searchOps: searchOps
+            selectionOps: selectionOps
           }
 
           Item {
@@ -1907,6 +1691,7 @@ Item {
               fileMeta: fileMeta
               deleteOps: deleteOps
               tabOps: tabOps
+              selectionOps: selectionOps
               deleteConfirm: deleteConfirm
               renameConflictConfirm: renameConflictConfirm
               extractConflictConfirm: extractConflictConfirm
@@ -1937,8 +1722,8 @@ Item {
                   // grandes (node_modules, caches de paquetes...). Solo un
                   // aviso informativo de que puede ir lento, no un límite.
                   + (!root.searchQuery && root.entries.length > 5000 ? " · large folder, may be slow" : "")
-                  + (root.selectedIndices.length > 1 ? " · " + root.selectedIndices.length + " selected" : "")
-                  + (root.clipboardPaths.length > 0 ? " · clipboard: " + root.clipboardPaths.length + (root.clipboardPaths.length === 1 ? " item" : " items") + (root.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
+                  + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
+                  + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
                   + " · sort: " + root.sortLabel()
                 font.pixelSize: Style.font.subtitle
                 font.family: Style.font.family
@@ -1967,37 +1752,37 @@ Item {
         onPressed: function (mouse) {
           var p = mapToItem(list.contentItem, mouse.x, mouse.y)
           var vp = mapToItem(list, mouse.x, mouse.y)
-          root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+          selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
         }
         onPositionChanged: function (mouse) {
           var p = mapToItem(list.contentItem, mouse.x, mouse.y)
           var vp = mapToItem(list, mouse.x, mouse.y)
-          root.moveMarquee(p.x, p.y, vp.y)
+          selectionOps.moveMarquee(p.x, p.y, vp.y)
         }
-        onReleased: root.endMarquee()
-        onCanceled: root.endMarquee()
+        onReleased: selectionOps.endMarquee()
+        onCanceled: selectionOps.endMarquee()
       }
 
       // ---------- Renombrar en lote ----------
       BulkRenamePanel {
         anchors.fill: parent
-        open: root.bulkRenameOpen
-        selectedCount: root.selectedIndices.length
-        pattern: root.bulkRenamePattern
+        open: DialogsState.bulkRenameOpen
+        selectedCount: SelectionState.selectedIndices.length
+        pattern: DialogsState.bulkRenamePattern
         history: root.bulkRenameHistory
-        onCloseRequested: root.bulkRenameOpen = false
-        onRenameRequested: function (pattern) { root.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
+        onCloseRequested: DialogsState.bulkRenameOpen = false
+        onRenameRequested: function (pattern) { DialogsState.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
         onFocusReturnRequested: list.forceActiveFocus()
       }
 
       // ---------- Conectar a servidor ----------
       ConnectServer {
         anchors.fill: parent
-        open: root.connectServerOpen
-        connecting: root.networkConnecting
-        uri: root.connectServerUri
-        errorText: root.connectServerError
-        onConnectRequested: function (uri) { root.connectServerUri = uri; mountOps.commitConnectToServer() }
+        open: DialogsState.connectServerOpen
+        connecting: DialogsState.networkConnecting
+        uri: DialogsState.connectServerUri
+        errorText: DialogsState.connectServerError
+        onConnectRequested: function (uri) { DialogsState.connectServerUri = uri; mountOps.commitConnectToServer() }
         onCancelConnectingRequested: mountOps.cancelNetworkConnect()
         onCloseRequested: mountOps.cancelConnectToServer()
         onFocusReturnRequested: list.forceActiveFocus()
@@ -2006,31 +1791,31 @@ Item {
       // ---------- Permisos (chmod) ----------
       ChmodPanel {
         anchors.fill: parent
-        open: root.chmodOpen
-        names: root.chmodNames
-        mixed: root.chmodMixed
-        mode: root.chmodMode
-        hasDir: root.chmodHasDir
-        recursive: root.chmodRecursive
-        onCloseRequested: root.chmodOpen = false
+        open: ChmodState.chmodOpen
+        names: ChmodState.chmodNames
+        mixed: ChmodState.chmodMixed
+        mode: ChmodState.chmodMode
+        hasDir: ChmodState.chmodHasDir
+        recursive: ChmodState.chmodRecursive
+        onCloseRequested: ChmodState.chmodOpen = false
         onBitToggled: function (ownerIdx, bit) { fileOps.toggleChmodBit(ownerIdx, bit) }
-        onRecursiveToggled: root.chmodRecursive = !root.chmodRecursive
+        onRecursiveToggled: ChmodState.chmodRecursive = !ChmodState.chmodRecursive
         onApplyRequested: function (mode) { fileOps.commitChmod(mode) }
       }
 
       // ---------- Propiedades ----------
       PropertiesPanel {
         anchors.fill: parent
-        open: root.propertiesOpen
-        multi: root.propertiesMulti
-        count: root.propertiesCount
-        entry: root.propertiesEntry
-        sizeLoading: root.propertiesSizeLoading
-        size: root.propertiesSize
-        perms: root.propertiesPerms
-        owner: root.propertiesOwner
-        mtime: root.propertiesMtime
-        onCloseRequested: root.propertiesOpen = false
+        open: PropertiesState.propertiesOpen
+        multi: PropertiesState.propertiesMulti
+        count: PropertiesState.propertiesCount
+        entry: PropertiesState.propertiesEntry
+        sizeLoading: PropertiesState.propertiesSizeLoading
+        size: PropertiesState.propertiesSize
+        perms: PropertiesState.propertiesPerms
+        owner: PropertiesState.propertiesOwner
+        mtime: PropertiesState.propertiesMtime
+        onCloseRequested: PropertiesState.propertiesOpen = false
       }
 
       // ---------- Ayuda de atajos de teclado ----------
@@ -2038,8 +1823,8 @@ Item {
       // -- ver comentario ahí sobre por qué se eligió este trozo primero.
       ShortcutsHelp {
         anchors.fill: parent
-        open: root.shortcutsHelpOpen
-        onRequestClose: root.shortcutsHelpOpen = false
+        open: DialogsState.shortcutsHelpOpen
+        onRequestClose: DialogsState.shortcutsHelpOpen = false
       }
 
       // ---------- Copiar/mover en curso ----------
@@ -2128,21 +1913,21 @@ Item {
       // ---------- Abrir con... ----------
       OpenWithPanel {
         anchors.fill: parent
-        open: root.openWithOpen
-        entry: root.openWithEntry
-        apps: root.openWithApps
-        onCloseRequested: root.openWithOpen = false
+        open: PreviewState.openWithOpen
+        entry: PreviewState.openWithEntry
+        apps: PreviewState.openWithApps
+        onCloseRequested: PreviewState.openWithOpen = false
         onAppSelected: function (appId) { openWithOps.launchWith(appId) }
       }
 
       // ---------- Menú contextual ----------
       ContextMenuPanel {
         anchors.fill: parent
-        open: root.contextMenuOpen
-        menuX: root.contextMenuX
-        menuY: root.contextMenuY
-        actions: root.contextMenuActions
-        onCloseRequested: root.contextMenuOpen = false
+        open: ContextMenuState.contextMenuOpen
+        menuX: ContextMenuState.contextMenuX
+        menuY: ContextMenuState.contextMenuY
+        actions: ContextMenuState.contextMenuActions
+        onCloseRequested: ContextMenuState.contextMenuOpen = false
       }
 
       ConfirmDialog {
@@ -2168,9 +1953,9 @@ Item {
         id: renameConflictConfirm
         anchors.fill: parent
         z: 10
-        opened: root.renameConflictOpen
-        message: root.pendingRename
-          ? "\"" + root.pendingRename.newPath.substring(root.pendingRename.newPath.lastIndexOf("/") + 1) + "\" already exists here. Overwrite?"
+        opened: ConflictState.renameConflictOpen
+        message: ConflictState.pendingRename
+          ? "\"" + ConflictState.pendingRename.newPath.substring(ConflictState.pendingRename.newPath.lastIndexOf("/") + 1) + "\" already exists here. Overwrite?"
           : ""
         confirmText: "Overwrite"
         background: Color.menu.background
@@ -2183,10 +1968,10 @@ Item {
         id: extractConflictConfirm
         anchors.fill: parent
         z: 10
-        opened: root.extractConflictOpen
-        message: root.extractConflictNames.length === 1
-          ? "\"" + root.extractConflictNames[0] + "\" already exists here and will be overwritten."
-          : root.extractConflictNames.length + " items already exist here and will be overwritten."
+        opened: ConflictState.extractConflictOpen
+        message: ConflictState.extractConflictNames.length === 1
+          ? "\"" + ConflictState.extractConflictNames[0] + "\" already exists here and will be overwritten."
+          : ConflictState.extractConflictNames.length + " items already exist here and will be overwritten."
         confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
@@ -2198,8 +1983,8 @@ Item {
         id: compressConflictConfirm
         anchors.fill: parent
         z: 10
-        opened: root.compressConflictOpen
-        message: root.pendingCompress ? "\"" + root.pendingCompress.archiveName + "\" already exists. Overwrite it?" : ""
+        opened: ConflictState.compressConflictOpen
+        message: ConflictState.pendingCompress ? "\"" + ConflictState.pendingCompress.archiveName + "\" already exists. Overwrite it?" : ""
         confirmText: "Overwrite"
         background: Color.menu.background
         foreground: Color.menu.text
@@ -2211,10 +1996,10 @@ Item {
         id: bulkRenameConflictConfirm
         anchors.fill: parent
         z: 10
-        opened: root.bulkRenameConflictOpen
-        message: root.bulkRenameConflictCount === 1
+        opened: ConflictState.bulkRenameConflictOpen
+        message: ConflictState.bulkRenameConflictCount === 1
           ? "1 rename would collide with an existing name and will be skipped. Rename the rest?"
-          : root.bulkRenameConflictCount + " renames would collide with existing or duplicate names and will be skipped. Rename the rest?"
+          : ConflictState.bulkRenameConflictCount + " renames would collide with existing or duplicate names and will be skipped. Rename the rest?"
         confirmText: "Continue"
         background: Color.menu.background
         foreground: Color.menu.text
@@ -2225,8 +2010,8 @@ Item {
       // ---------- Conflicto al pegar ----------
       ConflictResolveDialog {
         anchors.fill: parent
-        open: root.pasteConflictOpen
-        names: root.pasteConflictNames
+        open: ConflictState.pasteConflictOpen
+        names: ConflictState.pasteConflictNames
         onOverwriteRequested: clipboardOps.runPaste("overwrite")
         onSkipRequested: clipboardOps.runPaste("skip")
         onCancelRequested: clipboardOps.cancelPasteConflict()
@@ -2235,8 +2020,8 @@ Item {
       // ---------- Conflicto al soltar (drag & drop) ----------
       ConflictResolveDialog {
         anchors.fill: parent
-        open: root.dropConflictOpen
-        names: root.dropConflictNames
+        open: ConflictState.dropConflictOpen
+        names: ConflictState.dropConflictNames
         onOverwriteRequested: dragDropOps.runDrop("overwrite")
         onSkipRequested: dragDropOps.runDrop("skip")
         onCancelRequested: dragDropOps.cancelDropConflict()
@@ -2245,13 +2030,13 @@ Item {
       // ---------- Paleta de comandos (: o Ctrl+P) ----------
       CommandPalettePanel {
         anchors.fill: parent
-        open: root.paletteOpen
-        query: root.paletteQuery
-        index: root.paletteIndex
-        commands: root.paletteOpen ? root.filteredPaletteCommands() : []
-        onQueryEdited: function (text) { root.paletteQuery = text; root.paletteIndex = 0 }
+        open: PaletteState.paletteOpen
+        query: PaletteState.paletteQuery
+        index: PaletteState.paletteIndex
+        commands: PaletteState.paletteOpen ? root.filteredPaletteCommands() : []
+        onQueryEdited: function (text) { PaletteState.paletteQuery = text; PaletteState.paletteIndex = 0 }
         onCloseRequested: root.closePalette()
-        onIndexRequested: function (idx) { root.paletteIndex = idx }
+        onIndexRequested: function (idx) { PaletteState.paletteIndex = idx }
         onCommandActivated: function (idx) { root.runPaletteCommand(idx) }
         onFocusReturnRequested: list.forceActiveFocus()
       }

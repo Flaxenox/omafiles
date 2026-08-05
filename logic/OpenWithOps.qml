@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import "../state"
 
 // Diálogo "Abrir con..." -- vigésimo primer componente extraído de
 // Omafiles.qml.
@@ -10,21 +11,21 @@ Item {
 
   function showOpenWith(entry) {
     if (!entry || entry.type === "dir") return
-    root.openWithEntry = entry
-    root.openWithApps = []
+    PreviewState.openWithEntry = entry
+    PreviewState.openWithApps = []
     openWithProc.command = [root.pluginDir + "/open-with-list.sh", root.joinPath(root.currentPath, entry.name)]
     openWithProc.running = true
-    root.openWithOpen = true
+    PreviewState.openWithOpen = true
   }
 
   function launchWith(desktopId) {
-    if (root.openWithEntry) {
-      var openPath = root.joinPath(root.currentPath, root.openWithEntry.name)
+    if (PreviewState.openWithEntry) {
+      var openPath = root.joinPath(root.currentPath, PreviewState.openWithEntry.name)
       Quickshell.execDetached(["gtk-launch", desktopId, openPath])
-      root.addRecent(openPath, root.openWithEntry.name)
+      root.addRecent(openPath, PreviewState.openWithEntry.name)
     }
-    root.openWithOpen = false
-    root.openWithEntry = null
+    PreviewState.openWithOpen = false
+    PreviewState.openWithEntry = null
   }
 
   function parseOpenWithApps(text) {
@@ -39,7 +40,7 @@ Item {
     id: openWithProc
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.openWithApps = parseOpenWithApps(text)
+      onStreamFinished: PreviewState.openWithApps = parseOpenWithApps(text)
     }
   }
 }

@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import "../state"
 
 // Renombrar / nueva carpeta / nuevo fichero, con su undo -- decimoséptimo
 // componente extraído de Omafiles.qml. Mismo patrón que FileOps: sin
@@ -17,9 +18,9 @@ Item {
   }
 
   function runPendingRename(overwrite) {
-    var r = root.pendingRename
-    root.pendingRename = null
-    root.renameConflictOpen = false
+    var r = ConflictState.pendingRename
+    ConflictState.pendingRename = null
+    ConflictState.renameConflictOpen = false
     if (!r) return
     var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
     // Igual que en makeLinkFor: el undo solo se registra si el "mv" de
@@ -37,8 +38,8 @@ Item {
   }
 
   function cancelPendingRename() {
-    root.pendingRename = null
-    root.renameConflictOpen = false
+    ConflictState.pendingRename = null
+    ConflictState.renameConflictOpen = false
   }
 
   function startNewFolder() {

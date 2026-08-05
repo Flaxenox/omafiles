@@ -2,6 +2,8 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "../shared"
+import "../logic"
+import "../state"
 import "../Utils.js" as Utils
 
 // La ListView principal del panel activo (selección con lazo, arrastrar y
@@ -42,6 +44,7 @@ Item {
   property Item fileMeta: null
   property Item deleteOps: null
   property Item tabOps: null
+  property Item selectionOps: null
   property Item deleteConfirm: null
   property Item renameConflictConfirm: null
   property Item extractConflictConfirm: null
@@ -54,6 +57,30 @@ Item {
   property alias contentItem: listView.contentItem
   function forceActiveFocus() { listView.forceActiveFocus() }
   function positionViewAtBeginning() { listView.positionViewAtBeginning() }
+  function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
+
+  KeyboardShortcuts {
+    id: keyboardShortcuts
+    hostRoot: root
+    hostListView: listView
+    hostGTimer: gTimer
+    hostPreviewLoader: previewLoader
+    hostConflictActions: conflictActions
+    hostMountOps: mountOps
+    hostFileOps: fileOps
+    hostRenameOps: renameOps
+    hostClipboardOps: clipboardOps
+    hostDragDropOps: dragDropOps
+    hostSearchOps: searchOps
+    hostDeleteOps: deleteOps
+    hostTabOps: tabOps
+    hostSelectionOps: selectionOps
+    hostDeleteConfirm: deleteConfirm
+    hostRenameConflictConfirm: renameConflictConfirm
+    hostExtractConflictConfirm: extractConflictConfirm
+    hostCompressConflictConfirm: compressConflictConfirm
+    hostBulkRenameConflictConfirm: bulkRenameConflictConfirm
+  }
 
             // Misma línea que separa cabecera y lista en los paneles de
             // fondo (bgHeaderSep) -- va aquí dentro, no como hermana en la
@@ -72,7 +99,7 @@ Item {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               acceptedButtons: Qt.RightButton
               onClicked: function (mouse) {
                 var pos = mapToItem(card, mouse.x, mouse.y)
@@ -90,7 +117,7 @@ Item {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               keys: ["text/uri-list"]
               onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
               onDropped: function (drop) {
@@ -110,7 +137,7 @@ Item {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               property real wheelAccumulator: 0
               onWheel: function (wheel) {
                 var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
@@ -138,20 +165,20 @@ Item {
               anchors.top: parent.top
               height: listView.y
               anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               acceptedButtons: Qt.LeftButton
               onPressed: function (mouse) {
                 var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
                 var vp = mapToItem(listView, mouse.x, mouse.y)
-                root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
               }
               onPositionChanged: function (mouse) {
                 var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
                 var vp = mapToItem(listView, mouse.x, mouse.y)
-                root.moveMarquee(p.x, p.y, vp.y)
+                selectionOps.moveMarquee(p.x, p.y, vp.y)
               }
-              onReleased: root.endMarquee()
-              onCanceled: root.endMarquee()
+              onReleased: selectionOps.endMarquee()
+              onCanceled: selectionOps.endMarquee()
             }
 
             ListView {
@@ -168,7 +195,7 @@ Item {
               anchors.topMargin: Style.spacing.md
               anchors.bottom: parent.bottom
               anchors.left: parent.left
-              width: root.previewOpen ? parent.width * 0.55 : parent.width
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               clip: true
               model: root.visibleEntries
               focus: root.opened
@@ -224,15 +251,15 @@ Item {
                   onPressed: function (mouse) {
                     var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
                     var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                    selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
                   }
                   onPositionChanged: function (mouse) {
                     var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
                     var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
+                    selectionOps.moveMarquee(p.x, p.y, vp.y)
                   }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
+                  onReleased: selectionOps.endMarquee()
+                  onCanceled: selectionOps.endMarquee()
                 }
               }
 
@@ -247,448 +274,34 @@ Item {
               Timer {
                 interval: 16
                 repeat: true
-                running: root.marqueeActive && listView.contentHeight > listView.height
-                  && (root.marqueeViewportY < 32 || root.marqueeViewportY > listView.height - 32)
+                running: SelectionState.marqueeActive && listView.contentHeight > listView.height
+                  && (SelectionState.marqueeViewportY < 32 || SelectionState.marqueeViewportY > listView.height - 32)
                 onTriggered: {
                   var minY = listView.originY
                   var maxY = minY + Math.max(0, listView.contentHeight - listView.height)
                   var step = 18
-                  if (root.marqueeViewportY < 32) {
+                  if (SelectionState.marqueeViewportY < 32) {
                     listView.contentY = Math.max(minY, listView.contentY - step)
-                    root.marqueeCurrentY = listView.contentY
+                    SelectionState.marqueeCurrentY = listView.contentY
                   } else {
                     listView.contentY = Math.min(maxY, listView.contentY + step)
-                    root.marqueeCurrentY = listView.contentY + listView.height
+                    SelectionState.marqueeCurrentY = listView.contentY + listView.height
                   }
-                  root.updateMarqueeSelection(root.marqueeAdditive, root.marqueeBaseSelection)
+                  selectionOps.updateMarqueeSelection(SelectionState.marqueeAdditive, SelectionState.marqueeBaseSelection)
                 }
               }
 
-              Keys.onPressed: function (event) {
-                if (root.paletteOpen) return
-                if (root.openWithOpen) {
-                  if (event.key === Qt.Key_Escape) { root.openWithOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.chmodOpen) {
-                  if (event.key === Qt.Key_Escape) { root.chmodOpen = false; event.accepted = true }
-                  else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { fileOps.commitChmod(root.chmodMode); event.accepted = true }
-                  return
-                }
-                if (root.contextMenuOpen) {
-                  if (event.key === Qt.Key_Escape) { root.contextMenuOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.pendingDeleteNames.length > 0) {
-                  if (deleteConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.renameConflictOpen) {
-                  if (renameConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.extractConflictOpen) {
-                  if (extractConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.compressConflictOpen) {
-                  if (compressConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.bulkRenameConflictOpen) {
-                  if (bulkRenameConflictConfirm.handleKey(event)) event.accepted = true
-                  return
-                }
-                if (root.pasteConflictOpen) {
-                  if (event.key === Qt.Key_Escape) { clipboardOps.cancelPasteConflict(); event.accepted = true }
-                  return
-                }
-                if (root.dropConflictOpen) {
-                  if (event.key === Qt.Key_Escape) { dragDropOps.cancelDropConflict(); event.accepted = true }
-                  return
-                }
-                if (root.propertiesOpen) {
-                  if (event.key === Qt.Key_Escape) { root.propertiesOpen = false; event.accepted = true }
-                  return
-                }
-                if (root.shortcutsHelpOpen) {
-                  if (event.key === Qt.Key_Escape || event.key === Qt.Key_Question) { root.shortcutsHelpOpen = false; event.accepted = true }
-                  return
-                }
-                // Red de seguridad -- bulkRenameField normalmente tiene el
-                // foco y gestiona Escape/Enter él solo, pero si alguna vez
-                // no lo tiene, esto evita que j/k/Supr caigan en la lista de
-                // detrás con el diálogo todavía abierto encima.
-                if (root.bulkRenameOpen) {
-                  if (event.key === Qt.Key_Escape) { root.bulkRenameOpen = false; event.accepted = true }
-                  return
-                }
-                // Misma red de seguridad que bulkRenameOpen -- connectServerField
-                // gestiona Escape/Enter él solo mientras tiene el foco.
-                if (root.connectServerOpen) {
-                  if (event.key === Qt.Key_Escape) {
-                    if (root.networkConnecting) mountOps.cancelNetworkConnect()
-                    else mountOps.cancelConnectToServer()
-                    event.accepted = true
-                  }
-                  return
-                }
-                if (root.creatingFolder || root.creatingFile || root.renamingIndex >= 0 || root.editingPath || root.searching) return
+              Keys.onPressed: function (event) { keyboardShortcuts.handlePress(event) }
 
-                var extend = (event.modifiers & Qt.ShiftModifier) !== 0
-
-                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.openTerminalHere()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  // Con 2+ pestañas, Escape cierra el panel activo (el que
-                  // tiene el cursor encima, gracias al HoverHandler de cada
-                  // panel) en vez de la ventana entera -- sustituye a la ×
-                  // que había antes en cada cabecera. closeTab() ya cae en
-                  // requestClose() si solo queda 1, así que el comportamiento
-                  // de siempre (Escape cierra la ventana) no cambia con una
-                  // sola pestaña abierta.
-                  if (root.previewOpen) root.previewOpen = false
-                  else tabOps.closeTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
-                  root.goUp()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
-                  if (root.selectedIndex >= 0) root.enter(root.visibleEntries[root.selectedIndex])
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Space) {
-                  previewLoader.togglePreview()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Slash) {
-                  searchOps.startSearch()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
-                  root.openPalette()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Question) {
-                  root.shortcutsHelpOpen = true
-                  event.accepted = true
-                } else if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
-                  searchOps.goBottom()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_G && event.modifiers === Qt.NoModifier) {
-                  if (root.gPending) { searchOps.goTop(); root.gPending = false }
-                  else { root.gPending = true; gTimer.restart() }
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
-                  var down = Math.min(root.visibleEntries.length - 1, root.selectedIndex + 1)
-                  if (extend) root.selectRange(down); else root.selectOnly(down)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && event.modifiers === Qt.NoModifier)) {
-                  var up = Math.max(0, root.selectedIndex - 1)
-                  if (extend) root.selectRange(up); else root.selectOnly(up)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.selectNone()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
-                  root.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i })
-                  event.accepted = true
-                } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
-                  root.invertSelection()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_F2) {
-                  renameOps.startRename(root.selectedIndex)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Delete) {
-                  deleteOps.requestDelete()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_F5) {
-                  root.refresh()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
-                  root.reverseSort()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
-                  root.cycleSort()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
-                  searchOps.startEditPath()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  renameOps.startNewFolder()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-                  // "New file" no tenía atajo propio, a diferencia de
-                  // "New folder" (Ctrl+Shift+N, arriba) -- solo estaba en
-                  // paleta/menú contextual.
-                  renameOps.startNewFile()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
-                  // Antes alternaba la vista dividida; ahora cada pestaña ES
-                  // ya un panel visible, así que este atajo simplemente abre
-                  // uno nuevo (igual que Ctrl+T).
-                  tabOps.newTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {
-                  root.navBack()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Right && (event.modifiers & Qt.AltModifier)) {
-                  root.navForward()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
-                  tabOps.newTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_W && (event.modifiers & Qt.ControlModifier)) {
-                  tabOps.closeTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)) {
-                  tabOps.nextTab()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier)) {
-                  searchOps.toggleHidden()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) {
-                  clipboardOps.copySelected()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
-                  clipboardOps.cutSelected()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-                  conflictActions.paste()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-                  root.redoLast()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier)) {
-                  root.redoLast()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
-                  root.undoLast()
-                  event.accepted = true
-                }
-              }
-
-              delegate: CursorSurface {
-                id: rowSurface
-                required property var modelData
-                required property int index
-                width: listView.width
-                implicitHeight: rowContent.implicitHeight + Style.spacing.md * 2
-                Accessible.role: Accessible.ListItem
-                Accessible.name: modelData.name + (modelData.type === "dir" ? ", folder" : ", file")
-                Accessible.selected: root.isSelected(index)
-                // Al reciclar delegados (recrea filas al hacer scroll),
-                // implicitHeight puede pasar por 0 durante un frame antes de
-                // que el layout del texto se asiente -- si se acepta ese
-                // valor de paso, measuredRowHeight (compartido por todas las
-                // filas) queda mal un instante, el footer recalcula su
-                // altura, contentHeight cambia en pleno scroll y eso es justo
-                // lo que hacía crecer el hueco de arriba en cada ciclo. Todas
-                // las filas miden lo mismo, así que quedarse con el máximo
-                // visto es seguro y nunca acepta un valor transitorio menor.
-                onHeightChanged: {
-                  if (height > root.measuredRowHeight) root.measuredRowHeight = height
-                }
-                foreground: Color.menu.text
-                accent: Color.accent
-                hasCursor: mouseArea.containsMouse
-                current: root.isSelected(index) || root.dropHoverIndex === index
-
-                DropArea {
-                  // Solo las carpetas son destino válido de un drop --
-                  // soltar sobre un fichero suelto no tiene sentido.
-                  anchors.fill: parent
-                  enabled: modelData.type === "dir"
-                  keys: ["text/uri-list"]
-                  onEntered: function (drag) {
-                    if (!drag.hasUrls) { drag.accepted = false; return }
-                    root.dropHoverIndex = index
-                  }
-                  onExited: if (root.dropHoverIndex === index) root.dropHoverIndex = -1
-                  onDropped: function (drop) {
-                    root.dropHoverIndex = -1
-                    dragDropOps.handleFilesDropped(drop, root.joinPath(root.currentPath, modelData.name))
-                  }
-                }
-
-                Item {
-                  id: rowContent
-                  anchors.left: parent.left
-                  anchors.right: parent.right
-                  anchors.verticalCenter: parent.verticalCenter
-                  anchors.leftMargin: 0
-                  anchors.rightMargin: Style.spacing.rowPaddingX
-                  implicitHeight: activeFileRow.implicitHeight
-
-                  readonly property bool isVid: root.isVideo(modelData)
-                  readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, root.currentPath) : ""
-                  readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
-
-                  Component.onCompleted: if (isVid) videoThumbs.requestVideoThumb(modelData)
-
-                  FileRowVisual {
-                    id: activeFileRow
-                    anchors.fill: parent
-                    name: modelData.name
-                    isDir: modelData.type === "dir"
-                    isBroken: modelData.link === "broken"
-                    highlighted: rowSurface.current
-                    dimmed: root.clipboardMode === "cut" && root.clipboardPaths.indexOf(root.joinPath(root.currentPath, modelData.name)) >= 0
-                    fileIconGlyph: root.iconFor(modelData)
-                    thumbSource: root.isImage(modelData) ? Util.fileUrl(root.joinPath(root.currentPath, modelData.name))
-                      : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
-                    metaText: fileMeta.metaFor(modelData)
-                    showNameText: root.renamingIndex !== index
-                  }
-
-                  TextField {
-                    id: renameField
-                    visible: root.renamingIndex === index
-                    Accessible.role: Accessible.EditableText
-                    Accessible.name: "Rename"
-                    // Misma X que nameCol dentro de FileRowVisual
-                    // (thumbSlot.right + rowGap) -- ese id ya no es
-                    // visible desde aquí, así que se repite con la
-                    // misma constante conocida (Style.spacing.controlHeight,
-                    // el ancho fijo del icono) en vez de perseguir el id.
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    verticalPadding: 2
-                    onVisibleChanged: if (visible) { text = modelData.name; forceActiveFocus(); selectAll() } else listView.forceActiveFocus()
-                    Keys.onPressed: function (event) {
-                      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        conflictActions.commitRename(text)
-                        event.accepted = true
-                      } else if (event.key === Qt.Key_Escape) {
-                        root.renamingIndex = -1
-                        event.accepted = true
-                      }
-                    }
-                  }
-                }
-
-                MouseArea {
-                  id: mouseArea
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.right: parent.right
-                  anchors.left: parent.left
-                  // Huecos sin cubrir a los dos lados (el contenido visual --
-                  // icono, texto -- no se mueve, solo se reduce el área
-                  // interactiva) para que los MouseArea de gutter de abajo
-                  // puedan quedarse con el press ahí en vez de competir por
-                  // hover con este. Izquierda subida de 14 a 24 -- josema
-                  // probándolo en vivo dijo que sobraba distancia sin usar
-                  // entre el icono y la barra separadora. Derecha iguala
-                  // rowContent.anchors.rightMargin (rowPaddingX), que ya
-                  // deja ese hueco sin contenido visual.
-                  anchors.leftMargin: 24
-                  anchors.rightMargin: Style.spacing.rowPaddingX
-                  hoverEnabled: true
-                  visible: root.renamingIndex !== index
-                  acceptedButtons: Qt.LeftButton | Qt.RightButton
-                  cursorShape: Qt.PointingHandCursor
-                  drag.target: dragProxy
-                  drag.axis: Drag.XAndYAxis
-                  onPressed: function (mouse) {
-                    // Empezar a arrastrar un fichero que no formaba parte de
-                    // la selección debe arrastrar solo ese fichero (como
-                    // Nautilus) -- pero solo en clic simple: Ctrl/Shift+clic
-                    // siguen decidiendo la selección en onClicked, sin tocar
-                    // aquí el ancla de rango (selectRange).
-                    if (mouse.button === Qt.LeftButton && mouse.modifiers === Qt.NoModifier && !root.isSelected(index)) {
-                      root.selectOnly(index)
-                    }
-                    // Miniatura del arrastre: capturada aquí (no en
-                    // Drag.onActiveChanged) para que le dé tiempo a
-                    // completarse -- grabToImage es async (un frame) y para
-                    // cuando el movimiento supera el umbral de drag ya casi
-                    // siempre está lista.
-                    if (mouse.button === Qt.LeftButton) {
-                      rowContent.grabToImage(function (result) { dragProxy.Drag.imageSource = result.url })
-                    }
-                  }
-                  onClicked: function (mouse) {
-                    if (mouse.button === Qt.RightButton) {
-                      if (!root.isSelected(index)) root.selectOnly(index)
-                      var pos = mapToItem(card, mouse.x, mouse.y)
-                      root.openContextMenu(pos.x, pos.y, root.itemActions())
-                      return
-                    }
-                    if (mouse.modifiers & Qt.ControlModifier) root.toggleSelect(index)
-                    else if (mouse.modifiers & Qt.ShiftModifier) root.selectRange(index)
-                    else root.selectOnly(index)
-                  }
-                  // hasPendingEdit: no entrar (y sobre todo no entrar en
-                  // un archivo comprimido) mientras hay un renombrado/
-                  // nueva-carpeta/nuevo-fichero sin confirmar en esta
-                  // misma fila u otra -- ver commitRename() para el bug
-                  // real que esto evita.
-                  onDoubleClicked: if (!root.hasPendingEdit) root.enter(modelData)
-                }
-
-                // Proxy invisible que MouseArea.drag mueve -- lo único que
-                // importa de verdad es su Drag.active, que arranca el drag
-                // real (interno o hacia otra app) en cuanto se supera el
-                // umbral de movimiento.
-                Item {
-                  id: dragProxy
-                  width: 1
-                  height: 1
-                  Drag.active: mouseArea.drag.active
-                  Drag.dragType: Drag.Automatic
-                  Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-                  Drag.proposedAction: Qt.MoveAction
-                  Drag.mimeData: dragDropOps.dragMimeDataFor(index)
-                }
-
-                // Gutters del lazo a los dos lados de la fila -- implementan
-                // el arranque/arrastre directamente (no confían en que el
-                // press "caiga" a algo detrás: en la franja izquierda, antes
-                // de este cambio, no había nada detrás salvo el MouseArea de
-                // la rueda, que se queda con cualquier click de todos modos
-                // aunque solo tenga onWheel). anchors.leftMargin de
-                // `mouseArea` (24) y anchors.rightMargin de `rowContent`
-                // (Style.spacing.rowPaddingX) dejan estos huecos libres de
-                // contenido visual, así que no roban nada al icono/texto.
-                MouseArea {
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.left: parent.left
-                  width: 24
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
-                }
-
-                MouseArea {
-                  anchors.top: parent.top
-                  anchors.bottom: parent.bottom
-                  anchors.right: parent.right
-                  width: Style.spacing.rowPaddingX
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    root.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: root.endMarquee()
-                  onCanceled: root.endMarquee()
-                }
+              delegate: FileListRow {
+                hostRoot: root
+                hostListView: listView
+                hostCard: card
+                hostDragDropOps: dragDropOps
+                hostVideoThumbs: videoThumbs
+                hostFileMeta: fileMeta
+                hostConflictActions: conflictActions
+                hostSelectionOps: selectionOps
               }
             }
 
@@ -718,11 +331,11 @@ Item {
             // fichero para quedar por encima al pintar (visible incluso
             // cuando el lazo crece sobre filas ya dibujadas).
             Rectangle {
-              visible: root.marqueeActive
-              x: Math.min(root.marqueeStartX, root.marqueeCurrentX)
-              y: Math.min(root.marqueeStartY, root.marqueeCurrentY) - listView.contentY + listView.y
-              width: Math.abs(root.marqueeCurrentX - root.marqueeStartX)
-              height: Math.abs(root.marqueeCurrentY - root.marqueeStartY)
+              visible: SelectionState.marqueeActive
+              x: Math.min(SelectionState.marqueeStartX, SelectionState.marqueeCurrentX)
+              y: Math.min(SelectionState.marqueeStartY, SelectionState.marqueeCurrentY) - listView.contentY + listView.y
+              width: Math.abs(SelectionState.marqueeCurrentX - SelectionState.marqueeStartX)
+              height: Math.abs(SelectionState.marqueeCurrentY - SelectionState.marqueeStartY)
               color: Util.alpha(Color.accent, 0.12)
               border.color: Color.accent
               border.width: 1
@@ -732,25 +345,25 @@ Item {
             // ---------- Vista previa (Espacio) ----------
             PreviewPanel {
               anchors.fill: parent
-              open: root.previewOpen
-              entryName: root.previewEntry ? root.previewEntry.name : ""
-              hasEntry: !!root.previewEntry
-              isImageEntry: root.previewEntry ? root.isImage(root.previewEntry) : false
-              isVideoEntry: root.previewEntry ? root.isVideo(root.previewEntry) : false
-              isTextEntry: !!root.previewEntry && !root.isImage(root.previewEntry) && root.previewIsText
-              isPdfEntry: root.previewEntry ? root.isPdf(root.previewEntry) : false
-              isAudioEntry: root.previewEntry ? root.isAudio(root.previewEntry) : false
-              imageSource: (root.previewEntry && root.isImage(root.previewEntry))
-                ? Util.fileUrl(root.joinPath(root.currentPath, root.previewEntry.name)) : ""
+              open: PreviewState.previewOpen
+              entryName: PreviewContentState.previewEntry ? PreviewContentState.previewEntry.name : ""
+              hasEntry: !!PreviewContentState.previewEntry
+              isImageEntry: PreviewContentState.previewEntry ? root.isImage(PreviewContentState.previewEntry) : false
+              isVideoEntry: PreviewContentState.previewEntry ? root.isVideo(PreviewContentState.previewEntry) : false
+              isTextEntry: !!PreviewContentState.previewEntry && !root.isImage(PreviewContentState.previewEntry) && PreviewContentState.previewIsText
+              isPdfEntry: PreviewContentState.previewEntry ? root.isPdf(PreviewContentState.previewEntry) : false
+              isAudioEntry: PreviewContentState.previewEntry ? root.isAudio(PreviewContentState.previewEntry) : false
+              imageSource: (PreviewContentState.previewEntry && root.isImage(PreviewContentState.previewEntry))
+                ? Util.fileUrl(root.joinPath(root.currentPath, PreviewContentState.previewEntry.name)) : ""
               videoThumbSource: {
-                if (!root.previewEntry || !root.isVideo(root.previewEntry)) return ""
-                var p = root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)] || ""
+                if (!PreviewContentState.previewEntry || !root.isVideo(PreviewContentState.previewEntry)) return ""
+                var p = root.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, root.currentPath)] || ""
                 return p ? Util.fileUrl(p) : ""
               }
-              highlightedText: root.previewHighlighted
-              plainText: root.previewText
-              pdfImageSource: root.previewPdfImage ? Util.fileUrl(root.previewPdfImage) : ""
-              audioInfo: root.previewAudioInfo
-              fallbackSizeText: root.previewEntry ? Utils.formatSize(root.previewEntry.size) : ""
+              highlightedText: PreviewContentState.previewHighlighted
+              plainText: PreviewContentState.previewText
+              pdfImageSource: PreviewContentState.previewPdfImage ? Util.fileUrl(PreviewContentState.previewPdfImage) : ""
+              audioInfo: PreviewContentState.previewAudioInfo
+              fallbackSizeText: PreviewContentState.previewEntry ? Utils.formatSize(PreviewContentState.previewEntry.size) : ""
             }
 }

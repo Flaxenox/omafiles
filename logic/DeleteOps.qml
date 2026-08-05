@@ -5,10 +5,11 @@ import qs.Commons
 // vigésimo tercer componente extraído de Omafiles.qml.
 Item {
   property Item root: null
+  property Item selectionOps: null
 
   function requestDelete() {
     if (root.inArchive) return
-    var names = root.selectedEntries().map(function (e) { return e.name })
+    var names = selectionOps.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
     root.pendingDeleteNames = names
   }
