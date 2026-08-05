@@ -3,6 +3,7 @@ import Quickshell.Io
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "Utils.js" as Utils
 
 // Omafiles -- explorador de archivos para Omarchy.
 // Ventana normal (FloatingWindow, tileable en Hyprland como cualquier otra
@@ -493,34 +494,16 @@ Item {
   property var thumbQueue: []
   property bool thumbBusy: false
 
-  // Hash simple y estable solo para nombrar el fichero de caché -- no hace
-  // falta criptográfico, solo evitar colisiones razonables sin depender de
-  // md5sum externo.
-  function simpleHash(str) {
-    var h = 0
-    for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0
-    return (h >>> 0).toString(36)
-  }
-
-  // `basePath` es opcional (por defecto root.currentPath, la carpeta del
-  // panel activo) -- los paneles de fondo pasan la suya propia
-  // (bgPanel.modelData.path), que NO tiene por qué ser la misma. Sin esto,
-  // pedir la miniatura de un vídeo desde un panel de fondo generaba el
-  // thumbnail a partir de un fichero de la carpeta EQUIVOCADA (la del panel
-  // activo en ese momento).
-  function thumbKeyFor(entry, basePath) {
-    return root.joinPath(basePath || root.currentPath, entry.name) + "|" + entry.mtime
-  }
-
-  function videoThumbPath(entry, basePath) {
-    return root.thumbCacheDir + "/" + root.simpleHash(root.thumbKeyFor(entry, basePath)) + ".jpg"
-  }
+  // simpleHash/thumbKeyFor/videoThumbPath: movidas a Utils.js (funciones
+  // puras). `basePath`/cacheDir ya no son opcionales -- cada llamada de
+  // aquí en adelante los pasa explícitos (ver comentario en Utils.js).
 
   function requestVideoThumb(entry, basePath) {
-    var key = root.thumbKeyFor(entry, basePath)
+    basePath = basePath || root.currentPath
+    var key = Utils.thumbKeyFor(entry, basePath)
     if (root.videoThumbReady[key]) return
-    if (root.thumbQueue.some(function (q) { return root.thumbKeyFor(q.entry, q.basePath) === key })) return
-    root.thumbQueue = root.thumbQueue.concat([{ entry: entry, basePath: basePath || root.currentPath }])
+    if (root.thumbQueue.some(function (q) { return Utils.thumbKeyFor(q.entry, q.basePath) === key })) return
+    root.thumbQueue = root.thumbQueue.concat([{ entry: entry, basePath: basePath }])
     root.processThumbQueue()
   }
 
@@ -533,8 +516,8 @@ Item {
     var entry = queued.entry
     var basePath = queued.basePath
     var src = root.joinPath(basePath, entry.name)
-    var dest = root.videoThumbPath(entry, basePath)
-    thumbProc.currentKey = root.thumbKeyFor(entry, basePath)
+    var dest = Utils.videoThumbPath(entry, basePath, root.thumbCacheDir)
+    thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
     thumbProc.command = ["bash", root.pluginDir + "/thumbnail-video.sh", src, dest]
     thumbProc.running = true
@@ -823,36 +806,14 @@ Item {
     return root.bookmarks.some(function (b) { return b.path === path })
   }
 
-  function parseMounts(text) {
-    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-    return lines.map(function (l) {
-      var parts = l.split("\t")
-      return { label: parts[0], path: parts[1], device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
-    })
-  }
+  // parseMounts: movida a Utils.js (función pura).
 
   function iconForMount(mount) {
     if (mount.fstype === "iso9660") return root.iconFor({ type: "file", name: "x.iso" })
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
   }
 
-  // list-network-mounts.sh separa por NUL, no por TSV -- ver
-  // parseEntries()/list-dir.sh para el motivo (un dato con tab/salto de
-  // línea real no debe poder desalinear campos). Aquí el dato es una
-  // etiqueta que el propio script construye, nunca texto arbitrario del
-  // usuario, pero se mantiene el mismo protocolo para no tener dos
-  // convenciones de parseo distintas en el fichero.
-  function parseNetworkMounts(text) {
-    var s = String(text || "")
-    if (s.length === 0) return []
-    var fields = s.split(String.fromCharCode(0))
-    if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-    var out = []
-    for (var i = 0; i + 2 < fields.length; i += 3) {
-      out.push({ label: fields[i], path: fields[i + 1], scheme: fields[i + 2] })
-    }
-    return out
-  }
+  // parseNetworkMounts: movida a Utils.js (función pura).
 
   // U+F0870 (md-folder_network) -- ya verificado contra el cmap real de
   // JetBrainsMono Nerd Font en una pasada anterior (ver notas de iconos
@@ -958,50 +919,10 @@ Item {
     runAction("bash " + Util.shellQuote(root.pluginDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
-  // list-dir.sh/search-recursive.sh separan TODO por NUL (\0) -- campos Y
-  // entradas -- en vez de TAB/newline: un nombre de fichero real puede
-  // contener un tab o un salto de línea (son bytes válidos en un nombre de
-  // Linux, solo "/" y NUL están prohibidos), así que un TSV de toda la
-  // vida se podía desalinear con un nombre así y hacer que una operación
-  // destructiva actuara sobre el fichero equivocado. NUL es el único byte
-  // que nunca puede aparecer dentro de un campo, así que separar por NUL
-  // es inequívoco pase lo que pase en el nombre.
-  function parseEntries(text) {
-    var s = String(text || "")
-    if (s.length === 0) return []
-    var fields = s.split("\u0000")
-    // Cada campo, incluido el último de la última entrada, termina en
-    // NUL -- split() deja un elemento vacío colgando al final. Se quita
-    // solo ese, no con un filtro genérico: un campo "enlace" vacío en
-    // medio (fichero normal, sin symlink) es válido y no hay que perderlo.
-    if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-    var out = []
-    for (var i = 0; i + 4 < fields.length; i += 5) {
-      out.push({
-        type: fields[i], name: fields[i + 1],
-        size: Number(fields[i + 2] || 0), mtime: Number(fields[i + 3] || 0),
-        link: fields[i + 4] || ""
-      })
-    }
-    return out
-  }
+  // parseEntries: movida a Utils.js (función pura, comentario completo
+  // sobre el protocolo NUL-delimitado está ahí ahora).
 
-  // Orden "natural": trocea el nombre en tramos alternos texto/número y
-  // compara los números como números, no letra a letra -- sin esto
-  // "file2.txt" salía después de "file10.txt" (lexicográfico puro: "1" <
-  // "2"), y lo mismo con fechas/capítulos/versiones numeradas. Algoritmo
-  // compacto ya conocido (trocea con una regex, compara tramo a tramo).
-  function naturalCompare(a, b) {
-    var ax = [], bx = []
-    a.replace(/(\d+)|(\D+)/g, function (_, d, s) { ax.push([d || Infinity, s || ""]) })
-    b.replace(/(\d+)|(\D+)/g, function (_, d, s) { bx.push([d || Infinity, s || ""]) })
-    while (ax.length && bx.length) {
-      var an = ax.shift(), bn = bx.shift()
-      var nn = (an[0] - bn[0]) || an[1].localeCompare(bn[1])
-      if (nn) return nn
-    }
-    return ax.length - bx.length
-  }
+  // naturalCompare: movida a Utils.js (función pura).
 
   function compareEntries(a, b) {
     var result = 0
@@ -1014,7 +935,7 @@ Item {
       result = ea < eb ? -1 : (ea > eb ? 1 : 0)
     }
     if (result === 0) {
-      result = root.naturalCompare(a.name.toLowerCase(), b.name.toLowerCase())
+      result = Utils.naturalCompare(a.name.toLowerCase(), b.name.toLowerCase())
     }
     return root.sortDesc ? -result : result
   }
@@ -1279,7 +1200,7 @@ Item {
   function openFileInArchive(entry) {
     var full = root.archiveSubPath ? root.archiveSubPath + "/" + entry.name : entry.name
     var ext = root.extOf(root.archivePath)
-    var out = root.homeDir + "/.cache/omafiles/archive-open/" + root.simpleHash(root.archivePath + "|" + full) + "/" + entry.name
+    var out = root.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(root.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(root.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
@@ -1439,23 +1360,7 @@ Item {
     return out
   }
 
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + " B"
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " K"
-    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " M"
-    return (bytes / 1024 / 1024 / 1024).toFixed(1) + " G"
-  }
-
-  function relativeTime(epochSeconds) {
-    if (!epochSeconds) return ""
-    var diff = Math.floor(Date.now() / 1000) - epochSeconds
-    if (diff < 60) return "just now"
-    if (diff < 3600) return Math.floor(diff / 60) + " min ago"
-    if (diff < 86400) return Math.floor(diff / 3600) + " h ago"
-    if (diff < 86400 * 30) return Math.floor(diff / 86400) + " d ago"
-    if (diff < 86400 * 365) return Math.floor(diff / (86400 * 30)) + " mo ago"
-    return Math.floor(diff / (86400 * 365)) + " yr ago"
-  }
+  // formatSize/relativeTime: movidas a Utils.js (funciones puras).
 
   // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
   // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
@@ -1470,14 +1375,14 @@ Item {
     var atPath = basePath !== undefined ? basePath : root.currentPath
     if (atPath === root.trashDir) {
       var parts = []
-      if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
+      if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
       // root.trashInfo solo se rellena para la papelera del panel ACTIVO
       // (ver listProc) -- si este es un panel de fondo mostrando la
       // papelera, simplemente no hay info extra que añadir todavía; se
       // degrada a solo el tamaño en vez de mostrar algo incorrecto.
       var info = root.trashInfo[entry.name]
       if (info) {
-        var rel = root.relativeTime(info.epoch)
+        var rel = Utils.relativeTime(info.epoch)
         parts.push(rel ? "Deleted " + rel : "Deleted")
         if (info.origPath) {
           var slash = info.origPath.lastIndexOf("/")
@@ -1487,8 +1392,8 @@ Item {
       return parts.join(" · ")
     }
     var parts = []
-    if (entry.type !== "dir") parts.push(root.formatSize(entry.size))
-    var rel = root.relativeTime(entry.mtime)
+    if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
+    var rel = Utils.relativeTime(entry.mtime)
     if (rel) parts.push(rel)
     return parts.join(" · ")
   }
@@ -2192,7 +2097,7 @@ Item {
       // Cacheado por hash(ruta+mtime), igual que las miniaturas de vídeo
       // -- no vuelve a renderizar la primera página si ya existe de una
       // vista previa anterior del mismo fichero sin cambios.
-      var outDir = root.homeDir + "/.cache/omafiles/pdf-preview/" + root.simpleHash(path + "|" + entry.mtime)
+      var outDir = root.homeDir + "/.cache/omafiles/pdf-preview/" + Utils.simpleHash(path + "|" + entry.mtime)
       var outFile = outDir + "/preview.png"
       pdfPreviewProc.outFile = outFile
       root._previewPdfOwner = reqId
@@ -2554,7 +2459,7 @@ Item {
     root.propertiesMulti = false
     var path = root.joinPath(root.currentPath, entry.name)
     root.propertiesEntry = entry
-    root.propertiesSize = entry.type === "dir" ? "" : root.formatSize(entry.size)
+    root.propertiesSize = entry.type === "dir" ? "" : Utils.formatSize(entry.size)
     root.propertiesSizeLoading = entry.type === "dir"
     root.propertiesPerms = ""
     root.propertiesOwner = ""
@@ -2841,7 +2746,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.entries = root.sortEntries(root.parseEntries(text))
+        root.entries = root.sortEntries(Utils.parseEntries(text))
         // Refresca la info de la papelera junto con el listado -- entrar
         // en Trash/files o borrar/restaurar algo estando ya dentro debe
         // mantener origen/fecha al día. Se limpia al salir para no dejar
@@ -2956,7 +2861,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var parsed = root.parseEntries(text)
+        var parsed = Utils.parseEntries(text)
         // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
         // que había más de 200 coincidencias reales; se descarta el que
         // sobra y se avisa en la barra de estado en vez de dar la lista
@@ -2979,7 +2884,7 @@ Item {
     command: [root.pluginDir + "/list-mounts.sh"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.mounts = root.parseMounts(text)
+      onStreamFinished: root.mounts = Utils.parseMounts(text)
     }
   }
 
@@ -3064,7 +2969,7 @@ Item {
     command: [root.pluginDir + "/list-network-mounts.sh"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.networkMounts = root.parseNetworkMounts(text)
+      onStreamFinished: root.networkMounts = Utils.parseNetworkMounts(text)
     }
   }
 
@@ -3129,7 +3034,7 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        var parsed = root.parseNetworkMounts(text)
+        var parsed = Utils.parseNetworkMounts(text)
         root.networkMounts = parsed
         var before = networkMountsAfterConnectProc.beforePaths
         var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
@@ -4205,7 +4110,7 @@ Item {
                   stdout: StdioCollector {
                     waitForEnd: true
                     onStreamFinished: {
-                      bgPanel.entries = root.sortEntries(root.parseEntries(text))
+                      bgPanel.entries = root.sortEntries(Utils.parseEntries(text))
                       bgPanel.loaded = true
                       root.tabEntriesCache[bgPanel.modelData.path] = bgPanel.entries
                     }
@@ -4419,7 +4324,7 @@ Item {
                         // las imágenes/vídeos se veían sin previsualizar
                         // hasta que el cursor pasaba a ser el panel activo.
                         readonly property bool isVid: root.isVideo(modelData)
-                        readonly property string vidKey: isVid ? root.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
+                        readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
                         readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                         readonly property bool isDir: modelData.type === "dir"
                         readonly property bool isBroken: modelData.link === "broken"
@@ -5374,7 +5279,7 @@ Item {
                     // de carpeta o de tipo de fichero -- mismo glyph/fuente
                     // que usa el menú de Omarchy.
                     readonly property bool isVid: root.isVideo(modelData)
-                    readonly property string vidKey: isVid ? root.thumbKeyFor(modelData) : ""
+                    readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, root.currentPath) : ""
                     readonly property string vidThumb: vidKey ? (root.videoThumbReady[vidKey] || "") : ""
                     readonly property bool isDir: modelData.type === "dir"
                     readonly property bool isBroken: modelData.link === "broken"
@@ -5757,7 +5662,7 @@ Item {
                 }
 
                 readonly property string previewVideoThumb: root.previewEntry && root.isVideo(root.previewEntry)
-                  ? (root.videoThumbReady[root.thumbKeyFor(root.previewEntry)] || "") : ""
+                  ? (root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)] || "") : ""
 
                 Image {
                   visible: root.previewEntry && root.isVideo(root.previewEntry) && parent.previewVideoThumb !== ""
@@ -5854,7 +5759,7 @@ Item {
 
                 Column {
                   visible: root.previewEntry && !root.isImage(root.previewEntry) && !root.previewIsText
-                    && !(root.isVideo(root.previewEntry) && root.videoThumbReady[root.thumbKeyFor(root.previewEntry)])
+                    && !(root.isVideo(root.previewEntry) && root.videoThumbReady[Utils.thumbKeyFor(root.previewEntry, root.currentPath)])
                     && !(root.isPdf(root.previewEntry) && root.previewPdfImage !== "")
                     && !(root.isAudio(root.previewEntry) && root.previewAudioInfo.length > 0)
                   width: parent.width
@@ -5873,7 +5778,7 @@ Item {
                   Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: root.previewEntry ? root.formatSize(root.previewEntry.size) : ""
+                    text: root.previewEntry ? Utils.formatSize(root.previewEntry.size) : ""
                     font.pixelSize: Style.font.title
                     font.family: Style.font.family
                     color: Color.menu.text
@@ -5948,648 +5853,67 @@ Item {
       }
 
       // ---------- Renombrar en lote ----------
-      MouseArea {
+      BulkRenamePanel {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.bulkRenameOpen
-        z: 15
-        onClicked: root.bulkRenameOpen = false
-      }
-
-      BorderSurface {
-        id: bulkRenameCard
-        visible: root.bulkRenameOpen
-        width: Math.min(parent.width - 80, 380)
-        height: bulkRenameColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: bulkRenameColumn
-          anchors.fill: parent
-          anchors.topMargin: bulkRenameCard.contentTopInset
-          anchors.rightMargin: bulkRenameCard.contentRightInset
-          anchors.bottomMargin: bulkRenameCard.contentBottomInset
-          anchors.leftMargin: bulkRenameCard.contentLeftInset
-          spacing: Style.spacing.sm
-
-          Text {
-            width: parent.width
-            text: "Rename " + root.selectedIndices.length + " items"
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-          }
-
-          Text {
-            width: parent.width
-            text: "Use {name}, {ext}, {n} (sequence number)"
-            font.pixelSize: Style.font.subtitle
-            font.family: Style.font.family
-            color: Color.menu.text
-            opacity: 0.6
-            wrapMode: Text.Wrap
-          }
-
-          TextField {
-            id: bulkRenameField
-            width: parent.width
-            Accessible.role: Accessible.EditableText
-            Accessible.name: "Bulk rename pattern"
-            text: root.bulkRenamePattern
-            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
-            Keys.onPressed: function (event) {
-              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                root.bulkRenamePattern = text
-                root.commitBulkRename()
-                event.accepted = true
-              } else if (event.key === Qt.Key_Escape) {
-                root.bulkRenameOpen = false
-                event.accepted = true
-              }
-            }
-          }
-
-          // Patrones usados antes, más reciente primero -- clic rellena
-          // el campo (no renombra directo), para que se pueda revisar/
-          // ajustar antes de aplicar. Solo si hay historial: la primera
-          // vez que se usa Bulk rename no hay nada que ofrecer aquí.
-          Flow {
-            width: parent.width
-            visible: root.bulkRenameHistory.length > 0
-            spacing: Style.spacing.xs
-
-            Repeater {
-              model: root.bulkRenameHistory
-
-              CursorSurface {
-                id: patternChip
-                required property string modelData
-                width: chipText.implicitWidth + Style.spacing.sm * 2
-                height: Style.spacing.controlHeight * 0.8
-                foreground: Color.menu.text
-                accent: Color.accent
-                // Sin esto se confundía con texto suelto en reposo -- el
-                // mismo componente ya lleva borde permanente en la rejilla
-                // de permisos de chmod (chmodCell) por este motivo
-                // exacto, aquí se le había olvidado.
-                bordered: true
-                hasCursor: chipMouse.containsMouse
-                Accessible.role: Accessible.Button
-                Accessible.name: "Use pattern " + modelData
-
-                Text {
-                  id: chipText
-                  anchors.centerIn: parent
-                  text: patternChip.modelData
-                  font.pixelSize: Style.font.bodySmall
-                  font.family: Style.font.family
-                  color: Color.menu.text
-                }
-
-                MouseArea {
-                  id: chipMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    bulkRenameField.text = patternChip.modelData
-                    bulkRenameField.forceActiveFocus()
-                    bulkRenameField.selectAll()
-                  }
-                }
-              }
-            }
-          }
-
-          Button {
-            text: "Rename"
-            bordered: true
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: { root.bulkRenamePattern = bulkRenameField.text; root.commitBulkRename() }
-          }
-        }
+        open: root.bulkRenameOpen
+        selectedCount: root.selectedIndices.length
+        pattern: root.bulkRenamePattern
+        history: root.bulkRenameHistory
+        onCloseRequested: root.bulkRenameOpen = false
+        onRenameRequested: function (pattern) { root.bulkRenamePattern = pattern; root.commitBulkRename() }
+        onFocusReturnRequested: list.forceActiveFocus()
       }
 
       // ---------- Conectar a servidor ----------
-      MouseArea {
+      ConnectServer {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.connectServerOpen
-        z: 15
-        onClicked: if (!root.networkConnecting) root.cancelConnectToServer()
-      }
-
-      BorderSurface {
-        id: connectServerCard
-        visible: root.connectServerOpen
-        width: Math.min(parent.width - 80, 420)
-        height: connectServerColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: connectServerColumn
-          anchors.fill: parent
-          anchors.topMargin: connectServerCard.contentTopInset
-          anchors.rightMargin: connectServerCard.contentRightInset
-          anchors.bottomMargin: connectServerCard.contentBottomInset
-          anchors.leftMargin: connectServerCard.contentLeftInset
-          spacing: Style.spacing.sm
-
-          Text {
-            width: parent.width
-            text: "Connect to server"
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-          }
-
-          Text {
-            width: parent.width
-            text: "sftp://user@host/path · smb://server/share · dav(s)://host/path · ftp://host/path"
-            font.pixelSize: Style.font.bodySmall
-            font.family: Style.font.family
-            color: Color.menu.text
-            opacity: 0.6
-            wrapMode: Text.Wrap
-          }
-
-          TextField {
-            id: connectServerField
-            width: parent.width
-            Accessible.role: Accessible.EditableText
-            Accessible.name: "Server address"
-            text: root.connectServerUri
-            enabled: !root.networkConnecting
-            onVisibleChanged: if (visible) { forceActiveFocus(); selectAll() } else list.forceActiveFocus()
-            Keys.onPressed: function (event) {
-              if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                root.connectServerUri = text
-                root.commitConnectToServer()
-                event.accepted = true
-              } else if (event.key === Qt.Key_Escape) {
-                if (root.networkConnecting) root.cancelNetworkConnect()
-                else root.cancelConnectToServer()
-                event.accepted = true
-              }
-            }
-          }
-
-          Text {
-            width: parent.width
-            visible: root.connectServerError.length > 0
-            text: root.connectServerError
-            font.pixelSize: Style.font.bodySmall
-            font.family: Style.font.family
-            color: Color.urgent
-            wrapMode: Text.Wrap
-          }
-
-          Row {
-            spacing: Style.spacing.sm
-
-            Button {
-              text: root.networkConnecting ? "Connecting…" : "Connect"
-              bordered: true
-              enabled: !root.networkConnecting
-              Accessible.role: Accessible.Button
-              Accessible.name: text
-              onClicked: { root.connectServerUri = connectServerField.text; root.commitConnectToServer() }
-            }
-
-            Button {
-              text: "Cancel"
-              visible: root.networkConnecting
-              Accessible.role: Accessible.Button
-              Accessible.name: text
-              onClicked: root.cancelNetworkConnect()
-            }
-          }
-        }
+        open: root.connectServerOpen
+        connecting: root.networkConnecting
+        uri: root.connectServerUri
+        errorText: root.connectServerError
+        onConnectRequested: function (uri) { root.connectServerUri = uri; root.commitConnectToServer() }
+        onCancelConnectingRequested: root.cancelNetworkConnect()
+        onCloseRequested: root.cancelConnectToServer()
+        onFocusReturnRequested: list.forceActiveFocus()
       }
 
       // ---------- Permisos (chmod) ----------
-      MouseArea {
+      ChmodPanel {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.chmodOpen
-        z: 15
-        onClicked: root.chmodOpen = false
-      }
-
-      BorderSurface {
-        id: chmodCard
-        visible: root.chmodOpen
-        width: Math.min(parent.width - 80, 320)
-        height: chmodColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: chmodColumn
-          anchors.fill: parent
-          anchors.topMargin: chmodCard.contentTopInset
-          anchors.rightMargin: chmodCard.contentRightInset
-          anchors.bottomMargin: chmodCard.contentBottomInset
-          anchors.leftMargin: chmodCard.contentLeftInset
-          spacing: Style.spacing.sm
-
-          Text {
-            width: parent.width
-            text: root.chmodNames.length === 1
-              ? "Permissions for \"" + root.chmodNames[0] + "\""
-              : "Permissions for " + root.chmodNames.length + " items"
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-            elide: Text.ElideMiddle
-          }
-
-          Text {
-            width: parent.width
-            visible: root.chmodMixed
-            text: "Mixed permissions — choose a mode to apply to all"
-            font.pixelSize: Style.font.bodySmall
-            font.family: Style.font.family
-            // Qt.darker se usa en este fichero para texto DESHABILITADO
-            // (botones/filas sin acción posible) -- este texto no está
-            // deshabilitado, es solo un aviso secundario, así que le
-            // toca la misma convención de opacity:0.6 que el resto del
-            // texto secundario del fichero.
-            color: Color.menu.text
-            opacity: 0.6
-            wrapMode: Text.WordWrap
-          }
-
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-          // Cabecera de columnas -- hueco a la izquierda del ancho de la
-          // etiqueta de fila (Owner/Group/Other), luego Read/Write/Exec.
-          Row {
-            width: parent.width
-            spacing: Style.spacing.sm
-
-            Item { width: 60; height: 1 }
-
-            Repeater {
-              model: ["Read", "Write", "Exec"]
-
-              Text {
-                required property string modelData
-                width: Style.spacing.controlHeight
-                horizontalAlignment: Text.AlignHCenter
-                text: modelData
-                font.pixelSize: Style.font.caption
-                font.family: Style.font.family
-                color: Color.menu.text
-                opacity: 0.6
-              }
-            }
-          }
-
-          // Owner (tú) / Group / Other -- cada fila con sus 3 casillas rwx,
-          // en vez de escribir el octal a mano. root.chmodMode sigue siendo
-          // la fuente de verdad (un string de 3 dígitos); cada casilla
-          // consulta/cambia un bit suyo directamente.
-          Repeater {
-            model: [
-              { label: "Owner", idx: 0 },
-              { label: "Group", idx: 1 },
-              { label: "Other", idx: 2 }
-            ]
-
-            Row {
-              id: chmodRow
-              required property var modelData
-              width: chmodColumn.width
-              spacing: Style.spacing.sm
-
-              Text {
-                width: 60
-                anchors.verticalCenter: parent.verticalCenter
-                text: chmodRow.modelData.label
-                font.pixelSize: Style.font.subtitle
-                font.family: Style.font.family
-                color: Color.menu.text
-              }
-
-              Repeater {
-                model: [4, 2, 1]
-
-                // CursorSurface en vez de un Rectangle+MouseArea a mano --
-                // mismo componente que usa cualquier otra fila/pestaña
-                // clicable de la app, así que la casilla tiene el mismo
-                // hover y el mismo tratamiento de "seleccionado" (current)
-                // que el resto, en vez de un estilo inventado aparte.
-                CursorSurface {
-                  id: chmodCell
-                  required property int modelData
-                  width: Style.spacing.controlHeight
-                  height: Style.spacing.controlHeight
-                  anchors.verticalCenter: parent.verticalCenter
-                  foreground: Color.menu.text
-                  accent: Color.accent
-                  bordered: true
-                  hasCursor: chmodCellMouse.containsMouse
-                  current: root.chmodBitSet(chmodRow.modelData.idx, modelData)
-
-                  MouseArea {
-                    id: chmodCellMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.toggleChmodBit(chmodRow.modelData.idx, chmodCell.modelData)
-                  }
-                }
-              }
-            }
-          }
-
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-          Text {
-            width: parent.width
-            text: "Octal: " + root.chmodMode
-            font.pixelSize: Style.font.subtitle
-            font.family: Style.font.family
-            color: Color.menu.text
-            opacity: 0.6
-          }
-
-          Toggle {
-            width: parent.width
-            visible: root.chmodHasDir
-            label: "Apply to subfolders"
-            description: "chmod -R -- also changes everything inside"
-            checked: root.chmodRecursive
-            foreground: Color.menu.text
-            accent: Color.accent
-            onClicked: root.chmodRecursive = !root.chmodRecursive
-          }
-
-          Button {
-            text: "Apply"
-            bordered: true
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: root.commitChmod(root.chmodMode)
-          }
-        }
+        open: root.chmodOpen
+        names: root.chmodNames
+        mixed: root.chmodMixed
+        mode: root.chmodMode
+        hasDir: root.chmodHasDir
+        recursive: root.chmodRecursive
+        onCloseRequested: root.chmodOpen = false
+        onBitToggled: function (ownerIdx, bit) { root.toggleChmodBit(ownerIdx, bit) }
+        onRecursiveToggled: root.chmodRecursive = !root.chmodRecursive
+        onApplyRequested: function (mode) { root.commitChmod(mode) }
       }
 
       // ---------- Propiedades ----------
-      MouseArea {
+      PropertiesPanel {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.propertiesOpen
-        z: 15
-        onClicked: root.propertiesOpen = false
-      }
-
-      BorderSurface {
-        id: propertiesCard
-        visible: root.propertiesOpen
-        width: Math.min(parent.width - 80, 360)
-        height: propertiesColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: propertiesColumn
-          anchors.fill: parent
-          anchors.topMargin: propertiesCard.contentTopInset
-          anchors.rightMargin: propertiesCard.contentRightInset
-          anchors.bottomMargin: propertiesCard.contentBottomInset
-          anchors.leftMargin: propertiesCard.contentLeftInset
-          spacing: Style.spacing.xs
-
-          Text {
-            width: parent.width
-            text: root.propertiesMulti
-              ? root.propertiesCount + " items selected"
-              : (root.propertiesEntry ? root.propertiesEntry.name : "")
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-            elide: Text.ElideMiddle
-          }
-
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-          Repeater {
-            model: root.propertiesMulti
-              ? [
-                  { label: "Items", value: String(root.propertiesCount) },
-                  { label: "Total size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize }
-                ]
-              : [
-                  { label: "Type", value: root.propertiesEntry ? (root.propertiesEntry.type === "dir" ? "Folder" : "File") : "" },
-                  { label: "Size", value: root.propertiesSizeLoading ? "Calculating…" : root.propertiesSize },
-                  { label: "Permissions", value: root.propertiesPerms },
-                  { label: "Owner", value: root.propertiesOwner },
-                  { label: "Modified", value: root.propertiesMtime }
-                ]
-
-            Row {
-              required property var modelData
-              width: propertiesColumn.width
-              spacing: Style.spacing.sm
-
-              Text {
-                // Mismo ajuste que la tabla de metadatos de audio: 84 no
-                // le llegaba a "Permissions" (mide igual de ancho que
-                // "Sample rate", medido con la fuente real).
-                width: 120
-                text: parent.modelData.label
-                font.pixelSize: Style.font.subtitle
-                font.family: Style.font.family
-                color: Color.menu.text
-                opacity: 0.6
-              }
-
-              Text {
-                width: parent.width - 120 - Style.spacing.sm
-                text: parent.modelData.value
-                font.pixelSize: Style.font.subtitle
-                font.family: Style.font.family
-                color: Color.menu.text
-                elide: Text.ElideRight
-              }
-            }
-          }
-
-          Button {
-            text: "Close"
-            bordered: true
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: root.propertiesOpen = false
-          }
-        }
+        open: root.propertiesOpen
+        multi: root.propertiesMulti
+        count: root.propertiesCount
+        entry: root.propertiesEntry
+        sizeLoading: root.propertiesSizeLoading
+        size: root.propertiesSize
+        perms: root.propertiesPerms
+        owner: root.propertiesOwner
+        mtime: root.propertiesMtime
+        onCloseRequested: root.propertiesOpen = false
       }
 
       // ---------- Ayuda de atajos de teclado ----------
-      MouseArea {
+      // Primer componente extraído a su propio fichero (ShortcutsHelp.qml)
+      // -- ver comentario ahí sobre por qué se eligió este trozo primero.
+      ShortcutsHelp {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.shortcutsHelpOpen
-        z: 15
-        onClicked: root.shortcutsHelpOpen = false
-      }
-
-      BorderSurface {
-        id: shortcutsHelpCard
-        visible: root.shortcutsHelpOpen
-        width: Math.min(parent.width - 80, 420)
-        height: Math.min(parent.height - 80, 460)
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: shortcutsHelpColumn
-          anchors.fill: parent
-          anchors.topMargin: shortcutsHelpCard.contentTopInset
-          anchors.rightMargin: shortcutsHelpCard.contentRightInset
-          anchors.bottomMargin: shortcutsHelpCard.contentBottomInset
-          anchors.leftMargin: shortcutsHelpCard.contentLeftInset
-          spacing: Style.spacing.xs
-
-          Text {
-            width: parent.width
-            text: "Keyboard shortcuts"
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-          }
-
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-          Flickable {
-            width: parent.width
-            // Altura fija en vez de calculada a partir de los hermanos del
-            // Column (título/separador/botón) -- más simple y evita atarse
-            // a un Item auxiliar solo para medir. 460 de alto de tarjeta
-            // menos cabecera/separador/botón deja hueco de sobra para las
-            // ~24 filas sin que sea necesario hacer scroll casi nunca.
-            height: 320
-            clip: true
-            contentWidth: width
-            contentHeight: shortcutsHelpRepeaterColumn.implicitHeight
-            boundsBehavior: Flickable.StopAtBounds
-
-            Column {
-              id: shortcutsHelpRepeaterColumn
-              width: parent.width
-              spacing: Style.spacing.xs
-
-              // Mismo orden que la tabla de la sección "Keyboard
-              // shortcuts" del README -- si se añade/edita un atajo ahí,
-              // hacerlo aquí también.
-              Repeater {
-                model: [
-                  { key: "j / k / ↓ / ↑", action: "Move down / up" },
-                  { key: "h / Backspace", action: "Go up a directory" },
-                  { key: "Alt+← / Alt+→", action: "Back / forward" },
-                  { key: "l / Enter", action: "Open (enter directory / launch file)" },
-                  { key: "gg / Shift+G", action: "Jump to top / bottom" },
-                  { key: "Space", action: "Toggle preview" },
-                  { key: "/", action: "Search here (Ctrl+Enter searches recursively)" },
-                  { key: ": / Ctrl+P", action: "Command palette" },
-                  { key: "Ctrl+A", action: "Select all" },
-                  { key: "Ctrl+Shift+A", action: "Select none" },
-                  { key: "Ctrl+I", action: "Invert selection" },
-                  { key: "F2", action: "Rename" },
-                  { key: "Delete", action: "Delete (to trash)" },
-                  { key: "Ctrl+C / Ctrl+X / Ctrl+V", action: "Copy / cut / paste" },
-                  { key: "Ctrl+Z", action: "Undo" },
-                  { key: "Ctrl+Shift+Z / Ctrl+Y", action: "Redo" },
-                  { key: "s / Shift+S", action: "Cycle sort field / reverse order" },
-                  { key: "Ctrl+L", action: "Edit path directly" },
-                  { key: "Ctrl+Shift+N", action: "New folder" },
-                  { key: "Ctrl+N", action: "New file" },
-                  { key: "Ctrl+T / Ctrl+\\", action: "New tab (new panel)" },
-                  { key: "Ctrl+W / Ctrl+Tab", action: "Close tab / next tab" },
-                  { key: "Ctrl+H", action: "Toggle hidden files" },
-                  { key: "Shift+Enter", action: "Open a terminal here" },
-                  { key: "F5", action: "Refresh" },
-                  { key: "?", action: "Toggle this help" },
-                  { key: "Escape", action: "Close preview, or close the window" }
-                ]
-
-                Row {
-                  required property var modelData
-                  width: shortcutsHelpRepeaterColumn.width
-                  spacing: Style.spacing.sm
-
-                  Text {
-                    width: 170
-                    text: parent.modelData.key
-                    font.pixelSize: Style.font.bodySmall
-                    font.family: "monospace"
-                    color: Color.menu.text
-                    opacity: 0.7
-                    wrapMode: Text.Wrap
-                  }
-
-                  Text {
-                    width: parent.width - 170 - Style.spacing.sm
-                    text: parent.modelData.action
-                    font.pixelSize: Style.font.bodySmall
-                    font.family: Style.font.family
-                    color: Color.menu.text
-                    wrapMode: Text.Wrap
-                  }
-                }
-              }
-            }
-          }
-
-          Button {
-            id: closeShortcutsButton
-            text: "Close"
-            bordered: true
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: root.shortcutsHelpOpen = false
-          }
-        }
+        open: root.shortcutsHelpOpen
+        onRequestClose: root.shortcutsHelpOpen = false
       }
 
       // ---------- Copiar/mover en curso ----------
@@ -6676,162 +6000,23 @@ Item {
       }
 
       // ---------- Abrir con... ----------
-      MouseArea {
+      OpenWithPanel {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.openWithOpen
-        z: 15
-        onClicked: root.openWithOpen = false
-      }
-
-      BorderSurface {
-        id: openWithCard
-        visible: root.openWithOpen
-        width: Math.min(parent.width - 80, 320)
-        height: openWithColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: openWithColumn
-          anchors.fill: parent
-          anchors.topMargin: openWithCard.contentTopInset
-          anchors.rightMargin: openWithCard.contentRightInset
-          anchors.bottomMargin: openWithCard.contentBottomInset
-          anchors.leftMargin: openWithCard.contentLeftInset
-          spacing: Style.spacing.xs
-
-          Text {
-            width: parent.width
-            text: "Open \"" + (root.openWithEntry ? root.openWithEntry.name : "") + "\" with:"
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-            elide: Text.ElideMiddle
-          }
-
-          PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
-
-          Text {
-            visible: root.openWithApps.length === 0
-            width: parent.width
-            text: "No registered applications for this file type."
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            color: Color.menu.text
-            opacity: 0.6
-            wrapMode: Text.Wrap
-          }
-
-          Repeater {
-            model: root.openWithApps
-
-            CursorSurface {
-              required property var modelData
-              width: openWithColumn.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: appMouse.containsMouse
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                text: parent.modelData.name
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: Color.menu.text
-              }
-
-              MouseArea {
-                id: appMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.launchWith(modelData.id)
-              }
-            }
-          }
-        }
+        open: root.openWithOpen
+        entry: root.openWithEntry
+        apps: root.openWithApps
+        onCloseRequested: root.openWithOpen = false
+        onAppSelected: function (appId) { root.launchWith(appId) }
       }
 
       // ---------- Menú contextual ----------
-      MouseArea {
+      ContextMenuPanel {
         anchors.fill: parent
-        visible: root.contextMenuOpen
-        z: 15
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        onClicked: root.contextMenuOpen = false
-      }
-
-      BorderSurface {
-        id: contextMenu
-        visible: root.contextMenuOpen
-        x: root.contextMenuX
-        y: root.contextMenuY
-        width: 200
-        height: contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        Column {
-          id: contextMenuColumn
-          anchors.fill: parent
-          anchors.topMargin: contextMenu.contentTopInset
-          anchors.rightMargin: contextMenu.contentRightInset
-          anchors.bottomMargin: contextMenu.contentBottomInset
-          anchors.leftMargin: contextMenu.contentLeftInset
-          spacing: Style.spacing.xs
-
-          Repeater {
-            model: root.contextMenuActions
-
-            CursorSurface {
-              required property var modelData
-              readonly property bool actionEnabled: modelData.enabled !== false
-              width: contextMenuColumn.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: itemMouse.containsMouse && actionEnabled
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                text: parent.modelData.label
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: parent.modelData.destructive ? Color.urgent : (parent.actionEnabled ? Color.menu.text : Qt.darker(Color.menu.text, 1.8))
-              }
-
-              MouseArea {
-                id: itemMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: parent.actionEnabled
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root.contextMenuOpen = false
-                  parent.modelData.action()
-                }
-              }
-            }
-          }
-        }
+        open: root.contextMenuOpen
+        menuX: root.contextMenuX
+        menuY: root.contextMenuY
+        actions: root.contextMenuActions
+        onCloseRequested: root.contextMenuOpen = false
       }
 
       ConfirmDialog {
@@ -6912,220 +6097,37 @@ Item {
       }
 
       // ---------- Conflicto al pegar ----------
-      MouseArea {
+      ConflictResolveDialog {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.pasteConflictOpen
-        z: 15
-        onClicked: root.cancelPasteConflict()
-      }
-
-      BorderSurface {
-        id: pasteConflictCard
-        visible: root.pasteConflictOpen
-        width: Math.min(parent.width - 80, 360)
-        height: pasteConflictColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: pasteConflictColumn
-          anchors.fill: parent
-          anchors.topMargin: pasteConflictCard.contentTopInset
-          anchors.rightMargin: pasteConflictCard.contentRightInset
-          anchors.bottomMargin: pasteConflictCard.contentBottomInset
-          anchors.leftMargin: pasteConflictCard.contentLeftInset
-          spacing: Style.spacing.sm
-
-          Text {
-            width: parent.width
-            text: root.pasteConflictNames.length === 1
-              ? "\"" + root.pasteConflictNames[0] + "\" already exists here."
-              : root.pasteConflictNames.length + " items already exist here."
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-            wrapMode: Text.Wrap
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.spacing.xs
-
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runPaste("overwrite") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runPaste("skip") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelPasteConflict() }
-          }
-        }
+        open: root.pasteConflictOpen
+        names: root.pasteConflictNames
+        onOverwriteRequested: root.runPaste("overwrite")
+        onSkipRequested: root.runPaste("skip")
+        onCancelRequested: root.cancelPasteConflict()
       }
 
       // ---------- Conflicto al soltar (drag & drop) ----------
-      MouseArea {
+      ConflictResolveDialog {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.dropConflictOpen
-        z: 15
-        onClicked: root.cancelDropConflict()
-      }
-
-      BorderSurface {
-        id: dropConflictCard
-        visible: root.dropConflictOpen
-        width: Math.min(parent.width - 80, 360)
-        height: dropConflictColumn.implicitHeight + contentTopInset + contentBottomInset
-        anchors.centerIn: parent
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 20
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: dropConflictColumn
-          anchors.fill: parent
-          anchors.topMargin: dropConflictCard.contentTopInset
-          anchors.rightMargin: dropConflictCard.contentRightInset
-          anchors.bottomMargin: dropConflictCard.contentBottomInset
-          anchors.leftMargin: dropConflictCard.contentLeftInset
-          spacing: Style.spacing.sm
-
-          Text {
-            width: parent.width
-            text: root.dropConflictNames.length === 1
-              ? "\"" + root.dropConflictNames[0] + "\" already exists here."
-              : root.dropConflictNames.length + " items already exist here."
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.bold: true
-            color: Color.menu.text
-            wrapMode: Text.Wrap
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.spacing.xs
-
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runDrop("overwrite") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.runDrop("skip") }
-            Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelDropConflict() }
-          }
-        }
+        open: root.dropConflictOpen
+        names: root.dropConflictNames
+        onOverwriteRequested: root.runDrop("overwrite")
+        onSkipRequested: root.runDrop("skip")
+        onCancelRequested: root.cancelDropConflict()
       }
 
       // ---------- Paleta de comandos (: o Ctrl+P) ----------
-      MouseArea {
+      CommandPalettePanel {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: root.paletteOpen
-        z: 25
-        onClicked: root.closePalette()
-      }
-
-      BorderSurface {
-        id: palette
-        visible: root.paletteOpen
-        width: Math.min(parent.width - 80, 420)
-        height: Math.min(parent.height - 2 * Style.spacing.huge, 360)
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: Style.spacing.huge
-        radius: Style.cornerRadius
-        color: Color.menu.background
-        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-        padding: Style.spacing.sm
-        z: 30
-
-        MouseArea { anchors.fill: parent; onClicked: {} }
-
-        Column {
-          id: paletteColumn
-          anchors.fill: parent
-          anchors.topMargin: palette.contentTopInset
-          anchors.rightMargin: palette.contentRightInset
-          anchors.bottomMargin: palette.contentBottomInset
-          anchors.leftMargin: palette.contentLeftInset
-          spacing: Style.spacing.xs
-
-          TextField {
-            id: paletteField
-            width: parent.width
-            Accessible.role: Accessible.EditableText
-            Accessible.name: "Command palette"
-            placeholderText: "Type a command…"
-            text: root.paletteQuery
-            onTextChanged: { root.paletteQuery = text; root.paletteIndex = 0 }
-            onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
-            Keys.onPressed: function (event) {
-              var cmds = root.filteredPaletteCommands()
-              if (event.key === Qt.Key_Escape) {
-                root.closePalette()
-                event.accepted = true
-              } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                root.runPaletteCommand(root.paletteIndex)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Down) {
-                root.paletteIndex = Math.min(cmds.length - 1, root.paletteIndex + 1)
-                paletteList.positionViewAtIndex(root.paletteIndex, ListView.Contain)
-                event.accepted = true
-              } else if (event.key === Qt.Key_Up) {
-                root.paletteIndex = Math.max(0, root.paletteIndex - 1)
-                paletteList.positionViewAtIndex(root.paletteIndex, ListView.Contain)
-                event.accepted = true
-              }
-            }
-          }
-
-          PanelSeparator { id: paletteSep; foreground: Color.menu.text; strength: 0.15 }
-
-          ListView {
-            id: paletteList
-            width: parent.width
-            height: parent.height - paletteField.height - paletteSep.height - 2 * paletteColumn.spacing
-            spacing: Style.spacing.xs
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            model: root.paletteOpen ? root.filteredPaletteCommands() : []
-
-            delegate: CursorSurface {
-              required property var modelData
-              required property int index
-              readonly property bool cmdEnabled: modelData.enabled !== false
-              width: paletteList.width
-              implicitHeight: Style.spacing.controlHeight
-              foreground: Color.menu.text
-              accent: Color.accent
-              hasCursor: index === root.paletteIndex && cmdEnabled
-
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Style.spacing.sm
-                text: parent.modelData.label
-                font.pixelSize: Style.font.title
-                font.family: Style.font.family
-                font.weight: Font.Medium
-                color: parent.cmdEnabled ? (index === root.paletteIndex ? Color.menu.selectedText : Color.menu.text) : Qt.darker(Color.menu.text, 1.8)
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                enabled: parent.cmdEnabled
-                cursorShape: Qt.PointingHandCursor
-                onEntered: root.paletteIndex = index
-                onClicked: root.runPaletteCommand(index)
-              }
-            }
-          }
-        }
+        open: root.paletteOpen
+        query: root.paletteQuery
+        index: root.paletteIndex
+        commands: root.paletteOpen ? root.filteredPaletteCommands() : []
+        onQueryEdited: function (text) { root.paletteQuery = text; root.paletteIndex = 0 }
+        onCloseRequested: root.closePalette()
+        onIndexRequested: function (idx) { root.paletteIndex = idx }
+        onCommandActivated: function (idx) { root.runPaletteCommand(idx) }
+        onFocusReturnRequested: list.forceActiveFocus()
       }
     }
   }
