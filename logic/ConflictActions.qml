@@ -23,7 +23,6 @@ Item {
   property Item fileOps: null
   property Item renameOps: null
   property Item clipboardOps: null
-  property Item dragDropOps: null
   property Item selectionOps: null
   property Item bookmarkOps: null
 
@@ -302,13 +301,68 @@ Item {
       onStreamFinished: {
         var conflicts = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
         if (conflicts.length === 0) {
-          dragDropOps.runDrop("all")
+          runDrop("all")
         } else {
           ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
           ConflictState.dropConflictOpen = true
         }
       }
     }
+  }
+
+  // Ficheros soltados sobre `destDir` (una fila de carpeta, un marcador,
+  // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
+  // `isMove` viene de DragEvent.source !== null (arrastre interno) --
+  // arrastres que vienen de fuera siempre copian, nunca mueven el origen.
+  // mode: "all" (sin conflictos) | "overwrite" | "skip". Vivía en
+  // logic/DragDropOps.qml -- movido aquí para romper una dependencia
+  // circular (DragDropOps necesitaba conflictActions para comprobar
+  // conflictos, y conflictActions necesitaba dragDropOps solo para esto).
+  function runDrop(mode) {
+    var conflictSet = {}
+    ConflictState.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
+    var sources = ConflictState.dropPendingSources.filter(function (src) {
+      if (mode !== "skip") return true
+      var name = src.substring(src.lastIndexOf("/") + 1)
+      return !conflictSet[name]
+    })
+    ConflictState.dropConflictOpen = false
+    ConflictState.dropConflictNames = []
+    if (sources.length > 0) {
+      var noClobber = mode !== "overwrite"
+      var destDir = ConflictState.dropTargetDir
+      var isMove = ConflictState.dropIsMove
+      var pairs = sources.map(function (src) {
+        var name = src.substring(src.lastIndexOf("/") + 1)
+        return { src: src, dest: root.joinPath(destDir, name) }
+      })
+      var cmds = pairs.map(function (p) {
+        var verb = isMove ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
+        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
+      })
+      var busyVerb = isMove ? "Moving " : "Copying "
+      var busyLabel = pairs.length === 1
+        ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
+        : busyVerb + pairs.length + " items…"
+      var dropMoveCmd = root.chainCmds(cmds)
+      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
+      root.runAction(dropMoveCmd, busyLabel, function () {
+        if (!isMove) return
+        var label = pairs.length === 1
+          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+          : "move " + pairs.length + " items"
+        root.pushUndo(label, function () {
+          var undoCmds = pairs.map(function (p) {
+            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
+          })
+          return root.runAction(root.chainCmds(undoCmds))
+        }, function () {
+          return root.runAction(dropMoveCmd)
+        })
+      })
+    }
+    ConflictState.dropPendingSources = []
+    ConflictState.dropTargetDir = ""
   }
 
   Process {

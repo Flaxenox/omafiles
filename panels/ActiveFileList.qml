@@ -162,25 +162,14 @@ Item {
             // arrastrar aquí dibuja un lazo de selección (como Nautilus/
             // cualquier gestor de iconos) -- Ctrl mantenido pulsado suma a
             // la selección previa en vez de reemplazarla.
-            MouseArea {
+            MarqueeCatcher {
               id: marqueeArea
               anchors.top: parent.top
               height: listView.y
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
-              acceptedButtons: Qt.LeftButton
-              onPressed: function (mouse) {
-                var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                var vp = mapToItem(listView, mouse.x, mouse.y)
-                selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-              }
-              onPositionChanged: function (mouse) {
-                var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                var vp = mapToItem(listView, mouse.x, mouse.y)
-                selectionOps.moveMarquee(p.x, p.y, vp.y)
-              }
-              onReleased: selectionOps.endMarquee()
-              onCanceled: selectionOps.endMarquee()
+              catcherListView: listView
+              catcherSelectionOps: selectionOps
             }
 
             ListView {
@@ -247,21 +236,10 @@ Item {
                 // pueda perturbar el origen.
                 height: 400
 
-                MouseArea {
+                MarqueeCatcher {
                   anchors.fill: parent
-                  acceptedButtons: Qt.LeftButton
-                  onPressed: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-                  }
-                  onPositionChanged: function (mouse) {
-                    var p = mapToItem(listView.contentItem, mouse.x, mouse.y)
-                    var vp = mapToItem(listView, mouse.x, mouse.y)
-                    selectionOps.moveMarquee(p.x, p.y, vp.y)
-                  }
-                  onReleased: selectionOps.endMarquee()
-                  onCanceled: selectionOps.endMarquee()
+                  catcherListView: listView
+                  catcherSelectionOps: selectionOps
                 }
               }
 

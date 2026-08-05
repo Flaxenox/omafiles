@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 
@@ -16,15 +17,25 @@ Item {
   property Item root: null
   property Item tabOps: null
 
+  // Escritura fire-and-forget de un JSON a disco -- mkdir -p por si la
+  // carpeta ~/.local/state/omafiles/ aún no existe. Ninguna de las 4
+  // llamadas de más abajo necesita saber cuándo termina ni capturar
+  // stdout/stderr, así que Quickshell.execDetached() basta -- antes cada
+  // una tenía su propio Process vacío (`Process { id: saveXProc }`, sin
+  // stdout/stderr, solo para asignarle `.command` en caliente), 4 copias
+  // del mismo patrón de 4 líneas.
+  function _saveJson(path, data) {
+    var dir = path.substring(0, path.lastIndexOf("/"))
+    var json = JSON.stringify(data)
+    Quickshell.execDetached(["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(path)])
+  }
+
   function loadBookmarks() {
     loadBookmarksProc.running = true
   }
 
   function saveBookmarks() {
-    var dir = root.bookmarksFile.substring(0, root.bookmarksFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.bookmarks)
-    saveBookmarksProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bookmarksFile)]
-    saveBookmarksProc.running = true
+    _saveJson(root.bookmarksFile, root.bookmarks)
   }
 
   function loadRecent() {
@@ -32,10 +43,7 @@ Item {
   }
 
   function saveRecent() {
-    var dir = root.recentFile.substring(0, root.recentFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.recentFiles)
-    saveRecentProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.recentFile)]
-    saveRecentProc.running = true
+    _saveJson(root.recentFile, root.recentFiles)
   }
 
   // Solo se llama en la primera apertura de la sesión de Quickshell, sin
@@ -54,10 +62,7 @@ Item {
   function saveSession() {
     tabOps.saveActiveTab()
     var snapshot = root.tabs.map(function (t) { return { path: t.path } })
-    var json = JSON.stringify({ tabs: snapshot, activeTabIndex: root.activeTabIndex })
-    var dir = root.sessionFile.substring(0, root.sessionFile.lastIndexOf("/"))
-    saveSessionProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.sessionFile)]
-    saveSessionProc.running = true
+    _saveJson(root.sessionFile, { tabs: snapshot, activeTabIndex: root.activeTabIndex })
   }
 
   function loadBulkRenameHistory() {
@@ -65,10 +70,7 @@ Item {
   }
 
   function saveBulkRenameHistory() {
-    var dir = root.bulkRenameHistoryFile.substring(0, root.bulkRenameHistoryFile.lastIndexOf("/"))
-    var json = JSON.stringify(root.bulkRenameHistory)
-    saveBulkRenameHistoryProc.command = ["bash", "-c", "mkdir -p -- " + Util.shellQuote(dir) + " && printf '%s' " + Util.shellQuote(json) + " > " + Util.shellQuote(root.bulkRenameHistoryFile)]
-    saveBulkRenameHistoryProc.running = true
+    _saveJson(root.bulkRenameHistoryFile, root.bulkRenameHistory)
   }
 
   Process {
@@ -91,10 +93,6 @@ Item {
   }
 
   Process {
-    id: saveBookmarksProc
-  }
-
-  Process {
     id: loadRecentProc
     command: ["cat", root.recentFile]
     stdout: StdioCollector {
@@ -106,10 +104,6 @@ Item {
         root.recentFiles = Array.isArray(parsed) ? parsed : []
       }
     }
-  }
-
-  Process {
-    id: saveRecentProc
   }
 
   Process {
@@ -137,10 +131,6 @@ Item {
   }
 
   Process {
-    id: saveSessionProc
-  }
-
-  Process {
     id: loadBulkRenameHistoryProc
     command: ["cat", root.bulkRenameHistoryFile]
     stdout: StdioCollector {
@@ -152,9 +142,5 @@ Item {
         root.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
       }
     }
-  }
-
-  Process {
-    id: saveBulkRenameHistoryProc
   }
 }

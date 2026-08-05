@@ -210,43 +210,21 @@ CursorSurface {
   // `mouseArea` (24) y anchors.rightMargin de `rowContent`
   // (Style.spacing.rowPaddingX) dejan estos huecos libres de
   // contenido visual, así que no roban nada al icono/texto.
-  MouseArea {
+  MarqueeCatcher {
     anchors.top: parent.top
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     width: 24
-    acceptedButtons: Qt.LeftButton
-    onPressed: function (mouse) {
-      var p = mapToItem(hostListView.contentItem, mouse.x, mouse.y)
-      var vp = mapToItem(hostListView, mouse.x, mouse.y)
-      hostSelectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-    }
-    onPositionChanged: function (mouse) {
-      var p = mapToItem(hostListView.contentItem, mouse.x, mouse.y)
-      var vp = mapToItem(hostListView, mouse.x, mouse.y)
-      hostSelectionOps.moveMarquee(p.x, p.y, vp.y)
-    }
-    onReleased: hostSelectionOps.endMarquee()
-    onCanceled: hostSelectionOps.endMarquee()
+    catcherListView: hostListView
+    catcherSelectionOps: hostSelectionOps
   }
 
-  MouseArea {
+  MarqueeCatcher {
     anchors.top: parent.top
     anchors.bottom: parent.bottom
     anchors.right: parent.right
     width: Style.spacing.rowPaddingX
-    acceptedButtons: Qt.LeftButton
-    onPressed: function (mouse) {
-      var p = mapToItem(hostListView.contentItem, mouse.x, mouse.y)
-      var vp = mapToItem(hostListView, mouse.x, mouse.y)
-      hostSelectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-    }
-    onPositionChanged: function (mouse) {
-      var p = mapToItem(hostListView.contentItem, mouse.x, mouse.y)
-      var vp = mapToItem(hostListView, mouse.x, mouse.y)
-      hostSelectionOps.moveMarquee(p.x, p.y, vp.y)
-    }
-    onReleased: hostSelectionOps.endMarquee()
-    onCanceled: hostSelectionOps.endMarquee()
+    catcherListView: hostListView
+    catcherSelectionOps: hostSelectionOps
   }
 }

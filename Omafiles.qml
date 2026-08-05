@@ -1245,7 +1245,6 @@ Item {
     fileOps: fileOps
     renameOps: renameOps
     clipboardOps: clipboardOps
-    dragDropOps: dragDropOps
     selectionOps: selectionOps
     bookmarkOps: bookmarkOps
   }
@@ -1894,8 +1893,8 @@ Item {
         anchors.fill: parent
         open: ConflictState.dropConflictOpen
         names: ConflictState.dropConflictNames
-        onOverwriteRequested: dragDropOps.runDrop("overwrite")
-        onSkipRequested: dragDropOps.runDrop("skip")
+        onOverwriteRequested: conflictActions.runDrop("overwrite")
+        onSkipRequested: conflictActions.runDrop("skip")
         onCancelRequested: dragDropOps.cancelDropConflict()
       }
 
