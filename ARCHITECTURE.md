@@ -87,10 +87,15 @@ graph TD
 2. `dialogs/` and `shared/` never import `state/` or `logic/` directly.
 3. `state/` imports nothing but `QtQuick` (and `services/` where noted
    above) — no dependency on `logic/`/`panels/`/`core/`.
-4. `core/OmafilesContent.qml` is the only file that instantiates
-   `logic/` controllers directly (one exception: `panels/ActiveFileList.qml`
-   instantiates `logic/KeyboardShortcuts.qml`, since every dependency it
-   needs is already a property on that panel).
+4. `core/ControllerRegistry.qml` is the single owner of every `logic/`
+   controller — the only file that instantiates them (Phase 11.C; it
+   replaced `OmafilesContent` in this role to kill the star coupling flagged
+   by the 2026-08-09 audit). `OmafilesContent` instantiates the registry and
+   the focused frontend components (`MainLayout`, `DialogLayer`,
+   `CommandFacade`, `AppBindings`), passing each only the controllers it
+   uses. One exception stands: `panels/ActiveFileList.qml` instantiates
+   `logic/KeyboardShortcuts.qml`, since every dependency it needs is already
+   a property on that panel.
 5. No circular dependencies within `logic/` — see `DEPENDENCY_GRAPH.md`.
 6. `logic/` and `panels/` never import `Quickshell` or anything under
    `integrations/`. Only `services/` and `integrations/quickshell/` do.
