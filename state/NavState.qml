@@ -44,8 +44,6 @@ QtObject {
 
   // Modo búsqueda del panel activo abierto (barra de búsqueda visible).
   property bool searching: false
-  // Raíz desde la que arrancó la última búsqueda recursiva ("" = ninguna).
-  property string deepSearchRoot: ""
   // La búsqueda recursiva se cortó a los 200 primeros resultados (aviso al
   // usuario de que faltan ítems; ver SearchOps/search-recursive.sh).
   property bool searchTruncated: false

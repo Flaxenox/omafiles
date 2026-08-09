@@ -23,9 +23,9 @@ Item {
   // configuración derivadas de $HOME, no estado del composition root.
   // currentPath/entries/showHidden/searchQuery/visibleEntries viven en
   // state/NavState.qml (Fase 11.A) y NavState es su ÚNICA fuente de verdad
-  // (Fase 14.A). El estado runtime de nav/búsqueda (searching/deepSearchRoot/
-  // searchTruncated/currentPathError/pendingSelectNames/refreshTick) también
-  // se movió a NavState (Fase 14.C). tabs/activeTabIndex/navHistory/
+  // (Fase 14.A). El estado runtime de nav/búsqueda (searching/searchTruncated/
+  // currentPathError/pendingSelectNames/refreshTick) también se movió a
+  // NavState (Fase 14.C). tabs/activeTabIndex/navHistory/
   // navHistoryIndex viven en state/TabsState.qml.
   // Caché de listados por ruta, alimentada por los paneles de fondo cada
   // vez que refrescan -- ver _goToPath(). Se queda aquí (caché de vista, no
@@ -99,8 +99,7 @@ Item {
     || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
     || ChmodState.chmodOpen || PropertiesState.propertiesOpen || DialogsState.connectServerOpen
 
-  // actionBusy/actionLabel/actionProgressPct/actionTotalBytes/
-  // actionProgressDestPaths/_actionOnSuccess viven ahora en
+  // actionBusy/actionLabel/actionProgressPct/_actionOnSuccess viven ahora en
   // state/ActionState.qml -- duodécimo slice de la capa state/, completa
   // la migración de logic/ActionEngine.qml (undoStack/redoStack ya estaban
   // en state/UndoState.qml). actionBusyDots se queda aquí -- animación

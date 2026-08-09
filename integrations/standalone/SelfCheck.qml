@@ -48,6 +48,15 @@ QtObject {
   // (servicio no-singleton envuelto sobre el backend C++).
   property Component _dmFactory: Component { DirectoryModel {} }
 
+  // Stub de hostPanelsRow para el test de panel de fondo: BackgroundPanel lee
+  // slotX(index)/slotWidth/height para su geometría. slotWidth/height 0 => la
+  // ListView no instancia delegates (sin dependencias visuales nulas).
+  // height/width son propiedades built-in de Item (default 0); solo se añaden
+  // slotX()/slotWidth, que BackgroundPanel espera de hostPanelsRow.
+  property Component _panelsRowStub: Component {
+    Item { function slotX(i) { return 0 } property real slotWidth: 0 }
+  }
+
   // Composition root creado en la prueba correspondiente y reutilizado por
   // las de fachada.
   property var _content: null
@@ -139,6 +148,28 @@ QtObject {
     }
     FileOperations.finished.connect(ok)
     FileOperations.error.connect(bad)
+  }
+
+  property Timer _pollTimer: Timer { interval: 16; repeat: true }
+
+  // Sondea cond() cada 16 ms (wall-clock, no pases de event loop) hasta que
+  // sea true o se agote el presupuesto (~4 s, holgado bajo el timeout de 8 s
+  // por prueba). Para esperar un efecto async que no expone una señal pública
+  // a la que engancharse (p.ej. el re-listado de un panel de fondo, cuyo
+  // DirLister es interno y entrega por invokeMethod desde un hilo del pool).
+  // El intervalo real da tiempo de reloj al worker, evitando la carrera de un
+  // bucle de Qt.callLater que gira más rápido de lo que el hilo puede
+  // responder. El runner es secuencial: solo hay un _poll en vuelo.
+  function _poll(cond, cb) {
+    if (cond()) { cb(true); return }
+    var n = 0
+    function tick() {
+      if (cond()) { done(); cb(true) }
+      else if (++n > 250) { done(); cb(false) }
+    }
+    function done() { _pollTimer.stop(); _pollTimer.triggered.disconnect(tick) }
+    _pollTimer.triggered.connect(tick)
+    _pollTimer.restart()
   }
 
   Component.onCompleted: {
@@ -1222,6 +1253,69 @@ QtObject {
           FileOperations.restore(trashFiles)
         })
         FileOperations.trash(target)
+      })
+    })
+
+    // -------- Refresco de paneles de fondo (regresión 14.C / auditoría 14.E) --------
+    // Un panel de fondo (pestaña NO activa) debe recargarse cuando algo muta
+    // su carpeta desde otra pestaña. La señal es NavState.refreshTick++, que
+    // el panel escucha por Connections. En 14.C refreshTick se movió de
+    // OmafilesContent a NavState pero el Connections seguía apuntando a
+    // hostRoot -> el panel de fondo dejó de refrescarse (regresión silenciosa:
+    // qmllint rc=0 porque hostRoot es Item sin tipar, sin warning en arranque,
+    // y --selfcheck no cubría paneles de fondo). Este test lo blinda: falla si
+    // el panel no refleja el cambio tras refreshTick.
+    add("Background panel refreshes on content change (non-active tab)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin _content"); return }
+      var bgDir = sc.dir + "/bgpanel-" + Date.now()
+
+      FileOperations.mkdir(bgDir)
+      sc._fileOp(done, function () {                    // bgDir creado (vacío)
+        // SortOps real: con SortState por defecto (name/asc) isDefaultOrder es
+        // true, así que _sorted devuelve las entradas tal cual sin tocar
+        // fileTypeUtils/root (por eso pueden ir nulos). panelsRow es un stub
+        // para las geometrías; slotWidth/height 0 => la ListView no instancia
+        // delegates y no se tocan dependencias visuales nulas.
+        var soC = Qt.createComponent(Qt.resolvedUrl("../../logic/SortOps.qml"))
+        if (soC.status !== Component.Ready) { done(false, "SortOps: " + soC.errorString()); return }
+        var sortOps = soC.createObject(sc)
+        var panelsRow = sc._panelsRowStub.createObject(sc)
+        var bgC = Qt.createComponent(Qt.resolvedUrl("../../panels/BackgroundPanel.qml"))
+        if (bgC.status !== Component.Ready) { done(false, "BackgroundPanel: " + bgC.errorString()); return }
+        // index 1 != activeTabIndex 0 => visible (pestaña NO activa), que es
+        // justo la condición del guard de refreshMe().
+        TabsState.activeTabIndex = 0
+        var bg = bgC.createObject(sc, {
+          modelData: { path: bgDir }, index: 1,
+          hostRoot: c, hostSortOps: sortOps, hostPanelsRow: panelsRow
+        })
+        if (!bg) { sortOps.destroy(); panelsRow.destroy(); done(false, "BackgroundPanel null"); return }
+
+        function cleanup() { bg.destroy(); sortOps.destroy(); panelsRow.destroy() }
+        function cache() { return c.tabEntriesCache[bgDir] }
+
+        // 1) esperar a que el listado inicial (onCompleted -> refreshMe, llamada
+        //    directa, no vía el Connections) pueble la caché con la carpeta vacía.
+        sc._poll(function () { return cache() !== undefined && cache().length === 0 }, function (ok0) {
+          if (!ok0) { cleanup(); done(false, "el panel no listó la carpeta inicial vacía"); return }
+          // 2) mutar la carpeta y disparar el refresco SOLO por refreshTick.
+          FileOperations.copy(sc.note, bgDir + "/appeared.txt")
+          sc._fileOp(done, function () {
+            NavState.refreshTick += 1
+            // 3) el panel de fondo debe re-listar y reflejar el fichero nuevo.
+            //    Si el Connections está roto, la caché se queda vacía -> timeout.
+            sc._poll(function () { var e = cache(); return e && sc._has(e, "appeared.txt") }, function (ok) {
+              // bgDir vive dentro del QTemporaryDir del arnés (main.cpp lo
+              // borra al salir); NO se lanza un remove async aquí -- un
+              // fire-and-forget en el último test corre concurrente con la
+              // limpieza de QTemporaryDir y aborta su removeRecursively.
+              cleanup()
+              done(ok, ok ? "el panel de fondo reflejó el cambio vía refreshTick"
+                          : "el panel de fondo NO se refrescó tras refreshTick (Connections roto)")
+            })
+          })
+        })
       })
     })
   }

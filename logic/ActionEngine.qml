@@ -272,8 +272,6 @@ Item {
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
-    ActionState.actionTotalBytes = 0
-    ActionState.actionProgressDestPaths = []
     navController.refresh()
     NavState.refreshTick += 1
     var cb = _batchOnDone
@@ -287,8 +285,6 @@ Item {
       ActionState.actionBusy = false
       ActionState.actionLabel = ""
       ActionState.actionProgressPct = -1
-      ActionState.actionTotalBytes = 0
-      ActionState.actionProgressDestPaths = []
       navController.refresh()
       // Una acción (borrar, mover, pegar...) puede afectar a cualquier
       // panel, no solo al activo -- refreshTick es la señal para que los

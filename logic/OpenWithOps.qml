@@ -1,6 +1,5 @@
 import "../Utils.js" as Utils
 import QtQuick
-import qs.Commons
 import "../state"
 import "../services"
 

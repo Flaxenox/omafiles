@@ -13,8 +13,6 @@ QtObject {
   // -1 = sin progreso que mostrar (renombrar/chmod/comprimir...), solo
   // copiar/mover lo rellenan de verdad -- ver startCopyProgress().
   property real actionProgressPct: -1
-  property real actionTotalBytes: 0
-  property var actionProgressDestPaths: []
   // Callback pendiente del runAction en curso -- ver actionProc.onFinished
   // en ActionEngine.qml. (_actionCancelled desapareció en la Fase 1.5:
   // ProcessRunner.finished ya lleva `cancelled` en el resultado, ver

@@ -115,8 +115,14 @@ Item {
   // contribuía al asentamiento visible al cambiar de panel con la
   // papelera abierta (reportado por josema).
   onModelDataChanged: if (bgPanel.modelData.path !== bgPanel._lastRefreshedPath) bgPanel.refreshMe()
+  // refreshTick es la señal para que los paneles NO activos se refresquen
+  // tras una acción (borrar/mover/pegar/renombrar), que puede afectar a
+  // cualquier panel y no solo al activo. Vive en NavState desde la Fase 14.C
+  // -- antes estaba en OmafilesContent (hostRoot) y este Connections quedó
+  // escuchando un target sin esa señal (regresión silenciosa detectada en la
+  // auditoría 14.E: qmllint no la ve porque hostRoot es Item sin tipar).
   Connections {
-    target: hostRoot
+    target: NavState
     function onRefreshTickChanged() { bgPanel.refreshMe() }
   }
   Component.onCompleted: bgPanel.refreshMe()

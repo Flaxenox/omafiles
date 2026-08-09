@@ -41,7 +41,6 @@ Item {
   function exitSearch() {
     NavState.searching = false
     NavState.searchQuery = ""
-    NavState.deepSearchRoot = ""
     NavState.searchTruncated = false
     list.contentY = list.originY
     navController.refresh()
@@ -50,7 +49,6 @@ Item {
 
   function runDeepSearch() {
     if (!NavState.searchQuery) return
-    NavState.deepSearchRoot = NavState.currentPath
     list.contentY = list.originY
     deepSearchProc.start([Paths.pluginDir + "/search-recursive.sh", NavState.currentPath, NavState.searchQuery, NavState.showHidden ? "1" : "0"])
   }
