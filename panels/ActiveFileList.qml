@@ -337,8 +337,7 @@ Item {
               isTextEntry: !!PreviewContentState.previewEntry && !root.isImage(PreviewContentState.previewEntry) && PreviewContentState.previewIsText
               isPdfEntry: PreviewContentState.previewEntry ? root.isPdf(PreviewContentState.previewEntry) : false
               isAudioEntry: PreviewContentState.previewEntry ? root.isAudio(PreviewContentState.previewEntry) : false
-              imageSource: (PreviewContentState.previewEntry && root.isImage(PreviewContentState.previewEntry))
-                ? Util.fileUrl(root.joinPath(root.currentPath, PreviewContentState.previewEntry.name)) : ""
+              imageSource: PreviewContentState.previewImage ? Util.fileUrl(PreviewContentState.previewImage) : ""
               videoThumbSource: {
                 if (!PreviewContentState.previewEntry || !root.isVideo(PreviewContentState.previewEntry)) return ""
                 var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, root.currentPath)] || ""

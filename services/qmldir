@@ -5,3 +5,4 @@ singleton Detached 1.0 Detached.qml
 singleton JsonStore 1.0 JsonStore.qml
 singleton FileOperations 1.0 FileOperations.qml
 singleton ThumbnailProvider 1.0 ThumbnailProvider.qml
+singleton PreviewProvider 1.0 PreviewProvider.qml

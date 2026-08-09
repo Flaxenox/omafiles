@@ -44,6 +44,8 @@ qt_add_qml_module(omafiles-backend
     backend/FileOperations.cpp
     backend/ThumbnailProvider.h
     backend/ThumbnailProvider.cpp
+    backend/PreviewProvider.h
+    backend/PreviewProvider.cpp
 )
 # El registro de tipos QML autogenerado hace #include <ProcessRunner.h>
 # (corchetes angulares) -- backend/ tiene que estar en el include path o

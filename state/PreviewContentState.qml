@@ -14,9 +14,14 @@ QtObject {
   // highlight-preview.sh falla, en cuyo caso se cae al Text plano de
   // siempre con previewText. Ver PreviewLoader.loadPreview().
   property string previewHighlighted: ""
-  // Render de la primera página como PNG (pdftoppm) -- vacío mientras se
-  // genera o si pdftoppm falla, igual que videoThumbReady con los vídeos.
+  // Render de la primera página como PNG -- vacío mientras se genera o si
+  // falla, igual que videoThumbReady con los vídeos. Fase 9: lo genera
+  // ThumbnailProvider (QPdfDocument) a tamaño de preview, ya no pdftoppm.
   property string previewPdfImage: ""
+  // Imagen escalada a tamaño de preview (Fase 9): ruta de la miniatura de
+  // ThumbnailProvider, "" mientras se genera. Sustituye a cargar el fichero
+  // de imagen completo en el panel.
+  property string previewImage: ""
   // Metadatos de audio (ffprobe): duración/formato/bitrate/etc, mismo
   // formato { label, value } que ya usa el Repeater de Properties.
   property var previewAudioInfo: []
@@ -31,5 +36,6 @@ QtObject {
   property int _previewTextOwner: -1
   property int _previewHighlightOwner: -1
   property int _previewPdfOwner: -1
+  property int _previewImageOwner: -1
   property int _previewAudioOwner: -1
 }
