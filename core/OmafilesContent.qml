@@ -454,6 +454,18 @@ Item {
     return registry.actionEngine.runNativeRemove(paths, busyLabel, ignoreMissing, onDone)
   }
 
+  // Enviar a papelera nativo (Fase 13.D): sustituye a `gio trash`. El undo lo
+  // registra el llamador (DeleteOps) con restoreFiles(rutasOriginales).
+  function trashFiles(paths, busyLabel, onDone) {
+    return registry.actionEngine.runNativeTrash(paths, busyLabel, onDone)
+  }
+
+  // Restaurar nativo (Fase 13.E): sustituye a restore-by-origpath.sh. `paths`
+  // = rutas ORIGINALES. Usado por la acción Restore y por el undo del envío.
+  function restoreFiles(paths, busyLabel, onDone) {
+    return registry.actionEngine.runNativeRestore(paths, busyLabel, onDone)
+  }
+
   function openTerminalHere() {
     // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
     registry.openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])

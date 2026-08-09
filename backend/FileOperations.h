@@ -80,6 +80,16 @@ public:
   // original (Path=, percent-decoded) y borra el .trashinfo.
   Q_INVOKABLE void restore(const QString &path);
 
+  // Restaura un ítem de papelera IDENTIFICADO POR SU RUTA ORIGINAL (no por el
+  // nombre dentro de files/, que puede llevar sufijo si hubo colisión).
+  // Réplica nativa de restore-by-origpath.sh (Fase 13.E): busca en TODAS las
+  // raíces XDG activas (papelera de casa + .Trash-$uid de otros montajes) el
+  // .trashinfo cuyo Path= (percent-decoded; relativo al punto de montaje en
+  // papeleras de disco) coincide con `origPath`, usa el más reciente, mueve
+  // files/<name> de vuelta a origPath (rename atómico + fallback cross-fs) y
+  // borra el .trashinfo. Emite finished("restore", origPath) / error.
+  Q_INVOKABLE void restoreByOrigPath(const QString &origPath);
+
 signals:
   // Progreso 0..100 de una copia/movimiento en curso.
   void progress(const QString &op, const QString &path, double pct);

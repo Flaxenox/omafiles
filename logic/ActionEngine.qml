@@ -189,6 +189,22 @@ Item {
     return _runNative("remove", pairs, busyLabel, ignoreMissing, onDone)
   }
 
+  // Enviar a papelera nativo (Fase 13.D): `paths` = rutas a enviar. XDG Trash
+  // (QFile::moveToTrash: crea el .trashinfo, resuelve colisiones, respeta el
+  // disco de origen). El llamador (borrado a papelera desde DeleteOps)
+  // registra el undo en onDone (restaurar por ruta original).
+  function runNativeTrash(paths, busyLabel, onDone) {
+    var pairs = paths.map(function (p) { return { src: p } })
+    return _runNative("trash", pairs, busyLabel, false, onDone)
+  }
+
+  // Restaurar nativo (Fase 13.E): `origPaths` = rutas ORIGINALES a restaurar.
+  // Cada una se localiza por su .trashinfo en cualquier papelera activa.
+  function runNativeRestore(origPaths, busyLabel, onDone) {
+    var pairs = origPaths.map(function (p) { return { src: p } })
+    return _runNative("restore", pairs, busyLabel, false, onDone)
+  }
+
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
     if (actionProc.busy || nativeBusy) {
       Notifier.notify("Still busy with the previous action — try again in a moment")
@@ -203,10 +219,12 @@ Item {
     _batchOnDone = onDone || null
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
-    // Sin barra de progreso para operaciones sin etiqueta (undo/redo del
-    // movimiento) -- igual que la ruta shell, que no llamaba a
-    // startCopyProgress en el undo. Evita un `du` inútil.
-    if (busyLabel)
+    // Barra de progreso (sondeo `du`) SOLO para copy/move con etiqueta:
+    // son las únicas con "tamaño total" que crece en el destino. trash/
+    // restore/remove no tienen progreso medible así (restore mvería a rutas
+    // que aún no existen -> du fallaría y dejaría un 0% fijo en vez de los
+    // puntos animados). Sin etiqueta (undo/redo) tampoco, como la ruta shell.
+    if (busyLabel && (kind === "copy" || kind === "move"))
       startCopyProgress(pairs.map(function (p) { return p.src }),
                         pairs.map(function (p) { return p.dest }))
     _batchNext()
@@ -229,6 +247,10 @@ Item {
     FileOperations.error.connect(bad)
     if (_nativeKind === "remove")
       FileOperations.remove(p.src, _batchOverwrite)  // _batchOverwrite = ignoreMissing
+    else if (_nativeKind === "trash")
+      FileOperations.trash(p.src)
+    else if (_nativeKind === "restore")
+      FileOperations.restoreByOrigPath(p.src)
     else if (_nativeKind === "move")
       FileOperations.move(p.src, p.dest, _batchOverwrite)
     else

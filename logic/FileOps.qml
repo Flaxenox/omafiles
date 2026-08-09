@@ -120,17 +120,16 @@ Item {
   function restoreFromTrash() {
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    // TrashState.trashInfo (ver trash-info.sh) ya sabe la ruta original
-    // absoluta de cada ítem, resuelta correctamente incluso para la
-    // papelera de otro disco (donde Path= es relativo al punto de
-    // montaje, no a casa) -- restore-by-origpath.sh la usa para
-    // localizar el .trashinfo correcto sin asumir una única papelera.
-    var cmds = entries
+    // Restaurar NATIVO (Fase 13.E): FileOperations.restoreByOrigPath en vez
+    // de restore-by-origpath.sh. TrashState.trashInfo (ver trash-info.sh) ya
+    // sabe la ruta original absoluta de cada ítem, resuelta incluso para la
+    // papelera de otro disco (donde Path= es relativo al punto de montaje);
+    // restoreByOrigPath la usa para localizar el .trashinfo correcto en
+    // cualquier papelera activa, sin asumir una única.
+    var origPaths = entries
       .filter(function (e) { return !!TrashState.trashInfo[e.name] })
-      .map(function (e) {
-        return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(TrashState.trashInfo[e.name].origPath)
-      })
-    if (cmds.length === 0) return
-    root.runAction(root.chainCmds(cmds), entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
+      .map(function (e) { return TrashState.trashInfo[e.name].origPath })
+    if (origPaths.length === 0) return
+    root.restoreFiles(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 }

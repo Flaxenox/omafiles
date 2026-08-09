@@ -1,5 +1,4 @@
 import QtQuick
-import qs.Commons
 import "../state"
 
 // Borrar (a la papelera, o permanente si ya se está viendo la papelera) --
@@ -36,32 +35,24 @@ Item {
       })
       if (paths.length > 0) root.removeFiles(paths, "", true)
     } else {
-      var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(NavState.currentPath, n)) }).join(" ")
-      // Rutas originales absolutas capturadas AQUÍ (no dentro de los
-      // closures de más abajo) -- NavState.currentPath puede haber cambiado
-      // para cuando el usuario pulse deshacer, mucho más tarde.
+      // Enviar a papelera NATIVO (Fase 13.D): FileOperations.trash
+      // (QFile::moveToTrash, XDG Trash) en vez de `gio trash`. Rutas
+      // originales absolutas capturadas AQUÍ (no dentro de los closures de
+      // más abajo) -- NavState.currentPath puede haber cambiado para cuando
+      // el usuario pulse deshacer, mucho más tarde.
       var origPaths = names.map(function (n) { return root.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      var deleteCmd = "gio trash -- " + quoted
-      root.runAction(deleteCmd, "", function () {
-        // Solo se registra el undo si el borrado a papelera confirmó éxito
-        // -- antes se registraba siempre, así que un "gio trash" fallido
-        // (permiso denegado, etc.) dejaba un undo que restauraba algo que
-        // nunca llegó a borrarse.
+      root.trashFiles(origPaths, "", function () {
+        // El undo solo se registra si el envío confirmó éxito. Deshacer =
+        // restaurar POR RUTA ORIGINAL (Fase 13.E, restoreByOrigPath): busca
+        // en TODAS las papeleras activas el .trashinfo cuya ruta original
+        // coincide, así funciona igual borre desde donde borre -- y sirve
+        // aunque el usuario deshaga mucho después sin haber abierto nunca la
+        // Papelera.
         root.pushUndo(label, function () {
-          // restore-by-origpath.sh busca en TODAS las papeleras activas
-          // (no solo la de casa) el .trashinfo cuya ruta original
-          // coincide, así funciona igual borre desde donde borre --
-          // TrashState.trashInfo (usado por el botón "Restore" normal) no
-          // sirve aquí porque solo se rellena mientras se está VIENDO
-          // la Papelera, y el usuario puede deshacer mucho después sin
-          // haber entrado nunca en ella.
-          var restoreCmds = origPaths.map(function (p) {
-            return "bash " + Util.shellQuote(root.pluginDir + "/restore-by-origpath.sh") + " " + Util.shellQuote(p)
-          })
-          return root.runAction(root.chainCmds(restoreCmds))
+          return root.restoreFiles(origPaths, "")
         }, function () {
-          return root.runAction(deleteCmd)
+          return root.trashFiles(origPaths, "")
         })
       })
     }

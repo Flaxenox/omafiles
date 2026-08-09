@@ -8,8 +8,8 @@
 # así que cualquier cosa borrada desde /mnt/lo-que-sea (o cualquier
 # otro punto de montaje) desaparecía de la vista sin más, aunque
 # "gio trash" la hubiera movido correctamente a SU papelera.
-# Compartido por list-trash.sh, trash-info.sh, empty-trash.sh y
-# restore-by-origpath.sh -- una sola fuente de verdad para "qué
+# Compartido por trash-info.sh y empty-trash.sh (el listado de la vista
+# Papelera). Restaurar/enviar ya son nativos (FileOperations). Una sola
 # raíces mirar".
 
 uid=$(id -u)

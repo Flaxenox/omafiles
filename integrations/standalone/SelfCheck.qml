@@ -112,6 +112,21 @@ QtObject {
     return false
   }
 
+  // Ejecuta una lista de operaciones de FileOperations EN SECUENCIA (cada
+  // `start` lanza una op; se espera su finished antes de la siguiente). Si
+  // alguna falla -> done(false, ...). Al terminar todas -> onAllDone(). Para
+  // pruebas multi-paso (trash/restore) sin anidar diez _fileOp.
+  function _seqOps(starts, done, onAllDone) {
+    var i = 0
+    function step() {
+      if (i >= starts.length) { onAllDone(); return }
+      var start = starts[i++]
+      _fileOp(done, function () { step() })
+      start()
+    }
+    step()
+  }
+
   // Ejecuta una operación de FileOperations y llama then(path) en su primera
   // señal finished, o done(false, ...) en error. Como el runner es
   // secuencial, solo hay una operación en vuelo.
@@ -630,6 +645,169 @@ QtObject {
         FileOperations.copy(sc.note, b)
       })
       FileOperations.copy(sc.note, a)
+    })
+
+    // -------- XDG Trash: enviar + restaurar (13.D / 13.E) --------
+    // Operan sobre la papelera REAL del usuario (~/.local/share/Trash), pero
+    // son round-trips (trash -> restore) = net-zero: nada queda en la
+    // papelera al terminar. Los fixtures viven en el montaje de HOME, así que
+    // moveToTrash usa la papelera de casa.
+
+    add("Trash removes item from source", function (done) {
+      var work = sc.opsDir + "/trash-src.txt"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, work) },
+        function () { FileOperations.trash(work) }
+      ], done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var gone = !sc._has(e, "trash-src.txt")
+          // restaura para dejar la papelera limpia, y confirma el round-trip
+          sc._seqOps([function () { FileOperations.restoreByOrigPath(work) }], done, function () {
+            sc._listOnce(sc.opsDir, function (e2) {
+              done(gone && sc._has(e2, "trash-src.txt"),
+                   gone ? "enviado y restaurado" : "no salió del origen")
+            })
+          })
+        })
+      })
+    })
+
+    add("Trash + restore directory (round-trip)", function (done) {
+      var dir = sc.opsDir + "/trashdir"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.listDir, dir) },     // árbol de 4
+        function () { FileOperations.trash(dir) },
+        function () { FileOperations.restoreByOrigPath(dir) }
+      ], done, function () {
+        sc._listOnce(dir, function (e) {
+          done(e.length === 4 && sc._has(e, "sub"), "árbol restaurado: " + e.length)
+        })
+      })
+    })
+
+    add("Trash + restore symlink (round-trip)", function (done) {
+      var lnk = sc.opsDir + "/trashlink"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.dir + "/link.txt", lnk) },
+        function () { FileOperations.trash(lnk) },
+        function () { FileOperations.restoreByOrigPath(lnk) }
+      ], done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var ok = false
+          for (var i = 0; i < e.length; i++)
+            if (e[i].name === "trashlink" && e[i].link && e[i].link.length > 0) ok = true
+          done(ok, ok ? "symlink restaurado como enlace" : "no volvió como symlink")
+        })
+      })
+    })
+
+    add("Trash + restore Unicode name (round-trip)", function (done) {
+      var uni = sc.opsDir + "/café ñ 文件.txt"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, uni) },
+        function () { FileOperations.trash(uni) },
+        function () { FileOperations.restoreByOrigPath(uni) }  // percent round-trip
+      ], done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          done(sc._has(e, "café ñ 文件.txt"), "unicode round-trip OK")
+        })
+      })
+    })
+
+    add("Trash collision (restore both by orig path)", function (done) {
+      // Dos ficheros con el MISMO basename desde carpetas distintas:
+      // moveToTrash renombra uno en la papelera; restoreByOrigPath localiza
+      // cada uno por su ruta ORIGINAL (no por el nombre en files/).
+      var csub = sc.opsDir + "/csub"
+      var a = sc.opsDir + "/coll.txt"
+      var b = csub + "/coll.txt"
+      sc._seqOps([
+        function () { FileOperations.mkdir(csub) },
+        function () { FileOperations.copy(sc.note, a) },
+        function () { FileOperations.copy(sc.note, b) },
+        function () { FileOperations.trash(a) },
+        function () { FileOperations.trash(b) },
+        function () { FileOperations.restoreByOrigPath(a) },
+        function () { FileOperations.restoreByOrigPath(b) }
+      ], done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var aBack = sc._has(e, "coll.txt")
+          sc._listOnce(csub, function (e2) {
+            var bBack = sc._has(e2, "coll.txt")
+            done(aBack && bBack, aBack && bBack ? "colisión resuelta, ambos restaurados" : "no restauró ambos")
+          })
+        })
+      })
+    })
+
+    add("Restore collision (destination exists -> error)", function (done) {
+      var work = sc.opsDir + "/restcoll.txt"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, work) },
+        function () { FileOperations.trash(work) },
+        function () { FileOperations.copy(sc.note, work) }  // recrea el destino
+      ], done, function () {
+        // restaurar debe FALLAR (destino existe)
+        function onErr(op, path, msg) {
+          if (path !== work) return
+          cleanup()
+          // limpieza: quita el ocupante y restaura de verdad (net-zero)
+          sc._seqOps([
+            function () { FileOperations.remove(work) },
+            function () { FileOperations.restoreByOrigPath(work) }
+          ], done, function () { done(true, "error si el destino existe: " + msg) })
+        }
+        function onFin(op, path) { if (path !== work) return; cleanup(); done(false, "no debería restaurar sobre un destino existente") }
+        function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+        FileOperations.error.connect(onErr)
+        FileOperations.finished.connect(onFin)
+        FileOperations.restoreByOrigPath(work)
+      })
+    })
+
+    add("Restore recreates missing parent", function (done) {
+      var psub = sc.opsDir + "/psub"
+      var item = psub + "/child.txt"
+      sc._seqOps([
+        function () { FileOperations.mkdir(psub) },
+        function () { FileOperations.copy(sc.note, item) },
+        function () { FileOperations.trash(item) },
+        function () { FileOperations.remove(psub) },              // borra el padre
+        function () { FileOperations.restoreByOrigPath(item) }    // debe recrear psub
+      ], done, function () {
+        sc._listOnce(psub, function (e) {
+          done(sc._has(e, "child.txt"), "padre recreado y fichero restaurado")
+        })
+      })
+    })
+
+    add("ActionEngine native trash runner + undo (delete-to-trash path)", function (done) {
+      // Cableado REAL del envío a papelera con undo (13.D):
+      // content.trashFiles -> runNativeTrash -> FileOperations.trash; luego
+      // content.undoLast -> restoreFiles(rutas originales) revierte.
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var work = sc.opsDir + "/runner-trash.txt"
+      sc._fileOp(done, function () {          // work creado
+        var started = c.trashFiles([work], "", function () {
+          // registra el undo como DeleteOps
+          c.pushUndo("delete test",
+            function () { return c.restoreFiles([work], "") },
+            function () { return c.trashFiles([work], "") })
+          sc._listOnce(sc.opsDir, function (e) {
+            if (sc._has(e, "runner-trash.txt")) { done(false, "no se envió a papelera"); return }
+            // undo -> restaura (espera el finished del restore)
+            sc._fileOp(done, function () {
+              sc._listOnce(sc.opsDir, function (e2) {
+                done(sc._has(e2, "runner-trash.txt"), "enviado y restaurado por undo")
+              })
+            })
+            c.undoLast()
+          })
+        })
+        if (!started) done(false, "runNativeTrash devolvió false")
+      })
+      FileOperations.copy(sc.note, work)
     })
 
     add("FileOperations move", function (done) {

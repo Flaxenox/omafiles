@@ -26,6 +26,9 @@ QtObject {
   function mkdir(path) { Backend.FileOperations.mkdir(path) }
   function trash(path) { Backend.FileOperations.trash(path) }
   function restore(path) { Backend.FileOperations.restore(path) }
+  // Restaura por ruta original (Fase 13.E): busca el .trashinfo correcto en
+  // todas las papeleras. Emite finished("restore", origPath) / error.
+  function restoreByOrigPath(origPath) { Backend.FileOperations.restoreByOrigPath(origPath) }
   // Cancela la operación en curso (Fase 13.A). El worker aborta y emite
   // error "cancelled", que onError NO notifica (es una cancelación pedida
   // por el usuario, no un fallo).

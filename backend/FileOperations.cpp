@@ -5,11 +5,13 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRunnable>
+#include <QStorageInfo>
 #include <QThreadPool>
 #include <QUrl>
 
 #include <cerrno>
 #include <cstdio>
+#include <unistd.h>
 
 namespace {
 
@@ -132,6 +134,33 @@ bool removeTree(const QString &path, const std::atomic<bool> &cancelled,
     return false;
   }
   return true;
+}
+
+// Raíces de papelera XDG activas: la de casa ($XDG_DATA_HOME/Trash o
+// ~/.local/share/Trash) primero, más la .Trash-$uid de cada punto de montaje
+// que no sea el de $HOME (spec XDG Trash: borrar desde otro disco va a la
+// papelera de ESE disco). Réplica de trash-roots.sh sin shell.
+QStringList trashRoots() {
+  QStringList roots;
+  const QString home = QDir::homePath();
+  const QString dataHome =
+      qEnvironmentVariable("XDG_DATA_HOME", home + QStringLiteral("/.local/share"));
+  const QString homeTrash = dataHome + QStringLiteral("/Trash");
+  if (QFileInfo(homeTrash).isDir())
+    roots << homeTrash;
+
+  const QString uid = QString::number(::getuid());
+  for (const QStorageInfo &v : QStorageInfo::mountedVolumes()) {
+    const QString mp = v.rootPath();
+    if (mp.isEmpty() || mp == QLatin1String("/"))
+      continue;
+    if (home.startsWith(mp)) // mismo disco que casa, ya cubierto arriba
+      continue;
+    const QString cand = mp + QStringLiteral("/.Trash-") + uid;
+    if (QFileInfo(cand).isDir())
+      roots << cand;
+  }
+  return roots;
 }
 
 } // namespace
@@ -348,6 +377,84 @@ void FileOperations::restore(const QString &path) {
                  QFile::encodeName(orig).constData()) != 0)
       return {false, QString::fromLocal8Bit(strerror(errno))};
     QFile::remove(infoPath);
+    return {true, QString()};
+  });
+}
+
+void FileOperations::restoreByOrigPath(const QString &origPath) {
+  m_cancelled.store(false);
+  run(QStringLiteral("restore"), origPath, [this, origPath]() -> Result {
+    // Buscar en TODAS las raíces XDG el .trashinfo cuyo Path= == origPath,
+    // quedándose con el más reciente (mismo fichero borrado varias veces).
+    QString bestInfo;
+    qint64 bestMtime = -1;
+    QString bestRoot;
+    for (const QString &root : trashRoots()) {
+      QDir infoDir(root + QStringLiteral("/info"));
+      if (!infoDir.exists())
+        continue;
+      const QFileInfoList infos = infoDir.entryInfoList(
+          {QStringLiteral("*.trashinfo")}, QDir::Files);
+      for (const QFileInfo &fi : infos) {
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly))
+          continue;
+        QString enc;
+        while (!f.atEnd()) {
+          const QByteArray line = f.readLine();
+          if (line.startsWith("Path=")) {
+            enc = QString::fromUtf8(line.mid(5)).trimmed();
+            break;
+          }
+        }
+        f.close();
+        if (enc.isEmpty())
+          continue;
+        // Decodificación XDG correcta (percent-decoding; sin el `+`->espacio
+        // que hacía el script, que corrompía nombres con `+` literal).
+        QString decoded = QUrl::fromPercentEncoding(enc.toUtf8());
+        if (!decoded.startsWith(QLatin1Char('/')))
+          decoded = QFileInfo(root).absolutePath() + QLatin1Char('/') + decoded;
+        if (decoded != origPath)
+          continue;
+        const qint64 m = fi.lastModified().toSecsSinceEpoch();
+        if (m > bestMtime) {
+          bestMtime = m;
+          bestInfo = fi.absoluteFilePath();
+          bestRoot = root;
+        }
+      }
+    }
+    if (bestInfo.isEmpty())
+      return {false,
+              QStringLiteral("no matching trashed item for %1").arg(origPath)};
+
+    // <root>/files/<name> (name = basename del .trashinfo sin la extensión).
+    QString name = QFileInfo(bestInfo).fileName();
+    name.chop(QStringLiteral(".trashinfo").size());
+    const QString src = bestRoot + QStringLiteral("/files/") + name;
+    if (!QFileInfo::exists(src) && !QFileInfo(src).isSymLink())
+      return {false, QStringLiteral("trash file missing: %1").arg(src)};
+    if (QFileInfo::exists(origPath) || QFileInfo(origPath).isSymLink())
+      return {false,
+              QStringLiteral("destination already exists: %1").arg(origPath)};
+
+    QDir().mkpath(QFileInfo(origPath).absolutePath());
+    if (::rename(QFile::encodeName(src).constData(),
+                 QFile::encodeName(origPath).constData()) != 0) {
+      if (errno != EXDEV)
+        return {false, QString::fromLocal8Bit(strerror(errno))};
+      // Cruza de disco (raro en XDG: la papelera está en el mismo disco que
+      // el original): copiar + borrar, como haría `mv`.
+      qint64 copied = 0;
+      QString e;
+      const auto noop = [](qint64) {};
+      if (!copyTree(src, origPath, copied, noop, m_cancelled, e))
+        return {false, e};
+      if (!removeTree(src, m_cancelled, e))
+        return {false, e};
+    }
+    QFile::remove(bestInfo);
     return {true, QString()};
   });
 }
