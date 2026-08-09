@@ -153,47 +153,62 @@ Item {
     actionProgressTotalProc.start(["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"])
   }
 
-  // ---------- Copia nativa (Fase 13.A) ----------
-  // Reemplaza el `cp -r` de shell (runPaste/runDrop) por FileOperations.copy
-  // (C++: recursivo, symlinks como symlinks, preserva permisos, progreso por
-  // bytes). MANTIENE exactamente el mismo comportamiento observable que la
+  // ---------- Copiar/mover nativo (Fase 13.A copy, 13.B move) ----------
+  // Reemplaza el `cp -r`/`mv` de shell (runPaste/runDrop) por
+  // FileOperations.copy/move (C++: recursivo, symlinks como symlinks,
+  // preserva permisos, progreso por bytes, rename atómico + fallback cross-fs
+  // en move). MANTIENE exactamente el mismo comportamiento observable que la
   // ruta shell: mismo estado de ocupado (actionBusy/actionLabel), misma barra
-  // de progreso (startCopyProgress, sondeo de `du` sobre los destinos),
-  // misma cancelación (cancelAction), mismo refresco al terminar. Secuencial
-  // (una copia a la vez) para conservar la semántica del chainCmds anterior:
-  // si una falla, se avisa (una sola vez, en services/FileOperations) y se
-  // para. `overwrite` = el diálogo eligió sobrescribir (antes `cp -f`).
+  // de progreso (startCopyProgress, sondeo `du` sobre destinos), misma
+  // cancelación (cancelAction), mismo refresco. Secuencial (uno a la vez)
+  // para conservar la semántica del chainCmds anterior: si uno falla se avisa
+  // (una sola vez, en services/FileOperations) y se para. `overwrite` = el
+  // diálogo eligió sobrescribir (antes `-f`; sin él, `-n`).
   property bool nativeBusy: false
-  property var _copyQueue: []
-  property int _copyIdx: 0
-  property bool _copyOverwrite: false
-  property var _copyOnDone: null
+  property string _nativeKind: "copy"
+  property var _batchQueue: []
+  property int _batchIdx: 0
+  property bool _batchOverwrite: false
+  property var _batchOnDone: null
   property bool _cancelling: false
 
   function runNativeCopy(pairs, busyLabel, overwrite, onDone) {
+    return _runNative("copy", pairs, busyLabel, overwrite, onDone)
+  }
+
+  function runNativeMove(pairs, busyLabel, overwrite, onDone) {
+    return _runNative("move", pairs, busyLabel, overwrite, onDone)
+  }
+
+  function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
     if (actionProc.busy || nativeBusy) {
       Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
     }
     nativeBusy = true
     _cancelling = false
-    _copyQueue = pairs
-    _copyIdx = 0
-    _copyOverwrite = overwrite === true
-    _copyOnDone = onDone || null
+    _nativeKind = kind
+    _batchQueue = pairs
+    _batchIdx = 0
+    _batchOverwrite = overwrite === true
+    _batchOnDone = onDone || null
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
-    startCopyProgress(pairs.map(function (p) { return p.src }),
-                      pairs.map(function (p) { return p.dest }))
-    _copyNext()
+    // Sin barra de progreso para operaciones sin etiqueta (undo/redo del
+    // movimiento) -- igual que la ruta shell, que no llamaba a
+    // startCopyProgress en el undo. Evita un `du` inútil.
+    if (busyLabel)
+      startCopyProgress(pairs.map(function (p) { return p.src }),
+                        pairs.map(function (p) { return p.dest }))
+    _batchNext()
     return true
   }
 
-  function _copyNext() {
+  function _batchNext() {
     if (_cancelling) { _nativeDone(false); return }
-    if (_copyIdx >= _copyQueue.length) { _nativeDone(true); return }
-    var p = _copyQueue[_copyIdx]
-    function ok(op, src) { cleanup(); _copyIdx += 1; _copyNext() }
+    if (_batchIdx >= _batchQueue.length) { _nativeDone(true); return }
+    var p = _batchQueue[_batchIdx]
+    function ok(op, src) { cleanup(); _batchIdx += 1; _batchNext() }
     // El error ya lo avisó services/FileOperations (salvo "cancelled"); aquí
     // solo se para la secuencia y se limpia el estado.
     function bad(op, src, msg) { cleanup(); _nativeDone(false) }
@@ -203,7 +218,10 @@ Item {
     }
     FileOperations.finished.connect(ok)
     FileOperations.error.connect(bad)
-    FileOperations.copy(p.src, p.dest, _copyOverwrite)
+    if (_nativeKind === "move")
+      FileOperations.move(p.src, p.dest, _batchOverwrite)
+    else
+      FileOperations.copy(p.src, p.dest, _batchOverwrite)
   }
 
   function _nativeDone(success) {
@@ -215,8 +233,8 @@ Item {
     ActionState.actionProgressDestPaths = []
     root.refresh()
     root.refreshTick += 1
-    var cb = _copyOnDone
-    _copyOnDone = null
+    var cb = _batchOnDone
+    _batchOnDone = null
     if (success && cb) cb()
   }
 

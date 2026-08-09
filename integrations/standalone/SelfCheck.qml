@@ -230,16 +230,21 @@ QtObject {
       var m = sc._dmFactory.createObject(sc)
       var watched = m.watch(sc.watchDir)
       if (!watched) { m.destroy(); done(false, "watch() devolvió false"); return }
-      var fired = false
-      function onChanged() {
-        if (fired) return
-        fired = true
+      // Espera AMBOS: el directoryChanged del watcher y el finished del mkdir
+      // trigger (consumido para no filtrarlo a pruebas posteriores).
+      var gotChange = false, gotFinish = false, settled = false
+      function finish(ok, msg) {
+        if (settled) return
+        settled = true
         m.directoryChanged.disconnect(onChanged)
         m.unwatch(); m.destroy()
-        done(true, "directoryChanged tras crear subcarpeta")
+        done(ok, msg)
       }
+      function maybe() { if (gotChange && gotFinish) finish(true, "directoryChanged tras crear subcarpeta") }
+      function onChanged() { gotChange = true; maybe() }
       m.directoryChanged.connect(onChanged)
-      // Provoca un cambio en el directorio vigilado.
+      sc._fileOp(function (ok, msg) { finish(false, "mkdir trigger: " + msg) },
+                 function () { gotFinish = true; maybe() })
       FileOperations.mkdir(sc.watchDir + "/trigger")
     })
 
@@ -374,6 +379,154 @@ QtObject {
         })
       })
       if (!started) done(false, "runNativeCopy devolvió false (¿ocupado?)")
+    })
+
+    // -------- Move (13.B) --------
+
+    add("FileOperations move overwrite (replace)", function (done) {
+      var work = sc.opsDir + "/mvow-src.txt"
+      var dst = sc.opsDir + "/mvow-dst.txt"
+      sc._fileOp(done, function () {          // work creado
+        sc._fileOp(done, function () {        // dst creado (provoca conflicto)
+          sc._fileOp(done, function () {      // move con overwrite -> reemplaza
+            sc._listOnce(sc.opsDir, function (e) {
+              var ok = sc._has(e, "mvow-dst.txt") && !sc._has(e, "mvow-src.txt")
+              done(ok, ok ? "reemplazado, origen consumido" : "estado inesperado")
+            })
+          })
+          FileOperations.move(work, dst, true)
+        })
+        FileOperations.copy(sc.note, dst)
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
+    add("FileOperations move directory (recursive)", function (done) {
+      var srcDir = sc.opsDir + "/mvdir-src"
+      var dstDir = sc.opsDir + "/mvdir-dst"
+      sc._fileOp(done, function () {          // copia listDir -> srcDir (árbol)
+        sc._fileOp(done, function () {        // move srcDir -> dstDir
+          sc._listOnce(dstDir, function (e) {
+            var okDst = e.length === 4 && sc._has(e, "sub") && sc._has(e, "alpha.txt")
+            sc._listOnce(sc.opsDir, function (top) {
+              var okGone = !sc._has(top, "mvdir-src")
+              done(okDst && okGone, okDst ? (okGone ? "árbol movido, origen ido" : "origen no se borró") : "árbol destino incompleto")
+            })
+          })
+        })
+        FileOperations.move(srcDir, dstDir)
+      })
+      FileOperations.copy(sc.listDir, srcDir)
+    })
+
+    add("FileOperations move symlink preserved", function (done) {
+      var work = sc.opsDir + "/mvlink-src"
+      var dst = sc.opsDir + "/mvlink-dst"
+      sc._fileOp(done, function () {          // copia link.txt -> work (symlink)
+        sc._fileOp(done, function () {        // move work -> dst
+          sc._listOnce(sc.opsDir, function (e) {
+            var ok = false
+            for (var i = 0; i < e.length; i++)
+              if (e[i].name === "mvlink-dst" && e[i].link && e[i].link.length > 0) ok = true
+            done(ok, ok ? "movido como enlace" : "no quedó symlink")
+          })
+        })
+        FileOperations.move(work, dst)
+      })
+      FileOperations.copy(sc.dir + "/link.txt", work)
+    })
+
+    add("FileOperations move cross-filesystem (best-effort /tmp)", function (done) {
+      // HOME (.cache) -> /tmp: si son montajes distintos (tmpfs), fuerza el
+      // fallback copia+borrado (EXDEV); si es el mismo, degrada a rename
+      // atómico. En ambos casos el move debe cumplir: destino con el fichero,
+      // origen consumido. Limpia el /tmp al terminar (net-zero).
+      var work = sc.opsDir + "/xfs-src.txt"
+      var xfsDst = "/tmp/omafiles-selfcheck-xfs-" + Date.now() + ".txt"
+      sc._fileOp(done, function () {          // work creado en HOME
+        sc._fileOp(done, function () {        // move HOME -> /tmp
+          var destInfo = PreviewProvider.info(xfsDst)
+          var destOk = destInfo && Object.keys(destInfo).length > 0
+          sc._listOnce(sc.opsDir, function (e) {
+            var srcGone = !sc._has(e, "xfs-src.txt")
+            // limpia /tmp ESPERANDO su finished, para no filtrar la señal a
+            // la prueba siguiente (era la causa de la flakiness).
+            sc._fileOp(done, function () {
+              done(destOk && srcGone, (destOk ? "dest ok" : "dest falta") + ", " + (srcGone ? "origen ido" : "origen queda"))
+            })
+            FileOperations.remove(xfsDst)
+          })
+        })
+        FileOperations.move(work, xfsDst)
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
+    add("Copy/move cancellation (cooperative, source safe)", function (done) {
+      // Cancela una copia grande (32 MiB): cancel() SÍNCRONO justo tras
+      // lanzar la copia activa el flag antes de que el worker (que aún tiene
+      // que arrancar en el pool y luego copia MiBs) pueda terminar, así que
+      // aborta con error "cancelled" de forma determinista, sin borrar el
+      // origen (en move, removeTree del origen solo corre TRAS copiar; la
+      // ruta copyTree es la misma que usa move cross-fs).
+      var dst = sc.opsDir + "/big-copy.bin"
+      var srcPath = sc.dir + "/big.bin"
+      function onErr(op, path, msg) {
+        if (path !== srcPath) return  // ignora señales de otras operaciones
+        cleanup()
+        if (msg !== "cancelled") { done(false, "error inesperado: " + msg); return }
+        // el origen (big.bin) sigue intacto
+        var srcOk = PreviewProvider.info(srcPath)
+        done(srcOk && Object.keys(srcOk).length > 0, "cancelado, origen intacto")
+      }
+      function onFin(op, path) {
+        if (path !== srcPath) return  // ignora señales de otras operaciones
+        cleanup(); done(false, "terminó antes de poder cancelar")
+      }
+      function cleanup() {
+        FileOperations.error.disconnect(onErr)
+        FileOperations.finished.disconnect(onFin)
+      }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.copy(sc.dir + "/big.bin", dst)
+      FileOperations.cancel()
+    })
+
+    add("ActionEngine native move runner + undo (paste/drop path)", function (done) {
+      // Ejercita el cableado REAL de mover con undo (13.B):
+      // content.moveFiles -> runNativeMove -> FileOperations.move; luego
+      // content.undoLast -> moveFiles(invertido) revierte.
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var work = sc.opsDir + "/mv-runner-src.txt"
+      var dst = sc.opsDir + "/mv-runner-dst.txt"
+      sc._fileOp(done, function () {          // work creado
+        var pairs = [{ src: work, dest: dst }]
+        var started = c.moveFiles(pairs, "Moving…", false, function () {
+          // Registra el undo EXACTAMENTE como hace ClipboardOps/ConflictActions
+          // en su onDone (mover de vuelta / rehacer, ambos nativos).
+          var reversed = [{ src: dst, dest: work }]
+          c.pushUndo("move test",
+            function () { return c.moveFiles(reversed, "", false) },
+            function () { return c.moveFiles(pairs, "", false) })
+          sc._listOnce(sc.opsDir, function (e) {
+            if (!(sc._has(e, "mv-runner-dst.txt") && !sc._has(e, "mv-runner-src.txt"))) {
+              done(false, "no movió"); return
+            }
+            // undo: mover de vuelta (espera el finished del reverse move)
+            sc._fileOp(done, function () {
+              sc._listOnce(sc.opsDir, function (e2) {
+                var undone = sc._has(e2, "mv-runner-src.txt") && !sc._has(e2, "mv-runner-dst.txt")
+                done(undone, undone ? "movido y deshecho" : "undo no revirtió")
+              })
+            })
+            c.undoLast()
+          })
+        })
+        if (!started) done(false, "runNativeMove devolvió false")
+      })
+      FileOperations.copy(sc.note, work)
     })
 
     add("FileOperations move", function (done) {

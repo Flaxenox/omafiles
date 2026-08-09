@@ -86,24 +86,18 @@ Item {
         // Copiar no tiene undo (deshacerlo es ambiguo, ver ActionEngine).
         root.copyFiles(pairs, busyLabel, mode === "overwrite")
       } else {
-        // Mover sigue en shell hasta 13.B (con su undo).
-        var noClobber = mode !== "overwrite"
-        var cmds = pairs.map(function (p) {
-          return "mv " + (noClobber ? "-n" : "-f") + " -- " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
-        })
-        var pasteMoveCmd = root.chainCmds(cmds)
-        root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
-        root.runAction(pasteMoveCmd, busyLabel, function () {
+        // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
+        // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
+        var overwrite = mode === "overwrite"
+        root.moveFiles(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
             ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
             : "move " + pairs.length + " items"
+          var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
           root.pushUndo(label, function () {
-            var undoCmds = pairs.map(function (p) {
-              return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
-            })
-            return root.runAction(root.chainCmds(undoCmds))
+            return root.moveFiles(reversed, "", false)      // deshacer: no-clobber
           }, function () {
-            return root.runAction(pasteMoveCmd)
+            return root.moveFiles(pairs, "", overwrite)     // rehacer: como el original
           })
         })
       }

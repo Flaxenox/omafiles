@@ -20,7 +20,7 @@ QtObject {
   signal error(string op, string path, string message)
 
   function copy(source, destination, overwrite) { Backend.FileOperations.copy(source, destination, overwrite === true) }
-  function move(source, destination) { Backend.FileOperations.move(source, destination) }
+  function move(source, destination, overwrite) { Backend.FileOperations.move(source, destination, overwrite === true) }
   function rename(path, newName) { Backend.FileOperations.rename(path, newName) }
   function remove(path) { Backend.FileOperations.remove(path) }
   function mkdir(path) { Backend.FileOperations.mkdir(path) }

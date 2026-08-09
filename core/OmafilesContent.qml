@@ -439,6 +439,13 @@ Item {
     return registry.actionEngine.runNativeCopy(pairs, busyLabel, overwrite, onDone)
   }
 
+  // Movimiento nativo (Fase 13.B): sustituye al `mv` shell en runPaste/
+  // runDrop. Mismo modelo de undo -- el llamador registra el undo/redo en
+  // onDone, reutilizando moveFiles con los pares invertidos/originales.
+  function moveFiles(pairs, busyLabel, overwrite, onDone) {
+    return registry.actionEngine.runNativeMove(pairs, busyLabel, overwrite, onDone)
+  }
+
   function openTerminalHere() {
     // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
     registry.openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])

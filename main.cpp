@@ -77,9 +77,20 @@ bool writeSelfCheckFixtures(const QString &base) {
   note.write("hello selfcheck\nsecond line\n");
   note.close();
 
-  // Symlink para validar que copy preserva enlaces como enlaces (13.A).
+  // Symlink para validar que copy/move preservan enlaces como enlaces.
   QFile::remove(base + "/link.txt");
   QFile::link(base + "/note.txt", base + "/link.txt");
+
+  // Fichero grande (32 MiB) para probar la cancelación cooperativa a mitad
+  // de copia: lo bastante grande para que la copia abarque muchos trozos y
+  // el cancel() (disparado en el siguiente turno del bucle) caiga en medio.
+  {
+    QFile big(base + "/big.bin");
+    if (!big.open(QIODevice::WriteOnly)) return false;
+    const QByteArray chunk(1 << 20, '\0'); // 1 MiB
+    for (int i = 0; i < 32; ++i) big.write(chunk);
+    big.close();
+  }
 
   // PNG real para ThumbnailProvider (ruta QImageReader).
   QImage img(16, 16, QImage::Format_RGB32);

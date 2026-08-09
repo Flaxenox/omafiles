@@ -123,8 +123,20 @@ bool removeTree(const QString &path, QString &err) {
 
 FileOperations::FileOperations(QObject *parent) : QObject(parent) {}
 
+FileOperations::~FileOperations() {
+  // Marca el objeto como muerto bajo el lock: un worker que aún no haya
+  // entregado verá alive=false y no tocará este objeto ya destruido.
+  std::lock_guard<std::mutex> lk(m_life->mtx);
+  m_life->alive = false;
+}
+
 void FileOperations::emitProgress(const QString &op, const QString &path,
                                   double pct) {
+  // Llamado desde el worker: entrega segura solo si el singleton sigue vivo.
+  auto life = m_life;
+  std::lock_guard<std::mutex> lk(life->mtx);
+  if (!life->alive)
+    return;
   QMetaObject::invokeMethod(
       this, [this, op, path, pct]() { emit progress(op, path, pct); },
       Qt::QueuedConnection);
@@ -132,9 +144,16 @@ void FileOperations::emitProgress(const QString &op, const QString &path,
 
 void FileOperations::run(const QString &op, const QString &path,
                          std::function<Result()> job) {
+  auto life = m_life; // copia del control block, sobrevive al singleton
   QThreadPool::globalInstance()->start(QRunnable::create(
-      [this, op, path, job = std::move(job)]() {
+      [this, life, op, path, job = std::move(job)]() {
         Result r = job();
+        // Entrega segura: el destructor toma este mismo lock, así que o
+        // vemos alive=false (y no tocamos el objeto muerto) o lo tenemos
+        // cogido y el destructor espera a que soltemos.
+        std::lock_guard<std::mutex> lk(life->mtx);
+        if (!life->alive)
+          return;
         QMetaObject::invokeMethod(
             this,
             [this, op, path, r]() {
@@ -184,13 +203,22 @@ void FileOperations::copy(const QString &source, const QString &destination,
 
 void FileOperations::cancel() { m_cancelled.store(true); }
 
-void FileOperations::move(const QString &source, const QString &destination) {
+void FileOperations::move(const QString &source, const QString &destination,
+                          bool overwrite) {
   m_cancelled.store(false);
-  run(QStringLiteral("move"), source, [this, source, destination]() -> Result {
+  run(QStringLiteral("move"), source,
+      [this, source, destination, overwrite]() -> Result {
     if (!QFileInfo::exists(source))
       return {false, QStringLiteral("source does not exist")};
-    if (QFileInfo::exists(destination))
-      return {false, QStringLiteral("destination already exists")};
+    if (QFileInfo::exists(destination)) {
+      if (!overwrite)
+        return {false, QStringLiteral("destination already exists")};
+      // "overwrite" (= mv -f): borra el destino y sigue. Así el rename
+      // atómico de abajo no falla por ENOTEMPTY (carpeta) ni deja mezcla.
+      QString rmErr;
+      if (!removeTree(destination, rmErr))
+        return {false, rmErr};
+    }
     // Intento atomico (mismo sistema de ficheros): un solo rename(2), vale
     // tanto para ficheros como para carpetas.
     if (::rename(QFile::encodeName(source).constData(),

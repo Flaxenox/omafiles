@@ -4,6 +4,8 @@
 #include <QString>
 #include <atomic>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <qqmlregistration.h>
 
 // Backend C++ de operaciones de fichero (Fase 7, josema). Sustituto nativo
@@ -33,6 +35,7 @@ class FileOperations : public QObject {
 
 public:
   explicit FileOperations(QObject *parent = nullptr);
+  ~FileOperations() override;
 
   // Copia `source` a `destination` (ruta destino COMPLETA, incluido el
   // nombre final). Recursiva si source es carpeta (preserva symlinks como
@@ -50,8 +53,11 @@ public:
 
   // Mueve `source` a `destination` (ruta destino COMPLETA). Intenta un
   // rename atomico (mismo sistema de ficheros); si cruza de disco, copia +
-  // borra el origen (con progress). No sobrescribe.
-  Q_INVOKABLE void move(const QString &source, const QString &destination);
+  // borra el origen (con progress, cancelable). Si destination existe: con
+  // overwrite=true lo REEMPLAZA (borra y mueve, = `mv -f`); con
+  // overwrite=false, error. Fase 13.B (josema).
+  Q_INVOKABLE void move(const QString &source, const QString &destination,
+                        bool overwrite = false);
 
   // Renombra `path` a `newName` (mismo directorio). No sobrescribe.
   Q_INVOKABLE void rename(const QString &path, const QString &newName);
@@ -95,4 +101,16 @@ private:
   // Flag de cancelación cooperativa (ver cancel()/copy()). Atómico porque lo
   // escribe el hilo de UI y lo lee el worker del pool.
   std::atomic<bool> m_cancelled{false};
+
+  // Guardia de vida contra el `this` colgante (mismo patrón que
+  // DirectoryModel, Fase 10.A): un worker del pool que termine DESPUÉS de que
+  // el singleton se destruya (p.ej. al cerrar la app a mitad de una copia)
+  // haría invokeMethod sobre memoria muerta -> crash. El worker comprueba
+  // `alive` bajo el mutex antes de entregar; el destructor lo pone a false
+  // bajo el mismo mutex. Fase 13.B.
+  struct Life {
+    std::mutex mtx;
+    bool alive = true;
+  };
+  std::shared_ptr<Life> m_life = std::make_shared<Life>();
 };
