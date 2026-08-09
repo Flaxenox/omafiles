@@ -19,7 +19,7 @@ Item {
     var names = root.pendingDeleteNames
     root.pendingDeleteNames = []
     if (names.length === 0) return
-    if (root.currentPath === root.trashDir) {
+    if (NavState.currentPath === root.trashDir) {
       // Borrado permanente -- no hay undo posible. TrashState.trashInfo (ver
       // trash-info.sh) sabe la raíz física real de cada ítem -- puede
       // ser la papelera de casa o la de cualquier otro disco montado,
@@ -33,11 +33,11 @@ Item {
       })
       root.runAction(root.chainCmds(cmds))
     } else {
-      var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(root.currentPath, n)) }).join(" ")
+      var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(NavState.currentPath, n)) }).join(" ")
       // Rutas originales absolutas capturadas AQUÍ (no dentro de los
-      // closures de más abajo) -- root.currentPath puede haber cambiado
+      // closures de más abajo) -- NavState.currentPath puede haber cambiado
       // para cuando el usuario pulse deshacer, mucho más tarde.
-      var origPaths = names.map(function (n) { return root.joinPath(root.currentPath, n) })
+      var origPaths = names.map(function (n) { return root.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
       var deleteCmd = "gio trash -- " + quoted
       root.runAction(deleteCmd, "", function () {

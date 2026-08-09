@@ -38,17 +38,17 @@ Item {
     // de fichero...) recargue lo correcto sin tener que acordarse de
     // comprobar inArchive en cada sitio.
     if (ArchiveState.inArchive) { archiveActions.refreshArchiveListing(); return }
-    dirLister.list(root.currentPath)
+    dirLister.list(NavState.currentPath)
   }
 
-  // Reasigna root.entries SOLO si el contenido de verdad cambió --
+  // Reasigna NavState.entries SOLO si el contenido de verdad cambió --
   // QML/ListView no compara el contenido de un array modelo, solo la
   // referencia, así que reasignar aunque los datos sean idénticos
   // dispara un relayout completo (recrea TODAS las filas desde cero).
   // Con pocas filas no se nota, pero con la papelera (agrega varios
   // discos, puede tener bastantes más filas, con subtítulos que a veces
   // envuelven a dos líneas) ese relayout tarda lo bastante como para
-  // verse -- root.entries ya se había puesto al instante desde
+  // verse -- NavState.entries ya se había puesto al instante desde
   // tabEntriesCache en _goToPath, y este listProc "trae una copia fresca
   // por detrás" (ver el comentario ahí) que con la papelera llega
   // notablemente más tarde que con una carpeta normal, así que el doble
@@ -61,13 +61,13 @@ Item {
     // Comparación por contenido barata (Fase 10.A): antes eran otros dos
     // JSON.stringify del array completo. entriesEqual es O(n) sin
     // asignaciones.
-    var changed = !Utils.entriesEqual(parsed, root.entries)
-    if (changed) root.entries = parsed
+    var changed = !Utils.entriesEqual(parsed, NavState.entries)
+    if (changed) NavState.entries = parsed
     _finishListLoad(changed)
   }
 
   // Ver listProc.onFinished -- lo que queda por hacer una vez
-  // root.entries ya está puesto (con la papelera, puede ser justo
+  // NavState.entries ya está puesto (con la papelera, puede ser justo
   // después de trashInfoProc en vez de inmediatamente). resetView: false
   // cuando _applyEntries() decidió que el contenido no había cambiado de
   // verdad -- en ese caso list.contentY ya estaba bien (nadie lo tocó) y
@@ -104,8 +104,8 @@ Item {
     root.pendingSelectNames = []
     var foundIndices = []
     if (selectNames.length > 0) {
-      for (var i = 0; i < root.visibleEntries.length; i++) {
-        if (selectNames.indexOf(root.visibleEntries[i].name) >= 0) foundIndices.push(i)
+      for (var i = 0; i < NavState.visibleEntries.length; i++) {
+        if (selectNames.indexOf(NavState.visibleEntries[i].name) >= 0) foundIndices.push(i)
       }
     }
     if (foundIndices.length > 0) {
@@ -118,8 +118,8 @@ Item {
       SelectionState.anchorIndex = foundIndices[0]
       SelectionState.selectedIndices = foundIndices
       if (PreviewState.previewOpen && foundIndices.length > 1) PreviewState.previewOpen = false
-    } else if (SelectionState.selectedIndex >= root.visibleEntries.length) {
-      SelectionState.selectedIndex = root.visibleEntries.length - 1
+    } else if (SelectionState.selectedIndex >= NavState.visibleEntries.length) {
+      SelectionState.selectedIndex = NavState.visibleEntries.length - 1
     }
   }
 
@@ -167,7 +167,7 @@ Item {
     // del archivo (ver enter()/goUp()/inArchive), así que si esto se
     // ejecuta es que el usuario se fue a otro sitio de verdad.
     if (ArchiveState.inArchive) { ArchiveState.inArchive = false; ArchiveState.archivePath = ""; ArchiveState.archiveSubPath = "" }
-    root.currentPath = path
+    NavState.currentPath = path
     selectionOps.selectOnly(-1)
     EditModeState.renamingIndex = -1
     EditModeState.creatingFolder = false
@@ -184,7 +184,7 @@ Item {
     // veía un parpadeo con el listado de la pestaña anterior durante esos
     // milisegundos. refresh() de todas formas trae una copia fresca por
     // detrás enseguida, sustituyéndola sin que se note.
-    if (root.tabEntriesCache[path]) root.entries = root.tabEntriesCache[path]
+    if (root.tabEntriesCache[path]) NavState.entries = root.tabEntriesCache[path]
     refresh()
     startDirWatch(path)
   }
@@ -251,13 +251,13 @@ Item {
       return
     }
     if (entry.type === "dir") {
-      navigateTo(root.joinPath(root.currentPath, entry.name))
+      navigateTo(root.joinPath(NavState.currentPath, entry.name))
     } else if (archiveActions.isArchive(entry)) {
-      archiveActions.enterArchive(root.joinPath(root.currentPath, entry.name))
+      archiveActions.enterArchive(root.joinPath(NavState.currentPath, entry.name))
     } else if (archiveActions.isIso(entry)) {
       mountOps.mountIso(entry)
     } else {
-      var openPath = root.joinPath(root.currentPath, entry.name)
+      var openPath = root.joinPath(NavState.currentPath, entry.name)
       openWithDefault(openPath)
       bookmarkOps.addRecent(openPath, entry.name)
     }
@@ -271,9 +271,9 @@ Item {
       archiveActions.refreshArchiveListing()
       return
     }
-    if (root.currentPath === "/") return
-    var idx = root.currentPath.lastIndexOf("/")
-    navigateTo(idx > 0 ? root.currentPath.substring(0, idx) : "/")
+    if (NavState.currentPath === "/") return
+    var idx = NavState.currentPath.lastIndexOf("/")
+    navigateTo(idx > 0 ? NavState.currentPath.substring(0, idx) : "/")
   }
 
   // "close_write" (fichero cerrado tras escribir) en vez de fiarse solo
@@ -308,7 +308,7 @@ Item {
     id: dirLister
     pluginDir: root.pluginDir
     trashDir: root.trashDir
-    showHidden: root.showHidden
+    showHidden: NavState.showHidden
     sortOps: navCtrl.sortOps
     onPathErrorChanged: root.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)

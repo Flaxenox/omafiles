@@ -14,7 +14,7 @@ Item {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
     ClipboardState.clipboardMode = "copy"
     syncClipboardToSystem()
   }
@@ -23,7 +23,7 @@ Item {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
     ClipboardState.clipboardMode = "cut"
     syncClipboardToSystem()
   }
@@ -41,7 +41,7 @@ Item {
   // una ruta por línea.
   function copyPathFor(entries) {
     if (!entries || entries.length === 0) return
-    var paths = entries.map(function (e) { return root.joinPath(root.currentPath, e.name) })
+    var paths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
     Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
   }
 
@@ -76,7 +76,7 @@ Item {
       var isCut = ClipboardState.clipboardMode === "cut"
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: root.joinPath(root.currentPath, name) }
+        return { src: src, dest: root.joinPath(NavState.currentPath, name) }
       })
       var cmds = pairs.map(function (p) {
         var verb = isCut ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")

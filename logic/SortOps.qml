@@ -47,7 +47,7 @@ Item {
 
   function setSort(key) {
     SortState.sortKey = key
-    root.entries = sortEntries(root.entries)
+    NavState.entries = sortEntries(NavState.entries)
   }
 
   function cycleSort() {
@@ -57,6 +57,6 @@ Item {
 
   function reverseSort() {
     SortState.sortDesc = !SortState.sortDesc
-    root.entries = sortEntries(root.entries)
+    NavState.entries = sortEntries(NavState.entries)
   }
 }

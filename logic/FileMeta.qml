@@ -37,7 +37,7 @@ Item {
   // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
   // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
   // basePath: la ruta del panel que está pintando esta fila -- por
-  // defecto root.currentPath (panel activo), pero un panel de fondo debe
+  // defecto NavState.currentPath (panel activo), pero un panel de fondo debe
   // pasar la suya propia (bgPanel.modelData.path) o el aviso de "en la
   // papelera" saldría según la carpeta del panel ACTIVO, no la de este
   // panel (mismo tipo de bug ya documentado para thumbKeyFor/etc.).
@@ -48,7 +48,7 @@ Item {
   // pinta la fila.
   function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
-    var atPath = basePath !== undefined ? basePath : root.currentPath
+    var atPath = basePath !== undefined ? basePath : NavState.currentPath
     if (atPath === root.trashDir) {
       var parts = []
       if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))

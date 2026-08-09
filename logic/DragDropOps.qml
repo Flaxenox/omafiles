@@ -29,8 +29,8 @@ Item {
   function dragMimeDataFor(index) {
     var indices = (selectionOps.isSelected(index) && SelectionState.selectedIndices.length > 1) ? SelectionState.selectedIndices : [index]
     var paths = indices
-      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
-      .map(function (i) { return root.joinPath(root.currentPath, root.visibleEntries[i].name) })
+      .filter(function (i) { return i >= 0 && i < NavState.visibleEntries.length })
+      .map(function (i) { return root.joinPath(NavState.currentPath, NavState.visibleEntries[i].name) })
     var data = {}
     data["text/uri-list"] = paths.map(function (p) { return Util.fileUrl(p) }).join("\r\n")
     return data

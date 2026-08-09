@@ -29,7 +29,7 @@ Item {
       Notifier.notify("Still disconnecting a network location — try again in a moment")
       return
     }
-    networkUnmountProc.wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
+    networkUnmountProc.wasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
     networkUnmountProc.tabIndex = TabsState.activeTabIndex
     networkUnmountProc.start(["gio", "mount", "-u", mount.path])
   }
@@ -75,7 +75,7 @@ Item {
       Notifier.notify("Still ejecting a drive — try again in a moment")
       return
     }
-    var wasInside = root.currentPath === mount.path || root.currentPath.indexOf(mount.path + "/") === 0
+    var wasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
     ejectProc.mountPath = mount.path
     ejectProc.wasInside = wasInside
     ejectProc.tabIndex = TabsState.activeTabIndex
@@ -111,7 +111,7 @@ Item {
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.start(["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(root.currentPath, entry.name)])
+    mountIsoProc.start(["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(NavState.currentPath, entry.name)])
   }
 
   ProcessRunner {

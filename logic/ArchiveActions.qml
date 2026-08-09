@@ -108,9 +108,9 @@ Item {
       for (var i = 0; i + 1 < fields.length; i += 2) {
         parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
       }
-      root.entries = sortOps.sortEntries(parsed)
+      NavState.entries = sortOps.sortEntries(parsed)
       list.positionViewAtBeginning()
-      selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+      selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
     }
   }
 

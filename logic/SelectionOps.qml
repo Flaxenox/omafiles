@@ -16,8 +16,8 @@ Item {
     SelectionState.anchorIndex = index
     SelectionState.selectedIndices = index >= 0 ? [index] : []
     if (PreviewState.previewOpen) {
-      if (index >= 0 && index < root.visibleEntries.length && root.visibleEntries[index].type !== "dir") {
-        previewLoader.loadPreview(root.visibleEntries[index])
+      if (index >= 0 && index < NavState.visibleEntries.length && NavState.visibleEntries[index].type !== "dir") {
+        previewLoader.loadPreview(NavState.visibleEntries[index])
       } else {
         PreviewState.previewOpen = false
       }
@@ -41,7 +41,7 @@ Item {
   function invertSelection() {
     var current = SelectionState.selectedIndices
     var next = []
-    for (var i = 0; i < root.visibleEntries.length; i++) {
+    for (var i = 0; i < NavState.visibleEntries.length; i++) {
       if (current.indexOf(i) < 0) next.push(i)
     }
     SelectionState.selectedIndices = next
@@ -96,7 +96,7 @@ Item {
   // dividir por la altura media en vez de inspeccionar los delegados reales
   // de la ListView, más simple y ajeno a la virtualización.
   function updateMarqueeSelection(additive, base) {
-    var total = root.visibleEntries.length
+    var total = NavState.visibleEntries.length
     if (total === 0 || root.measuredRowHeight <= 0) return
     var rowH = root.measuredRowHeight
     var contentEnd = total * rowH
@@ -117,7 +117,7 @@ Item {
 
   function selectedEntries() {
     return SelectionState.selectedIndices
-      .filter(function (i) { return i >= 0 && i < root.visibleEntries.length })
-      .map(function (i) { return root.visibleEntries[i] })
+      .filter(function (i) { return i >= 0 && i < NavState.visibleEntries.length })
+      .map(function (i) { return NavState.visibleEntries[i] })
   }
 }

@@ -29,13 +29,13 @@ Item {
     ChmodState.chmodMixed = false
     ChmodState.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
     ChmodState.chmodRecursive = false
-    var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(root.currentPath, e.name)) }).join(" ")
+    var paths = entries.map(function (e) { return Util.shellQuote(root.joinPath(NavState.currentPath, e.name)) }).join(" ")
     chmodStatProc.start(["bash", "-c", "stat -c%a -- " + paths])
     ChmodState.chmodOpen = true
   }
 
   function showPropertiesForSelection() {
-    // root.currentPath sigue siendo la carpeta real que contiene el
+    // NavState.currentPath sigue siendo la carpeta real que contiene el
     // archivo mientras se navega dentro de él -- sin este guard,
     // Properties intentaría hacer stat/du de "carpeta-real/nombre-dentro-
     // del-zip", que no existe (o, peor, podría coincidir por casualidad
@@ -56,7 +56,7 @@ Item {
     PropertiesState.propertiesMtime = ""
     PropertiesState.propertiesOpen = true
     var quoted = entries.map(function (e) {
-      return Util.shellQuote(root.joinPath(root.currentPath, e.name))
+      return Util.shellQuote(root.joinPath(NavState.currentPath, e.name))
     }).join(" ")
     PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
     propertiesDuProc.start(["bash", "-c", "du -shc -- " + quoted + " | tail -n1"])
@@ -66,7 +66,7 @@ Item {
     if (!entry) return
     PropertiesState.propertiesRequestId += 1
     PropertiesState.propertiesMulti = false
-    var path = root.joinPath(root.currentPath, entry.name)
+    var path = root.joinPath(NavState.currentPath, entry.name)
     PropertiesState.propertiesEntry = entry
     PropertiesState.propertiesSize = entry.type === "dir" ? "" : Utils.formatSize(entry.size)
     PropertiesState.propertiesSizeLoading = entry.type === "dir"

@@ -26,7 +26,7 @@ Item {
 
   function startRename(index) {
     if (ArchiveState.inArchive) return
-    if (index < 0 || index >= root.visibleEntries.length) return
+    if (index < 0 || index >= NavState.visibleEntries.length) return
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
     EditModeState.renamingIndex = index

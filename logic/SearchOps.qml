@@ -16,7 +16,7 @@ Item {
   property Item sortOps: null
 
   function toggleHidden() {
-    root.showHidden = !root.showHidden
+    NavState.showHidden = !NavState.showHidden
     list.contentY = list.originY
     root.refresh()
     root.refreshTick += 1
@@ -31,14 +31,14 @@ Item {
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
     root.searching = true
-    root.searchQuery = ""
+    NavState.searchQuery = ""
     root.searchTruncated = false
     list.contentY = list.originY
   }
 
   function exitSearch() {
     root.searching = false
-    root.searchQuery = ""
+    NavState.searchQuery = ""
     root.deepSearchRoot = ""
     root.searchTruncated = false
     list.contentY = list.originY
@@ -47,21 +47,21 @@ Item {
   }
 
   function runDeepSearch() {
-    if (!root.searchQuery) return
-    root.deepSearchRoot = root.currentPath
+    if (!NavState.searchQuery) return
+    root.deepSearchRoot = NavState.currentPath
     list.contentY = list.originY
-    deepSearchProc.start([root.pluginDir + "/search-recursive.sh", root.currentPath, root.searchQuery, root.showHidden ? "1" : "0"])
+    deepSearchProc.start([root.pluginDir + "/search-recursive.sh", NavState.currentPath, NavState.searchQuery, NavState.showHidden ? "1" : "0"])
   }
 
   function goTop() {
-    if (root.visibleEntries.length === 0) return
+    if (NavState.visibleEntries.length === 0) return
     selectionOps.selectOnly(0)
     list.positionViewAtBeginning()
   }
 
   function goBottom() {
-    if (root.visibleEntries.length === 0) return
-    var last = root.visibleEntries.length - 1
+    if (NavState.visibleEntries.length === 0) return
+    var last = NavState.visibleEntries.length - 1
     selectionOps.selectOnly(last)
     list.positionViewAtIndex(last, ListView.Contain)
   }
@@ -76,9 +76,9 @@ Item {
       // por completa en silencio.
       root.searchTruncated = parsed.length > 200
       if (root.searchTruncated) parsed = parsed.slice(0, 200)
-      root.entries = sortOps.sortEntries(parsed)
+      NavState.entries = sortOps.sortEntries(parsed)
       list.positionViewAtBeginning()
-      selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+      selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
     }
   }
 }

@@ -27,7 +27,7 @@ Item {
   }
 
   // Navegar DENTRO de un panel que no es el activo -- no toca
-  // root.currentPath/root.entries (esos son solo del panel activo), solo el
+  // NavState.currentPath/NavState.entries (esos son solo del panel activo), solo el
   // propio objeto de esa pestaña. Mantiene su historial igual que
   // navigateTo mantiene el de la pestaña activa.
   function navigateTabTo(index, path) {
@@ -74,7 +74,7 @@ Item {
   function saveActiveTab() {
     var next = TabsState.tabs.slice()
     next[TabsState.activeTabIndex] = {
-      path: root.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
+      path: NavState.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
       previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
       inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath
     }
@@ -125,7 +125,7 @@ Item {
   // bajado en la lista aterrizaba siempre en la fila 0, perdiendo la
   // posición aunque la carpeta en sí no hubiera cambiado. Se llama
   // DESPUÉS de _goToPath, mismo motivo que _restoreTabPreview: para
-  // entonces el modelo (root.visibleEntries) ya está actualizado y
+  // entonces el modelo (NavState.visibleEntries) ya está actualizado y
   // contentHeight ya refleja el listado correcto.
   // Esto es solo la restauración INMEDIATA (mientras el listProc que
   // _goToPath acaba de lanzar sigue en marcha) -- root._pendingScrollY
@@ -154,9 +154,9 @@ Item {
 
   function newTab() {
     saveActiveTab()
-    TabsState.tabs = TabsState.tabs.concat([{ path: root.currentPath, history: [root.currentPath], historyIndex: 0 }])
+    TabsState.tabs = TabsState.tabs.concat([{ path: NavState.currentPath, history: [NavState.currentPath], historyIndex: 0 }])
     TabsState.activeTabIndex = TabsState.tabs.length - 1
-    TabsState.navHistory = [root.currentPath]
+    TabsState.navHistory = [NavState.currentPath]
     TabsState.navHistoryIndex = 0
   }
 

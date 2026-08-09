@@ -132,7 +132,7 @@ Column {
       Accessible.role: Accessible.EditableText
       Accessible.name: "Search"
       text: root.searchQuery
-      onTextChanged: root.searchQuery = text
+      onTextChanged: NavState.searchQuery = text
       onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
       Keys.onPressed: function (event) {
         if (event.key === Qt.Key_Escape) {

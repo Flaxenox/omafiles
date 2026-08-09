@@ -106,12 +106,12 @@ Item {
         if (savedTabs.length > 0) {
           TabsState.tabs = savedTabs.map(function (t) { return { path: t.path, history: [t.path], historyIndex: 0 } })
           TabsState.activeTabIndex = Math.max(0, Math.min(parsed.activeTabIndex || 0, TabsState.tabs.length - 1))
-          root.currentPath = TabsState.tabs[TabsState.activeTabIndex].path
-          TabsState.navHistory = [root.currentPath]
+          NavState.currentPath = TabsState.tabs[TabsState.activeTabIndex].path
+          TabsState.navHistory = [NavState.currentPath]
           TabsState.navHistoryIndex = 0
         }
         root.refresh()
-        if (!ArchiveState.inArchive) root.startDirWatch(root.currentPath)
+        if (!ArchiveState.inArchive) root.startDirWatch(NavState.currentPath)
       } else if (path === root.bulkRenameHistoryFile) {
         BookmarksState.bulkRenameHistoryLoaded = true
         BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []

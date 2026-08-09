@@ -40,7 +40,7 @@ Item {
     }
     var destPaths = ClipboardState.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
-      return root.joinPath(root.currentPath, name)
+      return root.joinPath(NavState.currentPath, name)
     })
     var checkCmd = destPaths.map(function (p) {
       return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
@@ -87,10 +87,10 @@ Item {
     // interpretaría como flags de zip en vez de como nombre de fichero.
     // zip no admite "--" antes del propio nombre del zip (error "can't use
     // -- before archive name"), de ahí el "./" en su lugar.
-    var cmd = "cd -- " + Util.shellQuote(root.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
+    var cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(root.currentPath, archiveName)) + " && echo 1 || echo 0"])
+    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(NavState.currentPath, archiveName)) + " && echo 1 || echo 0"])
   }
 
   function commitBulkRename() {
@@ -105,8 +105,8 @@ Item {
       var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
       return {
         oldName: e.name, newName: newName,
-        oldPath: root.joinPath(root.currentPath, e.name),
-        newPath: root.joinPath(root.currentPath, newName)
+        oldPath: root.joinPath(NavState.currentPath, e.name),
+        newPath: root.joinPath(NavState.currentPath, newName)
       }
     })
     ConflictState.pendingBulkRename = pairs
@@ -132,8 +132,8 @@ Item {
 
   function extractHere(entry) {
     var ext = root.extOf(entry.name)
-    var path = Util.shellQuote(root.joinPath(root.currentPath, entry.name))
-    var dir = Util.shellQuote(root.currentPath)
+    var path = Util.shellQuote(root.joinPath(NavState.currentPath, entry.name))
+    var dir = Util.shellQuote(NavState.currentPath)
     var cmd, listCmd
     // Todas fuerzan sobrescritura (-o/-y/-o+) -- necesario para que
     // runPendingExtract pueda de verdad sobrescribir tras confirmar el
@@ -172,12 +172,12 @@ Item {
     // sobre currentPath/<nombre-del-zip>, que puede coincidir por
     // casualidad con un fichero real.
     if (ArchiveState.inArchive) return
-    if (index < 0 || index >= root.visibleEntries.length) return
-    var oldName = root.visibleEntries[index].name
+    if (index < 0 || index >= NavState.visibleEntries.length) return
+    var oldName = NavState.visibleEntries[index].name
     newName = newName.trim()
     if (!newName || newName === oldName) return
-    var oldPath = root.joinPath(root.currentPath, oldName)
-    var newPath = root.joinPath(root.currentPath, newName)
+    var oldPath = root.joinPath(NavState.currentPath, oldName)
+    var newPath = root.joinPath(NavState.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
     renameCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"])
   }
@@ -202,7 +202,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = root.joinPath(root.currentPath, name)
+    var path = root.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
     newFileCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
@@ -220,7 +220,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = root.joinPath(root.currentPath, name)
+    var path = root.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
     newFolderCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
@@ -270,7 +270,7 @@ Item {
       var names = Object.keys(top)
       if (names.length === 0) { archiveActions.runPendingExtract(); return }
       var checkCmd = names.map(function (n) {
-        return "test -e " + Util.shellQuote(root.joinPath(root.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
+        return "test -e " + Util.shellQuote(root.joinPath(NavState.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
       }).join("; ")
       extractConflictCheckProc.start(["bash", "-c", checkCmd])
     }

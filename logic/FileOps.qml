@@ -60,7 +60,7 @@ Item {
     // carpetas -- más simple que dos ramas de chainCmds distintas.
     var flag = ChmodState.chmodRecursive ? "-R " : ""
     var cmds = ChmodState.chmodNames.map(function (n) {
-      return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
+      return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(NavState.currentPath, n))
     })
     var label = ChmodState.chmodNames.length === 1
       ? "Setting permissions for \"" + ChmodState.chmodNames[0] + "\"…"
@@ -76,7 +76,7 @@ Item {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
       root.pushUndo(undoLabel, function () {
         var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
-          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(root.joinPath(root.currentPath, n))
+          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(root.joinPath(NavState.currentPath, n))
         })
         if (undoCmds.length === 0) return false
         return root.runAction(root.chainCmds(undoCmds))
@@ -99,9 +99,9 @@ Item {
   function makeLinkFor(entry) {
     if (ArchiveState.inArchive) return
     if (!entry) return
-    var target = root.joinPath(root.currentPath, entry.name)
+    var target = root.joinPath(NavState.currentPath, entry.name)
     var linkName = "Link to " + entry.name
-    var linkPath = root.joinPath(root.currentPath, linkName)
+    var linkPath = root.joinPath(NavState.currentPath, linkName)
     // El undo solo se registra si "ln -s" confirmó éxito -- antes se
     // registraba a ciegas, así que si ya existía un archivo con el nombre
     // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z

@@ -21,24 +21,26 @@ Item {
 
   property string homeDir: Env.get("HOME")
   property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
-  property string currentPath: homeDir
+  // currentPath/entries/showHidden/searchQuery/visibleEntries viven ahora
+  // en state/NavState.qml (Fase 11.A). Aquí solo quedan bindings finos de
+  // compatibilidad para el árbol visual, que aún lee root.* -- se retirarán
+  // al dividir OmafilesContent. logic/ ya lee/escribe NavState.* directo.
+  property string currentPath: NavState.currentPath
   // tabs/activeTabIndex/navHistory/navHistoryIndex viven ahora en
   // state/TabsState.qml -- vigesimoprimer y último slice de la capa
   // state/.
-  property var entries: []
+  property var entries: NavState.entries
   // Caché de listados por ruta, alimentada por los paneles de fondo cada
   // vez que refrescan -- ver _goToPath().
   property var tabEntriesCache: ({})
   property bool searching: false
   property string deepSearchRoot: ""
-  property string searchQuery: ""
+  property string searchQuery: NavState.searchQuery
   // Antes la búsqueda recursiva se cortaba en 200 resultados sin decir
   // nada -- una búsqueda con muchas coincidencias parecía completa cuando
   // en realidad faltaban ítems. Ver runDeepSearch()/search-recursive.sh.
   property bool searchTruncated: false
-  readonly property var visibleEntries: root.searchQuery
-    ? root.entries.filter(function (e) { return e.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) >= 0 })
-    : root.entries
+  readonly property var visibleEntries: NavState.visibleEntries
   property bool opened: false
   property bool loaded: false
   // Mensaje si list-dir.sh no pudo listar currentPath (permisos, carpeta
@@ -85,7 +87,7 @@ Item {
     actionEngine.redoLast()
   }
 
-  property bool showHidden: false
+  property bool showHidden: NavState.showHidden
 
   // selectedIndex/selectedIndices/anchorIndex/marquee* viven ahora en
   // state/SelectionState.qml (singleton, pragma Singleton) -- primer
@@ -325,7 +327,7 @@ Item {
     var restoringSession = false
     if (!root.loaded) {
       if (targetPath) {
-        root.currentPath = targetPath
+        NavState.currentPath = targetPath
         TabsState.tabs = [{ path: targetPath, history: [targetPath], historyIndex: 0 }]
         TabsState.navHistory = [targetPath]
         TabsState.navHistoryIndex = 0

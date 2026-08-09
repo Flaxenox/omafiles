@@ -12,7 +12,7 @@ Item {
   property Item root: null
 
   function requestVideoThumb(entry, basePath) {
-    basePath = basePath || root.currentPath
+    basePath = basePath || NavState.currentPath
     var key = Utils.thumbKeyFor(entry, basePath)
     if (VideoThumbState.videoThumbReady[key]) return
     if (VideoThumbState.thumbQueue.some(function (q) { return Utils.thumbKeyFor(q.entry, q.basePath) === key })) return
