@@ -2,9 +2,13 @@
 
 #include <QAbstractListModel>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVector>
+#include <functional>
 #include <qqmlregistration.h>
+
+class QFileSystemWatcher;
 
 // Backend C++ del listado de directorios (Fase 6.B, josema). Sustituto
 // nativo de list-dir.sh + Utils.parseEntries: un QAbstractListModel que
@@ -66,12 +70,44 @@ public:
     MtimeRole,    // qint64, epoch en segundos
   };
 
+  // Una entrada del listado. Publica porque las funciones de escaneo del
+  // .cpp (gatherOne/sortInto) la manejan como valor; no expone nada
+  // sensible, es un POD de datos.
+  struct Entry {
+    QString name;
+    QString type; // "dir" | "file"
+    QString link; // "" | "valid" | "broken"
+    bool isDir = false;
+    bool isSymlink = false;
+    qint64 size = 0;
+    qint64 mtime = 0;
+  };
+
   // Lanza el listado ASINCRONO de `path`. `showHidden` incluye dotfiles.
   // Vuelve al instante; el escaneo corre en un hilo del pool y el
   // resultado se aplica en el hilo de UI (listed()/errorChanged). Un
   // listado que llega con una generacion vieja se descarta (contador de
   // generacion, patron del proyecto: PreviewLoader/previewRequestId).
   Q_INVOKABLE void list(const QString &path, bool showHidden = false);
+
+  // Igual que list() pero fusiona el contenido de VARIOS directorios en un
+  // solo listado (Fase 6.C, papelera nativa). Sustituye a list-trash.sh,
+  // que hacia lo mismo lanzando list-dir.sh por cada raiz XDG y
+  // concatenando. Los directorios que no existen o no se pueden leer se
+  // saltan en silencio (igual que el `[[ -d ]] &&` del script). Mismo
+  // contrato async y misma senal listed()/entries.
+  Q_INVOKABLE void listMany(const QStringList &paths, bool showHidden = false);
+
+  // Vigilancia nativa del ultimo directorio pedido (Fase 6.D). Arranca un
+  // QFileSystemWatcher sobre `path` (inotify del kernel via Qt, SIN forkear
+  // inotifywait). Emite directoryChanged() cuando su contenido cambia; el
+  // debounce + el refresco los sigue haciendo NavigationController, que
+  // conserva su guarda de no-refrescar-a-mitad-de-renombrado. Devuelve
+  // false si no se pudo vigilar (ruta invalida, limite de descriptores) ->
+  // el llamador cae al fallback ProcessWatcher/inotifywait.
+  Q_INVOKABLE bool watch(const QString &path);
+  // Deja de vigilar. No-op si no habia vigilancia.
+  Q_INVOKABLE void unwatch();
 
   int error() const { return m_error; }
   bool loading() const { return m_loading; }
@@ -90,34 +126,39 @@ signals:
   // DirLister.listed): quien resetee scroll/seleccion por CADA listado se
   // engancha aqui, no a un *Changed que QML puede no disparar.
   void listed();
+  // El contenido del directorio vigilado cambio (ver watch()).
+  void directoryChanged();
 
 private:
-  struct Entry {
-    QString name;
-    QString type; // "dir" | "file"
-    QString link; // "" | "valid" | "broken"
-    bool isDir = false;
-    bool isSymlink = false;
-    qint64 size = 0;
-    qint64 mtime = 0;
-  };
-
   struct Result {
     int error = 0;
     QVector<Entry> rows;
   };
 
-  // Corre en el hilo worker: comprobaciones de error + escaneo completo
-  // (readdir + stat/lstat + orden). Estatico a proposito: no toca el
-  // modelo ni ningun miembro, asi que es seguro aunque el modelo se
+  // Corre en el hilo worker: escanea UN directorio (comprobaciones de
+  // error + readdir + stat/lstat + orden). Estatico a proposito: no toca
+  // el modelo ni ningun miembro, asi que es seguro aunque el modelo se
   // destruya mientras el hilo corre. Crea su propio locale_t por llamada.
   static Result scan(const QString &path, bool showHidden);
+  // Igual, pero fusiona varios directorios (papelera). Los que fallan se
+  // saltan; error siempre 0 (agregado, sin concepto de "esta carpeta
+  // fallo").
+  static Result scanMany(const QStringList &paths, bool showHidden);
   // Corre en el hilo de UI: reemplaza las filas y emite las senales.
   void apply(Result result, quint64 generation);
+  // Lanza un escaneo (uno o varios dirs) en el pool y aplica async.
+  void startScan(std::function<Result()> job);
 
   int m_error = 0;
   bool m_loading = false;
   QString m_path;
   QVector<Entry> m_rows;
-  quint64 m_generation = 0; // ultima generacion pedida
+  quint64 m_generation = 0; // ultima generacion pedida (escaneo)
+  QFileSystemWatcher *m_watcher = nullptr; // vigilancia nativa (lazy)
+  // Ruta vigilada AHORA MISMO: actua como token de cancelacion del
+  // watcher, el equivalente de m_generation para el escaneo. Un evento de
+  // QFileSystemWatcher cuya ruta no sea esta es de un watcher viejo (el
+  // usuario cambio de carpeta) y se descarta antes de reemitir
+  // directoryChanged, para que no repueble la carpeta nueva.
+  QString m_watchedPath;
 };

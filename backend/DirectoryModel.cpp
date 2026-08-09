@@ -1,6 +1,7 @@
 #include "DirectoryModel.h"
 
 #include <QFile>
+#include <QFileSystemWatcher>
 #include <QRunnable>
 #include <QThreadPool>
 
@@ -41,41 +42,25 @@ bool nameLess(const QString &a, const QString &b, locale_t loc) {
   return wcscoll_l(wa.c_str(), wb.c_str(), loc) < 0;
 }
 
-} // namespace
-
-DirectoryModel::DirectoryModel(QObject *parent) : QAbstractListModel(parent) {}
-
-DirectoryModel::Result DirectoryModel::scan(const QString &path,
-                                            bool showHidden) {
-  Result r;
-  const QByteArray p = QFile::encodeName(path);
-
-  // Codigos de error espejo de list-dir.sh (stat/-d/-r-x/opendir siguen
-  // symlinks igual que los tests de bash [[ -e ]]/[[ -d ]]/[[ -r&&-x ]]).
+// Escanea UN directorio y APPEND-ea sus entradas a dirs/files (sin
+// ordenar; el llamador ordena una vez al final). Devuelve el codigo de
+// error espejo de list-dir.sh: 0 ok, 2 sin permiso, 3 no existe, 4 no es
+// carpeta, 1 otro. En listado agregado (papelera) el llamador ignora el
+// codigo y simplemente se salta las carpetas que fallan.
+int gatherOne(const QByteArray &p, bool showHidden,
+              QVector<DirectoryModel::Entry> &dirs,
+              QVector<DirectoryModel::Entry> &files) {
+  // stat/-d/-r-x siguen symlinks igual que los tests de bash del script.
   struct stat st;
-  if (::stat(p.constData(), &st) != 0) {
-    r.error = 3; // no existe (-e falso; incluye symlink colgante)
-    return r;
-  }
-  if (!S_ISDIR(st.st_mode)) {
-    r.error = 4; // no es carpeta (-d falso)
-    return r;
-  }
-  if (::access(p.constData(), R_OK | X_OK) != 0) {
-    r.error = 2; // sin permiso de lectura/ejecucion
-    return r;
-  }
+  if (::stat(p.constData(), &st) != 0)
+    return 3; // no existe (-e falso; incluye symlink colgante)
+  if (!S_ISDIR(st.st_mode))
+    return 4; // no es carpeta (-d falso)
+  if (::access(p.constData(), R_OK | X_OK) != 0)
+    return 2; // sin permiso de lectura/ejecucion
   DIR *dir = ::opendir(p.constData());
-  if (!dir) {
-    r.error = 1; // otro (equivalente al cd que fallaba)
-    return r;
-  }
-
-  // Collation propia de esta llamada (thread-safe, sin estado compartido).
-  locale_t loc = ::newlocale(LC_COLLATE_MASK | LC_CTYPE_MASK, "", (locale_t)0);
-
-  QVector<Entry> dirs;
-  QVector<Entry> files;
+  if (!dir)
+    return 1; // otro (equivalente al cd que fallaba)
 
   struct dirent *de;
   while ((de = ::readdir(dir)) != nullptr) {
@@ -97,7 +82,7 @@ DirectoryModel::Result DirectoryModel::scan(const QString &path,
     const bool isLink = lok && S_ISLNK(ls.st_mode);
     const bool followed = (::stat(full.constData(), &s) == 0);
 
-    Entry e;
+    DirectoryModel::Entry e;
     e.name = QFile::decodeName(n);
     e.isSymlink = isLink;
     e.link = isLink ? (followed ? QStringLiteral("valid")
@@ -129,37 +114,66 @@ DirectoryModel::Result DirectoryModel::scan(const QString &path,
     }
   }
   ::closedir(dir);
+  return 0;
+}
 
-  const auto cmp = [loc](const Entry &a, const Entry &b) {
+// Ordena dirs y files por nombre (carpetas primero al concatenar) con la
+// collation de glibc, y los deja en rows.
+void sortInto(QVector<DirectoryModel::Entry> &dirs,
+              QVector<DirectoryModel::Entry> &files,
+              QVector<DirectoryModel::Entry> &rows) {
+  locale_t loc = ::newlocale(LC_COLLATE_MASK | LC_CTYPE_MASK, "", (locale_t)0);
+  const auto cmp = [loc](const DirectoryModel::Entry &a,
+                         const DirectoryModel::Entry &b) {
     return nameLess(a.name, b.name, loc);
   };
   std::sort(dirs.begin(), dirs.end(), cmp);
   std::sort(files.begin(), files.end(), cmp);
-
   if (loc)
     ::freelocale(loc);
+  rows = std::move(dirs); // carpetas primero, luego ficheros
+  rows += files;
+}
 
-  // Carpetas primero, luego ficheros.
-  r.rows = std::move(dirs);
-  r.rows += files;
+} // namespace
+
+DirectoryModel::DirectoryModel(QObject *parent) : QAbstractListModel(parent) {}
+
+DirectoryModel::Result DirectoryModel::scan(const QString &path,
+                                            bool showHidden) {
+  Result r;
+  QVector<Entry> dirs, files;
+  r.error = gatherOne(QFile::encodeName(path), showHidden, dirs, files);
+  if (r.error == 0)
+    sortInto(dirs, files, r.rows);
   return r;
 }
 
-void DirectoryModel::list(const QString &path, bool showHidden) {
-  m_path = path;
-  const quint64 generation = ++m_generation;
+DirectoryModel::Result DirectoryModel::scanMany(const QStringList &paths,
+                                                bool showHidden) {
+  // Papelera: fusiona el contenido de varias raices. Las que fallan (no
+  // existen / sin permiso) se saltan en silencio, igual que el
+  // `[[ -d "$root/files" ]] &&` de list-trash.sh. error siempre 0.
+  Result r;
+  QVector<Entry> dirs, files;
+  for (const QString &path : paths)
+    gatherOne(QFile::encodeName(path), showHidden, dirs, files);
+  sortInto(dirs, files, r.rows);
+  return r;
+}
 
+void DirectoryModel::startScan(std::function<Result()> job) {
+  const quint64 generation = ++m_generation;
   if (!m_loading) {
     m_loading = true;
     emit loadingChanged();
   }
-
   // El escaneo pesado (stat de cada entrada) va a un hilo del pool para no
   // bloquear la UI; el resultado se aplica de vuelta en el hilo de UI. Un
   // resultado de una generacion vieja (navegacion rapida) se descarta.
   QThreadPool::globalInstance()->start(QRunnable::create(
-      [this, path, showHidden, generation]() {
-        Result result = DirectoryModel::scan(path, showHidden);
+      [this, job = std::move(job), generation]() {
+        Result result = job();
         QMetaObject::invokeMethod(
             this,
             [this, result = std::move(result), generation]() mutable {
@@ -167,6 +181,55 @@ void DirectoryModel::list(const QString &path, bool showHidden) {
             },
             Qt::QueuedConnection);
       }));
+}
+
+void DirectoryModel::list(const QString &path, bool showHidden) {
+  m_path = path;
+  startScan([path, showHidden]() { return scan(path, showHidden); });
+}
+
+void DirectoryModel::listMany(const QStringList &paths, bool showHidden) {
+  // Agregado de varias raices (papelera): PathRole no tiene un unico
+  // directorio de origen, se deja vacio. Los consumidores usan el array
+  // `entries` (name/type/size/mtime/link) + trashInfo, no PathRole.
+  m_path.clear();
+  startScan([paths, showHidden]() { return scanMany(paths, showHidden); });
+}
+
+bool DirectoryModel::watch(const QString &path) {
+  if (!m_watcher) {
+    m_watcher = new QFileSystemWatcher(this);
+    // QFileSystemWatcher usa inotify del kernel directamente (sin forkear
+    // inotifywait). Reemite un directoryChanged() plano; el debounce y el
+    // refresco -- con su guarda de no-refrescar-a-mitad-de-renombrado --
+    // siguen en NavigationController.
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this,
+            [this](const QString &changed) {
+              // Token de cancelacion: solo propagar el evento si es de la
+              // carpeta que se vigila AHORA. Un evento tardio de un watcher
+              // viejo (ruta distinta) se descarta -> no repuebla la carpeta
+              // a la que el usuario ya ha navegado.
+              if (changed == m_watchedPath)
+                emit directoryChanged();
+            });
+  }
+  // Vigilar solo un directorio a la vez: quitar el anterior.
+  const QStringList prev = m_watcher->directories();
+  if (!prev.isEmpty())
+    m_watcher->removePaths(prev);
+  m_watchedPath = path;
+  return m_watcher->addPath(path); // false si no se pudo (limite/ruta)
+}
+
+void DirectoryModel::unwatch() {
+  // Invalidar el token: cualquier evento en vuelo de un watcher previo se
+  // descartara al no coincidir con m_watchedPath (vacio).
+  m_watchedPath.clear();
+  if (!m_watcher)
+    return;
+  const QStringList prev = m_watcher->directories();
+  if (!prev.isEmpty())
+    m_watcher->removePaths(prev);
 }
 
 void DirectoryModel::apply(Result result, quint64 generation) {

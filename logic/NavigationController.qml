@@ -128,11 +128,19 @@ Item {
   // silencioso -- mismo patrón de "opcional, degrada con gracia" que
   // ffmpegthumbnailer/pygmentize/pdftoppm.
   function startDirWatch(path) {
-    dirWatchProc.start(["inotifywait", "-m", "-q", "-e",
-      "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path])
+    // Fase 6.D (josema): vigilancia NATIVA primero (QFileSystemWatcher
+    // dentro de DirectoryModel, inotify del kernel sin forkear
+    // inotifywait). Si el modelo no puede vigilar (límite de descriptores,
+    // ruta rara), watch() devuelve false y se cae al inotifywait de antes
+    // -- fallback exigido por BACKEND_DESIGN.md, no sustitución ciega.
+    if (!dirLister.watch(path)) {
+      dirWatchProc.start(["inotifywait", "-m", "-q", "-e",
+        "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path])
+    }
   }
 
   function stopDirWatch() {
+    dirLister.unwatch()
     dirWatchProc.stop()
   }
 
@@ -300,5 +308,10 @@ Item {
     sortOps: navCtrl.sortOps
     onPathErrorChanged: root.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)
+    // Vigilancia nativa: el modelo avisa de un cambio -> mismo debounce +
+    // guarda hasPendingEdit de siempre (abajo), solo cambia la FUENTE del
+    // aviso (antes dirWatchProc/inotifywait, ahora el QFileSystemWatcher
+    // del modelo). El inotifywait sigue como fallback (ver startDirWatch).
+    onDirectoryChanged: dirWatchDebounce.restart()
   }
 }
