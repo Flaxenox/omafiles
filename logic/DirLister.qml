@@ -23,6 +23,15 @@ Item {
   property string pathError: ""
   property bool loaded: false
 
+  // Fase 6.B.1 (josema): fuente del listado de carpetas normales. true =
+  // DirectoryModel nativo (backend C++); false = list-dir.sh (el script,
+  // que se mantiene como FALLBACK temporal mientras el nativo se asienta).
+  // La Papelera va SIEMPRE por list-trash.sh: agrega varias raices XDG y
+  // el modelo nativo no la cubre. Cambiar esto a false (o enlazarlo a una
+  // propiedad de root) devuelve el comportamiento anterior sin tocar nada
+  // mas -- ni el script ni esta clase pierden ninguna capacidad.
+  property bool useNativeLister: true
+
   // Emitida cada vez que entries se resuelve de verdad (con contenido
   // nuevo o repetido) -- distinto de onEntriesChanged, que con QML no
   // dispara si el array resultante es igual (mismo bug que _apply()
@@ -44,6 +53,8 @@ Item {
     // que no puede pasar por list-dir.sh a secas como el resto.
     if (path === trashDir) {
       listProc.start([pluginDir + "/list-trash.sh", showHidden ? "1" : "0"])
+    } else if (useNativeLister) {
+      dirModel.list(path, showHidden)
     } else {
       listProc.start([pluginDir + "/list-dir.sh", path, showHidden ? "1" : "0"])
     }
@@ -67,6 +78,12 @@ Item {
     // exitCode solo añade el porqué, según el código de salida documentado
     // en list-dir.sh.
     onFinished: function (result) {
+      // Con el lister nativo activo, listProc solo sirve la Papelera. Un
+      // resultado que llega cuando ya se navego fuera de ella (trash ->
+      // carpeta normal) es obsoleto: descartarlo, no pintar datos de
+      // papelera sobre otra carpeta. En modo fallback (useNativeLister
+      // false) listProc sirve tambien carpetas normales y no se descarta.
+      if (useNativeLister && _targetPath !== trashDir) return
       if (result.exitCode === 2) pathError = "Permission denied"
       else if (result.exitCode === 3) pathError = "This folder no longer exists"
       else if (result.exitCode === 4) pathError = "Not a folder"
@@ -124,6 +141,26 @@ Item {
         _waitingForTrashInfo = false
         _apply(_pendingEntries)
       }
+    }
+  }
+
+  // Lister nativo de carpetas normales (Fase 6.B.1) -- QAbstractListModel
+  // C++ que sustituye a list-dir.sh. Mismo contrato observable que el
+  // camino del script: se mapea dirModel.error a pathError con los MISMOS
+  // codigos (2/3/4/otros), y dirModel.entries (array {type,name,size,
+  // mtime,link}, identico a Utils.parseEntries) pasa por el mismo
+  // sortOps.sortEntries + _apply. No cubre la Papelera (eso es listProc).
+  DirectoryModel {
+    id: dirModel
+    onListed: {
+      // Resultado obsoleto si ya navegamos a la Papelera (va por listProc).
+      if (_targetPath === trashDir) return
+      var e = dirModel.error
+      if (e === 2) pathError = "Permission denied"
+      else if (e === 3) pathError = "This folder no longer exists"
+      else if (e === 4) pathError = "Not a folder"
+      else if (e !== 0) pathError = "Couldn't open this folder"
+      _apply(sortOps.sortEntries(dirModel.entries))
     }
   }
 }
