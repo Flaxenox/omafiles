@@ -446,6 +446,14 @@ Item {
     return registry.actionEngine.runNativeMove(pairs, busyLabel, overwrite, onDone)
   }
 
+  // Borrado permanente nativo (Fase 13.C): sustituye al `rm -rf`/`rm -f`
+  // shell del borrado permanente en DeleteOps. `paths` = rutas a borrar,
+  // ignoreMissing = semántica `rm -f`. Sin undo (el borrado permanente no
+  // se puede deshacer).
+  function removeFiles(paths, busyLabel, ignoreMissing, onDone) {
+    return registry.actionEngine.runNativeRemove(paths, busyLabel, ignoreMissing, onDone)
+  }
+
   function openTerminalHere() {
     // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
     registry.openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])

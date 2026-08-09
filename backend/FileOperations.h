@@ -62,9 +62,11 @@ public:
   // Renombra `path` a `newName` (mismo directorio). No sobrescribe.
   Q_INVOKABLE void rename(const QString &path, const QString &newName);
 
-  // Borra `path` PERMANENTEMENTE (recursivo si es carpeta). Sin papelera,
-  // sin undo -- para eso trash().
-  Q_INVOKABLE void remove(const QString &path);
+  // Borra `path` PERMANENTEMENTE (recursivo si es carpeta; los symlinks se
+  // borran como enlace, sin seguir el destino). Sin papelera, sin undo --
+  // para eso trash(). Cancelación cooperativa. Con ignoreMissing=true (=
+  // `rm -f`) NO es error que `path` no exista. Fase 13.C (josema).
+  Q_INVOKABLE void remove(const QString &path, bool ignoreMissing = false);
 
   // Crea la carpeta `path` (y los padres que falten, como mkdir -p).
   Q_INVOKABLE void mkdir(const QString &path);

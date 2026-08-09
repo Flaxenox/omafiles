@@ -22,7 +22,7 @@ QtObject {
   function copy(source, destination, overwrite) { Backend.FileOperations.copy(source, destination, overwrite === true) }
   function move(source, destination, overwrite) { Backend.FileOperations.move(source, destination, overwrite === true) }
   function rename(path, newName) { Backend.FileOperations.rename(path, newName) }
-  function remove(path) { Backend.FileOperations.remove(path) }
+  function remove(path, ignoreMissing) { Backend.FileOperations.remove(path, ignoreMissing === true) }
   function mkdir(path) { Backend.FileOperations.mkdir(path) }
   function trash(path) { Backend.FileOperations.trash(path) }
   function restore(path) { Backend.FileOperations.restore(path) }

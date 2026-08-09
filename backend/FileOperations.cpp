@@ -103,10 +103,25 @@ bool copyTree(const QString &src, const QString &dst, qint64 &copied,
   return copyFile(src, dst, copied, cb, cancelled, err);
 }
 
-bool removeTree(const QString &path, QString &err) {
+// Borrado recursivo, cancelable. Recursión manual (en vez de
+// QDir::removeRecursively) para poder comprobar `cancelled` entre entradas.
+// Un symlink a carpeta se borra como enlace (QFile::remove), no se entra.
+bool removeTree(const QString &path, const std::atomic<bool> &cancelled,
+                QString &err) {
+  if (cancelled.load()) {
+    err = QStringLiteral("cancelled");
+    return false;
+  }
   QFileInfo fi(path);
   if (fi.isDir() && !fi.isSymLink()) {
-    if (!QDir(path).removeRecursively()) {
+    const QFileInfoList entries =
+        QDir(path).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot |
+                                 QDir::Hidden | QDir::System);
+    for (const QFileInfo &e : entries) {
+      if (!removeTree(e.absoluteFilePath(), cancelled, err))
+        return false;
+    }
+    if (!QDir().rmdir(path)) {
       err = QStringLiteral("cannot remove %1").arg(path);
       return false;
     }
@@ -180,7 +195,7 @@ void FileOperations::copy(const QString &source, const QString &destination,
           // copia encima), coherente con lo que promete el diálogo de
           // conflicto. Antes lo hacía `cp -f`.
           QString rmErr;
-          if (!removeTree(destination, rmErr))
+          if (!removeTree(destination, m_cancelled, rmErr))
             return {false, rmErr};
         }
         const qint64 total = qMax<qint64>(1, treeSize(source));
@@ -216,7 +231,7 @@ void FileOperations::move(const QString &source, const QString &destination,
       // "overwrite" (= mv -f): borra el destino y sigue. Así el rename
       // atómico de abajo no falla por ENOTEMPTY (carpeta) ni deja mezcla.
       QString rmErr;
-      if (!removeTree(destination, rmErr))
+      if (!removeTree(destination, m_cancelled, rmErr))
         return {false, rmErr};
     }
     // Intento atomico (mismo sistema de ficheros): un solo rename(2), vale
@@ -240,7 +255,7 @@ void FileOperations::move(const QString &source, const QString &destination,
     QString err;
     if (!copyTree(source, destination, copied, cb, m_cancelled, err))
       return {false, err};
-    if (!removeTree(source, err))
+    if (!removeTree(source, m_cancelled, err))
       return {false, err};
     emitProgress(QStringLiteral("move"), source, 100.0);
     return {true, QString()};
@@ -261,12 +276,17 @@ void FileOperations::rename(const QString &path, const QString &newName) {
   });
 }
 
-void FileOperations::remove(const QString &path) {
-  run(QStringLiteral("remove"), path, [path]() -> Result {
-    if (!QFileInfo(path).exists() && !QFileInfo(path).isSymLink())
+void FileOperations::remove(const QString &path, bool ignoreMissing) {
+  m_cancelled.store(false);
+  run(QStringLiteral("remove"), path, [this, path, ignoreMissing]() -> Result {
+    if (!QFileInfo(path).exists() && !QFileInfo(path).isSymLink()) {
+      // ignoreMissing (= `rm -f`): que no exista no es error.
+      if (ignoreMissing)
+        return {true, QString()};
       return {false, QStringLiteral("path does not exist")};
+    }
     QString err;
-    if (!removeTree(path, err))
+    if (!removeTree(path, m_cancelled, err))
       return {false, err};
     return {true, QString()};
   });

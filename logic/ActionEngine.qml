@@ -180,6 +180,15 @@ Item {
     return _runNative("move", pairs, busyLabel, overwrite, onDone)
   }
 
+  // Borrado permanente nativo (Fase 13.C): `paths` es una lista de rutas
+  // (no pares). ignoreMissing = semántica `rm -f` (no es error que falte).
+  // El único llamador (borrado permanente desde la Papelera) pasa
+  // busyLabel="" -> sin barra de progreso, como el `rm -rf` anterior.
+  function runNativeRemove(paths, busyLabel, ignoreMissing, onDone) {
+    var pairs = paths.map(function (p) { return { src: p } })
+    return _runNative("remove", pairs, busyLabel, ignoreMissing, onDone)
+  }
+
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
     if (actionProc.busy || nativeBusy) {
       Notifier.notify("Still busy with the previous action — try again in a moment")
@@ -218,7 +227,9 @@ Item {
     }
     FileOperations.finished.connect(ok)
     FileOperations.error.connect(bad)
-    if (_nativeKind === "move")
+    if (_nativeKind === "remove")
+      FileOperations.remove(p.src, _batchOverwrite)  // _batchOverwrite = ignoreMissing
+    else if (_nativeKind === "move")
       FileOperations.move(p.src, p.dest, _batchOverwrite)
     else
       FileOperations.copy(p.src, p.dest, _batchOverwrite)

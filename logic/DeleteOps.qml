@@ -20,18 +20,21 @@ Item {
     root.pendingDeleteNames = []
     if (names.length === 0) return
     if (NavState.currentPath === root.trashDir) {
-      // Borrado permanente -- no hay undo posible. TrashState.trashInfo (ver
-      // trash-info.sh) sabe la raíz física real de cada ítem -- puede
-      // ser la papelera de casa o la de cualquier otro disco montado,
-      // ya no se puede asumir root.trashDir a secas como antes de
-      // agregar varias papeleras.
-      var cmds = names.map(function (n) {
+      // Borrado permanente NATIVO (Fase 13.C): FileOperations.remove en vez
+      // de `rm -rf`/`rm -f`. No hay undo posible. TrashState.trashInfo (ver
+      // trash-info.sh) sabe la raíz física real de cada ítem -- puede ser la
+      // papelera de casa o la de cualquier otro disco montado, ya no se puede
+      // asumir root.trashDir a secas. Por cada ítem se borra el fichero en
+      // <raíz>/files/<n> (recursivo) y su <raíz>/info/<n>.trashinfo, ambos
+      // con ignoreMissing (= `rm -f`: que falte no es error).
+      var paths = []
+      names.forEach(function (n) {
         var info = TrashState.trashInfo[n]
-        if (!info) return "true"
-        return "rm -rf -- " + Util.shellQuote(info.trashRoot + "/files/" + n) +
-          "; rm -f -- " + Util.shellQuote(info.trashRoot + "/info/" + n + ".trashinfo")
+        if (!info) return
+        paths.push(info.trashRoot + "/files/" + n)
+        paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
       })
-      root.runAction(root.chainCmds(cmds))
+      if (paths.length > 0) root.removeFiles(paths, "", true)
     } else {
       var quoted = names.map(function (n) { return Util.shellQuote(root.joinPath(NavState.currentPath, n)) }).join(" ")
       // Rutas originales absolutas capturadas AQUÍ (no dentro de los

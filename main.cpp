@@ -83,7 +83,7 @@ bool writeSelfCheckFixtures(const QString &base) {
 
   // Fichero grande (32 MiB) para probar la cancelación cooperativa a mitad
   // de copia: lo bastante grande para que la copia abarque muchos trozos y
-  // el cancel() (disparado en el siguiente turno del bucle) caiga en medio.
+  // el cancel() caiga en medio.
   {
     QFile big(base + "/big.bin");
     if (!big.open(QIODevice::WriteOnly)) return false;
@@ -91,6 +91,32 @@ bool writeSelfCheckFixtures(const QString &base) {
     for (int i = 0; i < 32; ++i) big.write(chunk);
     big.close();
   }
+
+  // Carpeta con muchos ficheros: para la cancelación de borrado recursivo
+  // (removeTree recorre entrada a entrada comprobando el flag, así que con
+  // suficientes entradas el cancel síncrono aborta a mitad de forma
+  // determinista).
+  if (!d.mkpath("bigdir")) return false;
+  for (int i = 0; i < 500; ++i) {
+    QFile f(base + QStringLiteral("/bigdir/f%1").arg(i));
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    f.write("x");
+    f.close();
+  }
+
+  // Carpeta de solo lectura con un fichero dentro: borrar el hijo falla
+  // (EACCES, hace falta permiso de escritura en el padre). Se restaura a
+  // escribible tras la ejecución (ver runSelfCheck) para que QTemporaryDir
+  // pueda limpiarla.
+  if (!d.mkpath("readonly")) return false;
+  {
+    QFile f(base + "/readonly/locked.txt");
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    f.write("x");
+    f.close();
+  }
+  QFile::setPermissions(base + "/readonly",
+                        QFileDevice::ReadOwner | QFileDevice::ExeOwner);
 
   // PNG real para ThumbnailProvider (ruta QImageReader).
   QImage img(16, 16, QImage::Format_RGB32);
@@ -158,8 +184,14 @@ int runSelfCheck(int argc, char *argv[]) {
   }
 
   // SelfCheck.qml llama Qt.exit(nº de fallos) al terminar; ese código sale
-  // por app.exec(). tmp se destruye (y limpia) al volver de main.
-  return app.exec();
+  // por app.exec().
+  const int rc = app.exec();
+  // Restaura permisos de la carpeta readonly (fixture de fallo de permisos)
+  // para que QTemporaryDir pueda borrarla al destruir tmp.
+  QFile::setPermissions(tmp.path() + "/readonly",
+                        QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                            QFileDevice::ExeOwner);
+  return rc; // tmp se destruye (y limpia) al volver de main.
 }
 
 int runNormal(int argc, char *argv[]) {

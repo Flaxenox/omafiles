@@ -529,6 +529,109 @@ QtObject {
       FileOperations.copy(sc.note, work)
     })
 
+    // -------- Delete permanente (13.C) --------
+
+    add("FileOperations delete directory (recursive)", function (done) {
+      sc._fileOp(done, function () {        // copia listDir -> deldir
+        sc._fileOp(done, function () {      // remove deldir (recursivo)
+          sc._listOnce(sc.opsDir, function (e) {
+            var ok = !sc._has(e, "deldir")
+            done(ok, ok ? "árbol borrado" : "sigue existiendo")
+          })
+        })
+        FileOperations.remove(sc.opsDir + "/deldir")
+      })
+      FileOperations.copy(sc.listDir, sc.opsDir + "/deldir")
+    })
+
+    add("FileOperations delete symlink (target preserved)", function (done) {
+      sc._fileOp(done, function () {        // copia link.txt -> dellink
+        sc._fileOp(done, function () {      // remove dellink
+          sc._listOnce(sc.opsDir, function (e) {
+            var linkGone = !sc._has(e, "dellink")
+            var target = PreviewProvider.info(sc.note) // note.txt (destino del enlace)
+            done(linkGone && Object.keys(target).length > 0,
+                 linkGone ? "enlace borrado, target intacto" : "el enlace sigue")
+          })
+        })
+        FileOperations.remove(sc.opsDir + "/dellink")
+      })
+      FileOperations.copy(sc.dir + "/link.txt", sc.opsDir + "/dellink")
+    })
+
+    add("FileOperations delete read-only (permission failure)", function (done) {
+      // Borrar un fichero dentro de una carpeta sin permiso de escritura
+      // falla (EACCES). Se comprueba que el error se reporta razonablemente.
+      var target = sc.dir + "/readonly/locked.txt"
+      function onErr(op, path, msg) { if (path !== target) return; cleanup(); done(true, "error reportado: " + msg) }
+      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "no debería poder borrar en carpeta read-only") }
+      function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.remove(target, false)
+    })
+
+    add("FileOperations delete missing (error vs ignoreMissing)", function (done) {
+      var gone = sc.opsDir + "/never-existed-" + Date.now()
+      var gone2 = sc.opsDir + "/never2-" + Date.now()
+      function onErr(op, path, msg) {
+        if (path !== gone) return
+        cleanup1()
+        // con ignoreMissing=true, que falte debe ser OK (finished)
+        function onFin2(o, p) { if (p !== gone2) return; cleanup2(); done(true, "error si falta, ok con ignoreMissing") }
+        function onErr2(o, p, m) { if (p !== gone2) return; cleanup2(); done(false, "ignoreMissing no debería fallar") }
+        function cleanup2() { FileOperations.finished.disconnect(onFin2); FileOperations.error.disconnect(onErr2) }
+        FileOperations.finished.connect(onFin2)
+        FileOperations.error.connect(onErr2)
+        FileOperations.remove(gone2, true)
+      }
+      function onFin(op, path) { if (path !== gone) return; cleanup1(); done(false, "debería fallar sin ignoreMissing") }
+      function cleanup1() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.remove(gone, false)
+    })
+
+    add("FileOperations delete cancellation (recursive tree)", function (done) {
+      // Borra un árbol de 500 ficheros con cancel SÍNCRONO: removeTree aborta
+      // (entre entradas / en la comprobación de entrada) con "cancelled",
+      // misma ruta de cancelación que copia/move cross-fs.
+      var target = sc.dir + "/bigdir"
+      function onErr(op, path, msg) {
+        if (path !== target) return
+        cleanup()
+        done(msg === "cancelled", "error=" + msg)
+      }
+      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "terminó antes de poder cancelar") }
+      function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.remove(target)
+      FileOperations.cancel()
+    })
+
+    add("ActionEngine native remove runner (delete path)", function (done) {
+      // Ejercita el cableado REAL del borrado permanente (13.C):
+      // content.removeFiles -> runNativeRemove -> FileOperations.remove.
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var a = sc.opsDir + "/del-a.txt"
+      var b = sc.opsDir + "/del-b.txt"
+      sc._fileOp(done, function () {        // a creado
+        sc._fileOp(done, function () {      // b creado
+          var started = c.removeFiles([a, b], "", true, function () {
+            sc._listOnce(sc.opsDir, function (e) {
+              var ok = !sc._has(e, "del-a.txt") && !sc._has(e, "del-b.txt")
+              done(ok, ok ? "runNativeRemove OK" : "no borró")
+            })
+          })
+          if (!started) done(false, "runNativeRemove devolvió false")
+        })
+        FileOperations.copy(sc.note, b)
+      })
+      FileOperations.copy(sc.note, a)
+    })
+
     add("FileOperations move", function (done) {
       FileOperations.copy(sc.note, sc.opsDir + "/toMove.txt")
       sc._fileOp(done, function () {
