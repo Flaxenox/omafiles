@@ -35,6 +35,10 @@ qt_add_qml_module(omafiles-backend
     backend/ProcessWatcher.cpp
     backend/Env.h
     backend/Env.cpp
+    backend/Detached.h
+    backend/Detached.cpp
+    backend/Notifier.h
+    backend/Notifier.cpp
     backend/BackendPing.h
     backend/BackendPing.cpp
 )
