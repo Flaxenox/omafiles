@@ -136,6 +136,19 @@ bool removeTree(const QString &path, const std::atomic<bool> &cancelled,
   return true;
 }
 
+// Borrado "a la fuerza" para la limpieza de cancelación: NO comprueba el flag
+// de cancelación (que está activo justo cuando lo llamamos) y no reporta
+// errores -- es best-effort para quitar una copia parcial. Fase 13.G.
+void forceRemove(const QString &path) {
+  QFileInfo fi(path);
+  if (!fi.exists() && !fi.isSymLink())
+    return;
+  if (fi.isDir() && !fi.isSymLink())
+    QDir(path).removeRecursively();
+  else
+    QFile::remove(path);
+}
+
 // Raíces de papelera XDG activas: la de casa ($XDG_DATA_HOME/Trash o
 // ~/.local/share/Trash) primero, más la .Trash-$uid de cada punto de montaje
 // que no sea el de $HOME (spec XDG Trash: borrar desde otro disco va a la
@@ -175,14 +188,15 @@ FileOperations::~FileOperations() {
 }
 
 void FileOperations::emitProgress(const QString &op, const QString &path,
-                                  double pct) {
+                                  qint64 done, qint64 total) {
   // Llamado desde el worker: entrega segura solo si el singleton sigue vivo.
   auto life = m_life;
   std::lock_guard<std::mutex> lk(life->mtx);
   if (!life->alive)
     return;
   QMetaObject::invokeMethod(
-      this, [this, op, path, pct]() { emit progress(op, path, pct); },
+      this,
+      [this, op, path, done, total]() { emit progress(op, path, done, total); },
       Qt::QueuedConnection);
 }
 
@@ -227,20 +241,24 @@ void FileOperations::copy(const QString &source, const QString &destination,
           if (!removeTree(destination, m_cancelled, rmErr))
             return {false, rmErr};
         }
-        const qint64 total = qMax<qint64>(1, treeSize(source));
+        const qint64 realTotal = treeSize(source);
+        const qint64 pctTotal = qMax<qint64>(1, realTotal);
         qint64 copied = 0;
         double lastPct = -1;
         const auto cb = [&](qint64 done) {
-          const double pct = qMin(100.0, done * 100.0 / total);
-          if (pct - lastPct >= 1.0) { // no inundar de senales
+          const double pct = qMin(100.0, done * 100.0 / pctTotal);
+          if (pct - lastPct >= 1.0) { // no inundar de senales (~cada 1%)
             lastPct = pct;
-            emitProgress(QStringLiteral("copy"), source, pct);
+            emitProgress(QStringLiteral("copy"), source, done, realTotal);
           }
         };
         QString err;
-        if (!copyTree(source, destination, copied, cb, m_cancelled, err))
+        if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
+          if (err == QLatin1String("cancelled"))
+            forceRemove(destination); // limpia la copia parcial (13.G)
           return {false, err};
-        emitProgress(QStringLiteral("copy"), source, 100.0);
+        }
+        emitProgress(QStringLiteral("copy"), source, realTotal, realTotal);
         return {true, QString()};
       });
 }
@@ -257,6 +275,13 @@ QStringList FileOperations::existingPaths(const QStringList &paths) const {
       out << p;
   }
   return out;
+}
+
+qint64 FileOperations::totalSize(const QStringList &paths) const {
+  qint64 total = 0;
+  for (const QString &p : paths)
+    total += treeSize(p);
+  return total;
 }
 
 void FileOperations::move(const QString &source, const QString &destination,
@@ -283,22 +308,28 @@ void FileOperations::move(const QString &source, const QString &destination,
     if (errno != EXDEV)
       return {false, QString::fromLocal8Bit(strerror(errno))};
     // Cruza de disco: copiar + borrar el origen, con progreso.
-    const qint64 total = qMax<qint64>(1, treeSize(source));
+    const qint64 realTotal = treeSize(source);
+    const qint64 pctTotal = qMax<qint64>(1, realTotal);
     qint64 copied = 0;
     double lastPct = -1;
     const auto cb = [&](qint64 done) {
-      const double pct = qMin(100.0, done * 100.0 / total);
+      const double pct = qMin(100.0, done * 100.0 / pctTotal);
       if (pct - lastPct >= 1.0) {
         lastPct = pct;
-        emitProgress(QStringLiteral("move"), source, pct);
+        emitProgress(QStringLiteral("move"), source, done, realTotal);
       }
     };
     QString err;
-    if (!copyTree(source, destination, copied, cb, m_cancelled, err))
+    if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
+      // Cancelado a mitad del copiado cross-fs: limpia la copia parcial del
+      // destino. El origen queda intacto (removeTree solo corre tras copiar).
+      if (err == QLatin1String("cancelled"))
+        forceRemove(destination);
       return {false, err};
+    }
     if (!removeTree(source, m_cancelled, err))
       return {false, err};
-    emitProgress(QStringLiteral("move"), source, 100.0);
+    emitProgress(QStringLiteral("move"), source, realTotal, realTotal);
     return {true, QString()};
   });
 }

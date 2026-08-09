@@ -15,7 +15,7 @@ import Omafiles.Backend as Backend
 // 6.D) al cambiar el directorio activo.
 QtObject {
   id: fileOps
-  signal progress(string op, string path, real pct)
+  signal progress(string op, string path, var done, var total)
   signal finished(string op, string path)
   signal error(string op, string path, string message)
 
@@ -38,13 +38,17 @@ QtObject {
   // existen. Síncrona; sustituye a los `test -e` de shell en paste/drop.
   function existingPaths(paths) { return Backend.FileOperations.existingPaths(paths) }
 
+  // Tamaño total (bytes) de un conjunto de rutas (Fase 13.G): para el
+  // porcentaje de progreso de copy/move sin `du`.
+  function totalSize(paths) { return Backend.FileOperations.totalSize(paths) }
+
   // Cualificado con el id: Backend.FileOperations (el target) tiene señales
   // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
   // propio target en vez del de este adaptador (misma clase de colisión que
   // hubo en DirLister.directoryChanged).
   property Connections _backend: Connections {
     target: Backend.FileOperations
-    function onProgress(op, path, pct) { fileOps.progress(op, path, pct) }
+    function onProgress(op, path, done, total) { fileOps.progress(op, path, done, total) }
     function onFinished(op, path) { fileOps.finished(op, path) }
     function onError(op, path, message) {
       // "cancelled" = cancelación pedida por el usuario (FileOperations.

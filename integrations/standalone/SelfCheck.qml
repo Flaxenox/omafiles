@@ -891,6 +891,125 @@ QtObject {
       })
     })
 
+    // -------- Progreso nativo + limpieza de cancelación (13.G) --------
+
+    add("Copy progress (byte-accurate, reaches total)", function (done) {
+      // La señal progress(op,path,done,total) del backend (sin `du`). Copiar
+      // 32 MiB debe emitir varios eventos por bytes y terminar en done==total.
+      var src = sc.dir + "/big.bin"
+      var dst = sc.opsDir + "/prog-copy.bin"
+      var count = 0, lastDone = -1, lastTotal = -1
+      function onProg(op, path, d, t) { if (path !== src) return; count++; lastDone = d; lastTotal = t }
+      function onFin(op, path) {
+        if (path !== src) return
+        cleanup()
+        var ok = count > 0 && lastTotal === 33554432 && lastDone === lastTotal
+        done(ok, "eventos=" + count + " last=" + lastDone + "/" + lastTotal)
+      }
+      function onErr(op, path, msg) { if (path !== src) return; cleanup(); done(false, "error: " + msg) }
+      function cleanup() { FileOperations.progress.disconnect(onProg); FileOperations.finished.disconnect(onFin); FileOperations.error.disconnect(onErr) }
+      FileOperations.progress.connect(onProg)
+      FileOperations.finished.connect(onFin)
+      FileOperations.error.connect(onErr)
+      FileOperations.copy(src, dst)
+    })
+
+    add("Move cross-fs progress (best-effort)", function (done) {
+      // Un move que cruza de disco (HOME -> /tmp) usa copyTree y emite
+      // progress; si es el mismo fs, es un rename atómico (sin progreso). En
+      // ambos casos debe terminar bien. Limpia el /tmp al final.
+      var work = sc.opsDir + "/mvprog-src.bin"
+      var xfsDst = "/tmp/omafiles-selfcheck-mvprog-" + Date.now() + ".bin"
+      sc._seqOps([function () { FileOperations.copy(sc.dir + "/big.bin", work) }], done, function () {
+        var count = 0, lastDone = -1, lastTotal = -1
+        function onProg(op, path, d, t) { if (path !== work) return; count++; lastDone = d; lastTotal = t }
+        function onFin(op, path) {
+          if (path !== work) return
+          cleanupSig()
+          var progOk = count === 0 || (lastTotal > 0 && lastDone === lastTotal)
+          // limpia el destino en /tmp (esperando su finished)
+          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(progOk, count > 0 ? "progreso cross-fs " + count + " eventos" : "rename atómico (mismo fs)") }
+          FileOperations.finished.connect(rmDone)
+          FileOperations.error.connect(rmDone)
+          FileOperations.remove(xfsDst, true)
+        }
+        function onErr(op, path, msg) { if (path !== work) return; cleanupSig(); done(false, "error: " + msg) }
+        function cleanupSig() { FileOperations.progress.disconnect(onProg); FileOperations.finished.disconnect(onFin); FileOperations.error.disconnect(onErr) }
+        FileOperations.progress.connect(onProg)
+        FileOperations.finished.connect(onFin)
+        FileOperations.error.connect(onErr)
+        FileOperations.move(work, xfsDst)
+      })
+    })
+
+    add("Copy cancellation leaves no partial file", function (done) {
+      // El backend (forceRemove) limpia la copia parcial al abortar.
+      var src = sc.dir + "/big.bin"
+      var dst = sc.opsDir + "/cancel-partial.bin"
+      function onErr(op, path, msg) {
+        if (path !== src) return
+        cleanup()
+        if (msg !== "cancelled") { done(false, "error: " + msg); return }
+        var partial = FileOperations.existingPaths([dst])
+        done(partial.length === 0, partial.length === 0 ? "sin residuo parcial" : "quedó copia parcial")
+      }
+      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "terminó antes de cancelar") }
+      function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.copy(src, dst)
+      FileOperations.cancel()
+    })
+
+    add("Copy cancellation leaves no partial directory", function (done) {
+      // Cancelar la copia de un árbol (500 ficheros) no debe dejar la carpeta
+      // destino a medio crear: forceRemove borra el árbol parcial.
+      var src = sc.dir + "/bigdir"
+      var dst = sc.opsDir + "/cancel-partial-dir"
+      function onErr(op, path, msg) {
+        if (path !== src) return
+        cleanup()
+        if (msg !== "cancelled") { done(false, "error: " + msg); return }
+        var partial = FileOperations.existingPaths([dst])
+        done(partial.length === 0, partial.length === 0 ? "árbol parcial limpiado" : "quedó carpeta parcial")
+      }
+      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "terminó antes de cancelar") }
+      function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+      FileOperations.error.connect(onErr)
+      FileOperations.finished.connect(onFin)
+      FileOperations.copy(src, dst)
+      FileOperations.cancel()
+    })
+
+    add("Move cross-fs cancellation: source intact, no partial", function (done) {
+      var work = sc.opsDir + "/mvcancel-src.bin"
+      var xfsDst = "/tmp/omafiles-selfcheck-mvcancel-" + Date.now() + ".bin"
+      sc._seqOps([function () { FileOperations.copy(sc.dir + "/big.bin", work) }], done, function () {
+        function onErr(op, path, msg) {
+          if (path !== work) return
+          cleanup()
+          if (msg !== "cancelled") { done(false, "error: " + msg); return }
+          var srcOk = FileOperations.existingPaths([work]).length === 1
+          var noPartial = FileOperations.existingPaths([xfsDst]).length === 0
+          done(srcOk && noPartial, "cross-fs cancelado: src=" + srcOk + " sin parcial=" + noPartial)
+        }
+        function onFin(op, path) {
+          if (path !== work) return
+          cleanup()
+          // rename atómico (mismo fs): el move se completó -> limpia el /tmp.
+          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(true, "rename atómico (mismo fs), sin parcial posible") }
+          FileOperations.finished.connect(rmDone)
+          FileOperations.error.connect(rmDone)
+          FileOperations.remove(xfsDst, true)
+        }
+        function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+        FileOperations.error.connect(onErr)
+        FileOperations.finished.connect(onFin)
+        FileOperations.move(work, xfsDst)
+        FileOperations.cancel()
+      })
+    })
+
     add("FileOperations move", function (done) {
       FileOperations.copy(sc.note, sc.opsDir + "/toMove.txt")
       sc._fileOp(done, function () {

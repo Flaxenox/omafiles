@@ -1,5 +1,4 @@
 import QtQuick
-import qs.Commons
 import "../state"
 import "../services"
 
@@ -106,33 +105,21 @@ Item {
   }
 
   function cancelAction() {
-    // Copia nativa en curso (Fase 13.A): cancelación cooperativa en C++. El
-    // worker aborta entre trozos y emite error "cancelled" -> bad() ->
-    // _nativeDone limpia estado y refresca. Aquí solo se pide la cancelación
-    // y se borra el destino parcial (mismo criterio que la ruta shell: solo
-    // si es UN único destino, ver más abajo).
+    // Copia/movimiento nativo en curso (Fase 13.A/G): cancelación cooperativa
+    // en C++. El worker aborta entre trozos, LIMPIA ÉL MISMO la copia parcial
+    // del destino (forceRemove en backend/FileOperations) y emite error
+    // "cancelled" -> bad() -> _nativeDone limpia el estado y refresca. Ya no
+    // hay `rm -rf` de shell: el backend es autosuficiente para limpiar.
     if (nativeBusy) {
       _cancelling = true
       FileOperations.cancel()
-      if (ActionState.actionProgressDestPaths.length === 1)
-        Detached.run(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
       return
     }
-    // actionProc.cancel() manda la señal a TODO el grupo de procesos
-    // (el "bash -c" + el cp/mv/zip real que esté corriendo dentro, ver
-    // group:true en runAction()), no solo al primero.
+    // Acciones aún en shell (comprimir/extraer/renombrar/crear): actionProc.
+    // cancel() mata todo el grupo de procesos. No tienen progreso ni un
+    // destino parcial que limpiar aquí (su overwrite es atómico o lo gestiona
+    // su propio comando).
     actionProc.cancel()
-    // Cancelar a mitad de una copia/movimiento ENTRE DISCOS (mv no puede
-    // hacer un rename atómico, así que copia y borra el origen) deja un
-    // fichero parcial a medio escribir en el destino -- bug real
-    // (josema: "cancelé al 30% y se quedó ese 30% de la peli"). Solo se
-    // limpia cuando es UN único fichero/carpeta (actionProgressDestPaths
-    // con 1 elemento): en un lote de varios, SIGTERM puede matar justo el
-    // que estaba a medias mientras los anteriores ya habían terminado
-    // bien -- borrar TODOS los destPaths a ciegas borraría también esos.
-    if (ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length === 1) {
-      Detached.run(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
-    }
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
@@ -140,17 +127,31 @@ Item {
     root.refreshTick += 1
   }
 
-  // Lanza el sondeo de progreso para una copia/movimiento -- llamar justo
-  // antes de runAction() con los mismos origen/destino. Sin esto
-  // actionProgressPct se queda en -1 (sin barra, solo puntos animados)
-  // para cualquier otra acción, que es lo que queremos: chmod/comprimir/
-  // renombrar no tienen un "tamaño total" que tenga sentido mostrar así.
+  // ---------- Progreso nativo por bytes (Fase 13.G) ----------
+  // Sustituye el sondeo `du` por el tamaño total (FileOperations.totalSize,
+  // una vez) + la señal progress(op,path,done,total) del backend, agregada
+  // sobre el lote. Mismo comportamiento observable: actionProgressPct 0..100
+  // (barra) para copy/move; -1 (puntos) si no hay tamaño medible.
+  property real _progTotal: 0   // bytes totales del lote (todos los orígenes)
+  property real _progBase: 0    // bytes ya completados de ítems anteriores
+  property real _lastItemTotal: 0 // total del ítem en curso (último progress)
+
   function startCopyProgress(sourcePaths, destPaths) {
-    ActionState.actionProgressPct = 0
-    ActionState.actionTotalBytes = 0
-    ActionState.actionProgressDestPaths = destPaths
-    var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-    actionProgressTotalProc.start(["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"])
+    _progTotal = FileOperations.totalSize(sourcePaths)
+    _progBase = 0
+    _lastItemTotal = 0
+    // Barra desde 0% si hay algo que medir; puntos si el total es 0 (ítems
+    // vacíos: no hay progreso que mostrar).
+    ActionState.actionProgressPct = _progTotal > 0 ? 0 : -1
+  }
+
+  Connections {
+    target: FileOperations
+    function onProgress(op, path, done, total) {
+      if (!nativeBusy || _progTotal <= 0) return
+      _lastItemTotal = total
+      ActionState.actionProgressPct = Math.min(100, (_progBase + done) * 100 / _progTotal)
+    }
   }
 
   // ---------- Copiar/mover nativo (Fase 13.A copy, 13.B move) ----------
@@ -235,7 +236,14 @@ Item {
     if (_cancelling) { _nativeDone(false); return }
     if (_batchIdx >= _batchQueue.length) { _nativeDone(true); return }
     var p = _batchQueue[_batchIdx]
-    function ok(op, src) { cleanup(); _batchIdx += 1; _batchNext() }
+    function ok(op, src) {
+      cleanup()
+      // Progreso agregado: el ítem terminado suma su total a la base.
+      _progBase += _lastItemTotal
+      _lastItemTotal = 0
+      _batchIdx += 1
+      _batchNext()
+    }
     // El error ya lo avisó services/FileOperations (salvo "cancelled"); aquí
     // solo se para la secuencia y se limpia el estado.
     function bad(op, src, msg) { cleanup(); _nativeDone(false) }
@@ -298,42 +306,7 @@ Item {
     }
   }
 
-  // Tamaño total del origen, UNA vez al principio de una copia/movimiento
-  // -- ver startCopyProgress().
-  ProcessRunner {
-    id: actionProgressTotalProc
-    onFinished: function (result) {
-      var n = parseInt(result.stdout.trim(), 10)
-      ActionState.actionTotalBytes = isNaN(n) ? 0 : n
-    }
-  }
-
-  // Sondeo periódico de cuánto hay ya en el destino mientras
-  // actionBusy+actionTotalBytes>0 -- ver el Timer de abajo, que es quien
-  // decide CUÁNDO relanzar esto (no tiene sentido más de un sondeo a la
-  // vez si el anterior tarda más que el intervalo).
-  ProcessRunner {
-    id: actionProgressPollProc
-    onFinished: function (result) {
-      if (ActionState.actionTotalBytes <= 0) return
-      var n = parseInt(result.stdout.trim(), 10)
-      if (isNaN(n)) return
-      ActionState.actionProgressPct = Math.min(100, n / ActionState.actionTotalBytes * 100)
-    }
-  }
-
-  Timer {
-    // Un sondeo "du" sobre destinos grandes no es instantáneo -- esta
-    // guardia (en vez de solo "repeat: true") evita amontonar sondeos si
-    // uno tarda más que el intervalo.
-    id: actionProgressPollTimer
-    interval: 600
-    repeat: true
-    running: ActionState.actionBusy && ActionState.actionTotalBytes > 0 && ActionState.actionProgressDestPaths.length > 0
-    onTriggered: {
-      if (actionProgressPollProc.busy) return
-      var quoted = ActionState.actionProgressDestPaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
-      actionProgressPollProc.start(["bash", "-c", "du -sbc -- " + quoted + " 2>/dev/null | tail -n1 | cut -f1"])
-    }
-  }
+  // (Fase 13.G) Eliminados actionProgressTotalProc / actionProgressPollProc /
+  // actionProgressPollTimer: el progreso ya no se sondea con `du`, viene por
+  // bytes de la señal FileOperations.progress (ver la Connections de arriba).
 }

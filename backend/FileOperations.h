@@ -61,6 +61,11 @@ public:
   // copy/move (parámetro overwrite) y el filtrado de skip en runPaste/runDrop.
   Q_INVOKABLE QStringList existingPaths(const QStringList &paths) const;
 
+  // Tamaño total (recursivo, en bytes) de un conjunto de rutas. Nativo, para
+  // el porcentaje de progreso de copy/move sin `du` (Fase 13.G). Síncrono
+  // (recorre el árbol como hacía `du -sbc`, una vez al principio).
+  Q_INVOKABLE qint64 totalSize(const QStringList &paths) const;
+
   // Mueve `source` a `destination` (ruta destino COMPLETA). Intenta un
   // rename atomico (mismo sistema de ficheros); si cruza de disco, copia +
   // borra el origen (con progress, cancelable). Si destination existe: con
@@ -101,8 +106,11 @@ public:
   Q_INVOKABLE void restoreByOrigPath(const QString &origPath);
 
 signals:
-  // Progreso 0..100 de una copia/movimiento en curso.
-  void progress(const QString &op, const QString &path, double pct);
+  // Progreso por BYTES de una copia/movimiento en curso (Fase 13.G): `done`
+  // = bytes copiados del ítem actual, `total` = tamaño del ítem. El
+  // consumidor (ActionEngine) agrega sobre el lote. Antes era un porcentaje.
+  void progress(const QString &op, const QString &path, qint64 done,
+                qint64 total);
   // La operacion termino con exito.
   void finished(const QString &op, const QString &path);
   // La operacion fallo; `message` describe el motivo.
@@ -117,8 +125,9 @@ private:
   // Lanza `job` en el pool y emite finished/error segun su Result, en el
   // hilo de UI. `op`/`path` para las senales.
   void run(const QString &op, const QString &path, std::function<Result()> job);
-  // Emite progress(op, path, pct) de forma segura desde el hilo worker.
-  void emitProgress(const QString &op, const QString &path, double pct);
+  // Emite progress(op, path, done, total) de forma segura desde el worker.
+  void emitProgress(const QString &op, const QString &path, qint64 done,
+                    qint64 total);
 
   // Flag de cancelación cooperativa (ver cancel()/copy()). Atómico porque lo
   // escribe el hilo de UI y lo lee el worker del pool.
