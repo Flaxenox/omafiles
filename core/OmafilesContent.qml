@@ -776,7 +776,7 @@ Item {
   ArchiveActions {
     id: archiveActions
     root: root
-    list: list
+    list: mainLayout.list
     selectionOps: selectionOps
     sortOps: sortOps
   }
@@ -813,7 +813,7 @@ Item {
   SearchOps {
     id: searchOps
     root: root
-    list: list
+    list: mainLayout.list
     selectionOps: selectionOps
     sortOps: sortOps
   }
@@ -838,7 +838,7 @@ Item {
   TabOps {
     id: tabOps
     root: root
-    list: list
+    list: mainLayout.list
     archiveActions: archiveActions
     previewLoader: previewLoader
   }
@@ -870,7 +870,7 @@ Item {
   NavigationController {
     id: navController
     root: root
-    list: list
+    list: mainLayout.list
     archiveActions: archiveActions
     mountOps: mountOps
     bookmarkOps: bookmarkOps
@@ -935,664 +935,53 @@ Item {
     onTriggered: root.gPending = false
   }
 
-  BorderSurface {
-    id: card
+  MainLayout {
+    id: mainLayout
     anchors.fill: parent
-    color: Color.menu.background
-    // Sin borde propio: Hyprland ya dibuja el borde de ventana activa/
-    // inactiva alrededor de toda la ventana (como en el resto de apps del
-    // sistema) -- un BorderSurface aquí dibujaría un segundo borde, con
-    // su propio color, pegado al de Hyprland. Eso sí hace falta en los
-    // popups reales de Omarchy (audio, red...) porque son layer-shell y
-    // Hyprland nunca los decora; Omafiles ya es una ventana normal.
-    borderSpec: Border.none()
-    radius: Style.cornerRadius
-    padding: Style.spacing.panelPadding
+    root: root
+    bookmarkOps: bookmarkOps
+    mountOps: mountOps
+    dragDropOps: dragDropOps
+    videoThumbs: videoThumbs
+    fileMeta: fileMeta
+    tabOps: tabOps
+    sortOps: sortOps
+    searchOps: searchOps
+    selectionOps: selectionOps
+    conflictActions: conflictActions
+    previewLoader: previewLoader
+    fileOps: fileOps
+    renameOps: renameOps
+    clipboardOps: clipboardOps
+    deleteOps: deleteOps
+    gTimer: gTimer
+    deleteConfirm: dialogLayer.deleteConfirm
+    renameConflictConfirm: dialogLayer.renameConflictConfirm
+    extractConflictConfirm: dialogLayer.extractConflictConfirm
+    compressConflictConfirm: dialogLayer.compressConflictConfirm
+    bulkRenameConflictConfirm: dialogLayer.bulkRenameConflictConfirm
+    newFileConflictConfirm: dialogLayer.newFileConflictConfirm
+    newFolderConflictConfirm: dialogLayer.newFolderConflictConfirm
+  }
 
-    Row {
-      id: cardRow
-      anchors.fill: parent
-      anchors.topMargin: card.contentTopInset
-      anchors.rightMargin: card.contentRightInset
-      anchors.bottomMargin: card.contentBottomInset
-      anchors.leftMargin: card.contentLeftInset
-      spacing: Style.spacing.panelGap
-
-      // ---------- Barra lateral: accesos anclados ----------
-      Sidebar {
-        id: sidebar
-        width: 160
-        height: parent.height
-        bookmarks: BookmarksState.bookmarks
-        recentFiles: BookmarksState.recentFiles
-        mounts: MountsState.mounts
-        networkMounts: MountsState.networkMounts
-        currentPath: root.currentPath
-        dropHoverPath: DropHoverState.dropHoverPath
-        positionRelativeTo: card
-        iconForBookmark: bookmarkOps.iconForBookmark
-        iconFor: root.iconFor
-        iconForMount: bookmarkOps.iconForMount
-        iconForNetworkMount: bookmarkOps.iconForNetworkMount
-        openContextMenu: root.openContextMenu
-        bookmarkActionsFor: root.bookmarkActions
-        mountActionsFor: root.mountActions
-        networkMountActionsFor: bookmarkOps.networkMountActions
-        onBookmarkOpened: function (bookmark) { root.openBookmark(bookmark) }
-        onRecentOpened: function (item) { root.openRecent(item) }
-        onRecentLaunched: function (item) { root.launchRecent(item) }
-        onRecentRemoveRequested: function (path) { bookmarkOps.removeRecent(path) }
-        onRecentClearRequested: bookmarkOps.clearRecent()
-        onMountActivated: function (mount) {
-          if (!mount.mounted) mountOps.mountDevice(mount)
-          else root.navigateTo(mount.path)
-        }
-        onNetworkMountOpened: function (mount) { root.navigateTo(mount.path) }
-        onConnectRequested: mountOps.startConnectToServer()
-        onFilesDropped: function (drop, destPath) { dragDropOps.handleFilesDropped(drop, destPath) }
-        onDropHoverChanged: function (path) { DropHoverState.dropHoverPath = path }
-      }
-
-      Rectangle {
-        width: Style.spacing.hairline
-        height: parent.height
-        color: Color.menu.border
-        // Bajado de 0.3 a 0.15 -- misma alpha que usa PanelSeparator
-        // (el separador horizontal real de Omarchy) para el mismo rol
-        // conceptual de "línea divisoria discreta". No hay un
-        // componente vertical real con el que comparar, pero no hay
-        // motivo para que esta línea sea el doble de fuerte que las
-        // horizontales del mismo fichero.
-        opacity: 0.15
-      }
-
-      // ---------- Contenido principal ----------
-      Column {
-        id: mainColumn
-        width: parent.width - sidebar.width - 1 - parent.spacing * 2
-        height: parent.height
-        spacing: Style.spacing.rowGap
-
-        Item {
-          id: panelsRow
-          width: parent.width
-          height: parent.height
-          readonly property int panelCount: TabsState.tabs.length
-          // El hueco entre dos paneles lleva panelGap A CADA LADO del
-          // divisor (no panelGap repartido entre los dos) -- para que el
-          // margen "interior" de un panel (hacia el divisor) sea tan ancho
-          // como el "exterior" (hacia la barra lateral o el borde de la
-          // ventana), en vez de la mitad.
-          readonly property real interPanelGap: 2 * Style.spacing.panelGap + Style.spacing.hairline
-          readonly property real slotWidth: (panelsRow.width - (panelCount - 1) * interPanelGap) / panelCount
-          function slotX(i) { return i * (panelsRow.slotWidth + panelsRow.interPanelGap) }
-
-          // ---------- Divisores entre paneles ----------
-          // Una simple línea, no un recuadro con borde propio -- mismo
-          // estilo que ya usa el divisor entre la barra lateral y el
-          // contenido (Color.menu.border, opacity 0.15, Style.spacing.hairline).
-          Repeater {
-            model: Math.max(0, TabsState.tabs.length - 1)
-            delegate: Rectangle {
-              required property int index
-              x: panelsRow.slotX(index) + panelsRow.slotWidth + Style.spacing.panelGap
-              y: 0
-              width: Style.spacing.hairline
-              height: panelsRow.height
-              color: Color.menu.border
-              opacity: 0.15
-            }
-          }
-
-          // ---------- Paneles simples (todas las pestañas salvo la activa) ----------
-          // Generalización de lo que antes era un único panel de "vista
-          // dividida" fijo -- ahora hay uno por cada pestaña que no sea la
-          // activa, cada uno con su propio listado (su propio Process,
-          // hijo del delegado). Deliberadamente simple: sin lazo de
-          // selección ni menú contextual propio, solo navegar con doble
-          // clic y arrastrar -- para eso sirve, el panel activo (más
-          // abajo) ya tiene todo lo demás.
-          Repeater {
-            model: TabsState.tabs
-
-            BackgroundPanel {
-              hostRoot: root
-              hostPanelsRow: panelsRow
-              hostVideoThumbs: videoThumbs
-              hostDragDropOps: dragDropOps
-              hostFileMeta: fileMeta
-              hostTabOps: tabOps
-              hostSortOps: sortOps
-            }
-          }
-
-          // ---------- Panel activo ----------
-          // Todo lo que ya existía (barra de navegación, campos de
-          // nueva carpeta/fichero/búsqueda, la lista completa con lazo de
-          // selección/menú contextual/drag&drop/etc.) sin tocar su lógica
-          // interna -- solo movido a su propio hueco dentro de la fila de
-          // paneles, en la posición de la pestaña activa.
-          Item {
-            id: activePanel
-            x: panelsRow.slotX(TabsState.activeTabIndex)
-            y: 0
-            width: panelsRow.slotWidth
-            height: panelsRow.height
-
-        // Sin tinte de fondo propio en el panel activo -- se probó un
-        // Rectangle de Util.alpha(Color.accent, 0.08) de pared a pared,
-        // pero josema lo vio feo al pasar el ratón (mancha de color
-        // sobre todo el panel). El atenuado opacity:0.8 de bgPanel ya
-        // basta por sí solo para distinguir cuál está activo, sin
-        // añadir color encima.
-
-        // navRow/listContainer/etc. van en su propia Column interior en
-        // vez de directamente en activePanel -- así statusText, fuera de
-        // ella, puede anclarse a parent.bottom (igual que bgStatusText)
-        // y quedar en el mismo píxel exacto en los dos tipos de panel.
-        // Antes, al ser el último hijo de la Column, su posición salía de
-        // sumar navRow+listContainer+márgenes -- una cadena de números
-        // reales que no siempre cuadraba pixel a pixel con el bottom:
-        // parent.bottom de los paneles de fondo (una simple resta).
-        Column {
-          id: activeTop
-          anchors.top: parent.top
-          anchors.left: parent.left
-          anchors.right: parent.right
-          spacing: Style.spacing.rowGap
-
-        Row {
-          id: navRow
-          width: parent.width
-          height: Style.spacing.controlHeight
-          spacing: Style.spacing.controlGap
-
-          PanelNavButtons {
-            anchors.verticalCenter: parent.verticalCenter
-            canGoBack: TabsState.navHistoryIndex > 0
-            canGoForward: TabsState.navHistoryIndex < TabsState.navHistory.length - 1
-            canGoUp: root.currentPath !== "/"
-            onBackRequested: root.navBack()
-            onForwardRequested: root.navForward()
-            onUpRequested: root.goUp()
-          }
-
-          Item {
-            id: pathArea
-            width: parent.width - 3 * (Style.spacing.controlHeight + Style.spacing.controlGap)
-            height: parent.height
-
-            MouseArea {
-              // Detrás de las migas de pan: clic en hueco vacío -> editar ruta a mano.
-              anchors.fill: parent
-              visible: !EditModeState.editingPath
-              cursorShape: Qt.IBeamCursor
-              onClicked: searchOps.startEditPath()
-            }
-
-            BreadcrumbSegments {
-              id: breadcrumbRow
-              visible: !EditModeState.editingPath
-              anchors.fill: parent
-              segments: root.pathSegments()
-              activePath: root.currentPath
-            }
-
-            TextField {
-              id: pathField
-              visible: EditModeState.editingPath
-              anchors.fill: parent
-              verticalPadding: 2
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "Path"
-              onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
-              Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.navigateTo(text)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  EditModeState.editingPath = false
-                  event.accepted = true
-                }
-              }
-            }
-          }
-        }
-
-        ActivePanelInputRows {
-          id: activeInputRows
-          root: root
-          list: list
-          conflictActions: conflictActions
-          searchOps: searchOps
-          selectionOps: selectionOps
-        }
-
-        Item {
-          id: listContainer
-          width: parent.width
-          // Sin el "- Style.spacing.hairline" que llevaba antes: ese
-          // único píxel de más hacía que list.height quedara 1px por
-          // debajo de bgList.height (misma fórmula, pero bgList lo
-          // deriva de anchors reales, sin ese fudge). En una lista con
-          // filas no se notaba (solo cambia el margen bajo la última
-          // fila), pero el estado vacío, centrado en el alto total,
-          // amplificaba ese único píxel a un desajuste visible al
-          // cambiar entre panel activo/de fondo.
-          // Las tres filas de activeInputRows son mutuamente excluyentes
-          // (ver comentario del propio componente) -- su altura ya ES
-          // la de la única fila visible, o 0 si ninguna lo está, así
-          // que basta un término en vez de sumar los tres por separado.
-          height: activePanel.height - navRow.height
-            - (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? activeInputRows.height + mainColumn.spacing : 0)
-            - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? 1 : 0))
-
-          ActiveFileList {
-            id: list
-            anchors.fill: parent
-            root: root
-            card: card
-            gTimer: gTimer
-            previewLoader: previewLoader
-            conflictActions: conflictActions
-            mountOps: mountOps
-            fileOps: fileOps
-            videoThumbs: videoThumbs
-            renameOps: renameOps
-            clipboardOps: clipboardOps
-            dragDropOps: dragDropOps
-            searchOps: searchOps
-            fileMeta: fileMeta
-            deleteOps: deleteOps
-            tabOps: tabOps
-            selectionOps: selectionOps
-            sortOps: sortOps
-            deleteConfirm: deleteConfirm
-            renameConflictConfirm: renameConflictConfirm
-            extractConflictConfirm: extractConflictConfirm
-            compressConflictConfirm: compressConflictConfirm
-            bulkRenameConflictConfirm: bulkRenameConflictConfirm
-            newFileConflictConfirm: newFileConflictConfirm
-            newFolderConflictConfirm: newFolderConflictConfirm
-          }
-
-        }
-        } // fin activeTop (Column)
-            // ---------- Barra de estado ----------
-            // Dentro del panel activo, no como hermana global de
-            // panelsRow -- antes quedaba siempre debajo de la columna
-            // izquierda aunque la información fuera de la pestaña de la
-            // derecha, algo que josema notó como desalineado. Fuera de
-            // activeTop y anclada a activePanel.bottom (como
-            // bgStatusText) para que quede en el mismo píxel exacto.
-            Text {
-              id: statusText
-              anchors.bottom: parent.bottom
-              anchors.left: parent.left
-              anchors.right: parent.right
-              text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
-                + (root.searchQuery ? " of " + root.entries.length : "")
-                + (root.searchTruncated ? " · showing first 200" : "")
-                // Sin tope en la carpeta en sí (a diferencia de la
-                // búsqueda) -- cortar un listado normal a los N primeros
-                // rompería el manejo de ficheros de verdad para carpetas
-                // grandes (node_modules, caches de paquetes...). Solo un
-                // aviso informativo de que puede ir lento, no un límite.
-                + (!root.searchQuery && root.entries.length > 5000 ? " · large folder, may be slow" : "")
-                + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
-                + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
-                + " · sort: " + sortOps.sortLabel()
-              font.pixelSize: Style.font.subtitle
-              font.family: Style.font.family
-              color: Color.menu.text
-              opacity: 0.55
-            }
-          } // fin activePanel (Item)
-        } // fin panelsRow (Item)
-      }
-    }
-
-    // El lazo de selección también debe poder arrancar en el hueco entre
-    // la barra lateral y el contenido -- `cardRow` es un Row con
-    // `spacing: Style.spacing.panelGap` a cada lado del separador
-    // vertical, y ese espaciado no pertenece a ningún hijo (ni sidebar ni
-    // mainColumn lo cubren), así que ningún MouseArea dentro de
-    // `listContainer` llega hasta ahí por mucho z-order que se ajuste.
-    // `mapToItem` en vez de aritmética manual con list.y/contentY --
-    // ya nos hemos equivocado antes a mano con esas cuentas.
-    MouseArea {
-      x: cardRow.x + sidebar.width
-      y: cardRow.y
-      width: 2 * Style.spacing.panelGap + 1
-      height: cardRow.height
-      acceptedButtons: Qt.LeftButton
-      onPressed: function (mouse) {
-        var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-        var vp = mapToItem(list, mouse.x, mouse.y)
-        selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
-      }
-      onPositionChanged: function (mouse) {
-        var p = mapToItem(list.contentItem, mouse.x, mouse.y)
-        var vp = mapToItem(list, mouse.x, mouse.y)
-        selectionOps.moveMarquee(p.x, p.y, vp.y)
-      }
-      onReleased: selectionOps.endMarquee()
-      onCanceled: selectionOps.endMarquee()
-    }
-
-    // ---------- Renombrar en lote ----------
-    BulkRenamePanel {
-      anchors.fill: parent
-      open: DialogsState.bulkRenameOpen
-      selectedCount: SelectionState.selectedIndices.length
-      pattern: DialogsState.bulkRenamePattern
-      history: BookmarksState.bulkRenameHistory
-      onCloseRequested: DialogsState.bulkRenameOpen = false
-      onRenameRequested: function (pattern) { DialogsState.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
-      onFocusReturnRequested: list.forceActiveFocus()
-    }
-
-    // ---------- Conectar a servidor ----------
-    ConnectServer {
-      anchors.fill: parent
-      open: DialogsState.connectServerOpen
-      connecting: DialogsState.networkConnecting
-      uri: DialogsState.connectServerUri
-      errorText: DialogsState.connectServerError
-      onConnectRequested: function (uri) { DialogsState.connectServerUri = uri; mountOps.commitConnectToServer() }
-      onCancelConnectingRequested: mountOps.cancelNetworkConnect()
-      onCloseRequested: mountOps.cancelConnectToServer()
-      onFocusReturnRequested: list.forceActiveFocus()
-    }
-
-    // ---------- Permisos (chmod) ----------
-    ChmodPanel {
-      anchors.fill: parent
-      open: ChmodState.chmodOpen
-      names: ChmodState.chmodNames
-      mixed: ChmodState.chmodMixed
-      mode: ChmodState.chmodMode
-      hasDir: ChmodState.chmodHasDir
-      recursive: ChmodState.chmodRecursive
-      onCloseRequested: ChmodState.chmodOpen = false
-      onBitToggled: function (ownerIdx, bit) { fileOps.toggleChmodBit(ownerIdx, bit) }
-      onRecursiveToggled: ChmodState.chmodRecursive = !ChmodState.chmodRecursive
-      onApplyRequested: function (mode) { fileOps.commitChmod(mode) }
-    }
-
-    // ---------- Propiedades ----------
-    PropertiesPanel {
-      anchors.fill: parent
-      open: PropertiesState.propertiesOpen
-      multi: PropertiesState.propertiesMulti
-      count: PropertiesState.propertiesCount
-      entry: PropertiesState.propertiesEntry
-      sizeLoading: PropertiesState.propertiesSizeLoading
-      size: PropertiesState.propertiesSize
-      perms: PropertiesState.propertiesPerms
-      owner: PropertiesState.propertiesOwner
-      mtime: PropertiesState.propertiesMtime
-      onCloseRequested: PropertiesState.propertiesOpen = false
-    }
-
-    // ---------- Ayuda de atajos de teclado ----------
-    // Primer componente extraído a su propio fichero (ShortcutsHelp.qml)
-    // -- ver comentario ahí sobre por qué se eligió este trozo primero.
-    ShortcutsHelp {
-      anchors.fill: parent
-      open: DialogsState.shortcutsHelpOpen
-      onRequestClose: DialogsState.shortcutsHelpOpen = false
-    }
-
-    // ---------- Copiar/mover en curso ----------
-    // No bloquea el resto de la ventana (sin MouseArea de fondo a pantalla
-    // completa) -- cp/mv no reportan progreso real, así que esto es solo
-    // "sigue vivo" (puntos animados) + Cancel, no una barra de porcentaje.
-    BorderSurface {
-      id: actionBusyCard
-      visible: ActionState.actionBusy
-      width: Math.min(parent.width - 80, 420)
-      height: actionBusyColumn.implicitHeight + contentTopInset + contentBottomInset
-      anchors.horizontalCenter: parent.horizontalCenter
-      anchors.bottom: parent.bottom
-      anchors.bottomMargin: Style.spacing.lg
-      radius: Style.cornerRadius
-      color: Color.menu.background
-      borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-      padding: Style.spacing.sm
-      z: 25
-
-      Column {
-        id: actionBusyColumn
-        anchors.fill: parent
-        anchors.topMargin: actionBusyCard.contentTopInset
-        anchors.rightMargin: actionBusyCard.contentRightInset
-        anchors.bottomMargin: actionBusyCard.contentBottomInset
-        anchors.leftMargin: actionBusyCard.contentLeftInset
-        spacing: Style.spacing.xs
-
-        Row {
-          id: actionBusyRow
-          width: parent.width
-          spacing: Style.spacing.sm
-
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - cancelActionButton.width - parent.spacing
-            // Porcentaje real para copiar/mover (ver
-            // startCopyProgress/actionProgressPct); puntos animados
-            // para cualquier otra acción, que no tiene un "tamaño
-            // total" con el que calcular nada.
-            text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : root.actionBusyDots)
-            font.pixelSize: Style.font.subtitle
-            font.family: Style.font.family
-            color: Color.menu.text
-            elide: Text.ElideRight
-          }
-
-          Button {
-            id: cancelActionButton
-            text: "Cancel"
-            bordered: true
-            anchors.verticalCenter: parent.verticalCenter
-            Accessible.role: Accessible.Button
-            Accessible.name: text
-            onClicked: root.cancelAction()
-          }
-        }
-
-        Rectangle {
-          visible: ActionState.actionProgressPct >= 0
-          width: parent.width
-          height: 3
-          radius: height / 2
-          color: Qt.darker(Color.menu.text, 2.5)
-
-          Rectangle {
-            width: parent.width * (ActionState.actionProgressPct / 100)
-            height: parent.height
-            radius: height / 2
-            color: Color.accent
-
-            Behavior on width { NumberAnimation { duration: 200 } }
-          }
-        }
-      }
-    }
-
-    Timer {
-      running: ActionState.actionBusy
-      repeat: true
-      interval: 400
-      onTriggered: root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
-    }
-
-    // ---------- Abrir con... ----------
-    OpenWithPanel {
-      anchors.fill: parent
-      open: PreviewState.openWithOpen
-      entry: PreviewState.openWithEntry
-      apps: PreviewState.openWithApps
-      onCloseRequested: PreviewState.openWithOpen = false
-      onAppSelected: function (appId) { openWithOps.launchWith(appId) }
-    }
-
-    // ---------- Menú contextual ----------
-    ContextMenuPanel {
-      anchors.fill: parent
-      open: ContextMenuState.contextMenuOpen
-      menuX: ContextMenuState.contextMenuX
-      menuY: ContextMenuState.contextMenuY
-      actions: ContextMenuState.contextMenuActions
-      onCloseRequested: ContextMenuState.contextMenuOpen = false
-    }
-
-    ConfirmDialog {
-      id: deleteConfirm
-      anchors.fill: parent
-      z: 10
-      opened: root.pendingDeleteNames.length > 0
-      message: root.currentPath === root.trashDir
-        ? (root.pendingDeleteNames.length === 1
-          ? "Delete \"" + root.pendingDeleteNames[0] + "\" PERMANENTLY? This cannot be undone."
-          : "Delete " + root.pendingDeleteNames.length + " items PERMANENTLY? This cannot be undone.")
-        : (root.pendingDeleteNames.length === 1
-          ? "Send \"" + root.pendingDeleteNames[0] + "\" to trash?"
-          : "Send " + root.pendingDeleteNames.length + " items to trash?")
-      confirmText: "Delete"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: root.pendingDeleteNames = []
-      onConfirmed: deleteOps.confirmDelete()
-    }
-
-    ConfirmDialog {
-      id: renameConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.renameConflictOpen
-      message: ConflictState.pendingRename
-        ? "\"" + ConflictState.pendingRename.newPath.substring(ConflictState.pendingRename.newPath.lastIndexOf("/") + 1) + "\" already exists here. Overwrite?"
-        : ""
-      confirmText: "Overwrite"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: renameOps.cancelPendingRename()
-      onConfirmed: renameOps.runPendingRename(true)
-    }
-
-    ConfirmDialog {
-      id: newFileConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.newFileConflictOpen
-      message: ConflictState.pendingNewFile
-        ? "\"" + ConflictState.pendingNewFile.name + "\" already exists here. Overwrite?"
-        : ""
-      confirmText: "Overwrite"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: renameOps.cancelPendingNewFile()
-      onConfirmed: renameOps.runPendingNewFile(true)
-    }
-
-    ConfirmDialog {
-      id: newFolderConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.newFolderConflictOpen
-      message: ConflictState.pendingNewFolder
-        ? "\"" + ConflictState.pendingNewFolder.name + "\" already exists here. Overwrite?"
-        : ""
-      confirmText: "Overwrite"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: renameOps.cancelPendingNewFolder()
-      onConfirmed: renameOps.runPendingNewFolder(true)
-    }
-
-    ConfirmDialog {
-      id: extractConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.extractConflictOpen
-      message: ConflictState.extractConflictNames.length === 1
-        ? "\"" + ConflictState.extractConflictNames[0] + "\" already exists here and will be overwritten."
-        : ConflictState.extractConflictNames.length + " items already exist here and will be overwritten."
-      confirmText: "Overwrite"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: archiveActions.cancelPendingExtract()
-      onConfirmed: archiveActions.runPendingExtract()
-    }
-
-    ConfirmDialog {
-      id: compressConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.compressConflictOpen
-      message: ConflictState.pendingCompress ? "\"" + ConflictState.pendingCompress.archiveName + "\" already exists. Overwrite it?" : ""
-      confirmText: "Overwrite"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: archiveActions.cancelPendingCompress()
-      onConfirmed: archiveActions.runPendingCompress()
-    }
-
-    ConfirmDialog {
-      id: bulkRenameConflictConfirm
-      anchors.fill: parent
-      z: 10
-      opened: ConflictState.bulkRenameConflictOpen
-      message: ConflictState.bulkRenameConflictCount === 1
-        ? "1 rename would collide with an existing name and will be skipped. Rename the rest?"
-        : ConflictState.bulkRenameConflictCount + " renames would collide with existing or duplicate names and will be skipped. Rename the rest?"
-      confirmText: "Continue"
-      cancelText: "Cancel"
-      background: Color.menu.background
-      foreground: Color.menu.text
-      onCanceled: fileOps.cancelPendingBulkRename()
-      onConfirmed: fileOps.runPendingBulkRename()
-    }
-
-    // ---------- Conflicto al pegar ----------
-    ConflictResolveDialog {
-      anchors.fill: parent
-      open: ConflictState.pasteConflictOpen
-      names: ConflictState.pasteConflictNames
-      onOverwriteRequested: clipboardOps.runPaste("overwrite")
-      onSkipRequested: clipboardOps.runPaste("skip")
-      onCancelRequested: clipboardOps.cancelPasteConflict()
-    }
-
-    // ---------- Conflicto al soltar (drag & drop) ----------
-    ConflictResolveDialog {
-      anchors.fill: parent
-      open: ConflictState.dropConflictOpen
-      names: ConflictState.dropConflictNames
-      onOverwriteRequested: conflictActions.runDrop("overwrite")
-      onSkipRequested: conflictActions.runDrop("skip")
-      onCancelRequested: dragDropOps.cancelDropConflict()
-    }
-
-    // ---------- Paleta de comandos (: o Ctrl+P) ----------
-    CommandPalettePanel {
-      anchors.fill: parent
-      open: PaletteState.paletteOpen
-      query: PaletteState.paletteQuery
-      index: PaletteState.paletteIndex
-      commands: PaletteState.paletteOpen ? root.filteredPaletteCommands() : []
-      onQueryEdited: function (text) { PaletteState.paletteQuery = text; PaletteState.paletteIndex = 0 }
-      onCloseRequested: root.closePalette()
-      onIndexRequested: function (idx) { PaletteState.paletteIndex = idx }
-      onCommandActivated: function (idx) { root.runPaletteCommand(idx) }
-      onFocusReturnRequested: list.forceActiveFocus()
-    }
+  // ---------- Capa de diálogos/overlays (Fase 11.B) ----------
+  // Hermana de MainLayout (ambas anchors.fill: parent) -- antes hija de la
+  // tarjeta; geométricamente idéntico (la tarjeta llena root). Los siete
+  // ConfirmDialog los expone DialogLayer y MainLayout los recibe para su
+  // ActiveFileList.
+  DialogLayer {
+    id: dialogLayer
+    anchors.fill: parent
+    root: root
+    list: mainLayout.list
+    conflictActions: conflictActions
+    mountOps: mountOps
+    fileOps: fileOps
+    openWithOps: openWithOps
+    deleteOps: deleteOps
+    renameOps: renameOps
+    archiveActions: archiveActions
+    clipboardOps: clipboardOps
+    dragDropOps: dragDropOps
   }
 }
