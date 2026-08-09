@@ -1010,6 +1010,172 @@ QtObject {
       })
     })
 
+    // -------- Undo / Redo nativo (13.H) --------
+    // El undo/redo de las operaciones PRINCIPALES (move, trash) ya es nativo
+    // (13.B/D): el llamador registra pushUndo con funciones que invocan
+    // moveFiles/restoreFiles/trashFiles (runners de FileOperations, 0 shell).
+    // Aquí se valida el ciclo completo a través del contrato real de la UI
+    // (content.pushUndo/undoLast/redoLast + UndoState).
+
+    add("Undo + redo move (full cycle)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var work = sc.opsDir + "/urm-src.txt"
+      var dst = sc.opsDir + "/urm-dst.txt"
+      var pairs = [{ src: work, dest: dst }]
+      var reversed = [{ src: dst, dest: work }]
+      sc._fileOp(done, function () {          // work creado
+        c.moveFiles(pairs, "Moving…", false, function () {
+          c.pushUndo("move",
+            function () { return c.moveFiles(reversed, "", false) },
+            function () { return c.moveFiles(pairs, "", false) })
+          sc._listOnce(sc.opsDir, function (e) {
+            if (!(sc._has(e, "urm-dst.txt") && !sc._has(e, "urm-src.txt"))) { done(false, "no movió"); return }
+            sc._fileOp(done, function () {    // undo -> mover de vuelta
+              sc._listOnce(sc.opsDir, function (e2) {
+                if (!(sc._has(e2, "urm-src.txt") && !sc._has(e2, "urm-dst.txt"))) { done(false, "undo no revirtió"); return }
+                sc._fileOp(done, function () {  // redo -> mover otra vez
+                  sc._listOnce(sc.opsDir, function (e3) {
+                    done(sc._has(e3, "urm-dst.txt") && !sc._has(e3, "urm-src.txt"), "undo y redo OK")
+                  })
+                })
+                c.redoLast()
+              })
+            })
+            c.undoLast()
+          })
+        })
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
+    add("Undo + redo trash (full cycle)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var work = sc.opsDir + "/urt.txt"
+      sc._fileOp(done, function () {
+        c.trashFiles([work], "", function () {
+          c.pushUndo("trash",
+            function () { return c.restoreFiles([work], "") },
+            function () { return c.trashFiles([work], "") })
+          sc._listOnce(sc.opsDir, function (e) {
+            if (sc._has(e, "urt.txt")) { done(false, "no se envió a papelera"); return }
+            sc._fileOp(done, function () {   // undo -> restaurar
+              sc._listOnce(sc.opsDir, function (e2) {
+                if (!sc._has(e2, "urt.txt")) { done(false, "undo no restauró"); return }
+                sc._fileOp(done, function () {  // redo -> a papelera otra vez
+                  sc._listOnce(sc.opsDir, function (e3) {
+                    done(!sc._has(e3, "urt.txt"), "undo y redo trash OK")
+                  })
+                })
+                c.redoLast()
+              })
+            })
+            c.undoLast()
+          })
+        })
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
+    add("Undo sequence (LIFO: revierte el último primero)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var a1 = sc.opsDir + "/seqA.txt", a2 = sc.opsDir + "/seqA-dst.txt"
+      var b1 = sc.opsDir + "/seqB.txt", b2 = sc.opsDir + "/seqB-dst.txt"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, a1) },
+        function () { FileOperations.copy(sc.note, b1) }
+      ], done, function () {
+        c.moveFiles([{ src: a1, dest: a2 }], "", false, function () {
+          c.pushUndo("A", function () { return c.moveFiles([{ src: a2, dest: a1 }], "", false) }, null)
+          c.moveFiles([{ src: b1, dest: b2 }], "", false, function () {
+            c.pushUndo("B", function () { return c.moveFiles([{ src: b2, dest: b1 }], "", false) }, null)
+            sc._fileOp(done, function () {   // undo #1 -> revierte B (LIFO)
+              sc._listOnce(sc.opsDir, function (e) {
+                var bBack = sc._has(e, "seqB.txt") && !sc._has(e, "seqB-dst.txt")
+                var aStill = sc._has(e, "seqA-dst.txt") && !sc._has(e, "seqA.txt")
+                if (!(bBack && aStill)) { done(false, "LIFO: no revirtió B primero"); return }
+                sc._fileOp(done, function () {  // undo #2 -> revierte A
+                  sc._listOnce(sc.opsDir, function (e2) {
+                    done(sc._has(e2, "seqA.txt") && !sc._has(e2, "seqA-dst.txt"), "LIFO OK: B y luego A")
+                  })
+                })
+                c.undoLast()
+              })
+            })
+            c.undoLast()
+          })
+        })
+      })
+    })
+
+    add("Cancel then undo (la cancelación no altera la pila)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var work = sc.opsDir + "/ctu-src.txt"
+      var dst = sc.opsDir + "/ctu-dst.txt"
+      sc._fileOp(done, function () {          // work creado
+        c.moveFiles([{ src: work, dest: dst }], "", false, function () {
+          c.pushUndo("move", function () { return c.moveFiles([{ src: dst, dest: work }], "", false) }, null)
+          // una copia grande directa + cancel (no toca el stack de undo)
+          var bigSrc = sc.dir + "/big.bin"
+          function onErr(op, path, msg) {
+            if (path !== bigSrc) return
+            cleanup()
+            if (msg !== "cancelled") { done(false, "cancel error: " + msg); return }
+            // el undo del move sigue disponible -> revierte
+            sc._fileOp(done, function () {
+              sc._listOnce(sc.opsDir, function (e) {
+                done(sc._has(e, "ctu-src.txt") && !sc._has(e, "ctu-dst.txt"), "undo tras cancelación revierte el move")
+              })
+            })
+            c.undoLast()
+          }
+          function onFin(op, path) { if (path !== bigSrc) return; cleanup(); done(false, "la copia terminó antes de cancelar") }
+          function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+          FileOperations.error.connect(onErr)
+          FileOperations.finished.connect(onFin)
+          FileOperations.copy(bigSrc, sc.opsDir + "/ctu-big.bin")
+          FileOperations.cancel()
+        })
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
+    add("Undo registry consistency (UndoState stacks)", function (done) {
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      // Limpia las pilas para aserciones absolutas (singleton compartido).
+      UndoState.undoStack = []
+      UndoState.redoStack = []
+      var work = sc.opsDir + "/urc-src.txt"
+      var dst = sc.opsDir + "/urc-dst.txt"
+      sc._fileOp(done, function () {
+        c.moveFiles([{ src: work, dest: dst }], "", false, function () {
+          c.pushUndo("urc",
+            function () { return c.moveFiles([{ src: dst, dest: work }], "", false) },
+            function () { return c.moveFiles([{ src: work, dest: dst }], "", false) })
+          var afterPush = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
+          // undoLast/redoLast actualizan las pilas de forma SÍNCRONA e inician
+          // un move async. Se llama la acción ANTES de conectar el _fileOp,
+          // así el `ok` del runner (conectado durante undoLast) dispara antes
+          // que este handler y libera nativeBusy para el redoLast siguiente.
+          c.undoLast()
+          var afterUndo = UndoState.undoStack.length === 0 && UndoState.redoStack.length === 1
+          sc._fileOp(done, function () {   // el undo move terminó
+            c.redoLast()
+            var afterRedo = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
+            sc._fileOp(done, function () { // el redo move terminó (libera nativeBusy)
+              done(afterPush && afterUndo && afterRedo,
+                   "pilas push/undo/redo: " + afterPush + "/" + afterUndo + "/" + afterRedo)
+            })
+          })
+        })
+      })
+      FileOperations.copy(sc.note, work)
+    })
+
     add("FileOperations move", function (done) {
       FileOperations.copy(sc.note, sc.opsDir + "/toMove.txt")
       sc._fileOp(done, function () {
