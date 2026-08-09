@@ -42,14 +42,12 @@ function naturalCompare(a, b) {
   return ax.length - bx.length
 }
 
-// Hash simple y estable solo para nombrar ficheros de caché -- no hace
-// falta criptográfico, solo evitar colisiones razonables sin depender de
-// md5sum externo.
-function simpleHash(str) {
-  var h = 0
-  for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0
-  return (h >>> 0).toString(36)
-}
+// El hash de clave de caché en disco vive en el backend C++
+// (ThumbnailProvider.cacheKey, SHA-1) y es el ÚNICO esquema del proyecto
+// (Fase B1). Antes había un simpleHash JS aquí que convivía con ese SHA-1
+// (dos formatos de nombre de fichero para la misma carpeta de caché); se
+// retiró. Las rutas de caché se componen en QML llamando a
+// ThumbnailProvider.cacheKey (ver VideoThumbnails.qml y ArchiveActions.qml).
 
 // Une un directorio base y un nombre en una ruta absoluta, tratando "/"
 // como caso especial (evita "//name"). Función pura; era un wrapper de
@@ -60,12 +58,13 @@ function joinPath(base, name) {
   return base === "/" ? "/" + name : base + "/" + name
 }
 
+// Clave EN MEMORIA del dict VideoThumbState.videoThumbReady (ruta|mtime) --
+// no es un hash de fichero, solo un identificador único por (vídeo, mtime)
+// para deduplicar peticiones y leer el resultado. El nombre del fichero de
+// caché en disco lo da ThumbnailProvider.cacheKey (SHA-1), ver
+// VideoThumbnails.qml.
 function thumbKeyFor(entry, basePath) {
   return joinPath(basePath, entry.name) + "|" + entry.mtime
-}
-
-function videoThumbPath(entry, basePath, cacheDir) {
-  return cacheDir + "/" + simpleHash(thumbKeyFor(entry, basePath)) + ".jpg"
 }
 
 // list-dir.sh/search-recursive.sh separan TODO por NUL (\0) -- campos Y

@@ -316,6 +316,21 @@ QtObject {
       ThumbnailProvider.ready.connect(onReady)
     })
 
+    // Hash canónico de caché (Fase B1): ThumbnailProvider.cacheKey es el
+    // ÚNICO esquema (SHA-1 hex), compartido por las miniaturas de imagen/PDF
+    // (interno de request()), las de vídeo (VideoThumbnails) y la caché de
+    // extracción (ArchiveActions). Se ancla contra el SHA-1 conocido de una
+    // entrada fija para que cualquier cambio de esquema (que invalidaría toda
+    // la caché en disco) rompa el arnés en vez de pasar inadvertido.
+    add("Thumbnail cache key is canonical SHA-1 (B1)", function (done) {
+      var k = ThumbnailProvider.cacheKey("omafiles-b1|42")
+      var expected = "244adfd729888c0a4499250ebb2e9f41d7243600" // sha1("omafiles-b1|42")
+      var hexOk = /^[0-9a-f]{40}$/.test(k)
+      var stable = ThumbnailProvider.cacheKey("omafiles-b1|42") === k
+      done(hexOk && stable && k === expected,
+           "cacheKey=" + k + (k === expected ? "" : " (esperado " + expected + ")"))
+    })
+
     add("PreviewProvider text", function (done) {
       function onText(path, content, enc, bytes, lines, trunc) {
         if (path !== sc.note) return

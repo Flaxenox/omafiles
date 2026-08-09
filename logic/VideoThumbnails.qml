@@ -29,7 +29,11 @@ Item {
     var entry = queued.entry
     var basePath = queued.basePath
     var src = Utils.joinPath(basePath, entry.name)
-    var dest = Utils.videoThumbPath(entry, basePath, Paths.thumbCacheDir)
+    // Nombre de fichero de caché por el hash canónico del backend (SHA-1),
+    // el mismo esquema que las miniaturas de imagen/PDF (Fase B1). La clave
+    // de invalidación sigue siendo ruta|mtime (thumbKeyFor); solo cambia el
+    // hash. Extensión .jpg porque lo genera ffmpegthumbnailer.
+    var dest = Paths.thumbCacheDir + "/" + ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
     thumbProc.start(["bash", Paths.pluginDir + "/thumbnail-video.sh", src, dest])

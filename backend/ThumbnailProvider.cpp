@@ -101,14 +101,13 @@ QString ThumbnailProvider::request(const QString &path, int size) {
     return QString();
 
   // Clave = hash(ruta|tamaño|bytes|mtime): si el fichero cambia, cambia la
-  // clave y se regenera (invalidación por ruta+tamaño+mtime).
+  // clave y se regenera (invalidación por ruta+tamaño+mtime). hashKey() es el
+  // esquema canónico compartido con las rutas de QML (ver cacheKey()).
   const QString raw = path + QLatin1Char('|') + QString::number(size) +
                       QLatin1Char('|') + QString::number(fi.size()) +
                       QLatin1Char('|') +
                       QString::number(fi.lastModified().toSecsSinceEpoch());
-  const QString key = QString::fromLatin1(
-      QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha1)
-          .toHex());
+  const QString key = hashKey(raw);
   const QString outPath =
       m_cacheDir + QLatin1Char('/') + key + QStringLiteral(".png");
 
@@ -132,4 +131,14 @@ QString ThumbnailProvider::request(const QString &path, int size) {
             Qt::QueuedConnection);
       }));
   return QString();
+}
+
+QString ThumbnailProvider::hashKey(const QString &input) {
+  return QString::fromLatin1(
+      QCryptographicHash::hash(input.toUtf8(), QCryptographicHash::Sha1)
+          .toHex());
+}
+
+QString ThumbnailProvider::cacheKey(const QString &input) const {
+  return hashKey(input);
 }

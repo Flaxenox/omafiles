@@ -185,9 +185,9 @@ Item {
   // videoThumbReady/thumbQueue/thumbBusy viven ahora en
   // state/VideoThumbState.qml -- decimocuarto slice de la capa state/.
 
-  // simpleHash/thumbKeyFor/videoThumbPath: movidas a Utils.js (funciones
-  // puras). `basePath`/cacheDir ya no son opcionales -- cada llamada de
-  // aquí en adelante los pasa explícitos (ver comentario en Utils.js).
+  // thumbKeyFor (clave en memoria del dict de miniaturas) vive en Utils.js.
+  // El hash de nombre de fichero de caché es único y vive en el backend
+  // (ThumbnailProvider.cacheKey, SHA-1) desde la Fase B1.
 
   // ---------- Selección (individual + lazo) ----------
 

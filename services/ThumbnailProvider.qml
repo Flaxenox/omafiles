@@ -16,6 +16,12 @@ QtObject {
   // soportados.
   function request(path, size) { return Backend.ThumbnailProvider.request(path, size || 256) }
 
+  // Hash canónico de clave de caché en disco (SHA-1 hex) -- el ÚNICO esquema
+  // de hash de Omafiles (Fase B1). Lo consumen las rutas de QML que antes
+  // usaban Utils.simpleHash: miniaturas de vídeo (logic/VideoThumbnails.qml)
+  // y caché de extracción de archivos (logic/ArchiveActions.qml).
+  function cacheKey(input) { return Backend.ThumbnailProvider.cacheKey(input) }
+
   // Se dispara cuando una miniatura pedida antes queda lista.
   signal ready(string path, string thumbPath)
 

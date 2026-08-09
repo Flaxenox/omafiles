@@ -38,10 +38,21 @@ public:
   // "" sin generar si el tipo no se soporta.
   Q_INVOKABLE QString request(const QString &path, int size = 256);
 
+  // Hash canónico de clave de caché en disco (SHA-1 hex de `input`). ES EL
+  // ÚNICO esquema de hash de caché de Omafiles (Fase B1): lo usa internamente
+  // request() para las miniaturas de imagen/PDF y lo consumen desde QML las
+  // rutas que antes usaban Utils.simpleHash (miniaturas de vídeo en
+  // logic/VideoThumbnails.qml, caché de extracción en logic/ArchiveActions.
+  // qml). Determinista y estable: mismo `input` -> mismo nombre de fichero.
+  Q_INVOKABLE QString cacheKey(const QString &input) const;
+
 signals:
   void ready(const QString &path, const QString &thumbPath);
 
 private:
+  // Implementación del hash canónico (ver cacheKey()). Estático para poder
+  // usarlo desde el worker de generación sin tocar el objeto.
+  static QString hashKey(const QString &input);
   // ¿La extensión es de un tipo que sabemos miniaturizar? (barato, evita
   // abrir ficheros de texto/binarios). QImageReader hace la comprobación
   // real al generar.

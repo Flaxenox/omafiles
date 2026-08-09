@@ -52,7 +52,7 @@ Item {
   function openFileInArchive(entry) {
     var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
     var ext = fileTypeUtils.extOf(ArchiveState.archivePath)
-    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(ArchiveState.archivePath + "|" + full) + "/" + entry.name
+    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
