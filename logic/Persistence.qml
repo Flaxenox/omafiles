@@ -34,19 +34,19 @@ Item {
   }
 
   function loadBookmarks() {
-    JsonStore.read(root.bookmarksFile)
+    JsonStore.read(Paths.bookmarksFile)
   }
 
   function saveBookmarks() {
-    _saveJson(root.bookmarksFile, BookmarksState.bookmarks)
+    _saveJson(Paths.bookmarksFile, BookmarksState.bookmarks)
   }
 
   function loadRecent() {
-    JsonStore.read(root.recentFile)
+    JsonStore.read(Paths.recentFile)
   }
 
   function saveRecent() {
-    _saveJson(root.recentFile, BookmarksState.recentFiles)
+    _saveJson(Paths.recentFile, BookmarksState.recentFiles)
   }
 
   // Solo se llama en la primera apertura de la sesión de Quickshell, sin
@@ -55,7 +55,7 @@ Item {
   // cuanto sabe la ruta real, no aquí (evita listar homeDir de más si sí
   // había sesión).
   function loadSession() {
-    JsonStore.read(root.sessionFile)
+    JsonStore.read(Paths.sessionFile)
   }
 
   // Solo guarda la ruta de cada pestaña -- no historial/preview/scroll,
@@ -65,15 +65,15 @@ Item {
   function saveSession() {
     tabOps.saveActiveTab()
     var snapshot = TabsState.tabs.map(function (t) { return { path: t.path } })
-    _saveJson(root.sessionFile, { tabs: snapshot, activeTabIndex: TabsState.activeTabIndex })
+    _saveJson(Paths.sessionFile, { tabs: snapshot, activeTabIndex: TabsState.activeTabIndex })
   }
 
   function loadBulkRenameHistory() {
-    JsonStore.read(root.bulkRenameHistoryFile)
+    JsonStore.read(Paths.bulkRenameHistoryFile)
   }
 
   function saveBulkRenameHistory() {
-    _saveJson(root.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
+    _saveJson(Paths.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
   }
 
   // Un único punto de entrega para las cuatro lecturas: JsonStore es un
@@ -88,18 +88,18 @@ Item {
     function onLoaded(path, data, ok) {
       var parsed = ok ? data : null
 
-      if (path === root.bookmarksFile) {
+      if (path === Paths.bookmarksFile) {
         BookmarksState.bookmarksLoaded = true
         if (Array.isArray(parsed) && parsed.length > 0) {
           BookmarksState.bookmarks = parsed
         } else {
-          BookmarksState.bookmarks = root.defaultBookmarks
+          BookmarksState.bookmarks = Paths.defaultBookmarks
           saveBookmarks()
         }
-      } else if (path === root.recentFile) {
+      } else if (path === Paths.recentFile) {
         BookmarksState.recentLoaded = true
         BookmarksState.recentFiles = Array.isArray(parsed) ? parsed : []
-      } else if (path === root.sessionFile) {
+      } else if (path === Paths.sessionFile) {
         var savedTabs = (parsed && Array.isArray(parsed.tabs))
           ? parsed.tabs.filter(function (t) { return t && typeof t.path === "string" && t.path.charAt(0) === "/" })
           : []
@@ -112,7 +112,7 @@ Item {
         }
         root.refresh()
         if (!ArchiveState.inArchive) root.startDirWatch(NavState.currentPath)
-      } else if (path === root.bulkRenameHistoryFile) {
+      } else if (path === Paths.bulkRenameHistoryFile) {
         BookmarksState.bulkRenameHistoryLoaded = true
         BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
       }

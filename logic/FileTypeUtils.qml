@@ -24,25 +24,25 @@ Item {
   function iconFor(entry) {
     var ext = extOf(entry.name)
     if (ext === "iso") return "󰗮"
-    if (root.imageExt.indexOf(ext) >= 0) return "󰺰"
-    if (root.videoExt.indexOf(ext) >= 0) return "󰸬"
-    if (root.audioExt.indexOf(ext) >= 0) return "󰸪"
-    if (root.archiveExt.indexOf(ext) >= 0) return "󰗄"
+    if (FileTypeConfig.imageExt.indexOf(ext) >= 0) return "󰺰"
+    if (FileTypeConfig.videoExt.indexOf(ext) >= 0) return "󰸬"
+    if (FileTypeConfig.audioExt.indexOf(ext) >= 0) return "󰸪"
+    if (FileTypeConfig.archiveExt.indexOf(ext) >= 0) return "󰗄"
     if (ext === "pdf") return "󰈦"
-    if (root.codeExt.indexOf(ext) >= 0) return "󱀫"
+    if (FileTypeConfig.codeExt.indexOf(ext) >= 0) return "󱀫"
     return "󰈤"
   }
 
   function isImage(entry) {
-    return entry.type === "file" && root.imageExt.indexOf(extOf(entry.name)) >= 0
+    return entry.type === "file" && FileTypeConfig.imageExt.indexOf(extOf(entry.name)) >= 0
   }
 
   function isVideo(entry) {
-    return entry.type === "file" && root.videoExt.indexOf(extOf(entry.name)) >= 0
+    return entry.type === "file" && FileTypeConfig.videoExt.indexOf(extOf(entry.name)) >= 0
   }
 
   function isAudio(entry) {
-    return entry.type === "file" && root.audioExt.indexOf(extOf(entry.name)) >= 0
+    return entry.type === "file" && FileTypeConfig.audioExt.indexOf(extOf(entry.name)) >= 0
   }
 
   function isPdf(entry) {

@@ -101,7 +101,7 @@ Column {
 
   Row {
     id: searchRow
-    visible: root.searching
+    visible: NavState.searching
     width: parent.width
     height: Style.spacing.controlHeight
     spacing: Style.spacing.controlGap
@@ -142,7 +142,7 @@ Column {
           searchOps.runDeepSearch()
           event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-          root.searching = false
+          NavState.searching = false
           selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
           event.accepted = true
         }

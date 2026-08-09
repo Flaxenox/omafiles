@@ -60,7 +60,7 @@ Item {
   function startNewFolder() {
     if (ArchiveState.inArchive) return
     EditModeState.renamingIndex = -1
-    root.searching = false
+    NavState.searching = false
     EditModeState.creatingFile = false
     EditModeState.creatingFolder = true
   }
@@ -68,7 +68,7 @@ Item {
   function startNewFile() {
     if (ArchiveState.inArchive) return
     EditModeState.renamingIndex = -1
-    root.searching = false
+    NavState.searching = false
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = true
   }
@@ -142,7 +142,7 @@ Item {
       // cubre el watcher, pero refreshTick refresca también los de fondo que
       // muestren esta misma carpeta.
       root.refresh()
-      root.refreshTick += 1
+      NavState.refreshTick += 1
       var name = renameOps._nativeMkdirPending[path]
       if (name === undefined) return // redo u otro mkdir: no re-registrar
       delete renameOps._nativeMkdirPending[path]

@@ -17,11 +17,11 @@ Item {
   property Item tabOps: null
 
   function refreshMounts() {
-    mountsProc.start([root.pluginDir + "/list-mounts.sh"])
+    mountsProc.start([Paths.pluginDir + "/list-mounts.sh"])
   }
 
   function refreshNetworkMounts() {
-    networkMountsProc.start([root.pluginDir + "/list-network-mounts.sh"])
+    networkMountsProc.start([Paths.pluginDir + "/list-network-mounts.sh"])
   }
 
   function disconnectNetworkMount(mount) {
@@ -111,7 +111,7 @@ Item {
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.start(["bash", root.pluginDir + "/mount-iso.sh", root.joinPath(NavState.currentPath, entry.name)])
+    mountIsoProc.start(["bash", Paths.pluginDir + "/mount-iso.sh", root.joinPath(NavState.currentPath, entry.name)])
   }
 
   ProcessRunner {
@@ -127,7 +127,7 @@ Item {
     property string device: ""
     onFinished: function (result) {
       if (result.exitCode === 0) {
-        if (ejectProc.wasInside) tabOps.navigateTabTo(ejectProc.tabIndex, root.homeDir)
+        if (ejectProc.wasInside) tabOps.navigateTabTo(ejectProc.tabIndex, Paths.homeDir)
         // Un .iso montado con mountIso() deja el /dev/loopN asociado al
         // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
         // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
@@ -181,7 +181,7 @@ Item {
     property int tabIndex: -1
     onFinished: function (result) {
       if (result.exitCode === 0) {
-        if (networkUnmountProc.wasInside) tabOps.navigateTabTo(networkUnmountProc.tabIndex, root.homeDir)
+        if (networkUnmountProc.wasInside) tabOps.navigateTabTo(networkUnmountProc.tabIndex, Paths.homeDir)
         refreshNetworkMounts()
       } else {
         Notifier.notify("Could not disconnect: " + (result.stderr || "unknown error"))
@@ -208,7 +208,7 @@ Item {
         // y se entra al mount que no estaba antes (el que acaba de
         // aparecer) en vez de parsear la salida de "gio mount".
         networkMountsAfterConnectProc.beforePaths = MountsState.networkMounts.map(function (m) { return m.path })
-        networkMountsAfterConnectProc.start([root.pluginDir + "/list-network-mounts.sh"])
+        networkMountsAfterConnectProc.start([Paths.pluginDir + "/list-network-mounts.sh"])
       } else {
         DialogsState.connectServerError = result.stderr.trim() || "Could not connect"
       }

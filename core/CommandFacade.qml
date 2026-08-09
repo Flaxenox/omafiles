@@ -60,7 +60,7 @@ Item {
       { label: UndoState.redoStack.length > 0 ? "Redo: " + UndoState.redoStack[UndoState.redoStack.length - 1].label : "Redo",
         enabled: UndoState.redoStack.length > 0, run: function () { root.redoLast() } },
       { label: "Terminal here", run: function () { root.openTerminalHere() } },
-      { label: "Go to Home", run: function () { root.navigateTo(root.homeDir) } },
+      { label: "Go to Home", run: function () { root.navigateTo(Paths.homeDir) } },
       { label: "Connect to server...", run: function () { mountOps.startConnectToServer() } },
       { label: "New panel", run: function () { tabOps.newTab() } },
       { label: "Close this panel", enabled: TabsState.tabs.length > 1, run: function () { tabOps.closeTab() } },
@@ -75,7 +75,7 @@ Item {
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
       { label: "Keyboard shortcuts", run: function () { DialogsState.shortcutsHelpOpen = true } }
     ]
-    if (NavState.currentPath === root.trashDir) {
+    if (NavState.currentPath === Paths.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
       cmds.push({ label: "Restore", enabled: hasSelection, run: function () { fileOps.restoreFromTrash() } })
     }
@@ -157,7 +157,7 @@ Item {
     }
     var multi = entries.length > 1
     var suffix = multi ? " (" + entries.length + ")" : ""
-    var inTrash = NavState.currentPath === root.trashDir
+    var inTrash = NavState.currentPath === Paths.trashDir
     var actions = []
 
     if (inTrash) {
@@ -226,7 +226,7 @@ Item {
 
   function emptyAreaActions() {
     var actions = []
-    if (NavState.currentPath === root.trashDir) {
+    if (NavState.currentPath === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else if (!ArchiveState.inArchive) {
       // Dentro de un archivo estas ya son no-op (cada función se
@@ -248,7 +248,7 @@ Item {
   function openBookmark(bookmark) {
     if (bookmark.type === "file") {
       var slash = bookmark.path.lastIndexOf("/")
-      root.pendingSelectNames = [bookmark.path.substring(slash + 1)]
+      NavState.pendingSelectNames = [bookmark.path.substring(slash + 1)]
       root.navigateTo(slash > 0 ? bookmark.path.substring(0, slash) : "/")
     } else {
       root.navigateTo(bookmark.path)
@@ -259,7 +259,7 @@ Item {
   // los recientes son ficheros (nunca carpetas, ver addRecent()).
   function openRecent(item) {
     var slash = item.path.lastIndexOf("/")
-    root.pendingSelectNames = [item.name]
+    NavState.pendingSelectNames = [item.name]
     root.navigateTo(slash > 0 ? item.path.substring(0, slash) : "/")
   }
 
@@ -279,7 +279,7 @@ Item {
     if (bookmark.type !== "file") {
       actions.push({ label: "Open in new tab", action: function () { tabOps.openInNewTab(bookmark.path) } })
     }
-    if (bookmark.path === root.trashDir) {
+    if (bookmark.path === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else {
       // Trash es fija -- josema la quitó por error una vez y no hay

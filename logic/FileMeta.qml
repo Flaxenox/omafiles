@@ -49,7 +49,7 @@ Item {
   function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
     var atPath = basePath !== undefined ? basePath : NavState.currentPath
-    if (atPath === root.trashDir) {
+    if (atPath === Paths.trashDir) {
       var parts = []
       if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
       var info = TrashState.trashInfo[entry.name]

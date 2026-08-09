@@ -29,10 +29,10 @@ Item {
     var entry = queued.entry
     var basePath = queued.basePath
     var src = root.joinPath(basePath, entry.name)
-    var dest = Utils.videoThumbPath(entry, basePath, root.thumbCacheDir)
+    var dest = Utils.videoThumbPath(entry, basePath, Paths.thumbCacheDir)
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
-    thumbProc.start(["bash", root.pluginDir + "/thumbnail-video.sh", src, dest])
+    thumbProc.start(["bash", Paths.pluginDir + "/thumbnail-video.sh", src, dest])
   }
 
   ProcessRunner {

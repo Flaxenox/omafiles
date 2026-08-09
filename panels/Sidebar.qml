@@ -13,7 +13,7 @@ import qs.Ui
 // function de nivel raíz como un valor normal -- en vez de intentar
 // replicar su lógica aquí (a diferencia de ChmodPanel.qml, donde SÍ
 // mereció la pena reproducir un cálculo pequeño en local, aquí son
-// demasiadas funciones y algunas leen root.homeDir/trashDir).
+// demasiadas funciones y algunas leen Paths.homeDir/trashDir).
 Item {
   id: root
 

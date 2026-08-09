@@ -52,7 +52,7 @@ Item {
     // bookmarkActions() de Omafiles.qml, que ni siquiera ofrece la
     // opción; este es el guard real, por si algún día se llama desde
     // otro sitio).
-    if (path === root.trashDir) return
+    if (path === Paths.trashDir) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
   }
@@ -71,8 +71,8 @@ Item {
   // cualquier otra carpeta (Documents, Downloads, Projects, Almacén,
   // marcadores añadidos a mano...) cae en la carpeta genérica.
   function iconForBookmark(modelData) {
-    if (modelData.path === root.homeDir) return "\u{F015}"
-    if (modelData.path === root.trashDir) return "\u{F0A7A}"
+    if (modelData.path === Paths.homeDir) return "\u{F015}"
+    if (modelData.path === Paths.trashDir) return "\u{F0A7A}"
     // Marcador de fichero suelto (no carpeta) -- icono real por
     // extensión, como en la lista principal, en vez de adivinar por
     // nombre de etiqueta (eso solo tiene sentido para las carpetas

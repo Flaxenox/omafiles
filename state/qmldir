@@ -21,3 +21,5 @@ singleton TrashState 1.0 TrashState.qml
 singleton ArchiveState 1.0 ArchiveState.qml
 singleton TabsState 1.0 TabsState.qml
 singleton NavState 1.0 NavState.qml
+singleton Paths 1.0 Paths.qml
+singleton FileTypeConfig 1.0 FileTypeConfig.qml

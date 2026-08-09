@@ -100,8 +100,8 @@ Item {
     }
     root._pendingScrollY = -1
     root.loaded = true
-    var selectNames = root.pendingSelectNames
-    root.pendingSelectNames = []
+    var selectNames = NavState.pendingSelectNames
+    NavState.pendingSelectNames = []
     var foundIndices = []
     if (selectNames.length > 0) {
       for (var i = 0; i < NavState.visibleEntries.length; i++) {
@@ -306,11 +306,11 @@ Item {
   // vez); cada BackgroundPanel tiene la suya propia.
   DirLister {
     id: dirLister
-    pluginDir: root.pluginDir
-    trashDir: root.trashDir
+    pluginDir: Paths.pluginDir
+    trashDir: Paths.trashDir
     showHidden: NavState.showHidden
     sortOps: navCtrl.sortOps
-    onPathErrorChanged: root.currentPathError = dirLister.pathError
+    onPathErrorChanged: NavState.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)
     // Vigilancia nativa: el modelo avisa de un cambio -> mismo debounce +
     // guarda hasPendingEdit de siempre (abajo), solo cambia la FUENTE del

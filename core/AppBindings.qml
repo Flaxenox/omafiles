@@ -1,3 +1,4 @@
+import "../state"
 import QtQuick
 import "../services"
 
@@ -28,7 +29,7 @@ Item {
     // arranque normal OMAFILES_SELFCHECK no existe y el comportamiento es el
     // de siempre.
     if (Env.get("OMAFILES_SELFCHECK") === "1") return
-    Detached.run([root.pluginDir + "/scripts/install-integrations.sh"])
+    Detached.run([Paths.pluginDir + "/scripts/install-integrations.sh"])
   }
 
   // Discos/red no tienen un evento fácil de vigilar aquí (habría que

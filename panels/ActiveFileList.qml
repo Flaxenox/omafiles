@@ -293,22 +293,22 @@ Item {
             // antes esto se veía igual que una carpeta vacía de verdad, sin
             // ningún indicio de que el problema era de permisos.
             Text {
-              visible: root.currentPathError !== ""
+              visible: NavState.currentPathError !== ""
               anchors.top: parent.top
               anchors.topMargin: Style.spacing.lg
               anchors.left: parent.left
-              text: root.currentPathError
+              text: NavState.currentPathError
               font.family: Style.font.family
               font.pixelSize: Style.font.subtitle
               color: Color.urgent
             }
 
             EmptyState {
-              visible: root.currentPathError === "" && NavState.visibleEntries.length === 0
+              visible: NavState.currentPathError === "" && NavState.visibleEntries.length === 0
               centerOn: listView
               message: NavState.searchQuery
                 ? "No results for “" + NavState.searchQuery + "”"
-                : (NavState.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
+                : (NavState.currentPath === Paths.trashDir ? "Trash is empty" : "Nothing here yet")
             }
 
             // Rectángulo visual del lazo -- después de la ListView en el

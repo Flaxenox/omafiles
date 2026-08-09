@@ -110,7 +110,7 @@ Item {
       }
       return
     }
-    if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath || hostRoot.searching) return
+    if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath || NavState.searching) return
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 

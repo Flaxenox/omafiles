@@ -124,7 +124,7 @@ Item {
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
     root.refresh()
-    root.refreshTick += 1
+    NavState.refreshTick += 1
   }
 
   // ---------- Progreso nativo por bytes (Fase 13.G) ----------
@@ -273,7 +273,7 @@ Item {
     ActionState.actionTotalBytes = 0
     ActionState.actionProgressDestPaths = []
     root.refresh()
-    root.refreshTick += 1
+    NavState.refreshTick += 1
     var cb = _batchOnDone
     _batchOnDone = null
     if (success && cb) cb()
@@ -292,7 +292,7 @@ Item {
       // panel, no solo al activo -- refreshTick es la señal para que los
       // paneles no activos (cada uno con su propio Process de listado, ver
       // el Repeater de paneles) se refresquen también.
-      root.refreshTick += 1
+      NavState.refreshTick += 1
       var cb = ActionState._actionOnSuccess
       ActionState._actionOnSuccess = null
       if (result.exitCode === 0) {

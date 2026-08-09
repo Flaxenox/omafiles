@@ -6,7 +6,6 @@ import "../panels"
 import "../logic"
 import "../shared"
 import "../state"
-import "../services"
 
 // OmafilesContent -- el árbol visual completo + todo el wiring de
 // Omafiles (Fase 3, josema: separar el composition root del frontend
@@ -19,53 +18,28 @@ import "../services"
 Item {
   id: root
 
-  property string homeDir: Env.get("HOME")
-  property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
+  // homeDir/pluginDir/trashDir/thumbCacheDir, los *.json de estado y
+  // defaultBookmarks viven ahora en state/Paths.qml (Fase 14.B): rutas y
+  // configuración derivadas de $HOME, no estado del composition root.
   // currentPath/entries/showHidden/searchQuery/visibleEntries viven en
   // state/NavState.qml (Fase 11.A) y NavState es su ÚNICA fuente de verdad
-  // (Fase 14.A): se retiraron los bindings de compatibilidad que espejaban
-  // ese estado aquí; el árbol visual y logic/ leen NavState.* directo.
-  // tabs/activeTabIndex/navHistory/navHistoryIndex viven ahora en
-  // state/TabsState.qml -- vigesimoprimer y último slice de la capa
-  // state/.
+  // (Fase 14.A). El estado runtime de nav/búsqueda (searching/deepSearchRoot/
+  // searchTruncated/currentPathError/pendingSelectNames/refreshTick) también
+  // se movió a NavState (Fase 14.C). tabs/activeTabIndex/navHistory/
+  // navHistoryIndex viven en state/TabsState.qml.
   // Caché de listados por ruta, alimentada por los paneles de fondo cada
-  // vez que refrescan -- ver _goToPath().
+  // vez que refrescan -- ver _goToPath(). Se queda aquí (caché de vista, no
+  // dato estructural; su unificación es trabajo aparte).
   property var tabEntriesCache: ({})
-  property bool searching: false
-  property string deepSearchRoot: ""
-  // Antes la búsqueda recursiva se cortaba en 200 resultados sin decir
-  // nada -- una búsqueda con muchas coincidencias parecía completa cuando
-  // en realidad faltaban ítems. Ver runDeepSearch()/search-recursive.sh.
-  property bool searchTruncated: false
   property bool opened: false
   property bool loaded: false
-  // Mensaje si list-dir.sh no pudo listar currentPath (permisos, carpeta
-  // borrada entre navegar y listar...) -- vacío = sin error, carpeta
-  // realmente vacía o listado en curso.
-  property string currentPathError: ""
-  // Nombres de entrada a resaltar en cuanto termine el próximo listado --
-  // lo usa open() cuando el payload pide "abre esta carpeta y selecciona
-  // estos ficheros" (caso ShowItems de org.freedesktop.FileManager1, que
-  // puede llegar con varios URIs de golpe -- ej. varias descargas
-  // seleccionadas en Firefox y "Mostrar en el gestor de archivos"). Un
-  // solo fichero es simplemente un array de 1.
-  property var pendingSelectNames: []
 
   // Posición de scroll pendiente de restaurar EN CUANTO termine el
   // próximo listProc -- ver el comentario largo junto a
   // positionViewAtBeginning() en listProc, quien lo consume. -1 = nada
   // pendiente (sentinel, ya que 0 es una posición de scroll válida en sí
-  // misma).
+  // misma). Estado puramente de vista: se queda en el composition root.
   property real _pendingScrollY: -1
-
-  // ---------- Paneles ----------
-  // Cada pestaña abierta se ve a la vez como un panel propio, lado a lado
-  // (sustituye a la vista dividida de antes, que era un segundo panel fijo
-  // aparte -- ahora cualquier pestaña ES ya un panel visible). Solo el panel
-  // ACTIVO tiene la lista/navegación completa de toda la vida (root.entries,
-  // marquee, menú contextual...); el resto son paneles sencillos (solo
-  // navegar con doble clic y arrastrar), cada uno con su propio listado.
-  property int refreshTick: 0
 
   // undoStack/redoStack viven ahora en state/UndoState.qml (singleton) --
   // tercer slice de la capa state/. Lógica sin cambios en
@@ -95,10 +69,9 @@ Item {
   // (confirmado en vivo: "Binding loop detected for property height").
   property real measuredRowHeight: 0
 
-  readonly property var sortKeys: ["name", "size", "mtime", "type"]
-  readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
-  // sortKey/sortDesc viven ahora en state/SortState.qml -- decimotercer
-  // slice de la capa state/, completa logic/SortOps.qml.
+  // sortKey/sortDesc + sortKeys/sortKeyLabels viven ahora en
+  // state/SortState.qml (estos dos últimos movidos en Fase 14.B, cierra O3);
+  // completa logic/SortOps.qml.
 
   // renamingIndex/creatingFolder/creatingFile/editingPath viven ahora en
   // state/EditModeState.qml -- decimoctavo slice de la capa state/.
@@ -171,14 +144,11 @@ Item {
   // _propertiesStatOwner/_propertiesDuOwner/Multi/Count viven ahora en
   // state/PropertiesState.qml -- noveno slice de la capa state/.
 
-  readonly property var tarExt: ["tar", "gz", "tgz", "bz2", "tbz", "xz", "txz"]
-
   // previewEntry/Text/IsText/Highlighted/PdfImage/AudioInfo/RequestId/
   // _previewTextOwner/_previewHighlightOwner/_previewPdfOwner/
   // _previewAudioOwner viven ahora en state/PreviewContentState.qml --
   // décimo slice de la capa state/.
 
-  property string trashDir: root.homeDir + "/.local/share/Trash/files"
   // trashInfo vive ahora en state/TrashState.qml -- decimonoveno slice
   // de la capa state/.
   // mounts/networkMounts viven ahora en state/MountsState.qml --
@@ -193,30 +163,13 @@ Item {
   // disco. inArchive/archivePath/archiveSubPath viven ahora en
   // state/ArchiveState.qml -- vigésimo slice de la capa state/.
 
-  readonly property var defaultBookmarks: [
-    { label: "Home", path: root.homeDir },
-    { label: "Documents", path: root.homeDir + "/Documents" },
-    { label: "Downloads", path: root.homeDir + "/Downloads" },
-    { label: "Pictures", path: root.homeDir + "/Pictures" },
-    { label: "Videos", path: root.homeDir + "/Videos" },
-    { label: "Music", path: root.homeDir + "/Music" },
-    { label: "Projects", path: root.homeDir + "/Projects" },
-    { label: "Trash", path: root.homeDir + "/.local/share/Trash/files" }
-  ]
+  // defaultBookmarks y los cuatro *.json de estado (bookmarksFile/recentFile/
+  // sessionFile/bulkRenameHistoryFile) viven ahora en state/Paths.qml (Fase
+  // 14.B). bookmarks/recentFiles/recentLoaded/bulkRenameHistory/
+  // bulkRenameHistoryLoaded/bookmarksLoaded viven en state/BookmarksState.qml.
 
-  property string bookmarksFile: root.homeDir + "/.local/state/omafiles/bookmarks.json"
-  property string recentFile: root.homeDir + "/.local/state/omafiles/recent.json"
-  property string sessionFile: root.homeDir + "/.local/state/omafiles/session.json"
-  property string bulkRenameHistoryFile: root.homeDir + "/.local/state/omafiles/bulk-rename-history.json"
-  // bookmarks/recentFiles/recentLoaded/bulkRenameHistory/
-  // bulkRenameHistoryLoaded/bookmarksLoaded viven ahora en
-  // state/BookmarksState.qml -- decimosexto slice de la capa state/.
-
-  readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
-  readonly property var videoExt: ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]
-  readonly property var audioExt: ["mp3", "flac", "wav", "ogg", "m4a", "opus"]
-  readonly property var archiveExt: ["zip", "tar", "gz", "xz", "rar", "7z", "bz2", "zst"]
-  readonly property var codeExt: ["js", "ts", "py", "lua", "sh", "c", "cpp", "h", "rs", "go", "html", "css", "json", "qml", "md", "yml", "yaml", "toml"]
+  // Las listas de extensiones (imageExt/videoExt/audioExt/archiveExt/codeExt/
+  // tarExt) viven ahora en state/FileTypeConfig.qml (Fase 14.B).
 
   // ---------- Tipo de fichero (extensión/icono) ----------
   // extOf/iconFor/isImage/isVideo/isAudio/isPdf viven ahora en
@@ -231,7 +184,7 @@ Item {
   function isPdf(entry) { return registry.fileTypeUtils.isPdf(entry) }
 
   // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
-  property string thumbCacheDir: root.homeDir + "/.cache/omafiles/thumbnails"
+  // thumbCacheDir vive ahora en state/Paths.qml (Fase 14.B).
   // videoThumbReady/thumbQueue/thumbBusy viven ahora en
   // state/VideoThumbState.qml -- decimocuarto slice de la capa state/.
 
@@ -265,7 +218,7 @@ Item {
     // la vista agrega la de cualquier disco montado (ver
     // trash-roots.sh), vaciar tiene que cubrir las mismas o el botón
     // dejaría cosas huérfanas afirmando haber vaciado del todo.
-    runAction("bash " + Util.shellQuote(root.pluginDir + "/empty-trash.sh"), "Emptying trash…")
+    runAction("bash " + Util.shellQuote(Paths.pluginDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
   // parseEntries: movida a Utils.js (función pura, comentario completo
@@ -316,7 +269,7 @@ Item {
     var selectNames = selectPart ? selectPart.split("\x1f") : []
     var targetPath = (folderPart && folderPart.charAt(0) === "/") ? folderPart : ""
 
-    if (targetPath) root.pendingSelectNames = selectNames
+    if (targetPath) NavState.pendingSelectNames = selectNames
 
     var restoringSession = false
     if (!root.loaded) {
@@ -379,7 +332,7 @@ Item {
     PreviewState.openWithOpen = false
     DialogsState.bulkRenameOpen = false
     PreviewState.previewOpen = false
-    root.searching = false
+    NavState.searching = false
     PaletteState.paletteOpen = false
     ConflictState.renameConflictOpen = false
     ConflictState.pasteConflictOpen = false

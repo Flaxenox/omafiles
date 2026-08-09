@@ -295,8 +295,8 @@ Item {
           // la de la única fila visible, o 0 si ninguna lo está, así
           // que basta un término en vez de sumar los tres por separado.
           height: activePanel.height - navRow.height
-            - (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? activeInputRows.height + mainColumn.spacing : 0)
-            - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile || root.searching ? 1 : 0))
+            - (EditModeState.creatingFolder || EditModeState.creatingFile || NavState.searching ? activeInputRows.height + mainColumn.spacing : 0)
+            - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile || NavState.searching ? 1 : 0))
 
           ActiveFileList {
             id: list
@@ -349,7 +349,7 @@ Item {
               anchors.right: parent.right
               text: NavState.visibleEntries.length + (NavState.visibleEntries.length === 1 ? " item" : " items")
                 + (NavState.searchQuery ? " of " + NavState.entries.length : "")
-                + (root.searchTruncated ? " · showing first 200" : "")
+                + (NavState.searchTruncated ? " · showing first 200" : "")
                 // Sin tope en la carpeta en sí (a diferencia de la
                 // búsqueda) -- cortar un listado normal a los N primeros
                 // rompería el manejo de ficheros de verdad para carpetas

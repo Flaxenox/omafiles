@@ -46,8 +46,8 @@ Item {
   // bgPanel -- se leen directo de dirLister en todo el fichero.
   DirLister {
     id: dirLister
-    pluginDir: hostRoot.pluginDir
-    trashDir: hostRoot.trashDir
+    pluginDir: Paths.pluginDir
+    trashDir: Paths.trashDir
     showHidden: NavState.showHidden
     sortOps: hostSortOps
     // hostRoot.tabEntriesCache es lo que _goToPath() consulta al entrar
@@ -314,7 +314,7 @@ Item {
   EmptyState {
     visible: dirLister.pathError === "" && dirLister.entries.length === 0
     centerOn: bgList
-    message: bgPanel.modelData.path === hostRoot.trashDir ? "Trash is empty" : "Nothing here yet"
+    message: bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Nothing here yet"
   }
 
   Text {

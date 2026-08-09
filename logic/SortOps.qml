@@ -42,7 +42,7 @@ Item {
   }
 
   function sortLabel() {
-    return root.sortKeyLabels[SortState.sortKey] + (SortState.sortDesc ? " ↓" : " ↑")
+    return SortState.sortKeyLabels[SortState.sortKey] + (SortState.sortDesc ? " ↓" : " ↑")
   }
 
   function setSort(key) {
@@ -51,8 +51,8 @@ Item {
   }
 
   function cycleSort() {
-    var idx = root.sortKeys.indexOf(SortState.sortKey)
-    setSort(root.sortKeys[(idx + 1) % root.sortKeys.length])
+    var idx = SortState.sortKeys.indexOf(SortState.sortKey)
+    setSort(SortState.sortKeys[(idx + 1) % SortState.sortKeys.length])
   }
 
   function reverseSort() {

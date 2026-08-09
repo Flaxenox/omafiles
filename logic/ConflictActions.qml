@@ -161,7 +161,7 @@ Item {
     // SIEMPRE fallara en silencio para tar/tar.gz/tar.bz2/tar.xz (listCmd
     // no devolvía nada -> 0 conflictos detectados siempre), aunque zip/7z/
     // rar no se vieran afectados.
-    else if (root.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
+    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
     else return
     // Antes esto sobrescribía sin preguntar, a diferencia de pegar/soltar/
     // renombrar (que sí comprueban conflictos). Antes de extraer, se lista

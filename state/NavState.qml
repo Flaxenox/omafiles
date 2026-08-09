@@ -35,4 +35,27 @@ QtObject {
   readonly property var visibleEntries: searchQuery
     ? entries.filter(function (e) { return e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0 })
     : entries
+
+  // ---------- Estado runtime de navegación/búsqueda (Fase 14.C) ----------
+  // Eran properties mutables de OmafilesContent que no pertenecían al
+  // composition root: todas son estado caliente del mismo dominio (nav +
+  // búsqueda) que ya gobierna este singleton. logic/ y la capa visual las
+  // leen/escriben directamente vía NavState.*, sin `property Item root`.
+
+  // Modo búsqueda del panel activo abierto (barra de búsqueda visible).
+  property bool searching: false
+  // Raíz desde la que arrancó la última búsqueda recursiva ("" = ninguna).
+  property string deepSearchRoot: ""
+  // La búsqueda recursiva se cortó a los 200 primeros resultados (aviso al
+  // usuario de que faltan ítems; ver SearchOps/search-recursive.sh).
+  property bool searchTruncated: false
+  // Mensaje si el listado de currentPath falló (permisos, carpeta borrada
+  // entre navegar y listar...). Vacío = sin error o listado en curso.
+  property string currentPathError: ""
+  // Nombres a resaltar en cuanto termine el próximo listado (caso ShowItems
+  // de org.freedesktop.FileManager1: varios URIs de una carpeta de golpe).
+  property var pendingSelectNames: []
+  // Contador que fuerza refresco de los paneles de fondo (señal, no dato):
+  // ActionEngine/RenameOps/SearchOps lo incrementan tras mutar disco.
+  property int refreshTick: 0
 }

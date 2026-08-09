@@ -19,7 +19,7 @@ Item {
     NavState.showHidden = !NavState.showHidden
     list.contentY = list.originY
     root.refresh()
-    root.refreshTick += 1
+    NavState.refreshTick += 1
   }
 
   function startEditPath() {
@@ -30,17 +30,17 @@ Item {
     if (ArchiveState.inArchive) return
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
-    root.searching = true
+    NavState.searching = true
     NavState.searchQuery = ""
-    root.searchTruncated = false
+    NavState.searchTruncated = false
     list.contentY = list.originY
   }
 
   function exitSearch() {
-    root.searching = false
+    NavState.searching = false
     NavState.searchQuery = ""
-    root.deepSearchRoot = ""
-    root.searchTruncated = false
+    NavState.deepSearchRoot = ""
+    NavState.searchTruncated = false
     list.contentY = list.originY
     root.refresh()
     selectionOps.selectOnly(-1)
@@ -48,9 +48,9 @@ Item {
 
   function runDeepSearch() {
     if (!NavState.searchQuery) return
-    root.deepSearchRoot = NavState.currentPath
+    NavState.deepSearchRoot = NavState.currentPath
     list.contentY = list.originY
-    deepSearchProc.start([root.pluginDir + "/search-recursive.sh", NavState.currentPath, NavState.searchQuery, NavState.showHidden ? "1" : "0"])
+    deepSearchProc.start([Paths.pluginDir + "/search-recursive.sh", NavState.currentPath, NavState.searchQuery, NavState.showHidden ? "1" : "0"])
   }
 
   function goTop() {
@@ -74,8 +74,8 @@ Item {
       // que había más de 200 coincidencias reales; se descarta el que
       // sobra y se avisa en la barra de estado en vez de dar la lista
       // por completa en silencio.
-      root.searchTruncated = parsed.length > 200
-      if (root.searchTruncated) parsed = parsed.slice(0, 200)
+      NavState.searchTruncated = parsed.length > 200
+      if (NavState.searchTruncated) parsed = parsed.slice(0, 200)
       NavState.entries = sortOps.sortEntries(parsed)
       list.positionViewAtBeginning()
       selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)

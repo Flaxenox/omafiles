@@ -48,7 +48,7 @@ Item {
     PreviewContentState.previewAudioInfo = []
     var ext = root.extOf(entry.name)
     var path = root.joinPath(NavState.currentPath, entry.name)
-    PreviewContentState.previewIsText = root.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
+    PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (PreviewContentState.previewIsText && !root.isImage(entry)) {
       // Texto plano NATIVO (PreviewProvider): lee hasta 256 KB en un hilo,
       // con cancelación por generación si se cambia de selección. El
@@ -59,9 +59,9 @@ Item {
       // se queda en shell (Pygments) para conservar exactamente el mismo
       // resaltado; en paralelo al texto plano (no en cadena): si falla,
       // previewHighlighted se queda vacío y se ve el texto plano.
-      if (root.codeExt.indexOf(ext) >= 0) {
+      if (FileTypeConfig.codeExt.indexOf(ext) >= 0) {
         PreviewContentState._previewHighlightOwner = reqId
-        highlightPreviewProc.start([root.pluginDir + "/highlight-preview.sh", path, "4000", ext])
+        highlightPreviewProc.start([Paths.pluginDir + "/highlight-preview.sh", path, "4000", ext])
       }
     }
     // Imagen y PDF: render escalado + caché vía ThumbnailProvider. request()

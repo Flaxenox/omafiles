@@ -18,12 +18,12 @@ Item {
     var names = root.pendingDeleteNames
     root.pendingDeleteNames = []
     if (names.length === 0) return
-    if (NavState.currentPath === root.trashDir) {
+    if (NavState.currentPath === Paths.trashDir) {
       // Borrado permanente NATIVO (Fase 13.C): FileOperations.remove en vez
       // de `rm -rf`/`rm -f`. No hay undo posible. TrashState.trashInfo (ver
       // trash-info.sh) sabe la raíz física real de cada ítem -- puede ser la
       // papelera de casa o la de cualquier otro disco montado, ya no se puede
-      // asumir root.trashDir a secas. Por cada ítem se borra el fichero en
+      // asumir Paths.trashDir a secas. Por cada ítem se borra el fichero en
       // <raíz>/files/<n> (recursivo) y su <raíz>/info/<n>.trashinfo, ambos
       // con ignoreMissing (= `rm -f`: que falte no es error).
       var paths = []
