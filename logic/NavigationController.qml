@@ -1,6 +1,7 @@
 import QtQuick
 import "../state"
 import "../services"
+import "../Utils.js" as Utils
 
 // Navegación/historial del panel activo -- vigésimo segundo componente
 // extraído de Omafiles.qml. currentPath/tabEntriesCache/entries siguen
@@ -57,7 +58,10 @@ Item {
   // trashInfo también en el panel activo -- atacaban mecanismos reales
   // pero no ESTE, que es el que de verdad causaba el salto).
   function _applyEntries(parsed) {
-    var changed = JSON.stringify(parsed) !== JSON.stringify(root.entries)
+    // Comparación por contenido barata (Fase 10.A): antes eran otros dos
+    // JSON.stringify del array completo. entriesEqual es O(n) sin
+    // asignaciones.
+    var changed = !Utils.entriesEqual(parsed, root.entries)
     if (changed) root.entries = parsed
     _finishListLoad(changed)
   }

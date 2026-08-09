@@ -91,6 +91,22 @@ function parseEntries(text) {
   return out
 }
 
+// Compara dos listas de entradas por CONTENIDO, barato (O(n), sin
+// asignaciones). Fase 10.A: sustituye a JSON.stringify(a) !== JSON.stringify(b)
+// -- que serializaba ~330 KB por comparación y se hacía 4 veces por refresco
+// (medido en 74 ms sobre /usr/bin). Aquí solo se recorren los campos que la
+// UI puede mostrar y que decidirían un relayout.
+function entriesEqual(a, b) {
+  if (a === b) return true
+  if (!a || !b || a.length !== b.length) return false
+  for (var i = 0; i < a.length; i++) {
+    var x = a[i], y = b[i]
+    if (x.name !== y.name || x.type !== y.type || x.size !== y.size
+        || x.mtime !== y.mtime || x.link !== y.link) return false
+  }
+  return true
+}
+
 function parseMounts(text) {
   var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
   return lines.map(function (l) {

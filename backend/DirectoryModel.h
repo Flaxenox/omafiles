@@ -6,6 +6,8 @@
 #include <QVariantList>
 #include <QVector>
 #include <functional>
+#include <memory>
+#include <mutex>
 #include <qqmlregistration.h>
 
 class QFileSystemWatcher;
@@ -58,6 +60,7 @@ class DirectoryModel : public QAbstractListModel {
 
 public:
   explicit DirectoryModel(QObject *parent = nullptr);
+  ~DirectoryModel() override;
 
   enum Role {
     NameRole = Qt::UserRole + 1,
@@ -154,6 +157,19 @@ private:
   QString m_path;
   QVector<Entry> m_rows;
   quint64 m_generation = 0; // ultima generacion pedida (escaneo)
+
+  // Bandera de vida compartida con los workers del pool (Fase 10.A). El
+  // escaneo es estatico, pero la ENTREGA del resultado hace
+  // invokeMethod(this): si el modelo se destruye (cerrar una pestana)
+  // mientras un worker sigue en vuelo, eso desreferenciaria un QObject
+  // muerto. El worker toma el lock y solo invoca si alive sigue true; el
+  // destructor toma el mismo lock y lo pone a false, asi que nunca coinciden.
+  struct Life {
+    std::mutex mtx;
+    bool alive = true;
+  };
+  std::shared_ptr<Life> m_life = std::make_shared<Life>();
+
   QFileSystemWatcher *m_watcher = nullptr; // vigilancia nativa (lazy)
   // Ruta vigilada AHORA MISMO: actua como token de cancelacion del
   // watcher, el equivalente de m_generation para el escaneo. Un evento de

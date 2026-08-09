@@ -3,6 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 import "../state"
+import "../services"
 import "../logic"
 import "../Utils.js" as Utils
 
@@ -52,8 +53,23 @@ Item {
     // hostRoot.tabEntriesCache es lo que _goToPath() consulta al entrar
     // en una ruta que un panel de fondo ya tenía lista -- solo lo
     // rellenan los paneles de fondo (ver NavigationController, que NO
-    // escribe aquí), mismo comportamiento de siempre.
-    onListed: hostRoot.tabEntriesCache[bgPanel.modelData.path] = dirLister.entries
+    // escribe aquí).
+    onListed: bgPanel._cachePut(bgPanel.modelData.path, dirLister.entries)
+  }
+
+  // LRU de la caché de entradas por ruta (Fase 10.A): antes crecía sin
+  // límite (una entrada por cada carpeta visitada en CUALQUIER pestaña de
+  // fondo, reteniendo miles de objetos en sesiones largas con keepLoaded).
+  // Se acota a las 8 rutas más recientes usando el orden de inserción de las
+  // claves del objeto (borrar+reinsertar mueve al final = más reciente;
+  // se evict las del principio = más antiguas).
+  readonly property int _cacheMax: 8
+  function _cachePut(path, entries) {
+    var c = hostRoot.tabEntriesCache
+    if (c[path] !== undefined) delete c[path]
+    c[path] = entries
+    var keys = Object.keys(c)
+    while (keys.length > _cacheMax) { delete c[keys[0]]; keys.shift() }
   }
 
   // Pasar el ratón por encima hace que este panel se vuelva el activo (el
@@ -224,7 +240,26 @@ Item {
         readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
         readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
-        Component.onCompleted: if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
+        // Miniatura nativa (imágenes/SVG/PDF) vía ThumbnailProvider -- Fase
+        // 10.A: antes se cargaba el fichero de imagen COMPLETO para pintarlo
+        // a 32 px. Mismo patrón que FileListRow, con la ruta de ESTE panel.
+        readonly property string myPath: hostRoot.joinPath(bgPanel.modelData.path, modelData.name)
+        readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
+          || modelData.name.toLowerCase().slice(-4) === ".svg"
+        property string imgThumb: ""
+        onMyPathChanged: imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+
+        Component.onCompleted: {
+          if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
+          if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+        }
+
+        Connections {
+          target: ThumbnailProvider
+          function onReady(path, thumbPath) {
+            if (path === bgRowContent.myPath) bgRowContent.imgThumb = thumbPath
+          }
+        }
 
         FileRowVisual {
           id: bgFileRow
@@ -237,8 +272,8 @@ Item {
           // hostRoot.currentPath -- ese es del panel activo, y era justo lo
           // que hacía fallar la miniatura aquí cuando este panel no era
           // el activo.
-          thumbSource: hostRoot.isImage(modelData) ? Util.fileUrl(hostRoot.joinPath(bgPanel.modelData.path, modelData.name))
-            : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
+          thumbSource: bgRowContent.imgThumb ? Util.fileUrl(bgRowContent.imgThumb)
+            : (bgRowContent.vidThumb ? Util.fileUrl(bgRowContent.vidThumb) : "")
           metaText: hostFileMeta.metaFor(modelData, bgPanel.modelData.path)
         }
       }

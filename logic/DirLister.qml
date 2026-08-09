@@ -1,6 +1,7 @@
 import QtQuick
 import "../state"
 import "../services"
+import "../Utils.js" as Utils
 
 // Lista un directorio y expone el resultado ya ordenado -- vigésimo tercer
 // componente extraído de Omafiles.qml (Fase 1.6, josema). Reutilizado por
@@ -84,9 +85,22 @@ Item {
   // salto visible reportado por josema -- ver el historial de
   // NavigationController/BackgroundPanel antes de esta extracción).
   function _apply(parsed) {
-    if (JSON.stringify(parsed) !== JSON.stringify(entries)) entries = parsed
+    // Comparación por contenido barata (Fase 10.A): antes eran dos
+    // JSON.stringify del array completo por refresco. Se mantiene la MISMA
+    // referencia de `entries` cuando no cambió, para que NavigationController
+    // pueda comparar por referencia aguas arriba.
+    if (!Utils.entriesEqual(parsed, entries)) entries = parsed
     loaded = true
     listed()
+  }
+
+  // Orden final: C++ (DirectoryModel) ya devuelve las entradas ordenadas por
+  // naturalCompare (carpetas primero) -- el orden por defecto que ve el
+  // usuario. Solo hace falta re-ordenar en JS si el usuario eligió otro
+  // criterio (tamaño/fecha/tipo o descendente). Fase 10.A: elimina los ~31 ms
+  // de re-ordenar en el hilo de UI lo que C++ ya ordenó.
+  function _sorted(raw) {
+    return sortOps.isDefaultOrder ? raw : sortOps.sortEntries(raw)
   }
 
   // Descubrimiento de raíces de papelera (trash-roots.sh, una línea por
@@ -148,7 +162,7 @@ Item {
         // simplemente muestra lo que haya. Coordinación con trash-info
         // idéntica a antes: pintar ya si trashInfo está cargada, o esperar
         // a trash-info.sh la primera vez para no parpadear.
-        var parsed = sortOps.sortEntries(dirModel.entries)
+        var parsed = _sorted(dirModel.entries)
         if (Object.keys(TrashState.trashInfo).length > 0) {
           _apply(parsed)
         } else {
@@ -164,7 +178,7 @@ Item {
         else if (e === 3) pathError = "This folder no longer exists"
         else if (e === 4) pathError = "Not a folder"
         else if (e !== 0) pathError = "Couldn't open this folder"
-        _apply(sortOps.sortEntries(dirModel.entries))
+        _apply(_sorted(dirModel.entries))
       }
     }
   }

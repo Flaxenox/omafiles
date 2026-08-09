@@ -10,6 +10,11 @@ import "../Utils.js" as Utils
 Item {
   property Item root: null
 
+  // true cuando el orden pedido es el que ya devuelve C++ (DirectoryModel):
+  // nombre ascendente. En ese caso DirLister NO re-ordena (ver _sorted).
+  // Fase 10.A.
+  readonly property bool isDefaultOrder: SortState.sortKey === "name" && !SortState.sortDesc
+
   function compareEntries(a, b) {
     var result = 0
     if (SortState.sortKey === "size") {

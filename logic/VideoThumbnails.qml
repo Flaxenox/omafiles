@@ -50,8 +50,16 @@ Item {
       // (nueva key por mtime, o simplemente request() de nuevo) puede
       // reintentar.
       if (result.exitCode === 0) {
+        // Reasignar el objeto (nueva referencia) es lo que dispara los
+        // bindings de los delegados que leen videoThumbReady[key]. Fase
+        // 10.A: el mapa se ACOTA (LRU-256) para que (a) no crezca sin
+        // límite en sesiones largas y (b) esta copia sea O(1) en vez de
+        // O(n) -- antes copiaba un diccionario que crecía sin fin por cada
+        // miniatura (coste cuadrático a lo largo de la sesión).
         var ready = Object.assign({}, VideoThumbState.videoThumbReady)
         ready[thumbProc.currentKey] = thumbProc.currentDest
+        var keys = Object.keys(ready)
+        while (keys.length > 256) { delete ready[keys[0]]; keys.shift() }
         VideoThumbState.videoThumbReady = ready
       }
       VideoThumbState.thumbBusy = false

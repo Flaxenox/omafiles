@@ -6,40 +6,74 @@
 #include <QThreadPool>
 
 #include <algorithm>
-#include <string>
 
 #include <dirent.h>
-#include <locale.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <wchar.h>
-#include <wctype.h>
 
 namespace {
 
-// Ordena dos nombres como lo hace `sort -f` de list-dir.sh. Primario:
-// plegando la caja y colacionando con la MISMA collation de glibc
-// (LC_COLLATE del entorno) -- se pliega a minuscula con towlower_l; la
-// direccion del plegado es indiferente porque la caja es un peso terciario
-// que el plegado anula por igual en ambos operandos.
-//
-// Desempate: cuando el plegado los hace iguales (p.ej. "hyprland" y
-// "Hyprland" en /usr/bin), `sort -f` cae a comparar los nombres SIN plegar
-// con la collation del locale, que en glibc pone la minuscula antes que la
-// mayuscula. Reproducirlo hace el orden deterministico (std::sort no
-// garantiza nada en los empates) y exactamente igual al del script.
-bool nameLess(const QString &a, const QString &b, locale_t loc) {
-  std::wstring wa = a.toStdWString();
-  std::wstring wb = b.toStdWString();
-  std::wstring fa = wa, fb = wb;
-  for (wchar_t &c : fa)
-    c = towlower_l(c, loc);
-  for (wchar_t &c : fb)
-    c = towlower_l(c, loc);
-  const int folded = wcscoll_l(fa.c_str(), fb.c_str(), loc);
-  if (folded != 0)
-    return folded < 0;
-  return wcscoll_l(wa.c_str(), wb.c_str(), loc) < 0;
+inline bool asciiDigit(QChar c) {
+  return c.unicode() >= u'0' && c.unicode() <= u'9';
+}
+
+// Compara nombres como Utils.naturalCompare(a.toLowerCase(), b.toLowerCase())
+// del lado QML: number-aware (los dígitos ASCII se comparan por VALOR, no
+// carácter a carácter) y case-insensitive. Fase 10.A: este es el orden
+// VISIBLE. Antes se ordenaba aquí por collation de glibc (paridad byte a byte
+// con list-dir.sh) y luego SortOps re-ordenaba SIEMPRE en JS con este mismo
+// naturalCompare, tirando el trabajo de C++; ahora se hace una sola vez aquí
+// y SortOps ya no re-ordena el caso por defecto (name/asc). Devuelve <0, 0,
+// >0.
+int naturalCompare(const QString &an, const QString &bn) {
+  const QString a = an.toLower();
+  const QString b = bn.toLower();
+  int i = 0, j = 0;
+  const int na = a.size(), nb = b.size();
+  while (i < na && j < nb) {
+    const bool da = asciiDigit(a[i]);
+    const bool db = asciiDigit(b[j]);
+    if (da && db) {
+      // Runs de dígitos: comparar como enteros (sin ceros a la izquierda;
+      // más largo = mayor; igual longitud -> lexicográfico).
+      int i2 = i, j2 = j;
+      while (i2 < na && asciiDigit(a[i2]))
+        i2++;
+      while (j2 < nb && asciiDigit(b[j2]))
+        j2++;
+      int sa = i, sb = j;
+      while (sa < i2 - 1 && a[sa] == u'0')
+        sa++;
+      while (sb < j2 - 1 && b[sb] == u'0')
+        sb++;
+      const int la = i2 - sa, lb = j2 - sb;
+      if (la != lb)
+        return la - lb;
+      const int c = QStringView(a).mid(sa, la).compare(QStringView(b).mid(sb, lb));
+      if (c != 0)
+        return c;
+      i = i2;
+      j = j2;
+    } else if (da != db) {
+      // Dígito antes que no-dígito (en JS: numero - Infinity < 0).
+      return da ? -1 : 1;
+    } else {
+      // Runs de no-dígitos: comparar con la collation del locale (como el
+      // .localeCompare() de JS).
+      int i2 = i, j2 = j;
+      while (i2 < na && !asciiDigit(a[i2]))
+        i2++;
+      while (j2 < nb && !asciiDigit(b[j2]))
+        j2++;
+      const int c =
+          QString::localeAwareCompare(a.mid(i, i2 - i), b.mid(j, j2 - j));
+      if (c != 0)
+        return c;
+      i = i2;
+      j = j2;
+    }
+  }
+  return (na - i) - (nb - j);
 }
 
 // Escanea UN directorio y APPEND-ea sus entradas a dirs/files (sin
@@ -122,15 +156,12 @@ int gatherOne(const QByteArray &p, bool showHidden,
 void sortInto(QVector<DirectoryModel::Entry> &dirs,
               QVector<DirectoryModel::Entry> &files,
               QVector<DirectoryModel::Entry> &rows) {
-  locale_t loc = ::newlocale(LC_COLLATE_MASK | LC_CTYPE_MASK, "", (locale_t)0);
-  const auto cmp = [loc](const DirectoryModel::Entry &a,
-                         const DirectoryModel::Entry &b) {
-    return nameLess(a.name, b.name, loc);
+  const auto cmp = [](const DirectoryModel::Entry &a,
+                      const DirectoryModel::Entry &b) {
+    return naturalCompare(a.name, b.name) < 0;
   };
   std::sort(dirs.begin(), dirs.end(), cmp);
   std::sort(files.begin(), files.end(), cmp);
-  if (loc)
-    ::freelocale(loc);
   rows = std::move(dirs); // carpetas primero, luego ficheros
   rows += files;
 }
@@ -138,6 +169,15 @@ void sortInto(QVector<DirectoryModel::Entry> &dirs,
 } // namespace
 
 DirectoryModel::DirectoryModel(QObject *parent) : QAbstractListModel(parent) {}
+
+DirectoryModel::~DirectoryModel() {
+  // Cortar la entrega de cualquier worker en vuelo: bajo el lock, marcar
+  // muerto. Un worker que aun no haya entregado vera alive=false y no hara
+  // invokeMethod(this); uno que ya lo tenga cogido nos bloquea aqui hasta
+  // que suelte (entrega instantanea, solo postea un evento).
+  std::lock_guard<std::mutex> lk(m_life->mtx);
+  m_life->alive = false;
+}
 
 DirectoryModel::Result DirectoryModel::scan(const QString &path,
                                             bool showHidden) {
@@ -171,9 +211,17 @@ void DirectoryModel::startScan(std::function<Result()> job) {
   // El escaneo pesado (stat de cada entrada) va a un hilo del pool para no
   // bloquear la UI; el resultado se aplica de vuelta en el hilo de UI. Un
   // resultado de una generacion vieja (navegacion rapida) se descarta.
+  auto life = m_life; // copia del control block, sobrevive al modelo
   QThreadPool::globalInstance()->start(QRunnable::create(
-      [this, job = std::move(job), generation]() {
+      [this, life, job = std::move(job), generation]() {
         Result result = job();
+        // Entrega segura: solo invocar sobre `this` si sigue vivo. El
+        // destructor toma este mismo lock, asi que o vemos alive=false (y no
+        // tocamos el objeto muerto), o lo tenemos cogido y el destructor
+        // espera a que soltemos.
+        std::lock_guard<std::mutex> lk(life->mtx);
+        if (!life->alive)
+          return;
         QMetaObject::invokeMethod(
             this,
             [this, result = std::move(result), generation]() mutable {
