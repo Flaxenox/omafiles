@@ -1,13 +1,28 @@
 import QtQuick
 import qs.Commons
 import "../state"
+import "../services"
 
 // Renombrar / nueva carpeta / nuevo fichero, con su undo -- decimoséptimo
 // componente extraído de Omafiles.qml. Mismo patrón que FileOps: sin
 // Process propio, todo pasa por los wrappers de root
 // (root.runAction/root.pushUndo).
+//
+// Fase 7 (josema): "nueva carpeta" (caso común, sin sobrescribir) es la
+// PRIMERA operación cableada al backend nativo -- crea con
+// FileOperations.mkdir en vez de "mkdir -p" por shell. El resto de
+// operaciones sigue en el motor de acciones shell hasta un escalón
+// posterior. El undo se mantiene con rmdir (falla si el usuario ya metió
+// algo dentro, a propósito).
 Item {
+  id: renameOps
   property Item root: null
+
+  // Rutas de "nueva carpeta" nativa en vuelo -> nombre. El undo se registra
+  // solo cuando FileOperations.mkdir termina CON ÉXITO (ver la Connections
+  // de abajo), no antes ni en un redo. Mismo patrón que Persistence con
+  // JsonStore (Connections declarativa sobre el singleton de services).
+  property var _nativeMkdirPending: ({})
 
   function startRename(index) {
     if (ArchiveState.inArchive) return
@@ -96,18 +111,54 @@ Item {
     ConflictState.pendingNewFolder = null
     ConflictState.newFolderConflictOpen = false
     if (!pending) return
-    var newFolderCmd = (overwrite ? "rm -rf -- " + Util.shellQuote(pending.path) + " && " : "")
-      + "mkdir -p -- " + Util.shellQuote(pending.path)
-    root.runAction(newFolderCmd, undefined, function () {
-      // rmdir en vez de rm -rf: si el usuario ya metió algo dentro antes de
-      // deshacer, falla en vez de borrar contenido a lo tonto. No
-      // intenta restaurar lo que hubiera sobrescrito.
-      root.pushUndo("new folder \"" + pending.name + "\"", function () {
-        return root.runAction("rmdir -- " + Util.shellQuote(pending.path))
-      }, function () {
-        return root.runAction(newFolderCmd)
+    if (overwrite) {
+      // Sobrescribir un nombre ya existente (caso raro): implica un rm -rf
+      // destructivo, se queda en el motor de acciones shell probado -- Fase
+      // 7 solo cablea el mkdir del caso común al backend nativo.
+      var cmd = "rm -rf -- " + Util.shellQuote(pending.path) + " && mkdir -p -- " + Util.shellQuote(pending.path)
+      root.runAction(cmd, undefined, function () {
+        root.pushUndo("new folder \"" + pending.name + "\"", function () {
+          return root.runAction("rmdir -- " + Util.shellQuote(pending.path))
+        }, function () {
+          return root.runAction(cmd)
+        })
       })
-    })
+      return
+    }
+    // Caso común: mkdir NATIVO (Fase 7). El undo se registra al terminar con
+    // éxito (ver la Connections de abajo).
+    renameOps._nativeMkdirPending[pending.path] = pending.name
+    FileOperations.mkdir(pending.path)
+  }
+
+  // Cierra el ciclo de la "nueva carpeta" nativa: refresca y registra el
+  // undo cuando mkdir termina bien. Declarativa como Persistence con
+  // JsonStore.
+  Connections {
+    target: FileOperations
+    function onFinished(op, path) {
+      if (op !== "mkdir") return
+      // Refresco inmediato (como actionProc.onFinished): el panel activo lo
+      // cubre el watcher, pero refreshTick refresca también los de fondo que
+      // muestren esta misma carpeta.
+      root.refresh()
+      root.refreshTick += 1
+      var name = renameOps._nativeMkdirPending[path]
+      if (name === undefined) return // redo u otro mkdir: no re-registrar
+      delete renameOps._nativeMkdirPending[path]
+      root.pushUndo("new folder \"" + name + "\"", function () {
+        // rmdir (no rm -rf): si ya hay algo dentro, falla en vez de borrarlo.
+        return root.runAction("rmdir -- " + Util.shellQuote(path))
+      }, function () {
+        FileOperations.mkdir(path) // redo: sin re-registrar
+        return true
+      })
+    }
+    function onError(op, path, message) {
+      // El aviso al usuario ya lo dio el adaptador (Notifier). Solo limpiar.
+      if (op === "mkdir" && renameOps._nativeMkdirPending[path] !== undefined)
+        delete renameOps._nativeMkdirPending[path]
+    }
   }
 
   function cancelPendingNewFolder() {

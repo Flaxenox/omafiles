@@ -1,0 +1,43 @@
+pragma Singleton
+import QtQuick
+import Omafiles.Backend as Backend
+
+// Operaciones de fichero -- adaptador fino sobre el singleton C++
+// Omafiles.Backend.FileOperations (QFile/QDir, ver backend/FileOperations.
+// cpp). Fase 7 (josema): backend nativo introducido; de momento solo
+// "nueva carpeta" (mkdir) lo consume en vivo (ver logic/RenameOps.qml).
+//
+// Reenvia las llamadas y re-emite progress/finished/error para que logic/
+// no importe Omafiles.Backend (regla 8). Integra Notifier (req 4): un
+// error se avisa aqui, en un solo sitio, con el mismo texto que daba
+// ActionEngine ("Action failed: ..."). El refresco tras la operacion NO se
+// dispara aqui -- lo hace el QFileSystemWatcher de DirectoryModel (Fase
+// 6.D) al cambiar el directorio activo.
+QtObject {
+  id: fileOps
+  signal progress(string op, string path, real pct)
+  signal finished(string op, string path)
+  signal error(string op, string path, string message)
+
+  function copy(source, destination) { Backend.FileOperations.copy(source, destination) }
+  function move(source, destination) { Backend.FileOperations.move(source, destination) }
+  function rename(path, newName) { Backend.FileOperations.rename(path, newName) }
+  function remove(path) { Backend.FileOperations.remove(path) }
+  function mkdir(path) { Backend.FileOperations.mkdir(path) }
+  function trash(path) { Backend.FileOperations.trash(path) }
+  function restore(path) { Backend.FileOperations.restore(path) }
+
+  // Cualificado con el id: Backend.FileOperations (el target) tiene señales
+  // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
+  // propio target en vez del de este adaptador (misma clase de colisión que
+  // hubo en DirLister.directoryChanged).
+  property Connections _backend: Connections {
+    target: Backend.FileOperations
+    function onProgress(op, path, pct) { fileOps.progress(op, path, pct) }
+    function onFinished(op, path) { fileOps.finished(op, path) }
+    function onError(op, path, message) {
+      Backend.Notifier.notify("Action failed: " + message)
+      fileOps.error(op, path, message)
+    }
+  }
+}
