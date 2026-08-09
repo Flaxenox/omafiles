@@ -247,6 +247,18 @@ void FileOperations::copy(const QString &source, const QString &destination,
 
 void FileOperations::cancel() { m_cancelled.store(true); }
 
+QStringList FileOperations::existingPaths(const QStringList &paths) const {
+  QStringList out;
+  for (const QString &p : paths) {
+    // QFileInfo::exists sigue los symlinks (como `test -e`): un symlink cuyo
+    // destino existe cuenta como conflicto; uno roto, no -- misma semántica
+    // que usa la comprobación de conflicto de copy()/move().
+    if (QFileInfo::exists(p))
+      out << p;
+  }
+  return out;
+}
+
 void FileOperations::move(const QString &source, const QString &destination,
                           bool overwrite) {
   m_cancelled.store(false);

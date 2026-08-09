@@ -34,6 +34,10 @@ QtObject {
   // por el usuario, no un fallo).
   function cancel() { Backend.FileOperations.cancel() }
 
+  // Detección de conflictos nativa (Fase 13.F): subconjunto de `paths` que ya
+  // existen. Síncrona; sustituye a los `test -e` de shell en paste/drop.
+  function existingPaths(paths) { return Backend.FileOperations.existingPaths(paths) }
+
   // Cualificado con el id: Backend.FileOperations (el target) tiene señales
   // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
   // propio target en vez del de este adaptador (misma clase de colisión que

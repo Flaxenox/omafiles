@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -50,6 +51,15 @@ public:
   // worker comprueba el flag entre trozos y aborta con error "cancelled".
   // Fase 13.A. El consumidor (ActionEngine) limpia el destino parcial.
   Q_INVOKABLE void cancel();
+
+  // Detección de conflictos NATIVA (Fase 13.F): devuelve el subconjunto de
+  // `paths` que YA EXISTEN en disco (fichero, carpeta o symlink cuyo destino
+  // existe -- misma semántica que el `test -e` que sustituye y que la
+  // comprobación de conflicto de copy/move). Síncrona (solo stat): rápida
+  // incluso para selecciones grandes. La usan paste/drop para decidir si abrir
+  // el diálogo de conflicto; la RESOLUCIÓN (overwrite/skip) ya la ejecutan
+  // copy/move (parámetro overwrite) y el filtrado de skip en runPaste/runDrop.
+  Q_INVOKABLE QStringList existingPaths(const QStringList &paths) const;
 
   // Mueve `source` a `destination` (ruta destino COMPLETA). Intenta un
   // rename atomico (mismo sistema de ficheros); si cruza de disco, copia +

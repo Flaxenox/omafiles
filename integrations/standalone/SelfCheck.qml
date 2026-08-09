@@ -810,6 +810,87 @@ QtObject {
       FileOperations.copy(sc.note, work)
     })
 
+    // -------- Conflictos de copy/move (13.F) --------
+
+    add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
+      // La función NATIVA que sustituye al `test -e` de paste/drop. Debe
+      // devolver los destinos que existen (fichero, carpeta, symlink) y no
+      // los inexistentes.
+      var f = sc.opsDir + "/cd-file.txt"
+      var d = sc.opsDir + "/cd-dir"
+      var l = sc.opsDir + "/cd-link"
+      var missing = sc.opsDir + "/cd-missing-" + Date.now()
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, f) },
+        function () { FileOperations.copy(sc.listDir, d) },
+        function () { FileOperations.copy(sc.dir + "/link.txt", l) }
+      ], done, function () {
+        var res = FileOperations.existingPaths([f, d, l, missing])
+        var ok = res.length === 3 && res.indexOf(f) >= 0 && res.indexOf(d) >= 0 &&
+                 res.indexOf(l) >= 0 && res.indexOf(missing) < 0
+        done(ok, "detectados " + res.length + "/3 (sin el inexistente)")
+      })
+    })
+
+    add("Copy conflict overwrite (directory replaces)", function (done) {
+      var src = sc.opsDir + "/ccd-src"
+      var dst = sc.opsDir + "/ccd-dst"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.listDir, src) },  // src: árbol de 4
+        function () { FileOperations.mkdir(dst) },             // dst: dir existente
+        function () { FileOperations.copy(src, dst, true) }    // overwrite -> reemplaza
+      ], done, function () {
+        sc._listOnce(dst, function (e) {
+          done(e.length === 4 && sc._has(e, "sub"), "dir reemplazado: " + e.length + " entradas")
+        })
+      })
+    })
+
+    add("Copy conflict without overwrite errors (skip semantics)", function (done) {
+      var dst = sc.opsDir + "/ccs.txt"
+      sc._seqOps([function () { FileOperations.copy(sc.note, dst) }], done, function () {
+        // copiar de nuevo SIN overwrite debe fallar: es justo lo que la
+        // resolución "skip" evita al no llamar a copy para ese ítem.
+        function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
+        function onFin(op, path) { cleanup(); done(false, "no debería copiar sobre existente sin overwrite") }
+        function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+        FileOperations.error.connect(onErr)
+        FileOperations.finished.connect(onFin)
+        FileOperations.copy(sc.note, dst)
+      })
+    })
+
+    add("Move conflict without overwrite errors (skip semantics)", function (done) {
+      var work = sc.opsDir + "/mcs-work.txt"
+      var dst = sc.opsDir + "/mcs-dst.txt"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.note, work) },
+        function () { FileOperations.copy(sc.note, dst) }
+      ], done, function () {
+        function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
+        function onFin(op, path) { cleanup(); done(false, "no debería mover sobre existente sin overwrite") }
+        function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
+        FileOperations.error.connect(onErr)
+        FileOperations.finished.connect(onFin)
+        FileOperations.move(work, dst)
+      })
+    })
+
+    add("Conflict overwrite replaces symlink dest", function (done) {
+      var l = sc.opsDir + "/cos-link"
+      sc._seqOps([
+        function () { FileOperations.copy(sc.dir + "/link.txt", l) },  // dst: symlink
+        function () { FileOperations.copy(sc.note, l, true) }          // overwrite -> fichero
+      ], done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var isFileNow = false
+          for (var i = 0; i < e.length; i++)
+            if (e[i].name === "cos-link") isFileNow = (!e[i].link || e[i].link.length === 0)
+          done(isFileNow, isFileNow ? "symlink reemplazado por fichero" : "sigue siendo symlink")
+        })
+      })
+    })
+
     add("FileOperations move", function (done) {
       FileOperations.copy(sc.note, sc.opsDir + "/toMove.txt")
       sc._fileOp(done, function () {

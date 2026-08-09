@@ -42,10 +42,16 @@ Item {
       var name = src.substring(src.lastIndexOf("/") + 1)
       return root.joinPath(NavState.currentPath, name)
     })
-    var checkCmd = destPaths.map(function (p) {
-      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
-    }).join("; ")
-    pasteCheckProc.start(["bash", "-c", checkCmd])
+    // Detección de conflictos NATIVA (Fase 13.F): FileOperations.existingPaths
+    // (stat síncrono) en vez de un `test -e` por shell. Mismo resultado
+    // observable: 0 conflictos -> pega ya; si hay, abre el diálogo.
+    var conflicts = FileOperations.existingPaths(destPaths)
+    if (conflicts.length === 0) {
+      clipboardOps.runPaste("all")
+    } else {
+      ConflictState.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+      ConflictState.pasteConflictOpen = true
+    }
   }
 
   function startDropInto(destDir, sourcePaths, isMove) {
@@ -63,10 +69,14 @@ Item {
     var destPaths = sourcePaths.map(function (src) {
       return root.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
-    var checkCmd = destPaths.map(function (p) {
-      return "test -e " + Util.shellQuote(p) + " && printf '%s\\n' " + Util.shellQuote(p)
-    }).join("; ")
-    dropCheckProc.start(["bash", "-c", checkCmd])
+    // Detección de conflictos NATIVA (Fase 13.F): igual que paste().
+    var conflicts = FileOperations.existingPaths(destPaths)
+    if (conflicts.length === 0) {
+      runDrop("all")
+    } else {
+      ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
+      ConflictState.dropConflictOpen = true
+    }
   }
 
   function compressSelected() {
@@ -311,18 +321,6 @@ Item {
     }
   }
 
-  ProcessRunner {
-    id: dropCheckProc
-    onFinished: function (result) {
-      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
-      if (conflicts.length === 0) {
-        runDrop("all")
-      } else {
-        ConflictState.dropConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-        ConflictState.dropConflictOpen = true
-      }
-    }
-  }
 
   // Ficheros soltados sobre `destDir` (una fila de carpeta, un marcador,
   // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
@@ -377,16 +375,4 @@ Item {
     ConflictState.dropTargetDir = ""
   }
 
-  ProcessRunner {
-    id: pasteCheckProc
-    onFinished: function (result) {
-      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
-      if (conflicts.length === 0) {
-        clipboardOps.runPaste("all")
-      } else {
-        ConflictState.pasteConflictNames = conflicts.map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
-        ConflictState.pasteConflictOpen = true
-      }
-    }
-  }
 }
