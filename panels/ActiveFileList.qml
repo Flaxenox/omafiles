@@ -127,7 +127,7 @@ Item {
               keys: ["text/uri-list"]
               onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
               onDropped: function (drop) {
-                dragDropOps.handleFilesDropped(drop, root.currentPath)
+                dragDropOps.handleFilesDropped(drop, NavState.currentPath)
               }
             }
 
@@ -192,7 +192,7 @@ Item {
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               clip: true
-              model: root.visibleEntries
+              model: NavState.visibleEntries
               focus: root.opened
               // Sin esto, arrastrar con el click (botón izquierdo pulsado)
               // hace scroll de la lista -- el mismo gesto que queremos
@@ -304,11 +304,11 @@ Item {
             }
 
             EmptyState {
-              visible: root.currentPathError === "" && root.visibleEntries.length === 0
+              visible: root.currentPathError === "" && NavState.visibleEntries.length === 0
               centerOn: listView
-              message: root.searchQuery
-                ? "No results for “" + root.searchQuery + "”"
-                : (root.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
+              message: NavState.searchQuery
+                ? "No results for “" + NavState.searchQuery + "”"
+                : (NavState.currentPath === root.trashDir ? "Trash is empty" : "Nothing here yet")
             }
 
             // Rectángulo visual del lazo -- después de la ListView en el
@@ -340,7 +340,7 @@ Item {
               imageSource: PreviewContentState.previewImage ? Util.fileUrl(PreviewContentState.previewImage) : ""
               videoThumbSource: {
                 if (!PreviewContentState.previewEntry || !root.isVideo(PreviewContentState.previewEntry)) return ""
-                var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, root.currentPath)] || ""
+                var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, NavState.currentPath)] || ""
                 return p ? Util.fileUrl(p) : ""
               }
               highlightedText: PreviewContentState.previewHighlighted

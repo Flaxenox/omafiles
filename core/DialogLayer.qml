@@ -214,7 +214,7 @@ Item {
     anchors.fill: parent
     z: 10
     opened: root.pendingDeleteNames.length > 0
-    message: root.currentPath === root.trashDir
+    message: NavState.currentPath === root.trashDir
       ? (root.pendingDeleteNames.length === 1
         ? "Delete \"" + root.pendingDeleteNames[0] + "\" PERMANENTLY? This cannot be undone."
         : "Delete " + root.pendingDeleteNames.length + " items PERMANENTLY? This cannot be undone.")

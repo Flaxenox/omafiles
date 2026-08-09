@@ -132,7 +132,7 @@ Item {
       hostRoot.goUp()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
-      if (SelectionState.selectedIndex >= 0) hostRoot.enter(hostRoot.visibleEntries[SelectionState.selectedIndex])
+      if (SelectionState.selectedIndex >= 0) hostRoot.enter(NavState.visibleEntries[SelectionState.selectedIndex])
       event.accepted = true
     } else if (event.key === Qt.Key_Space) {
       hostPreviewLoader.togglePreview()
@@ -154,7 +154,7 @@ Item {
       else { hostRoot.gPending = true; hostGTimer.restart() }
       event.accepted = true
     } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
-      var down = Math.min(hostRoot.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
+      var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
       if (extend) hostSelectionOps.selectRange(down); else hostSelectionOps.selectOnly(down)
       hostListView.positionViewAtIndex(down, ListView.Contain)
       event.accepted = true
@@ -167,7 +167,7 @@ Item {
       hostSelectionOps.selectNone()
       event.accepted = true
     } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
-      SelectionState.selectedIndices = Array.from({ length: hostRoot.visibleEntries.length }, function (_, i) { return i })
+      SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
       event.accepted = true
     } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
       hostSelectionOps.invertSelection()

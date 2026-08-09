@@ -48,7 +48,7 @@ Item {
     id: dirLister
     pluginDir: hostRoot.pluginDir
     trashDir: hostRoot.trashDir
-    showHidden: hostRoot.showHidden
+    showHidden: NavState.showHidden
     sortOps: hostSortOps
     // hostRoot.tabEntriesCache es lo que _goToPath() consulta al entrar
     // en una ruta que un panel de fondo ya tenía lista -- solo lo

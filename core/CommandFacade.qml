@@ -35,7 +35,7 @@ Item {
 
   function paletteCommands() {
     var hasSelection = SelectionState.selectedIndices.length > 0
-    var entry = SelectionState.selectedIndices.length === 1 ? root.visibleEntries[SelectionState.selectedIndex] : null
+    var entry = SelectionState.selectedIndices.length === 1 ? NavState.visibleEntries[SelectionState.selectedIndex] : null
     var cmds = [
       { label: "New folder", run: function () { renameOps.startNewFolder() } },
       { label: "New file", run: function () { renameOps.startNewFile() } },
@@ -45,10 +45,10 @@ Item {
       { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathFor(selectionOps.selectedEntries()) } },
       { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { deleteOps.requestDelete() } },
-      { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: root.visibleEntries.length }, function (_, i) { return i }) } },
+      { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i }) } },
       { label: "Select none", enabled: hasSelection, run: function () { selectionOps.selectNone() } },
       { label: "Invert selection", run: function () { selectionOps.invertSelection() } },
-      { label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
+      { label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
       { label: "Refresh", run: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { sortOps.setSort("name") } },
       { label: "Sort by size", run: function () { sortOps.setSort("size") } },
@@ -75,7 +75,7 @@ Item {
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
       { label: "Keyboard shortcuts", run: function () { DialogsState.shortcutsHelpOpen = true } }
     ]
-    if (root.currentPath === root.trashDir) {
+    if (NavState.currentPath === root.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { root.emptyTrash() } })
       cmds.push({ label: "Restore", enabled: hasSelection, run: function () { fileOps.restoreFromTrash() } })
     }
@@ -86,7 +86,7 @@ Item {
       cmds.push({ label: "Mount ISO", run: function () { mountOps.mountIso(entry) } })
     }
     if (entry) {
-      var fullPath = root.joinPath(root.currentPath, entry.name)
+      var fullPath = root.joinPath(NavState.currentPath, entry.name)
       if (!bookmarkOps.isBookmarked(fullPath)) {
         cmds.push({ label: "Add to bookmarks", run: function () { bookmarkOps.addBookmark(fullPath, entry.name, entry.type) } })
       }
@@ -157,7 +157,7 @@ Item {
     }
     var multi = entries.length > 1
     var suffix = multi ? " (" + entries.length + ")" : ""
-    var inTrash = root.currentPath === root.trashDir
+    var inTrash = NavState.currentPath === root.trashDir
     var actions = []
 
     if (inTrash) {
@@ -175,7 +175,7 @@ Item {
     if (!multi) {
       actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
       if (entries[0].type === "dir") {
-        // Bug real: usar root.currentPath dentro del closure (en vez de
+        // Bug real: usar NavState.currentPath dentro del closure (en vez de
         // capturarlo aquí) leía la ruta en el momento del CLIC del menú,
         // no en el momento de abrirlo -- si el ratón pasaba por otro
         // panel de fondo mientras el menú seguía abierto (el
@@ -184,7 +184,7 @@ Item {
         // "Open in new tab" abría la carpeta dentro de la carpeta
         // EQUIVOCADA. Capturado como variable local, coherente con como
         // ya lo hace paletteCommands() para el mismo caso.
-        var dirFullPath = root.joinPath(root.currentPath, entries[0].name)
+        var dirFullPath = root.joinPath(NavState.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
           tabOps.openInNewTab(dirFullPath)
         } })
@@ -201,7 +201,7 @@ Item {
     if (!multi) {
       actions.push({ label: "Rename", action: function () { renameOps.startRename(SelectionState.selectedIndex) } })
       actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
-      var fullPath = root.joinPath(root.currentPath, entries[0].name)
+      var fullPath = root.joinPath(NavState.currentPath, entries[0].name)
       if (!bookmarkOps.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
@@ -220,13 +220,13 @@ Item {
     actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
-    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
+    actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     return actions
   }
 
   function emptyAreaActions() {
     var actions = []
-    if (root.currentPath === root.trashDir) {
+    if (NavState.currentPath === root.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else if (!ArchiveState.inArchive) {
       // Dentro de un archivo estas ya son no-op (cada función se
@@ -236,7 +236,7 @@ Item {
       actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
       actions.push({ label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
     }
-    actions.push({ label: root.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
+    actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     actions.push({ label: "Refresh", action: function () { root.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } })
     return actions
   }
@@ -308,22 +308,22 @@ Item {
     return actions
   }
 
-  // Dentro de un comprimido, la ruta real (root.currentPath) no cambia --
+  // Dentro de un comprimido, la ruta real (NavState.currentPath) no cambia --
   // solo se navega en archiveSubPath (ver enter()/goUp()/inArchive) -- así
   // que el breadcrumb tiene que construirse aparte para reflejarlo. Nadie
   // hace clic en un segmento individual (ver el Repeater real más abajo,
   // sin MouseArea propio a propósito), así que basta con que el ÚLTIMO
-  // segmento tenga path === root.currentPath -- es lo único que usa la
+  // segmento tenga path === NavState.currentPath -- es lo único que usa la
   // plantilla compartida para decidir cuál pintar en negrita.
   function pathSegments() {
-    if (!ArchiveState.inArchive) return root.pathSegmentsFor(root.currentPath)
-    var segs = root.pathSegmentsFor(root.currentPath)
+    if (!ArchiveState.inArchive) return root.pathSegmentsFor(NavState.currentPath)
+    var segs = root.pathSegmentsFor(NavState.currentPath)
     var archiveName = ArchiveState.archivePath.substring(ArchiveState.archivePath.lastIndexOf("/") + 1)
     var parts = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath.split("/") : []
     var isLast = parts.length === 0
-    segs.push({ label: archiveName, path: isLast ? root.currentPath : "" })
+    segs.push({ label: archiveName, path: isLast ? NavState.currentPath : "" })
     for (var i = 0; i < parts.length; i++) {
-      segs.push({ label: parts[i], path: (i === parts.length - 1) ? root.currentPath : "" })
+      segs.push({ label: parts[i], path: (i === parts.length - 1) ? NavState.currentPath : "" })
     }
     return segs
   }

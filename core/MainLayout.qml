@@ -74,7 +74,7 @@ Item {
         recentFiles: BookmarksState.recentFiles
         mounts: MountsState.mounts
         networkMounts: MountsState.networkMounts
-        currentPath: root.currentPath
+        currentPath: NavState.currentPath
         dropHoverPath: DropHoverState.dropHoverPath
         positionRelativeTo: card
         iconForBookmark: bookmarkOps.iconForBookmark
@@ -218,7 +218,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             canGoBack: TabsState.navHistoryIndex > 0
             canGoForward: TabsState.navHistoryIndex < TabsState.navHistory.length - 1
-            canGoUp: root.currentPath !== "/"
+            canGoUp: NavState.currentPath !== "/"
             onBackRequested: root.navBack()
             onForwardRequested: root.navForward()
             onUpRequested: root.goUp()
@@ -242,7 +242,7 @@ Item {
               visible: !EditModeState.editingPath
               anchors.fill: parent
               segments: root.pathSegments()
-              activePath: root.currentPath
+              activePath: NavState.currentPath
             }
 
             TextField {
@@ -252,7 +252,7 @@ Item {
               verticalPadding: 2
               Accessible.role: Accessible.EditableText
               Accessible.name: "Path"
-              onVisibleChanged: if (visible) { text = root.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
+              onVisibleChanged: if (visible) { text = NavState.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
               Keys.onPressed: function (event) {
                 if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                   root.navigateTo(text)
@@ -347,15 +347,15 @@ Item {
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               anchors.right: parent.right
-              text: root.visibleEntries.length + (root.visibleEntries.length === 1 ? " item" : " items")
-                + (root.searchQuery ? " of " + root.entries.length : "")
+              text: NavState.visibleEntries.length + (NavState.visibleEntries.length === 1 ? " item" : " items")
+                + (NavState.searchQuery ? " of " + NavState.entries.length : "")
                 + (root.searchTruncated ? " · showing first 200" : "")
                 // Sin tope en la carpeta en sí (a diferencia de la
                 // búsqueda) -- cortar un listado normal a los N primeros
                 // rompería el manejo de ficheros de verdad para carpetas
                 // grandes (node_modules, caches de paquetes...). Solo un
                 // aviso informativo de que puede ir lento, no un límite.
-                + (!root.searchQuery && root.entries.length > 5000 ? " · large folder, may be slow" : "")
+                + (!NavState.searchQuery && NavState.entries.length > 5000 ? " · large folder, may be slow" : "")
                 + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
                 + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
                 + " · sort: " + sortOps.sortLabel()

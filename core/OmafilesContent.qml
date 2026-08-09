@@ -21,26 +21,22 @@ Item {
 
   property string homeDir: Env.get("HOME")
   property string pluginDir: homeDir + "/.config/omarchy/plugins/omafiles"
-  // currentPath/entries/showHidden/searchQuery/visibleEntries viven ahora
-  // en state/NavState.qml (Fase 11.A). Aquí solo quedan bindings finos de
-  // compatibilidad para el árbol visual, que aún lee root.* -- se retirarán
-  // al dividir OmafilesContent. logic/ ya lee/escribe NavState.* directo.
-  property string currentPath: NavState.currentPath
+  // currentPath/entries/showHidden/searchQuery/visibleEntries viven en
+  // state/NavState.qml (Fase 11.A) y NavState es su ÚNICA fuente de verdad
+  // (Fase 14.A): se retiraron los bindings de compatibilidad que espejaban
+  // ese estado aquí; el árbol visual y logic/ leen NavState.* directo.
   // tabs/activeTabIndex/navHistory/navHistoryIndex viven ahora en
   // state/TabsState.qml -- vigesimoprimer y último slice de la capa
   // state/.
-  property var entries: NavState.entries
   // Caché de listados por ruta, alimentada por los paneles de fondo cada
   // vez que refrescan -- ver _goToPath().
   property var tabEntriesCache: ({})
   property bool searching: false
   property string deepSearchRoot: ""
-  property string searchQuery: NavState.searchQuery
   // Antes la búsqueda recursiva se cortaba en 200 resultados sin decir
   // nada -- una búsqueda con muchas coincidencias parecía completa cuando
   // en realidad faltaban ítems. Ver runDeepSearch()/search-recursive.sh.
   property bool searchTruncated: false
-  readonly property var visibleEntries: NavState.visibleEntries
   property bool opened: false
   property bool loaded: false
   // Mensaje si list-dir.sh no pudo listar currentPath (permisos, carpeta
@@ -87,8 +83,6 @@ Item {
     registry.actionEngine.redoLast()
   }
 
-  property bool showHidden: NavState.showHidden
-
   // selectedIndex/selectedIndices/anchorIndex/marquee* viven ahora en
   // state/SelectionState.qml (singleton, pragma Singleton) -- primer
   // piloto de la capa state/ (ver [[project_omafiles_architecture_rules]]),
@@ -114,7 +108,7 @@ Item {
   readonly property bool hasPendingEdit: EditModeState.renamingIndex >= 0 || EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.editingPath
 
   // Bug real (auditoría 2026-08-05): cualquier diálogo con un paso de
-  // "confirmar" que relee root.currentPath/registry.selectionOps.selectedEntries() EN EL
+  // "confirmar" que relee NavState.currentPath/registry.selectionOps.selectedEntries() EN EL
   // MOMENTO DEL CLIC (no al abrirse) puede acabar actuando sobre la
   // carpeta equivocada si la pestaña activa cambia mientras el diálogo
   // sigue abierto -- y nada impedía que cambiara, porque el hover-para-
@@ -190,7 +184,7 @@ Item {
   // mounts/networkMounts viven ahora en state/MountsState.qml --
   // decimoquinto slice de la capa state/.
 
-  // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- root.currentPath
+  // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- NavState.currentPath
   // NUNCA cambia mientras esto está activo (sigue siendo la carpeta real
   // que contiene el archivo); root.entries pasa a venir de list-archive.sh
   // en vez de list-dir.sh. Deliberadamente de solo lectura: sin selección
@@ -363,7 +357,7 @@ Item {
     // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
     // vigilar). El caso restante (restoringSession) ya lo cubre
     // Persistence.loadSession() por su cuenta.
-    if (!restoringSession && !ArchiveState.inArchive) root.startDirWatch(root.currentPath)
+    if (!restoringSession && !ArchiveState.inArchive) root.startDirWatch(NavState.currentPath)
   }
 
   function close() {
@@ -468,7 +462,7 @@ Item {
 
   function openTerminalHere() {
     // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
-    registry.openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])
+    registry.openProc.start(["xdg-terminal-exec", "--dir=" + NavState.currentPath])
   }
 
   // ---------- Fachada operativa (delegada a core/CommandFacade.qml) ----------

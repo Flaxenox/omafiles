@@ -131,7 +131,7 @@ Column {
       placeholderText: "Search here… (Ctrl+Enter searches subfolders)"
       Accessible.role: Accessible.EditableText
       Accessible.name: "Search"
-      text: root.searchQuery
+      text: NavState.searchQuery
       onTextChanged: NavState.searchQuery = text
       onVisibleChanged: if (visible) forceActiveFocus(); else list.forceActiveFocus()
       Keys.onPressed: function (event) {
@@ -143,7 +143,7 @@ Column {
           event.accepted = true
         } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
           root.searching = false
-          selectionOps.selectOnly(root.visibleEntries.length > 0 ? 0 : -1)
+          selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
           event.accepted = true
         }
       }
