@@ -4,3 +4,4 @@ singleton Notifier 1.0 Notifier.qml
 singleton Detached 1.0 Detached.qml
 singleton JsonStore 1.0 JsonStore.qml
 singleton FileOperations 1.0 FileOperations.qml
+singleton ThumbnailProvider 1.0 ThumbnailProvider.qml

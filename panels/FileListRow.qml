@@ -3,6 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Delegate de fila de la ListView principal (visual + arrastrar/soltar +
@@ -81,7 +82,30 @@ CursorSurface {
     readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, hostRoot.currentPath) : ""
     readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
-    Component.onCompleted: if (isVid) hostVideoThumbs.requestVideoThumb(modelData)
+    // Miniatura nativa (imágenes/SVG/PDF) vía ThumbnailProvider: caché en
+    // disco, no re-decodifica el fichero entero en cada scroll/revisita
+    // como hacía cargar la imagen completa a 32px. imgThumb es la ruta del
+    // thumbnail en caché ("" hasta que está listo -> se ve el glyph).
+    readonly property string myPath: hostRoot.joinPath(hostRoot.currentPath, modelData.name)
+    readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
+      || modelData.name.toLowerCase().slice(-4) === ".svg"
+    property string imgThumb: ""
+    // onMyPathChanged (no Component.onCompleted) porque la ListView recicla
+    // los delegados: al reusar una fila para otra entrada hay que volver a
+    // pedir la miniatura de la nueva ruta.
+    onMyPathChanged: imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+
+    Component.onCompleted: {
+      if (isVid) hostVideoThumbs.requestVideoThumb(modelData)
+      if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+    }
+
+    Connections {
+      target: ThumbnailProvider
+      function onReady(path, thumbPath) {
+        if (path === rowContent.myPath) rowContent.imgThumb = thumbPath
+      }
+    }
 
     FileRowVisual {
       id: activeFileRow
@@ -92,8 +116,8 @@ CursorSurface {
       highlighted: rowSurface.current
       dimmed: ClipboardState.clipboardMode === "cut" && ClipboardState.clipboardPaths.indexOf(hostRoot.joinPath(hostRoot.currentPath, modelData.name)) >= 0
       fileIconGlyph: hostRoot.iconFor(modelData)
-      thumbSource: hostRoot.isImage(modelData) ? Util.fileUrl(hostRoot.joinPath(hostRoot.currentPath, modelData.name))
-        : (parent.vidThumb ? Util.fileUrl(parent.vidThumb) : "")
+      thumbSource: rowContent.imgThumb ? Util.fileUrl(rowContent.imgThumb)
+        : (rowContent.vidThumb ? Util.fileUrl(rowContent.vidThumb) : "")
       metaText: hostFileMeta.metaFor(modelData)
       showNameText: EditModeState.renamingIndex !== index
     }
