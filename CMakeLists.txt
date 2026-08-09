@@ -96,3 +96,17 @@ set(OMAFILES_QML_INSTALL_DIR "$ENV{HOME}/.local/lib/qt6/qml"
     CACHE PATH "Ruta estable donde se instala el modulo QML Omafiles.Backend")
 install(DIRECTORY "${CMAKE_BINARY_DIR}/qml/Omafiles"
         DESTINATION "${OMAFILES_QML_INSTALL_DIR}")
+
+# ---------------------------------------------------------------------------
+# Arnés de validación (Fase 12)
+# ---------------------------------------------------------------------------
+# `cmake --build build --target selfcheck` compila el standalone y ejecuta su
+# modo --selfcheck (headless, sin Quickshell, auto-limpia sus temporales).
+# Sale 0 si todo pasa, 1 si algo falla -> usable como paso de CI. Ver
+# integrations/standalone/SelfCheck.qml.
+add_custom_target(selfcheck
+  COMMAND omafiles-standalone --selfcheck
+  DEPENDS omafiles-standalone
+  WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+  USES_TERMINAL
+  COMMENT "Ejecutando omafiles --selfcheck")

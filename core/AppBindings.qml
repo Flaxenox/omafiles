@@ -22,6 +22,12 @@ Item {
   // el plugin. El script es idempotente (scripts/install-integrations.sh),
   // así que llamarlo en cada arranque del shell es barato y seguro.
   Component.onCompleted: {
+    // Bajo el arnés de validación (omafiles --selfcheck, Fase 12) NO se
+    // autoregistra como gestor de archivos: el selfcheck instancia el core
+    // muchas veces y no debe tener efectos secundarios en el sistema. En un
+    // arranque normal OMAFILES_SELFCHECK no existe y el comportamiento es el
+    // de siempre.
+    if (Env.get("OMAFILES_SELFCHECK") === "1") return
     Detached.run([root.pluginDir + "/scripts/install-integrations.sh"])
   }
 
