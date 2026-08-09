@@ -19,9 +19,6 @@ qt_standard_project_setup()
 # path tanto por el standalone como por Quickshell -- el mismo fichero
 # para ambos, sin duplicacion. Ver BACKEND_DESIGN.md, escalon 5.B.
 #
-# BackendPing es el tipo de prueba del spike; los tres servicios reales
-# siguen aqui SIN migrarse (services/*.qml no cambian): solo cambia como
-# se empaqueta el modulo, no quien lo consume.
 qt_add_library(omafiles-backend SHARED)
 qt_add_qml_module(omafiles-backend
   URI Omafiles.Backend
@@ -39,8 +36,6 @@ qt_add_qml_module(omafiles-backend
     backend/Detached.cpp
     backend/Notifier.h
     backend/Notifier.cpp
-    backend/BackendPing.h
-    backend/BackendPing.cpp
 )
 # El registro de tipos QML autogenerado hace #include <ProcessRunner.h>
 # (corchetes angulares) -- backend/ tiene que estar en el include path o

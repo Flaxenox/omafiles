@@ -28,8 +28,6 @@ ApplicationWindow {
   // backend/Env.cpp), no ya de un context property. Con ProcessRunner
   // respaldado por QProcess real, esto lista la carpeta de verdad.
   Component.onCompleted: {
-    // Spike 5.B: confirma que el plugin C++ externo se cargo de verdad.
-    console.log("[omafiles-standalone] Omafiles.Backend cargado, BackendPing.message =", Backend.BackendPing.message)
     content.open(Backend.Env.get("HOME"))
   }
 }
