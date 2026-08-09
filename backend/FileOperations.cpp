@@ -37,8 +37,10 @@ qint64 treeSize(const QString &path) {
 }
 
 // Copia un fichero por trozos, informando de bytes copiados via cb.
+// `cancelled` se comprueba entre trozos: si se activa, aborta con err.
 bool copyFile(const QString &src, const QString &dst, qint64 &copied,
-              const std::function<void(qint64)> &cb, QString &err) {
+              const std::function<void(qint64)> &cb,
+              const std::atomic<bool> &cancelled, QString &err) {
   QFile in(src);
   if (!in.open(QIODevice::ReadOnly)) {
     err = QStringLiteral("cannot read %1").arg(src);
@@ -53,6 +55,10 @@ bool copyFile(const QString &src, const QString &dst, qint64 &copied,
   buf.resize(kChunk);
   qint64 n;
   while ((n = in.read(buf.data(), kChunk)) > 0) {
+    if (cancelled.load()) {
+      err = QStringLiteral("cancelled");
+      return false;
+    }
     if (out.write(buf.constData(), n) != n) {
       err = QStringLiteral("write failed on %1").arg(dst);
       return false;
@@ -68,7 +74,12 @@ bool copyFile(const QString &src, const QString &dst, qint64 &copied,
 
 // Copia recursiva (ficheros, carpetas y symlinks como symlinks).
 bool copyTree(const QString &src, const QString &dst, qint64 &copied,
-              const std::function<void(qint64)> &cb, QString &err) {
+              const std::function<void(qint64)> &cb,
+              const std::atomic<bool> &cancelled, QString &err) {
+  if (cancelled.load()) {
+    err = QStringLiteral("cancelled");
+    return false;
+  }
   QFileInfo si(src);
   if (si.isSymLink()) {
     // Recrear el enlace, no seguirlo.
@@ -84,12 +95,12 @@ bool copyTree(const QString &src, const QString &dst, qint64 &copied,
                                 QDir::Hidden | QDir::System);
     for (const QFileInfo &e : entries) {
       if (!copyTree(e.absoluteFilePath(), dst + QLatin1Char('/') + e.fileName(),
-                    copied, cb, err))
+                    copied, cb, cancelled, err))
         return false;
     }
     return true;
   }
-  return copyFile(src, dst, copied, cb, err);
+  return copyFile(src, dst, copied, cb, cancelled, err);
 }
 
 bool removeTree(const QString &path, QString &err) {
@@ -136,31 +147,45 @@ void FileOperations::run(const QString &op, const QString &path,
       }));
 }
 
-void FileOperations::copy(const QString &source, const QString &destination) {
-  run(QStringLiteral("copy"), source, [this, source, destination]() -> Result {
-    if (!QFileInfo::exists(source))
-      return {false, QStringLiteral("source does not exist")};
-    if (QFileInfo::exists(destination))
-      return {false, QStringLiteral("destination already exists")};
-    const qint64 total = qMax<qint64>(1, treeSize(source));
-    qint64 copied = 0;
-    double lastPct = -1;
-    const auto cb = [&](qint64 done) {
-      const double pct = qMin(100.0, done * 100.0 / total);
-      if (pct - lastPct >= 1.0) { // no inundar de senales
-        lastPct = pct;
-        emitProgress(QStringLiteral("copy"), source, pct);
-      }
-    };
-    QString err;
-    if (!copyTree(source, destination, copied, cb, err))
-      return {false, err};
-    emitProgress(QStringLiteral("copy"), source, 100.0);
-    return {true, QString()};
-  });
+void FileOperations::copy(const QString &source, const QString &destination,
+                          bool overwrite) {
+  m_cancelled.store(false);
+  run(QStringLiteral("copy"), source,
+      [this, source, destination, overwrite]() -> Result {
+        if (!QFileInfo::exists(source))
+          return {false, QStringLiteral("source does not exist")};
+        if (QFileInfo::exists(destination)) {
+          if (!overwrite)
+            return {false, QStringLiteral("destination already exists")};
+          // Semántica de "overwrite": reemplazo total (borra el destino y
+          // copia encima), coherente con lo que promete el diálogo de
+          // conflicto. Antes lo hacía `cp -f`.
+          QString rmErr;
+          if (!removeTree(destination, rmErr))
+            return {false, rmErr};
+        }
+        const qint64 total = qMax<qint64>(1, treeSize(source));
+        qint64 copied = 0;
+        double lastPct = -1;
+        const auto cb = [&](qint64 done) {
+          const double pct = qMin(100.0, done * 100.0 / total);
+          if (pct - lastPct >= 1.0) { // no inundar de senales
+            lastPct = pct;
+            emitProgress(QStringLiteral("copy"), source, pct);
+          }
+        };
+        QString err;
+        if (!copyTree(source, destination, copied, cb, m_cancelled, err))
+          return {false, err};
+        emitProgress(QStringLiteral("copy"), source, 100.0);
+        return {true, QString()};
+      });
 }
 
+void FileOperations::cancel() { m_cancelled.store(true); }
+
 void FileOperations::move(const QString &source, const QString &destination) {
+  m_cancelled.store(false);
   run(QStringLiteral("move"), source, [this, source, destination]() -> Result {
     if (!QFileInfo::exists(source))
       return {false, QStringLiteral("source does not exist")};
@@ -185,7 +210,7 @@ void FileOperations::move(const QString &source, const QString &destination) {
       }
     };
     QString err;
-    if (!copyTree(source, destination, copied, cb, err))
+    if (!copyTree(source, destination, copied, cb, m_cancelled, err))
       return {false, err};
     if (!removeTree(source, err))
       return {false, err};

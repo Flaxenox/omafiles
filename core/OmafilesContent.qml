@@ -433,6 +433,12 @@ Item {
     registry.actionEngine.startCopyProgress(sourcePaths, destPaths)
   }
 
+  // Copia nativa (Fase 13.A): sustituye al `cp` shell en runPaste/runDrop.
+  // `pairs` = [{ src, dest }], overwrite = el diálogo eligió sobrescribir.
+  function copyFiles(pairs, busyLabel, overwrite, onDone) {
+    return registry.actionEngine.runNativeCopy(pairs, busyLabel, overwrite, onDone)
+  }
+
   function openTerminalHere() {
     // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
     registry.openProc.start(["xdg-terminal-exec", "--dir=" + root.currentPath])

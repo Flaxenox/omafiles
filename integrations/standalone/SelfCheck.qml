@@ -318,6 +318,64 @@ QtObject {
       FileOperations.copy(sc.note, sc.opsDir + "/copy.txt")
     })
 
+    add("FileOperations copy overwrite (replace)", function (done) {
+      var dst = sc.opsDir + "/ow.txt"
+      sc._fileOp(done, function () {           // 1) crea el destino
+        // 2) copiar encima CON overwrite debe reemplazar (finished, no error)
+        sc._fileOp(done, function () { done(true, "destino reemplazado") })
+        FileOperations.copy(sc.note, dst, true)
+      })
+      FileOperations.copy(sc.note, dst)        // sin overwrite: destino nuevo
+    })
+
+    add("FileOperations copy directory (recursive)", function (done) {
+      sc._fileOp(done, function () {
+        sc._listOnce(sc.opsDir + "/listcopy", function (e) {
+          var ok = e.length === 4 && sc._has(e, "sub") && sc._has(e, "alpha.txt")
+          done(ok, ok ? e.length + " entradas copiadas" : "árbol incompleto")
+        })
+      })
+      FileOperations.copy(sc.listDir, sc.opsDir + "/listcopy")
+    })
+
+    add("FileOperations copy symlink preserved", function (done) {
+      sc._fileOp(done, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var ok = false
+          for (var i = 0; i < e.length; i++)
+            if (e[i].name === "linkcopy" && e[i].link && e[i].link.length > 0) ok = true
+          done(ok, ok ? "copiado como enlace" : "no quedó como symlink")
+        })
+      })
+      FileOperations.copy(sc.dir + "/link.txt", sc.opsDir + "/linkcopy")
+    })
+
+    add("FileOperations copy preserves permissions", function (done) {
+      var srcPerm = PreviewProvider.info(sc.note).permissions
+      sc._fileOp(done, function () {
+        var dstPerm = PreviewProvider.info(sc.opsDir + "/permcopy").permissions
+        var ok = srcPerm && dstPerm && srcPerm === dstPerm
+        done(ok, "src=" + srcPerm + " dst=" + dstPerm)
+      })
+      FileOperations.copy(sc.note, sc.opsDir + "/permcopy")
+    })
+
+    add("ActionEngine native copy runner (paste/drop path)", function (done) {
+      // Ejercita el cableado REAL que usan runPaste/runDrop (13.A):
+      // content.copyFiles -> ActionEngine.runNativeCopy -> FileOperations.copy
+      // -> onDone. Confirma busy/secuencia/completado sin shell.
+      var c = sc._content
+      if (!c) { done(false, "sin composition root"); return }
+      var dst = sc.opsDir + "/enginecopy.txt"
+      var started = c.copyFiles([{ src: sc.note, dest: dst }], "Copying…", false, function () {
+        sc._listOnce(sc.opsDir, function (e) {
+          var ok = sc._has(e, "enginecopy.txt")
+          done(ok, ok ? "runNativeCopy OK" : "no copió")
+        })
+      })
+      if (!started) done(false, "runNativeCopy devolvió false (¿ocupado?)")
+    })
+
     add("FileOperations move", function (done) {
       FileOperations.copy(sc.note, sc.opsDir + "/toMove.txt")
       sc._fileOp(done, function () {

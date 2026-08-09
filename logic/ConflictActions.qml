@@ -343,37 +343,41 @@ Item {
     ConflictState.dropConflictOpen = false
     ConflictState.dropConflictNames = []
     if (sources.length > 0) {
-      var noClobber = mode !== "overwrite"
       var destDir = ConflictState.dropTargetDir
       var isMove = ConflictState.dropIsMove
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
         return { src: src, dest: root.joinPath(destDir, name) }
       })
-      var cmds = pairs.map(function (p) {
-        var verb = isMove ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
-        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
-      })
       var busyVerb = isMove ? "Moving " : "Copying "
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      var dropMoveCmd = root.chainCmds(cmds)
-      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
-      root.runAction(dropMoveCmd, busyLabel, function () {
-        if (!isMove) return
-        var label = pairs.length === 1
-          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-          : "move " + pairs.length + " items"
-        root.pushUndo(label, function () {
-          var undoCmds = pairs.map(function (p) {
-            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
-          })
-          return root.runAction(root.chainCmds(undoCmds))
-        }, function () {
-          return root.runAction(dropMoveCmd)
+      if (!isMove) {
+        // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
+        root.copyFiles(pairs, busyLabel, mode === "overwrite")
+      } else {
+        // Mover sigue en shell hasta 13.B (con su undo).
+        var noClobber = mode !== "overwrite"
+        var cmds = pairs.map(function (p) {
+          return "mv " + (noClobber ? "-n" : "-f") + " -- " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
         })
-      })
+        var dropMoveCmd = root.chainCmds(cmds)
+        root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
+        root.runAction(dropMoveCmd, busyLabel, function () {
+          var label = pairs.length === 1
+            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+            : "move " + pairs.length + " items"
+          root.pushUndo(label, function () {
+            var undoCmds = pairs.map(function (p) {
+              return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
+            })
+            return root.runAction(root.chainCmds(undoCmds))
+          }, function () {
+            return root.runAction(dropMoveCmd)
+          })
+        })
+      }
     }
     ConflictState.dropPendingSources = []
     ConflictState.dropTargetDir = ""

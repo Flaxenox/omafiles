@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <atomic>
 #include <functional>
 #include <qqmlregistration.h>
 
@@ -34,9 +35,18 @@ public:
   explicit FileOperations(QObject *parent = nullptr);
 
   // Copia `source` a `destination` (ruta destino COMPLETA, incluido el
-  // nombre final). Recursiva si source es carpeta. Emite progress durante
-  // la copia. No sobrescribe: si destination existe, error.
-  Q_INVOKABLE void copy(const QString &source, const QString &destination);
+  // nombre final). Recursiva si source es carpeta (preserva symlinks como
+  // symlinks y el modo de cada fichero). Emite progress durante la copia.
+  // Si destination existe: con overwrite=true lo REEMPLAZA (borra y copia);
+  // con overwrite=false, error. Fase 13.A (josema): overwrite añade el
+  // equivalente a `cp -f`; sin él era `cp -n`.
+  Q_INVOKABLE void copy(const QString &source, const QString &destination,
+                        bool overwrite = false);
+
+  // Cancela la operación en curso (copia larga) de forma cooperativa: el
+  // worker comprueba el flag entre trozos y aborta con error "cancelled".
+  // Fase 13.A. El consumidor (ActionEngine) limpia el destino parcial.
+  Q_INVOKABLE void cancel();
 
   // Mueve `source` a `destination` (ruta destino COMPLETA). Intenta un
   // rename atomico (mismo sistema de ficheros); si cruza de disco, copia +
@@ -81,4 +91,8 @@ private:
   void run(const QString &op, const QString &path, std::function<Result()> job);
   // Emite progress(op, path, pct) de forma segura desde el hilo worker.
   void emitProgress(const QString &op, const QString &path, double pct);
+
+  // Flag de cancelación cooperativa (ver cancel()/copy()). Atómico porque lo
+  // escribe el hilo de UI y lo lee el worker del pool.
+  std::atomic<bool> m_cancelled{false};
 };

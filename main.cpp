@@ -77,6 +77,10 @@ bool writeSelfCheckFixtures(const QString &base) {
   note.write("hello selfcheck\nsecond line\n");
   note.close();
 
+  // Symlink para validar que copy preserva enlaces como enlaces (13.A).
+  QFile::remove(base + "/link.txt");
+  QFile::link(base + "/note.txt", base + "/link.txt");
+
   // PNG real para ThumbnailProvider (ruta QImageReader).
   QImage img(16, 16, QImage::Format_RGB32);
   img.fill(Qt::red);

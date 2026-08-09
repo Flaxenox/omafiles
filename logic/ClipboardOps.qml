@@ -72,36 +72,41 @@ Item {
     ConflictState.pasteConflictOpen = false
     ConflictState.pasteConflictNames = []
     if (sources.length > 0) {
-      var noClobber = mode !== "overwrite"
       var isCut = ClipboardState.clipboardMode === "cut"
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
         return { src: src, dest: root.joinPath(NavState.currentPath, name) }
       })
-      var cmds = pairs.map(function (p) {
-        var verb = isCut ? ("mv " + (noClobber ? "-n" : "-f") + " --") : ("cp -r " + (noClobber ? "-n" : "-f") + " --")
-        return verb + " " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
-      })
       var busyVerb = isCut ? "Moving " : "Copying "
       var busyLabel = pairs.length === 1
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
-      var pasteMoveCmd = root.chainCmds(cmds)
-      root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
-      root.runAction(pasteMoveCmd, busyLabel, function () {
-        if (!isCut) return
-        var label = pairs.length === 1
-          ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-          : "move " + pairs.length + " items"
-        root.pushUndo(label, function () {
-          var undoCmds = pairs.map(function (p) {
-            return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
-          })
-          return root.runAction(root.chainCmds(undoCmds))
-        }, function () {
-          return root.runAction(pasteMoveCmd)
+      if (!isCut) {
+        // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
+        // Copiar no tiene undo (deshacerlo es ambiguo, ver ActionEngine).
+        root.copyFiles(pairs, busyLabel, mode === "overwrite")
+      } else {
+        // Mover sigue en shell hasta 13.B (con su undo).
+        var noClobber = mode !== "overwrite"
+        var cmds = pairs.map(function (p) {
+          return "mv " + (noClobber ? "-n" : "-f") + " -- " + Util.shellQuote(p.src) + " " + Util.shellQuote(p.dest)
         })
-      })
+        var pasteMoveCmd = root.chainCmds(cmds)
+        root.startCopyProgress(pairs.map(function (p) { return p.src }), pairs.map(function (p) { return p.dest }))
+        root.runAction(pasteMoveCmd, busyLabel, function () {
+          var label = pairs.length === 1
+            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+            : "move " + pairs.length + " items"
+          root.pushUndo(label, function () {
+            var undoCmds = pairs.map(function (p) {
+              return "mv -n -- " + Util.shellQuote(p.dest) + " " + Util.shellQuote(p.src)
+            })
+            return root.runAction(root.chainCmds(undoCmds))
+          }, function () {
+            return root.runAction(pasteMoveCmd)
+          })
+        })
+      }
     }
     if (ClipboardState.clipboardMode === "cut") {
       ClipboardState.clipboardPaths = []

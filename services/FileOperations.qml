@@ -19,13 +19,17 @@ QtObject {
   signal finished(string op, string path)
   signal error(string op, string path, string message)
 
-  function copy(source, destination) { Backend.FileOperations.copy(source, destination) }
+  function copy(source, destination, overwrite) { Backend.FileOperations.copy(source, destination, overwrite === true) }
   function move(source, destination) { Backend.FileOperations.move(source, destination) }
   function rename(path, newName) { Backend.FileOperations.rename(path, newName) }
   function remove(path) { Backend.FileOperations.remove(path) }
   function mkdir(path) { Backend.FileOperations.mkdir(path) }
   function trash(path) { Backend.FileOperations.trash(path) }
   function restore(path) { Backend.FileOperations.restore(path) }
+  // Cancela la operación en curso (Fase 13.A). El worker aborta y emite
+  // error "cancelled", que onError NO notifica (es una cancelación pedida
+  // por el usuario, no un fallo).
+  function cancel() { Backend.FileOperations.cancel() }
 
   // Cualificado con el id: Backend.FileOperations (el target) tiene señales
   // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
@@ -36,7 +40,11 @@ QtObject {
     function onProgress(op, path, pct) { fileOps.progress(op, path, pct) }
     function onFinished(op, path) { fileOps.finished(op, path) }
     function onError(op, path, message) {
-      Backend.Notifier.notify("Action failed: " + message)
+      // "cancelled" = cancelación pedida por el usuario (FileOperations.
+      // cancel), no un fallo: no se avisa. El consumidor (ActionEngine) ya
+      // limpia el estado y el destino parcial. Fase 13.A.
+      if (message !== "cancelled")
+        Backend.Notifier.notify("Action failed: " + message)
       fileOps.error(op, path, message)
     }
   }

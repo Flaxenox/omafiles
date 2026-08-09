@@ -76,7 +76,7 @@ Item {
     // (doble clic, o una tecla de más durante una operación larga) le
     // cambiaba el comando y lo reiniciaba, cortando la operación en curso
     // a media copia sin ningún aviso.
-    if (actionProc.busy) {
+    if (actionProc.busy || nativeBusy) {
       Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
     }
@@ -106,6 +106,18 @@ Item {
   }
 
   function cancelAction() {
+    // Copia nativa en curso (Fase 13.A): cancelación cooperativa en C++. El
+    // worker aborta entre trozos y emite error "cancelled" -> bad() ->
+    // _nativeDone limpia estado y refresca. Aquí solo se pide la cancelación
+    // y se borra el destino parcial (mismo criterio que la ruta shell: solo
+    // si es UN único destino, ver más abajo).
+    if (nativeBusy) {
+      _cancelling = true
+      FileOperations.cancel()
+      if (ActionState.actionProgressDestPaths.length === 1)
+        Detached.run(["rm", "-rf", "--", ActionState.actionProgressDestPaths[0]])
+      return
+    }
     // actionProc.cancel() manda la señal a TODO el grupo de procesos
     // (el "bash -c" + el cp/mv/zip real que esté corriendo dentro, ver
     // group:true en runAction()), no solo al primero.
@@ -139,6 +151,73 @@ Item {
     ActionState.actionProgressDestPaths = destPaths
     var quoted = sourcePaths.map(function (p) { return Util.shellQuote(p) }).join(" ")
     actionProgressTotalProc.start(["bash", "-c", "du -sbc -- " + quoted + " | tail -n1 | cut -f1"])
+  }
+
+  // ---------- Copia nativa (Fase 13.A) ----------
+  // Reemplaza el `cp -r` de shell (runPaste/runDrop) por FileOperations.copy
+  // (C++: recursivo, symlinks como symlinks, preserva permisos, progreso por
+  // bytes). MANTIENE exactamente el mismo comportamiento observable que la
+  // ruta shell: mismo estado de ocupado (actionBusy/actionLabel), misma barra
+  // de progreso (startCopyProgress, sondeo de `du` sobre los destinos),
+  // misma cancelación (cancelAction), mismo refresco al terminar. Secuencial
+  // (una copia a la vez) para conservar la semántica del chainCmds anterior:
+  // si una falla, se avisa (una sola vez, en services/FileOperations) y se
+  // para. `overwrite` = el diálogo eligió sobrescribir (antes `cp -f`).
+  property bool nativeBusy: false
+  property var _copyQueue: []
+  property int _copyIdx: 0
+  property bool _copyOverwrite: false
+  property var _copyOnDone: null
+  property bool _cancelling: false
+
+  function runNativeCopy(pairs, busyLabel, overwrite, onDone) {
+    if (actionProc.busy || nativeBusy) {
+      Notifier.notify("Still busy with the previous action — try again in a moment")
+      return false
+    }
+    nativeBusy = true
+    _cancelling = false
+    _copyQueue = pairs
+    _copyIdx = 0
+    _copyOverwrite = overwrite === true
+    _copyOnDone = onDone || null
+    ActionState.actionLabel = busyLabel || ""
+    ActionState.actionBusy = !!busyLabel
+    startCopyProgress(pairs.map(function (p) { return p.src }),
+                      pairs.map(function (p) { return p.dest }))
+    _copyNext()
+    return true
+  }
+
+  function _copyNext() {
+    if (_cancelling) { _nativeDone(false); return }
+    if (_copyIdx >= _copyQueue.length) { _nativeDone(true); return }
+    var p = _copyQueue[_copyIdx]
+    function ok(op, src) { cleanup(); _copyIdx += 1; _copyNext() }
+    // El error ya lo avisó services/FileOperations (salvo "cancelled"); aquí
+    // solo se para la secuencia y se limpia el estado.
+    function bad(op, src, msg) { cleanup(); _nativeDone(false) }
+    function cleanup() {
+      FileOperations.finished.disconnect(ok)
+      FileOperations.error.disconnect(bad)
+    }
+    FileOperations.finished.connect(ok)
+    FileOperations.error.connect(bad)
+    FileOperations.copy(p.src, p.dest, _copyOverwrite)
+  }
+
+  function _nativeDone(success) {
+    nativeBusy = false
+    ActionState.actionBusy = false
+    ActionState.actionLabel = ""
+    ActionState.actionProgressPct = -1
+    ActionState.actionTotalBytes = 0
+    ActionState.actionProgressDestPaths = []
+    root.refresh()
+    root.refreshTick += 1
+    var cb = _copyOnDone
+    _copyOnDone = null
+    if (success && cb) cb()
   }
 
   ProcessRunner {
