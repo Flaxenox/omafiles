@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
@@ -19,6 +20,9 @@ import "../services"
 // solo habría cambiado de sitio ese único call site sin unir nada más.
 Item {
   property Item root: null
+  property Item actionEngine: null
+  property Item fileTypeUtils: null
+
   property Item archiveActions: null
   property Item fileOps: null
   property Item renameOps: null
@@ -40,7 +44,7 @@ Item {
     }
     var destPaths = ClipboardState.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
-      return root.joinPath(NavState.currentPath, name)
+      return Utils.joinPath(NavState.currentPath, name)
     })
     // Detección de conflictos NATIVA (Fase 13.F): FileOperations.existingPaths
     // (stat síncrono) en vez de un `test -e` por shell. Mismo resultado
@@ -67,7 +71,7 @@ Item {
     ConflictState.dropTargetDir = destDir
     ConflictState.dropIsMove = isMove
     var destPaths = sourcePaths.map(function (src) {
-      return root.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
+      return Utils.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
     // Detección de conflictos NATIVA (Fase 13.F): igual que paste().
     var conflicts = FileOperations.existingPaths(destPaths)
@@ -100,7 +104,7 @@ Item {
     var cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(root.joinPath(NavState.currentPath, archiveName)) + " && echo 1 || echo 0"])
+    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(Utils.joinPath(NavState.currentPath, archiveName)) + " && echo 1 || echo 0"])
   }
 
   function commitBulkRename() {
@@ -110,13 +114,13 @@ Item {
     var pattern = DialogsState.bulkRenamePattern
     bookmarkOps.addBulkRenameHistory(pattern)
     var pairs = entries.map(function (e, i) {
-      var ext = e.type === "dir" ? "" : (root.extOf(e.name) ? "." + root.extOf(e.name) : "")
+      var ext = e.type === "dir" ? "" : (fileTypeUtils.extOf(e.name) ? "." + fileTypeUtils.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
       var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
       return {
         oldName: e.name, newName: newName,
-        oldPath: root.joinPath(NavState.currentPath, e.name),
-        newPath: root.joinPath(NavState.currentPath, newName)
+        oldPath: Utils.joinPath(NavState.currentPath, e.name),
+        newPath: Utils.joinPath(NavState.currentPath, newName)
       }
     })
     ConflictState.pendingBulkRename = pairs
@@ -141,8 +145,8 @@ Item {
   }
 
   function extractHere(entry) {
-    var ext = root.extOf(entry.name)
-    var path = Util.shellQuote(root.joinPath(NavState.currentPath, entry.name))
+    var ext = fileTypeUtils.extOf(entry.name)
+    var path = Util.shellQuote(Utils.joinPath(NavState.currentPath, entry.name))
     var dir = Util.shellQuote(NavState.currentPath)
     var cmd, listCmd
     // Todas fuerzan sobrescritura (-o/-y/-o+) -- necesario para que
@@ -186,8 +190,8 @@ Item {
     var oldName = NavState.visibleEntries[index].name
     newName = newName.trim()
     if (!newName || newName === oldName) return
-    var oldPath = root.joinPath(NavState.currentPath, oldName)
-    var newPath = root.joinPath(NavState.currentPath, newName)
+    var oldPath = Utils.joinPath(NavState.currentPath, oldName)
+    var newPath = Utils.joinPath(NavState.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
     renameCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"])
   }
@@ -212,7 +216,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = root.joinPath(NavState.currentPath, name)
+    var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
     newFileCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
@@ -230,7 +234,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = root.joinPath(NavState.currentPath, name)
+    var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
     newFolderCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
   }
@@ -280,7 +284,7 @@ Item {
       var names = Object.keys(top)
       if (names.length === 0) { archiveActions.runPendingExtract(); return }
       var checkCmd = names.map(function (n) {
-        return "test -e " + Util.shellQuote(root.joinPath(NavState.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
+        return "test -e " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
       }).join("; ")
       extractConflictCheckProc.start(["bash", "-c", checkCmd])
     }
@@ -345,7 +349,7 @@ Item {
       var isMove = ConflictState.dropIsMove
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: root.joinPath(destDir, name) }
+        return { src: src, dest: Utils.joinPath(destDir, name) }
       })
       var busyVerb = isMove ? "Moving " : "Copying "
       var busyLabel = pairs.length === 1
@@ -353,20 +357,20 @@ Item {
         : busyVerb + pairs.length + " items…"
       if (!isMove) {
         // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
-        root.copyFiles(pairs, busyLabel, mode === "overwrite")
+        actionEngine.copyFiles(pairs, busyLabel, mode === "overwrite")
       } else {
         // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
         // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
         var overwrite = mode === "overwrite"
-        root.moveFiles(pairs, busyLabel, overwrite, function () {
+        actionEngine.moveFiles(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
             ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
             : "move " + pairs.length + " items"
           var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
-          root.pushUndo(label, function () {
-            return root.moveFiles(reversed, "", false)      // deshacer: no-clobber
+          actionEngine.pushUndo(label, function () {
+            return actionEngine.moveFiles(reversed, "", false)      // deshacer: no-clobber
           }, function () {
-            return root.moveFiles(pairs, "", overwrite)     // rehacer: como el original
+            return actionEngine.moveFiles(pairs, "", overwrite)     // rehacer: como el original
           })
         })
       }

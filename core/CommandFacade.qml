@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import "../state"
 
@@ -86,7 +87,7 @@ Item {
       cmds.push({ label: "Mount ISO", run: function () { mountOps.mountIso(entry) } })
     }
     if (entry) {
-      var fullPath = root.joinPath(NavState.currentPath, entry.name)
+      var fullPath = Utils.joinPath(NavState.currentPath, entry.name)
       if (!bookmarkOps.isBookmarked(fullPath)) {
         cmds.push({ label: "Add to bookmarks", run: function () { bookmarkOps.addBookmark(fullPath, entry.name, entry.type) } })
       }
@@ -184,7 +185,7 @@ Item {
         // "Open in new tab" abría la carpeta dentro de la carpeta
         // EQUIVOCADA. Capturado como variable local, coherente con como
         // ya lo hace paletteCommands() para el mismo caso.
-        var dirFullPath = root.joinPath(NavState.currentPath, entries[0].name)
+        var dirFullPath = Utils.joinPath(NavState.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
           tabOps.openInNewTab(dirFullPath)
         } })
@@ -201,7 +202,7 @@ Item {
     if (!multi) {
       actions.push({ label: "Rename", action: function () { renameOps.startRename(SelectionState.selectedIndex) } })
       actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
-      var fullPath = root.joinPath(NavState.currentPath, entries[0].name)
+      var fullPath = Utils.joinPath(NavState.currentPath, entries[0].name)
       if (!bookmarkOps.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }

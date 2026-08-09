@@ -223,7 +223,7 @@ Item {
         keys: ["text/uri-list"]
         onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
         onDropped: function (drop) {
-          hostDragDropOps.handleFilesDropped(drop, hostRoot.joinPath(bgPanel.modelData.path, modelData.name))
+          hostDragDropOps.handleFilesDropped(drop, Utils.joinPath(bgPanel.modelData.path, modelData.name))
         }
       }
 
@@ -243,7 +243,7 @@ Item {
         // Miniatura nativa (imágenes/SVG/PDF) vía ThumbnailProvider -- Fase
         // 10.A: antes se cargaba el fichero de imagen COMPLETO para pintarlo
         // a 32 px. Mismo patrón que FileListRow, con la ruta de ESTE panel.
-        readonly property string myPath: hostRoot.joinPath(bgPanel.modelData.path, modelData.name)
+        readonly property string myPath: Utils.joinPath(bgPanel.modelData.path, modelData.name)
         readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
           || modelData.name.toLowerCase().slice(-4) === ".svg"
         property string imgThumb: ""
@@ -287,9 +287,9 @@ Item {
         drag.axis: Drag.XAndYAxis
         onDoubleClicked: {
           if (modelData.type === "dir") {
-            hostTabOps.navigateTabTo(bgPanel.index, hostRoot.joinPath(bgPanel.modelData.path, modelData.name))
+            hostTabOps.navigateTabTo(bgPanel.index, Utils.joinPath(bgPanel.modelData.path, modelData.name))
           } else {
-            hostRoot.openWithDefault(hostRoot.joinPath(bgPanel.modelData.path, modelData.name))
+            hostRoot.openWithDefault(Utils.joinPath(bgPanel.modelData.path, modelData.name))
           }
         }
       }
@@ -304,7 +304,7 @@ Item {
         Drag.proposedAction: Qt.MoveAction
         Drag.mimeData: {
           var data = {}
-          data["text/uri-list"] = Util.fileUrl(hostRoot.joinPath(bgPanel.modelData.path, modelData.name))
+          data["text/uri-list"] = Util.fileUrl(Utils.joinPath(bgPanel.modelData.path, modelData.name))
           return data
         }
       }

@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import "../state"
 
@@ -5,6 +6,8 @@ import "../state"
 // vigésimo tercer componente extraído de Omafiles.qml.
 Item {
   property Item root: null
+  property Item actionEngine: null
+
   property Item selectionOps: null
 
   function requestDelete() {
@@ -33,26 +36,26 @@ Item {
         paths.push(info.trashRoot + "/files/" + n)
         paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
       })
-      if (paths.length > 0) root.removeFiles(paths, "", true)
+      if (paths.length > 0) actionEngine.removeFiles(paths, "", true)
     } else {
       // Enviar a papelera NATIVO (Fase 13.D): FileOperations.trash
       // (QFile::moveToTrash, XDG Trash) en vez de `gio trash`. Rutas
       // originales absolutas capturadas AQUÍ (no dentro de los closures de
       // más abajo) -- NavState.currentPath puede haber cambiado para cuando
       // el usuario pulse deshacer, mucho más tarde.
-      var origPaths = names.map(function (n) { return root.joinPath(NavState.currentPath, n) })
+      var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      root.trashFiles(origPaths, "", function () {
+      actionEngine.trashFiles(origPaths, "", function () {
         // El undo solo se registra si el envío confirmó éxito. Deshacer =
         // restaurar POR RUTA ORIGINAL (Fase 13.E, restoreByOrigPath): busca
         // en TODAS las papeleras activas el .trashinfo cuya ruta original
         // coincide, así funciona igual borre desde donde borre -- y sirve
         // aunque el usuario deshaga mucho después sin haber abierto nunca la
         // Papelera.
-        root.pushUndo(label, function () {
-          return root.restoreFiles(origPaths, "")
+        actionEngine.pushUndo(label, function () {
+          return actionEngine.restoreFiles(origPaths, "")
         }, function () {
-          return root.trashFiles(origPaths, "")
+          return actionEngine.trashFiles(origPaths, "")
         })
       })
     }

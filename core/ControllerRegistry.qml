@@ -52,12 +52,16 @@ Item {
     list: registry.list
     selectionOps: selectionOps
     sortOps: sortOps
+    actionEngine: actionEngine
+    navController: navController
+    fileTypeUtils: fileTypeUtils
   }
 
   FileOps {
     id: fileOps
     root: registry.root
     selectionOps: selectionOps
+    actionEngine: actionEngine
   }
 
   VideoThumbnails {
@@ -68,12 +72,15 @@ Item {
   RenameOps {
     id: renameOps
     root: registry.root
+    actionEngine: actionEngine
+    navController: navController
   }
 
   ClipboardOps {
     id: clipboardOps
     root: registry.root
     selectionOps: selectionOps
+    actionEngine: actionEngine
   }
 
   DragDropOps {
@@ -89,6 +96,7 @@ Item {
     list: registry.list
     selectionOps: selectionOps
     sortOps: sortOps
+    navController: navController
   }
 
   OpenWithOps {
@@ -106,6 +114,7 @@ Item {
     id: deleteOps
     root: registry.root
     selectionOps: selectionOps
+    actionEngine: actionEngine
   }
 
   TabOps {
@@ -114,6 +123,7 @@ Item {
     list: registry.list
     archiveActions: archiveActions
     previewLoader: previewLoader
+    navController: navController
   }
 
   SelectionOps {
@@ -125,6 +135,7 @@ Item {
   SortOps {
     id: sortOps
     root: registry.root
+    fileTypeUtils: fileTypeUtils
   }
 
   FileTypeUtils {
@@ -138,6 +149,8 @@ Item {
     persistence: persistence
     tabOps: tabOps
     mountOps: mountOps
+    navController: navController
+    fileTypeUtils: fileTypeUtils
   }
 
   NavigationController {
@@ -164,17 +177,20 @@ Item {
     id: mountOps
     root: registry.root
     tabOps: tabOps
+    navController: navController
   }
 
   Persistence {
     id: persistence
     root: registry.root
     tabOps: tabOps
+    navController: navController
   }
 
   ActionEngine {
     id: actionEngine
     root: registry.root
+    navController: navController
   }
 
   ConflictActions {
@@ -186,6 +202,8 @@ Item {
     clipboardOps: clipboardOps
     selectionOps: selectionOps
     bookmarkOps: bookmarkOps
+    actionEngine: actionEngine
+    fileTypeUtils: fileTypeUtils
   }
 
   PreviewLoader {
@@ -193,6 +211,7 @@ Item {
     root: registry.root
     videoThumbs: videoThumbs
     fileMeta: fileMeta
+    fileTypeUtils: fileTypeUtils
   }
 
 

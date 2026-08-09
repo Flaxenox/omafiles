@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import "../state"
 import "../services"
@@ -19,6 +20,8 @@ import "../services"
 // (ffmpegthumbnailer) y los metadatos de audio (ffprobe).
 Item {
   property Item root: null
+  property Item fileTypeUtils: null
+
   property Item videoThumbs: null
   property Item fileMeta: null
 
@@ -46,10 +49,10 @@ Item {
     PreviewContentState.previewPdfImage = ""
     PreviewContentState.previewImage = ""
     PreviewContentState.previewAudioInfo = []
-    var ext = root.extOf(entry.name)
-    var path = root.joinPath(NavState.currentPath, entry.name)
+    var ext = fileTypeUtils.extOf(entry.name)
+    var path = Utils.joinPath(NavState.currentPath, entry.name)
     PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
-    if (PreviewContentState.previewIsText && !root.isImage(entry)) {
+    if (PreviewContentState.previewIsText && !fileTypeUtils.isImage(entry)) {
       // Texto plano NATIVO (PreviewProvider): lee hasta 256 KB en un hilo,
       // con cancelación por generación si se cambia de selección. El
       // resultado llega por textReady (ver la Connections de abajo).
@@ -69,16 +72,16 @@ Item {
     // Connections de ThumbnailProvider.ready la recoge (re-pide a tamaño de
     // preview, cuya clave de caché no coincide con la miniatura de 256px de
     // la lista).
-    if (root.isImage(entry)) {
+    if (fileTypeUtils.isImage(entry)) {
       PreviewContentState._previewImageOwner = reqId
       PreviewContentState.previewImage = ThumbnailProvider.request(path, previewSize)
     }
-    if (root.isPdf(entry)) {
+    if (fileTypeUtils.isPdf(entry)) {
       PreviewContentState._previewPdfOwner = reqId
       PreviewContentState.previewPdfImage = ThumbnailProvider.request(path, previewSize)
     }
-    if (root.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
-    if (root.isAudio(entry)) {
+    if (fileTypeUtils.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
+    if (fileTypeUtils.isAudio(entry)) {
       PreviewContentState._previewAudioOwner = reqId
       audioInfoProc.start(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path])
     }
@@ -102,11 +105,11 @@ Item {
     target: ThumbnailProvider
     function onReady(path, thumbPath) {
       var e = PreviewContentState.previewEntry
-      if (!e || path !== root.joinPath(NavState.currentPath, e.name)) return
-      if (root.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
+      if (!e || path !== Utils.joinPath(NavState.currentPath, e.name)) return
+      if (fileTypeUtils.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
         var p = ThumbnailProvider.request(path, previewSize)
         if (p) PreviewContentState.previewImage = p
-      } else if (root.isPdf(e) && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) {
+      } else if (fileTypeUtils.isPdf(e) && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) {
         var q = ThumbnailProvider.request(path, previewSize)
         if (q) PreviewContentState.previewPdfImage = q
       }

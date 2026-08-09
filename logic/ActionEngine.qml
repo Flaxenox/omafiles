@@ -16,6 +16,8 @@ import "../services"
 // cambió.
 Item {
   property Item root: null
+  property Item navController: null
+
 
   // Pila simple de acciones reversibles: renombrar, nueva carpeta/fichero,
   // borrar (a la papelera), mover (cortar+pegar/arrastrar), renombrado en
@@ -123,7 +125,7 @@ Item {
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
-    root.refresh()
+    navController.refresh()
     NavState.refreshTick += 1
   }
 
@@ -272,7 +274,7 @@ Item {
     ActionState.actionProgressPct = -1
     ActionState.actionTotalBytes = 0
     ActionState.actionProgressDestPaths = []
-    root.refresh()
+    navController.refresh()
     NavState.refreshTick += 1
     var cb = _batchOnDone
     _batchOnDone = null
@@ -287,7 +289,7 @@ Item {
       ActionState.actionProgressPct = -1
       ActionState.actionTotalBytes = 0
       ActionState.actionProgressDestPaths = []
-      root.refresh()
+      navController.refresh()
       // Una acción (borrar, mover, pegar...) puede afectar a cualquier
       // panel, no solo al activo -- refreshTick es la señal para que los
       // paneles no activos (cada uno con su propio Process de listado, ver

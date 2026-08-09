@@ -23,6 +23,8 @@ import "../services"
 // puede seguir disparando refresh()/startDirWatch ella sola.
 Item {
   property Item root: null
+  property Item navController: null
+
   property Item tabOps: null
 
   // Escritura fire-and-forget de un JSON a disco -- JsonStore.write crea la
@@ -110,8 +112,8 @@ Item {
           TabsState.navHistory = [NavState.currentPath]
           TabsState.navHistoryIndex = 0
         }
-        root.refresh()
-        if (!ArchiveState.inArchive) root.startDirWatch(NavState.currentPath)
+        navController.refresh()
+        if (!ArchiveState.inArchive) navController.startDirWatch(NavState.currentPath)
       } else if (path === Paths.bulkRenameHistoryFile) {
         BookmarksState.bulkRenameHistoryLoaded = true
         BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []

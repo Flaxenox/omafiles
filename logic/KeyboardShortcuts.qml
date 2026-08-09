@@ -11,6 +11,8 @@ import "../state"
 // entera.
 Item {
   property Item hostRoot: null
+  property Item hostActionEngine: null
+  property Item hostNavController: null
   property Item hostListView: null
   property Timer hostGTimer: null
   property Item hostPreviewLoader: null
@@ -129,10 +131,10 @@ Item {
       else hostTabOps.closeTab()
       event.accepted = true
     } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
-      hostRoot.goUp()
+      hostNavController.goUp()
       event.accepted = true
     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
-      if (SelectionState.selectedIndex >= 0) hostRoot.enter(NavState.visibleEntries[SelectionState.selectedIndex])
+      if (SelectionState.selectedIndex >= 0) hostNavController.enter(NavState.visibleEntries[SelectionState.selectedIndex])
       event.accepted = true
     } else if (event.key === Qt.Key_Space) {
       hostPreviewLoader.togglePreview()
@@ -179,7 +181,7 @@ Item {
       hostDeleteOps.requestDelete()
       event.accepted = true
     } else if (event.key === Qt.Key_F5) {
-      hostRoot.refresh()
+      hostNavController.refresh()
       event.accepted = true
     } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
       hostSortOps.reverseSort()
@@ -206,10 +208,10 @@ Item {
       hostTabOps.newTab()
       event.accepted = true
     } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {
-      hostRoot.navBack()
+      hostNavController.navBack()
       event.accepted = true
     } else if (event.key === Qt.Key_Right && (event.modifiers & Qt.AltModifier)) {
-      hostRoot.navForward()
+      hostNavController.navForward()
       event.accepted = true
     } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
       hostTabOps.newTab()
@@ -233,13 +235,13 @@ Item {
       hostConflictActions.paste()
       event.accepted = true
     } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      hostRoot.redoLast()
+      hostActionEngine.redoLast()
       event.accepted = true
     } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier)) {
-      hostRoot.redoLast()
+      hostActionEngine.redoLast()
       event.accepted = true
     } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
-      hostRoot.undoLast()
+      hostActionEngine.undoLast()
       event.accepted = true
     }
   }

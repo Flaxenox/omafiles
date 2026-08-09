@@ -14,6 +14,8 @@ import "../Utils.js" as Utils
 // quedan wrappers sueltos en root.
 Item {
   property Item root: null
+  property Item navController: null
+
   property Item tabOps: null
 
   function refreshMounts() {
@@ -111,7 +113,7 @@ Item {
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.start(["bash", Paths.pluginDir + "/mount-iso.sh", root.joinPath(NavState.currentPath, entry.name)])
+    mountIsoProc.start(["bash", Paths.pluginDir + "/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
   }
 
   ProcessRunner {
@@ -227,7 +229,7 @@ Item {
       MountsState.networkMounts = parsed
       var before = networkMountsAfterConnectProc.beforePaths
       var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
-      if (fresh.length > 0) root.navigateTo(fresh[0].path)
+      if (fresh.length > 0) navController.navigateTo(fresh[0].path)
     }
   }
 }

@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
@@ -13,13 +14,13 @@ Item {
     if (!entry || entry.type === "dir") return
     PreviewState.openWithEntry = entry
     PreviewState.openWithApps = []
-    openWithProc.start([Paths.pluginDir + "/open-with-list.sh", root.joinPath(NavState.currentPath, entry.name)])
+    openWithProc.start([Paths.pluginDir + "/open-with-list.sh", Utils.joinPath(NavState.currentPath, entry.name)])
     PreviewState.openWithOpen = true
   }
 
   function launchWith(desktopId) {
     if (PreviewState.openWithEntry) {
-      var openPath = root.joinPath(NavState.currentPath, PreviewState.openWithEntry.name)
+      var openPath = Utils.joinPath(NavState.currentPath, PreviewState.openWithEntry.name)
       Detached.run(["gtk-launch", desktopId, openPath])
       bookmarkOps.addRecent(openPath, PreviewState.openWithEntry.name)
     }

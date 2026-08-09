@@ -8,6 +8,8 @@ import "../Utils.js" as Utils
 // extraído de Omafiles.qml.
 Item {
   property Item root: null
+  property Item navController: null
+
   // La ListView principal (id "list" en Omafiles.qml) -- estas acciones
   // resetean su scroll igual que refresh()/navigateTo() con una carpeta
   // normal.
@@ -18,7 +20,7 @@ Item {
   function toggleHidden() {
     NavState.showHidden = !NavState.showHidden
     list.contentY = list.originY
-    root.refresh()
+    navController.refresh()
     NavState.refreshTick += 1
   }
 
@@ -42,7 +44,7 @@ Item {
     NavState.deepSearchRoot = ""
     NavState.searchTruncated = false
     list.contentY = list.originY
-    root.refresh()
+    navController.refresh()
     selectionOps.selectOnly(-1)
   }
 

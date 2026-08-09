@@ -45,10 +45,9 @@ Item {
   // tercer slice de la capa state/. Lógica sin cambios en
   // logic/ActionEngine.qml.
 
-  function pushUndo(label, undoFn, redoFn) {
-    registry.actionEngine.pushUndo(label, undoFn, redoFn)
-  }
-
+  // undoLast/redoLast siguen como wrappers finos porque la capa visual
+  // (menús/paleta) los llama por la fachada del root. pushUndo ya no: sus
+  // llamadores de logic/ reciben actionEngine inyectado (Fase 14.D).
   function undoLast() {
     registry.actionEngine.undoLast()
   }
@@ -172,11 +171,10 @@ Item {
   // tarExt) viven ahora en state/FileTypeConfig.qml (Fase 14.B).
 
   // ---------- Tipo de fichero (extensión/icono) ----------
-  // extOf/iconFor/isImage/isVideo/isAudio/isPdf viven ahora en
-  // logic/FileTypeUtils.qml -- envoltorios de una línea, ver el comentario
-  // de ese fichero (38 sitios de llamada externos, mismo criterio que
-  // ActionEngine).
-  function extOf(name) { return registry.fileTypeUtils.extOf(name) }
+  // iconFor/isImage/isVideo/isAudio/isPdf siguen como wrappers finos porque
+  // la capa visual (delegates/paneles) los llama por la fachada del root.
+  // extOf ya no: sus llamadores de logic/ reciben fileTypeUtils inyectado
+  // (Fase 14.D). El controlador real es logic/FileTypeUtils.qml.
   function iconFor(entry) { return registry.fileTypeUtils.iconFor(entry) }
   function isImage(entry) { return registry.fileTypeUtils.isImage(entry) }
   function isVideo(entry) { return registry.fileTypeUtils.isVideo(entry) }
@@ -218,7 +216,7 @@ Item {
     // la vista agrega la de cualquier disco montado (ver
     // trash-roots.sh), vaciar tiene que cubrir las mismas o el botón
     // dejaría cosas huérfanas afirmando haber vaciado del todo.
-    runAction("bash " + Util.shellQuote(Paths.pluginDir + "/empty-trash.sh"), "Emptying trash…")
+    registry.actionEngine.runAction("bash " + Util.shellQuote(Paths.pluginDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
   // parseEntries: movida a Utils.js (función pura, comentario completo
@@ -231,9 +229,8 @@ Item {
   // viven ahora en logic/SortOps.qml.
 
   // ---------- Navegación / historial / pestañas ----------
-  function joinPath(base, name) {
-    return base === "/" ? "/" + name : base + "/" + name
-  }
+  // joinPath se movió a Utils.js (función pura, Fase 14.D): logic/ y la capa
+  // visual la llaman como Utils.joinPath, ya no por la fachada del root.
 
   // La lógica real de navegación/historial vive en
   // logic/NavigationController.qml (navController más abajo) -- wrappers
@@ -358,59 +355,14 @@ Item {
   }
 
 
-  // onSuccess (opcional) se llama SOLO si el comando termina con exit 0 --
-  // úsalo para todo lo que no deba pasar si la acción en realidad falló
-  // (sobre todo pushUndo: un undo registrado para algo que nunca ocurrió en
-  // disco es peor que no tener undo). Devuelve true si el comando se lanzó,
-  // false si se descartó porque ya había otra acción en marcha (el llamador
-  // decide si eso merece avisar al usuario).
-  function runAction(cmd, busyLabel, onSuccess) {
-    return registry.actionEngine.runAction(cmd, busyLabel, onSuccess)
-  }
-
-  function chainCmds(cmds) {
-    return registry.actionEngine.chainCmds(cmds)
-  }
-
+  // runAction/chainCmds/startCopyProgress y los runners nativos (copyFiles/
+  // moveFiles/removeFiles/trashFiles/restoreFiles) eran wrappers finos a
+  // registry.actionEngine.*; sus llamadores de logic/ reciben ahora
+  // actionEngine inyectado (Fase 14.D), así que se retiraron. cancelAction se
+  // queda: lo llama la capa visual (botón de cancelar) por la fachada del
+  // root.
   function cancelAction() {
     registry.actionEngine.cancelAction()
-  }
-
-  function startCopyProgress(sourcePaths, destPaths) {
-    registry.actionEngine.startCopyProgress(sourcePaths, destPaths)
-  }
-
-  // Copia nativa (Fase 13.A): sustituye al `cp` shell en runPaste/runDrop.
-  // `pairs` = [{ src, dest }], overwrite = el diálogo eligió sobrescribir.
-  function copyFiles(pairs, busyLabel, overwrite, onDone) {
-    return registry.actionEngine.runNativeCopy(pairs, busyLabel, overwrite, onDone)
-  }
-
-  // Movimiento nativo (Fase 13.B): sustituye al `mv` shell en runPaste/
-  // runDrop. Mismo modelo de undo -- el llamador registra el undo/redo en
-  // onDone, reutilizando moveFiles con los pares invertidos/originales.
-  function moveFiles(pairs, busyLabel, overwrite, onDone) {
-    return registry.actionEngine.runNativeMove(pairs, busyLabel, overwrite, onDone)
-  }
-
-  // Borrado permanente nativo (Fase 13.C): sustituye al `rm -rf`/`rm -f`
-  // shell del borrado permanente en DeleteOps. `paths` = rutas a borrar,
-  // ignoreMissing = semántica `rm -f`. Sin undo (el borrado permanente no
-  // se puede deshacer).
-  function removeFiles(paths, busyLabel, ignoreMissing, onDone) {
-    return registry.actionEngine.runNativeRemove(paths, busyLabel, ignoreMissing, onDone)
-  }
-
-  // Enviar a papelera nativo (Fase 13.D): sustituye a `gio trash`. El undo lo
-  // registra el llamador (DeleteOps) con restoreFiles(rutasOriginales).
-  function trashFiles(paths, busyLabel, onDone) {
-    return registry.actionEngine.runNativeTrash(paths, busyLabel, onDone)
-  }
-
-  // Restaurar nativo (Fase 13.E): sustituye a restore-by-origpath.sh. `paths`
-  // = rutas ORIGINALES. Usado por la acción Restore y por el undo del envío.
-  function restoreFiles(paths, busyLabel, onDone) {
-    return registry.actionEngine.runNativeRestore(paths, busyLabel, onDone)
   }
 
   function openTerminalHere() {
@@ -470,6 +422,13 @@ Item {
     list: mainLayout.list
   }
 
+  // Motor de acciones expuesto como referencia (no wrapper): MainLayout lo
+  // inyecta hacia KeyboardShortcuts y el arnés --selfcheck ejercita sus
+  // runners nativos directamente, la MISMA ruta que usa la app tras la
+  // inyección de dependencias (Fase 14.D). Es un seam explícito, no la
+  // fachada genérica del god object.
+  readonly property alias actionEngine: registry.actionEngine
+
   // Fachada operativa (builders de menús/comandos/migas). Fase 11.C.
   CommandFacade {
     id: commandFacade
@@ -503,6 +462,8 @@ Item {
     id: mainLayout
     anchors.fill: parent
     root: root
+    actionEngine: registry.actionEngine
+    navController: registry.navController
     bookmarkOps: registry.bookmarkOps
     mountOps: registry.mountOps
     dragDropOps: registry.dragDropOps

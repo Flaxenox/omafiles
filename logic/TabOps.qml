@@ -6,9 +6,11 @@ import "../state"
 // vigésimo cuarto componente extraído de Omafiles.qml. `_goToPath()` (la
 // navegación de la pestaña ACTIVA en sí) se queda en root -- es el núcleo
 // de la navegación real, demasiado central para mover, y estas funciones
-// ya lo llaman como `root._goToPath(...)` sin problema.
+// ya lo llaman como `navController._goToPath(...)` sin problema.
 Item {
   property Item root: null
+  property Item navController: null
+
   // La ListView principal (id "list" en Omafiles.qml) -- guardar/restaurar
   // scroll al cambiar de pestaña.
   property Item list: null
@@ -33,7 +35,7 @@ Item {
   function navigateTabTo(index, path) {
     if (!path || index < 0 || index >= TabsState.tabs.length) return
     path = path.replace(/\/+$/, "") || "/"
-    if (index === TabsState.activeTabIndex) { root.navigateTo(path); return }
+    if (index === TabsState.activeTabIndex) { navController.navigateTo(path); return }
     var next = TabsState.tabs.slice()
     var tab = next[index]
     if (path === tab.path) return
@@ -48,7 +50,7 @@ Item {
   // ese objeto de pestaña en concreto en vez de TabsState.navHistory (que es
   // solo el de la activa).
   function navTabBack(index) {
-    if (index === TabsState.activeTabIndex) { root.navBack(); return }
+    if (index === TabsState.activeTabIndex) { navController.navBack(); return }
     if (index < 0 || index >= TabsState.tabs.length) return
     var tab = TabsState.tabs[index]
     var hIdx = tab.historyIndex !== undefined ? tab.historyIndex : 0
@@ -60,7 +62,7 @@ Item {
   }
 
   function navTabForward(index) {
-    if (index === TabsState.activeTabIndex) { root.navForward(); return }
+    if (index === TabsState.activeTabIndex) { navController.navForward(); return }
     if (index < 0 || index >= TabsState.tabs.length) return
     var tab = TabsState.tabs[index]
     var hist = tab.history || [tab.path]
@@ -146,7 +148,7 @@ Item {
     saveActiveTab()
     TabsState.activeTabIndex = index
     _restoreTabHistory(TabsState.tabs[index])
-    root._goToPath(TabsState.tabs[index].path)
+    navController._goToPath(TabsState.tabs[index].path)
     _restoreTabArchive(TabsState.tabs[index])
     _restoreTabPreview(TabsState.tabs[index])
     _restoreTabScroll(TabsState.tabs[index])
@@ -169,7 +171,7 @@ Item {
     TabsState.activeTabIndex = TabsState.tabs.length - 1
     TabsState.navHistory = [path]
     TabsState.navHistoryIndex = 0
-    root._goToPath(path)
+    navController._goToPath(path)
   }
 
   function closeTab() {
@@ -180,7 +182,7 @@ Item {
     var newIndex = Math.min(TabsState.activeTabIndex, next.length - 1)
     TabsState.activeTabIndex = newIndex
     _restoreTabHistory(TabsState.tabs[newIndex])
-    root._goToPath(TabsState.tabs[newIndex].path)
+    navController._goToPath(TabsState.tabs[newIndex].path)
     _restoreTabArchive(TabsState.tabs[newIndex])
     _restoreTabPreview(TabsState.tabs[newIndex])
     _restoreTabScroll(TabsState.tabs[newIndex])

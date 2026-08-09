@@ -31,6 +31,8 @@ import "../Utils.js" as Utils
 Item {
   property Item root: null
   property Item card: null
+  property Item actionEngine: null
+  property Item navController: null
   property Timer gTimer: null
   property Item previewLoader: null
   property Item conflictActions: null
@@ -65,6 +67,8 @@ Item {
   KeyboardShortcuts {
     id: keyboardShortcuts
     hostRoot: root
+    hostActionEngine: actionEngine
+    hostNavController: navController
     hostListView: listView
     hostGTimer: gTimer
     hostPreviewLoader: previewLoader

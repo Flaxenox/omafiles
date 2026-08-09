@@ -10,6 +10,9 @@ import "../state"
 // 3 ficheros (Sidebar.qml, OpenWithOps.qml, ConflictActions.qml).
 Item {
   property Item root: null
+  property Item navController: null
+  property Item fileTypeUtils: null
+
   property Item persistence: null
   property Item tabOps: null
   property Item mountOps: null
@@ -77,11 +80,11 @@ Item {
     // extensión, como en la lista principal, en vez de adivinar por
     // nombre de etiqueta (eso solo tiene sentido para las carpetas
     // especiales de abajo).
-    if (modelData.type === "file") return root.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
+    if (modelData.type === "file") return fileTypeUtils.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
     var label = modelData.label.toLowerCase()
-    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return root.iconFor({ name: "x.jpg" })
-    if (label.indexOf("video") >= 0) return root.iconFor({ name: "x.mp4" })
-    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return root.iconFor({ name: "x.mp3" })
+    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return fileTypeUtils.iconFor({ name: "x.jpg" })
+    if (label.indexOf("video") >= 0) return fileTypeUtils.iconFor({ name: "x.mp4" })
+    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return fileTypeUtils.iconFor({ name: "x.mp3" })
     return "\u{F024B}"
   }
 
@@ -90,7 +93,7 @@ Item {
   }
 
   function iconForMount(mount) {
-    if (mount.fstype === "iso9660") return root.iconFor({ type: "file", name: "x.iso" })
+    if (mount.fstype === "iso9660") return fileTypeUtils.iconFor({ type: "file", name: "x.iso" })
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
   }
 
@@ -103,7 +106,7 @@ Item {
 
   function networkMountActions(mount) {
     return [
-      { label: "Open", action: function () { root.navigateTo(mount.path) } },
+      { label: "Open", action: function () { navController.navigateTo(mount.path) } },
       { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } },
       { label: "Disconnect", destructive: true, action: function () { mountOps.disconnectNetworkMount(mount) } }
     ]

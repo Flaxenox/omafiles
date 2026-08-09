@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
@@ -8,13 +9,15 @@ import "../services"
 // Omafiles.qml.
 Item {
   property Item root: null
+  property Item actionEngine: null
+
   property Item selectionOps: null
 
   function copySelected() {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
     ClipboardState.clipboardMode = "copy"
     syncClipboardToSystem()
   }
@@ -23,7 +26,7 @@ Item {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
     ClipboardState.clipboardMode = "cut"
     syncClipboardToSystem()
   }
@@ -41,7 +44,7 @@ Item {
   // una ruta por línea.
   function copyPathFor(entries) {
     if (!entries || entries.length === 0) return
-    var paths = entries.map(function (e) { return root.joinPath(NavState.currentPath, e.name) })
+    var paths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
     Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
   }
 
@@ -75,7 +78,7 @@ Item {
       var isCut = ClipboardState.clipboardMode === "cut"
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: root.joinPath(NavState.currentPath, name) }
+        return { src: src, dest: Utils.joinPath(NavState.currentPath, name) }
       })
       var busyVerb = isCut ? "Moving " : "Copying "
       var busyLabel = pairs.length === 1
@@ -84,20 +87,20 @@ Item {
       if (!isCut) {
         // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
         // Copiar no tiene undo (deshacerlo es ambiguo, ver ActionEngine).
-        root.copyFiles(pairs, busyLabel, mode === "overwrite")
+        actionEngine.copyFiles(pairs, busyLabel, mode === "overwrite")
       } else {
         // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
         // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
         var overwrite = mode === "overwrite"
-        root.moveFiles(pairs, busyLabel, overwrite, function () {
+        actionEngine.moveFiles(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
             ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
             : "move " + pairs.length + " items"
           var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
-          root.pushUndo(label, function () {
-            return root.moveFiles(reversed, "", false)      // deshacer: no-clobber
+          actionEngine.pushUndo(label, function () {
+            return actionEngine.moveFiles(reversed, "", false)      // deshacer: no-clobber
           }, function () {
-            return root.moveFiles(pairs, "", overwrite)     // rehacer: como el original
+            return actionEngine.moveFiles(pairs, "", overwrite)     // rehacer: como el original
           })
         })
       }

@@ -65,7 +65,7 @@ CursorSurface {
     onExited: if (DropHoverState.dropHoverIndex === index) DropHoverState.dropHoverIndex = -1
     onDropped: function (drop) {
       DropHoverState.dropHoverIndex = -1
-      hostDragDropOps.handleFilesDropped(drop, hostRoot.joinPath(NavState.currentPath, modelData.name))
+      hostDragDropOps.handleFilesDropped(drop, Utils.joinPath(NavState.currentPath, modelData.name))
     }
   }
 
@@ -86,7 +86,7 @@ CursorSurface {
     // disco, no re-decodifica el fichero entero en cada scroll/revisita
     // como hacía cargar la imagen completa a 32px. imgThumb es la ruta del
     // thumbnail en caché ("" hasta que está listo -> se ve el glyph).
-    readonly property string myPath: hostRoot.joinPath(NavState.currentPath, modelData.name)
+    readonly property string myPath: Utils.joinPath(NavState.currentPath, modelData.name)
     readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
       || modelData.name.toLowerCase().slice(-4) === ".svg"
     property string imgThumb: ""
@@ -114,7 +114,7 @@ CursorSurface {
       isDir: modelData.type === "dir"
       isBroken: modelData.link === "broken"
       highlighted: rowSurface.current
-      dimmed: ClipboardState.clipboardMode === "cut" && ClipboardState.clipboardPaths.indexOf(hostRoot.joinPath(NavState.currentPath, modelData.name)) >= 0
+      dimmed: ClipboardState.clipboardMode === "cut" && ClipboardState.clipboardPaths.indexOf(Utils.joinPath(NavState.currentPath, modelData.name)) >= 0
       fileIconGlyph: hostRoot.iconFor(modelData)
       thumbSource: rowContent.imgThumb ? Util.fileUrl(rowContent.imgThumb)
         : (rowContent.vidThumb ? Util.fileUrl(rowContent.vidThumb) : "")

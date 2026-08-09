@@ -13,6 +13,10 @@ import "../Utils.js" as Utils
 // el resto en vez de quedarse sueltos en root.
 Item {
   property Item root: null
+  property Item actionEngine: null
+  property Item navController: null
+  property Item fileTypeUtils: null
+
   // La ListView principal (id "list" en Omafiles.qml) -- refreshArchiveListing()
   // resetea su scroll igual que hace refresh() con una carpeta normal.
   property Item list: null
@@ -31,7 +35,7 @@ Item {
     ArchiveState.inArchive = false
     ArchiveState.archivePath = ""
     ArchiveState.archiveSubPath = ""
-    root.refresh()
+    navController.refresh()
   }
 
   function refreshArchiveListing() {
@@ -47,7 +51,7 @@ Item {
   // enorme.
   function openFileInArchive(entry) {
     var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-    var ext = root.extOf(ArchiveState.archivePath)
+    var ext = fileTypeUtils.extOf(ArchiveState.archivePath)
     var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Utils.simpleHash(ArchiveState.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
@@ -62,12 +66,12 @@ Item {
 
   function isArchive(entry) {
     if (entry.type === "dir") return false
-    var ext = root.extOf(entry.name)
+    var ext = fileTypeUtils.extOf(entry.name)
     return ext === "zip" || ext === "7z" || ext === "rar" || FileTypeConfig.tarExt.indexOf(ext) >= 0
   }
 
   function isIso(entry) {
-    return entry.type !== "dir" && root.extOf(entry.name) === "iso"
+    return entry.type !== "dir" && fileTypeUtils.extOf(entry.name) === "iso"
   }
 
   function runPendingCompress() {
@@ -75,7 +79,7 @@ Item {
     ConflictState.pendingCompress = null
     ConflictState.compressConflictOpen = false
     if (!p) return
-    root.runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
+    actionEngine.runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
   }
 
   function cancelPendingCompress() {
@@ -89,7 +93,7 @@ Item {
     ConflictState.extractConflictOpen = false
     ConflictState.extractConflictNames = []
     if (!p) return
-    root.runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
+    actionEngine.runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
   }
 
   function cancelPendingExtract() {
@@ -122,7 +126,7 @@ Item {
         Notifier.notify("Couldn't open file from archive: " + (result.stderr.trim() || "unknown error"))
         return
       }
-      root.openWithDefault(archiveOpenProc.outPath)
+      navController.openWithDefault(archiveOpenProc.outPath)
     }
   }
 }

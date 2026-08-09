@@ -17,6 +17,8 @@ Item {
   id: mainLayout
 
   property Item root
+  property var actionEngine
+  property var navController
   property var bookmarkOps
   property var mountOps
   property var dragDropOps
@@ -309,6 +311,8 @@ Item {
             // `dialogLayer`, que no existe en este ámbito).
             root: mainLayout.root
             card: card
+            actionEngine: mainLayout.actionEngine
+            navController: mainLayout.navController
             gTimer: mainLayout.gTimer
             previewLoader: mainLayout.previewLoader
             conflictActions: mainLayout.conflictActions

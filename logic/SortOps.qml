@@ -9,6 +9,8 @@ import "../Utils.js" as Utils
 // ("toda lógica de negocio fuera de la UI") del prompt de arquitectura.
 Item {
   property Item root: null
+  property Item fileTypeUtils: null
+
 
   // true cuando el orden pedido es el que ya devuelve C++ (DirectoryModel):
   // nombre ascendente. En ese caso DirLister NO re-ordena (ver _sorted).
@@ -22,7 +24,7 @@ Item {
     } else if (SortState.sortKey === "mtime") {
       result = a.mtime - b.mtime
     } else if (SortState.sortKey === "type") {
-      var ea = root.extOf(a.name), eb = root.extOf(b.name)
+      var ea = fileTypeUtils.extOf(a.name), eb = fileTypeUtils.extOf(b.name)
       result = ea < eb ? -1 : (ea > eb ? 1 : 0)
     }
     if (result === 0) {

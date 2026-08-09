@@ -251,13 +251,13 @@ Item {
       return
     }
     if (entry.type === "dir") {
-      navigateTo(root.joinPath(NavState.currentPath, entry.name))
+      navigateTo(Utils.joinPath(NavState.currentPath, entry.name))
     } else if (archiveActions.isArchive(entry)) {
-      archiveActions.enterArchive(root.joinPath(NavState.currentPath, entry.name))
+      archiveActions.enterArchive(Utils.joinPath(NavState.currentPath, entry.name))
     } else if (archiveActions.isIso(entry)) {
       mountOps.mountIso(entry)
     } else {
-      var openPath = root.joinPath(NavState.currentPath, entry.name)
+      var openPath = Utils.joinPath(NavState.currentPath, entry.name)
       openWithDefault(openPath)
       bookmarkOps.addRecent(openPath, entry.name)
     }

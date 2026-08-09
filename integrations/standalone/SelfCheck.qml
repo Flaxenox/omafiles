@@ -387,7 +387,7 @@ QtObject {
       var c = sc._content
       if (!c) { done(false, "sin composition root"); return }
       var dst = sc.opsDir + "/enginecopy.txt"
-      var started = c.copyFiles([{ src: sc.note, dest: dst }], "Copying…", false, function () {
+      var started = c.actionEngine.runNativeCopy([{ src: sc.note, dest: dst }], "Copying…", false, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var ok = sc._has(e, "enginecopy.txt")
           done(ok, ok ? "runNativeCopy OK" : "no copió")
@@ -518,13 +518,13 @@ QtObject {
       var dst = sc.opsDir + "/mv-runner-dst.txt"
       sc._fileOp(done, function () {          // work creado
         var pairs = [{ src: work, dest: dst }]
-        var started = c.moveFiles(pairs, "Moving…", false, function () {
+        var started = c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
           // Registra el undo EXACTAMENTE como hace ClipboardOps/ConflictActions
           // en su onDone (mover de vuelta / rehacer, ambos nativos).
           var reversed = [{ src: dst, dest: work }]
-          c.pushUndo("move test",
-            function () { return c.moveFiles(reversed, "", false) },
-            function () { return c.moveFiles(pairs, "", false) })
+          c.actionEngine.pushUndo("move test",
+            function () { return c.actionEngine.runNativeMove(reversed, "", false) },
+            function () { return c.actionEngine.runNativeMove(pairs, "", false) })
           sc._listOnce(sc.opsDir, function (e) {
             if (!(sc._has(e, "mv-runner-dst.txt") && !sc._has(e, "mv-runner-src.txt"))) {
               done(false, "no movió"); return
@@ -634,7 +634,7 @@ QtObject {
       var b = sc.opsDir + "/del-b.txt"
       sc._fileOp(done, function () {        // a creado
         sc._fileOp(done, function () {      // b creado
-          var started = c.removeFiles([a, b], "", true, function () {
+          var started = c.actionEngine.runNativeRemove([a, b], "", true, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var ok = !sc._has(e, "del-a.txt") && !sc._has(e, "del-b.txt")
               done(ok, ok ? "runNativeRemove OK" : "no borró")
@@ -789,11 +789,11 @@ QtObject {
       if (!c) { done(false, "sin composition root"); return }
       var work = sc.opsDir + "/runner-trash.txt"
       sc._fileOp(done, function () {          // work creado
-        var started = c.trashFiles([work], "", function () {
+        var started = c.actionEngine.runNativeTrash([work], "", function () {
           // registra el undo como DeleteOps
-          c.pushUndo("delete test",
-            function () { return c.restoreFiles([work], "") },
-            function () { return c.trashFiles([work], "") })
+          c.actionEngine.pushUndo("delete test",
+            function () { return c.actionEngine.runNativeRestore([work], "") },
+            function () { return c.actionEngine.runNativeTrash([work], "") })
           sc._listOnce(sc.opsDir, function (e) {
             if (sc._has(e, "runner-trash.txt")) { done(false, "no se envió a papelera"); return }
             // undo -> restaura (espera el finished del restore)
@@ -1025,10 +1025,10 @@ QtObject {
       var pairs = [{ src: work, dest: dst }]
       var reversed = [{ src: dst, dest: work }]
       sc._fileOp(done, function () {          // work creado
-        c.moveFiles(pairs, "Moving…", false, function () {
-          c.pushUndo("move",
-            function () { return c.moveFiles(reversed, "", false) },
-            function () { return c.moveFiles(pairs, "", false) })
+        c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
+          c.actionEngine.pushUndo("move",
+            function () { return c.actionEngine.runNativeMove(reversed, "", false) },
+            function () { return c.actionEngine.runNativeMove(pairs, "", false) })
           sc._listOnce(sc.opsDir, function (e) {
             if (!(sc._has(e, "urm-dst.txt") && !sc._has(e, "urm-src.txt"))) { done(false, "no movió"); return }
             sc._fileOp(done, function () {    // undo -> mover de vuelta
@@ -1054,10 +1054,10 @@ QtObject {
       if (!c) { done(false, "sin composition root"); return }
       var work = sc.opsDir + "/urt.txt"
       sc._fileOp(done, function () {
-        c.trashFiles([work], "", function () {
-          c.pushUndo("trash",
-            function () { return c.restoreFiles([work], "") },
-            function () { return c.trashFiles([work], "") })
+        c.actionEngine.runNativeTrash([work], "", function () {
+          c.actionEngine.pushUndo("trash",
+            function () { return c.actionEngine.runNativeRestore([work], "") },
+            function () { return c.actionEngine.runNativeTrash([work], "") })
           sc._listOnce(sc.opsDir, function (e) {
             if (sc._has(e, "urt.txt")) { done(false, "no se envió a papelera"); return }
             sc._fileOp(done, function () {   // undo -> restaurar
@@ -1087,10 +1087,10 @@ QtObject {
         function () { FileOperations.copy(sc.note, a1) },
         function () { FileOperations.copy(sc.note, b1) }
       ], done, function () {
-        c.moveFiles([{ src: a1, dest: a2 }], "", false, function () {
-          c.pushUndo("A", function () { return c.moveFiles([{ src: a2, dest: a1 }], "", false) }, null)
-          c.moveFiles([{ src: b1, dest: b2 }], "", false, function () {
-            c.pushUndo("B", function () { return c.moveFiles([{ src: b2, dest: b1 }], "", false) }, null)
+        c.actionEngine.runNativeMove([{ src: a1, dest: a2 }], "", false, function () {
+          c.actionEngine.pushUndo("A", function () { return c.actionEngine.runNativeMove([{ src: a2, dest: a1 }], "", false) }, null)
+          c.actionEngine.runNativeMove([{ src: b1, dest: b2 }], "", false, function () {
+            c.actionEngine.pushUndo("B", function () { return c.actionEngine.runNativeMove([{ src: b2, dest: b1 }], "", false) }, null)
             sc._fileOp(done, function () {   // undo #1 -> revierte B (LIFO)
               sc._listOnce(sc.opsDir, function (e) {
                 var bBack = sc._has(e, "seqB.txt") && !sc._has(e, "seqB-dst.txt")
@@ -1116,8 +1116,8 @@ QtObject {
       var work = sc.opsDir + "/ctu-src.txt"
       var dst = sc.opsDir + "/ctu-dst.txt"
       sc._fileOp(done, function () {          // work creado
-        c.moveFiles([{ src: work, dest: dst }], "", false, function () {
-          c.pushUndo("move", function () { return c.moveFiles([{ src: dst, dest: work }], "", false) }, null)
+        c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, function () {
+          c.actionEngine.pushUndo("move", function () { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false) }, null)
           // una copia grande directa + cancel (no toca el stack de undo)
           var bigSrc = sc.dir + "/big.bin"
           function onErr(op, path, msg) {
@@ -1152,10 +1152,10 @@ QtObject {
       var work = sc.opsDir + "/urc-src.txt"
       var dst = sc.opsDir + "/urc-dst.txt"
       sc._fileOp(done, function () {
-        c.moveFiles([{ src: work, dest: dst }], "", false, function () {
-          c.pushUndo("urc",
-            function () { return c.moveFiles([{ src: dst, dest: work }], "", false) },
-            function () { return c.moveFiles([{ src: work, dest: dst }], "", false) })
+        c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, function () {
+          c.actionEngine.pushUndo("urc",
+            function () { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false) },
+            function () { return c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false) })
           var afterPush = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
           // undoLast/redoLast actualizan las pilas de forma SÍNCRONA e inician
           // un move async. Se llama la acción ANTES de conectar el _fileOp,

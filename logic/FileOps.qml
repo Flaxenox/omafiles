@@ -1,3 +1,4 @@
+import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
@@ -8,9 +9,11 @@ import "../state"
 // mismo patrón (montar el/los comando(s), runAction(), pushUndo() con el
 // comando inverso) sin tener ningún Process propio -- usan el motor
 // central de ActionEngine a través de los wrappers de root
-// (root.runAction/root.pushUndo/root.chainCmds).
+// (actionEngine.runAction/actionEngine.pushUndo/actionEngine.chainCmds).
 Item {
   property Item root: null
+  property Item actionEngine: null
+
   property Item selectionOps: null
 
   function startBulkRename() {
@@ -32,16 +35,16 @@ Item {
       return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
     })
     if (cmds.length === 0) return
-    var bulkRenameCmd = root.chainCmds(cmds)
-    root.runAction(bulkRenameCmd, "Renaming " + cmds.length + " items…", function () {
+    var bulkRenameCmd = actionEngine.chainCmds(cmds)
+    actionEngine.runAction(bulkRenameCmd, "Renaming " + cmds.length + " items…", function () {
       var label = toRename.length === 1 ? "rename \"" + toRename[0].oldName + "\"" : "bulk rename " + toRename.length + " items"
-      root.pushUndo(label, function () {
+      actionEngine.pushUndo(label, function () {
         var undoCmds = toRename.map(function (p) {
           return "mv -n -- " + Util.shellQuote(p.newPath) + " " + Util.shellQuote(p.oldPath)
         })
-        return root.runAction(root.chainCmds(undoCmds))
+        return actionEngine.runAction(actionEngine.chainCmds(undoCmds))
       }, function () {
-        return root.runAction(bulkRenameCmd)
+        return actionEngine.runAction(bulkRenameCmd)
       })
     })
   }
@@ -60,7 +63,7 @@ Item {
     // carpetas -- más simple que dos ramas de chainCmds distintas.
     var flag = ChmodState.chmodRecursive ? "-R " : ""
     var cmds = ChmodState.chmodNames.map(function (n) {
-      return "chmod " + flag + mode + " -- " + Util.shellQuote(root.joinPath(NavState.currentPath, n))
+      return "chmod " + flag + mode + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
     })
     var label = ChmodState.chmodNames.length === 1
       ? "Setting permissions for \"" + ChmodState.chmodNames[0] + "\"…"
@@ -71,17 +74,17 @@ Item {
     // recursivo, ver el comentario de chmodOriginalModes.
     var names = ChmodState.chmodNames
     var originalModes = ChmodState.chmodOriginalModes
-    var chmodCmd = root.chainCmds(cmds)
-    root.runAction(chmodCmd, label, function () {
+    var chmodCmd = actionEngine.chainCmds(cmds)
+    actionEngine.runAction(chmodCmd, label, function () {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
-      root.pushUndo(undoLabel, function () {
+      actionEngine.pushUndo(undoLabel, function () {
         var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
-          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(root.joinPath(NavState.currentPath, n))
+          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
         })
         if (undoCmds.length === 0) return false
-        return root.runAction(root.chainCmds(undoCmds))
+        return actionEngine.runAction(actionEngine.chainCmds(undoCmds))
       }, function () {
-        return root.runAction(chmodCmd)
+        return actionEngine.runAction(chmodCmd)
       })
     })
   }
@@ -99,20 +102,20 @@ Item {
   function makeLinkFor(entry) {
     if (ArchiveState.inArchive) return
     if (!entry) return
-    var target = root.joinPath(NavState.currentPath, entry.name)
+    var target = Utils.joinPath(NavState.currentPath, entry.name)
     var linkName = "Link to " + entry.name
-    var linkPath = root.joinPath(NavState.currentPath, linkName)
+    var linkPath = Utils.joinPath(NavState.currentPath, linkName)
     // El undo solo se registra si "ln -s" confirmó éxito -- antes se
     // registraba a ciegas, así que si ya existía un archivo con el nombre
     // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z
     // posterior lo borraba igualmente aunque no tuviera nada que ver con
     // el enlace que se intentó crear.
     var makeLinkCmd = "ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath)
-    root.runAction(makeLinkCmd, undefined, function () {
-      root.pushUndo("make link \"" + linkName + "\"", function () {
-        return root.runAction("rm -- " + Util.shellQuote(linkPath))
+    actionEngine.runAction(makeLinkCmd, undefined, function () {
+      actionEngine.pushUndo("make link \"" + linkName + "\"", function () {
+        return actionEngine.runAction("rm -- " + Util.shellQuote(linkPath))
       }, function () {
-        return root.runAction(makeLinkCmd)
+        return actionEngine.runAction(makeLinkCmd)
       })
     })
   }
@@ -130,6 +133,6 @@ Item {
       .filter(function (e) { return !!TrashState.trashInfo[e.name] })
       .map(function (e) { return TrashState.trashInfo[e.name].origPath })
     if (origPaths.length === 0) return
-    root.restoreFiles(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
+    actionEngine.restoreFiles(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 }

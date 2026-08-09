@@ -51,12 +51,17 @@ function simpleHash(str) {
   return (h >>> 0).toString(36)
 }
 
-// joinPath se queda en Omafiles.qml (cientos de llamadas, no merece la
-// pena mover algo tan usado) -- aquí se repite su única línea de lógica
-// en vez de depender de root.joinPath desde un módulo que no ve "root".
+// Une un directorio base y un nombre en una ruta absoluta, tratando "/"
+// como caso especial (evita "//name"). Función pura; era un wrapper de
+// OmafilesContent (root.joinPath) que 45 sitios llamaban por la fachada del
+// composition root pese a no ser suyo (Fase 14.D): ahora vive aquí, junto
+// al resto de utilidades puras, y logic/ ya no depende del root por esto.
+function joinPath(base, name) {
+  return base === "/" ? "/" + name : base + "/" + name
+}
+
 function thumbKeyFor(entry, basePath) {
-  var joined = basePath === "/" ? "/" + entry.name : basePath + "/" + entry.name
-  return joined + "|" + entry.mtime
+  return joinPath(basePath, entry.name) + "|" + entry.mtime
 }
 
 function videoThumbPath(entry, basePath, cacheDir) {

@@ -6,7 +6,7 @@ import "../services"
 // Renombrar / nueva carpeta / nuevo fichero, con su undo -- decimoséptimo
 // componente extraído de Omafiles.qml. Mismo patrón que FileOps: sin
 // Process propio, todo pasa por los wrappers de root
-// (root.runAction/root.pushUndo).
+// (actionEngine.runAction/actionEngine.pushUndo).
 //
 // Fase 7 (josema): "nueva carpeta" (caso común, sin sobrescribir) es la
 // PRIMERA operación cableada al backend nativo -- crea con
@@ -17,6 +17,9 @@ import "../services"
 Item {
   id: renameOps
   property Item root: null
+  property Item actionEngine: null
+  property Item navController: null
+
 
   // Rutas de "nueva carpeta" nativa en vuelo -> nombre. El undo se registra
   // solo cuando FileOperations.mkdir termina CON ÉXITO (ver la Connections
@@ -43,11 +46,11 @@ Item {
     // lo descartaba por haber otra acción en curso (el rename ya se había
     // dado por hecho en la UI -- el input se cerraba igual).
     var renameCmd = "mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath)
-    root.runAction(renameCmd, undefined, function () {
-      root.pushUndo("rename to \"" + oldName + "\"", function () {
-        return root.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
+    actionEngine.runAction(renameCmd, undefined, function () {
+      actionEngine.pushUndo("rename to \"" + oldName + "\"", function () {
+        return actionEngine.runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
       }, function () {
-        return root.runAction(renameCmd)
+        return actionEngine.runAction(renameCmd)
       })
     })
   }
@@ -88,15 +91,15 @@ Item {
     // paste/drop al sobrescribir (fuerza sin pasar por la papelera).
     var newFileCmd = (overwrite ? "rm -rf -- " + Util.shellQuote(pending.path) + " && " : "")
       + "touch -- " + Util.shellQuote(pending.path)
-    root.runAction(newFileCmd, undefined, function () {
+    actionEngine.runAction(newFileCmd, undefined, function () {
       // gio trash en vez de rm: si el usuario ya escribió algo antes de
       // deshacer, va a la papelera en vez de perderse sin recuperación.
       // No intenta restaurar lo que hubiera sobrescrito -- mismo límite
       // que ya tiene pegar/soltar con overwrite.
-      root.pushUndo("new file \"" + pending.name + "\"", function () {
-        return root.runAction("gio trash -- " + Util.shellQuote(pending.path))
+      actionEngine.pushUndo("new file \"" + pending.name + "\"", function () {
+        return actionEngine.runAction("gio trash -- " + Util.shellQuote(pending.path))
       }, function () {
-        return root.runAction(newFileCmd)
+        return actionEngine.runAction(newFileCmd)
       })
     })
   }
@@ -116,11 +119,11 @@ Item {
       // destructivo, se queda en el motor de acciones shell probado -- Fase
       // 7 solo cablea el mkdir del caso común al backend nativo.
       var cmd = "rm -rf -- " + Util.shellQuote(pending.path) + " && mkdir -p -- " + Util.shellQuote(pending.path)
-      root.runAction(cmd, undefined, function () {
-        root.pushUndo("new folder \"" + pending.name + "\"", function () {
-          return root.runAction("rmdir -- " + Util.shellQuote(pending.path))
+      actionEngine.runAction(cmd, undefined, function () {
+        actionEngine.pushUndo("new folder \"" + pending.name + "\"", function () {
+          return actionEngine.runAction("rmdir -- " + Util.shellQuote(pending.path))
         }, function () {
-          return root.runAction(cmd)
+          return actionEngine.runAction(cmd)
         })
       })
       return
@@ -141,14 +144,14 @@ Item {
       // Refresco inmediato (como actionProc.onFinished): el panel activo lo
       // cubre el watcher, pero refreshTick refresca también los de fondo que
       // muestren esta misma carpeta.
-      root.refresh()
+      navController.refresh()
       NavState.refreshTick += 1
       var name = renameOps._nativeMkdirPending[path]
       if (name === undefined) return // redo u otro mkdir: no re-registrar
       delete renameOps._nativeMkdirPending[path]
-      root.pushUndo("new folder \"" + name + "\"", function () {
+      actionEngine.pushUndo("new folder \"" + name + "\"", function () {
         // rmdir (no rm -rf): si ya hay algo dentro, falla en vez de borrarlo.
-        return root.runAction("rmdir -- " + Util.shellQuote(path))
+        return actionEngine.runAction("rmdir -- " + Util.shellQuote(path))
       }, function () {
         FileOperations.mkdir(path) // redo: sin re-registrar
         return true
