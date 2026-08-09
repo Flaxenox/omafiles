@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Omafiles.Backend as Backend
 import "../../core"
 
 // Frontend Qt6 standalone -- primer arranque (Fase 4, josema: prueba de
@@ -19,5 +20,16 @@ ApplicationWindow {
   OmafilesContent {
     id: content
     anchors.fill: parent
+  }
+
+  // El core solo navega cuando el host llama a open() (en Quickshell lo
+  // hace HostBridge al mostrar la ventana). Fase 4 no lo llamaba, por eso
+  // el standalone salia sin listar nada. HOME sale del Env real (Fase 5,
+  // backend/Env.cpp), no ya de un context property. Con ProcessRunner
+  // respaldado por QProcess real, esto lista la carpeta de verdad.
+  Component.onCompleted: {
+    // Spike 5.B: confirma que el plugin C++ externo se cargo de verdad.
+    console.log("[omafiles-standalone] Omafiles.Backend cargado, BackendPing.message =", Backend.BackendPing.message)
+    content.open(Backend.Env.get("HOME"))
   }
 }

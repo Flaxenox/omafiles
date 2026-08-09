@@ -1,7 +1,6 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlContext>
 #include <QQmlFileSelector>
 #include <QQuickStyle>
 
@@ -33,6 +32,13 @@ int main(int argc, char *argv[]) {
   // en vez de fallar (esos módulos solo existen dentro de Quickshell).
   engine.addImportPath(sourceDir + "/integrations/standalone/qml_modules");
 
+  // Plugin C++ Omafiles.Backend (Fase 5.B): ya no va compilado dentro del
+  // binario, se carga por import path desde build/qml -- EXACTAMENTE el
+  // mismo mecanismo y el mismo .so que usara Quickshell. Anadido antes de
+  // cargar Main.qml para que "import Omafiles.Backend" (en Main.qml y en
+  // services/+standalone/*.qml) resuelva.
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));
+
   // services/+standalone/*.qml sustituye automáticamente a
   // services/*.qml (ProcessRunner, ProcessWatcher, Detached, Notifier,
   // Env) vía el selector "standalone" -- mecanismo nativo de Qt
@@ -42,11 +48,10 @@ int main(int argc, char *argv[]) {
   auto *fileSelector = new QQmlFileSelector(&engine, &engine);
   fileSelector->setExtraSelectors(QStringList{QStringLiteral("standalone")});
 
-  // QML no tiene acceso nativo a variables de entorno -- services/
-  // +standalone/Env.qml lee esto para HOME (la única que usa el
-  // núcleo). Puesto en el contexto raíz ANTES de cargar Main.qml.
-  engine.rootContext()->setContextProperty(
-      QStringLiteral("standaloneHomeDir"), qEnvironmentVariable("HOME"));
+  // Las variables de entorno se leen ya desde el backend C++
+  // (Omafiles.Backend.Env, qEnvironmentVariable real) -- ver
+  // services/+standalone/Env.qml. Fase 4 las inyectaba aqui como context
+  // property; Fase 5 lo elimina.
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
