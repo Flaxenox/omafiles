@@ -13,7 +13,7 @@
 // NO termina solo (inotifywait -m): emite lineRead por cada linea de
 // stdout en vez de un resultado final. Se registra como tipo QML
 // Omafiles.Backend.ProcessWatcher y lo consume el adaptador
-// services/+standalone/ProcessWatcher.qml.
+// services/ProcessWatcher.qml.
 class ProcessWatcher : public QObject {
   Q_OBJECT
   QML_ELEMENT

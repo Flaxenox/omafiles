@@ -1,17 +1,17 @@
 pragma Singleton
 import QtQuick
-import Quickshell
+import Omafiles.Backend as Backend
 
-// Notificaciones de escritorio -- hoy vía Quickshell.execDetached() con
-// "notify-send", pero es el ÚNICO sitio que construye ese comando (Fase
-// 1.5, ver [[project_omafiles_standalone_prep]]). Antes de esto, cada
-// uno de los 16+ sitios de llamada montaba
-// Quickshell.execDetached(["notify-send", "Omafiles", texto]) a mano,
-// con "Omafiles" repetido cada vez. Standalone puede cambiar notify()
-// (a QSystemTrayIcon::showMessage, org.freedesktop.Notifications por
-// D-Bus directo, etc.) sin tocar ningún sitio de llamada.
+// Notificaciones de escritorio -- adaptador fino sobre el singleton C++
+// Omafiles.Backend.Notifier (notify-send desatendido, titulo "Omafiles"
+// centralizado en C++, ver backend/Notifier.cpp).
+//
+// Fase 5.C (josema): implementacion UNICA para los dos frontends. Antes
+// esto montaba Quickshell.execDetached(["notify-send", ...]) y el
+// standalone tenia un stub que solo imprimia por consola; ahora ambos
+// usan el mismo backend C++ y el stub desaparece. Cada uno de los 16+
+// sitios de llamada sigue haciendo Notifier.notify(texto) sin enterarse
+// (antes de centralizar esto, cada sitio repetia "Omafiles" a mano).
 QtObject {
-  function notify(text) {
-    Quickshell.execDetached(["notify-send", "Omafiles", text])
-  }
+  function notify(text) { Backend.Notifier.notify(text) }
 }

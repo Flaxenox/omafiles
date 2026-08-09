@@ -1,7 +1,6 @@
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlFileSelector>
 #include <QQuickStyle>
 
 // Bootstrap Qt6 mínimo del frontend standalone (Fase 4, josema: primer
@@ -36,22 +35,21 @@ int main(int argc, char *argv[]) {
   // binario, se carga por import path desde build/qml -- EXACTAMENTE el
   // mismo mecanismo y el mismo .so que usara Quickshell. Anadido antes de
   // cargar Main.qml para que "import Omafiles.Backend" (en Main.qml y en
-  // services/+standalone/*.qml) resuelva.
+  // services/*.qml) resuelva.
   engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));
 
-  // services/+standalone/*.qml sustituye automáticamente a
-  // services/*.qml (ProcessRunner, ProcessWatcher, Detached, Notifier,
-  // Env) vía el selector "standalone" -- mecanismo nativo de Qt
-  // (QQmlFileSelector) para dar una implementación alternativa sin
-  // tocar ni un import en logic/. Los servicios reales usan
-  // Quickshell.Io.Process, que no existe fuera de Quickshell.
-  auto *fileSelector = new QQmlFileSelector(&engine, &engine);
-  fileSelector->setExtraSelectors(QStringList{QStringLiteral("standalone")});
+  // Fase 5.C (josema): ya no hay QQmlFileSelector. Existia para que
+  // services/+standalone/*.qml sustituyera a services/*.qml en el host
+  // standalone, porque la version Quickshell usaba Quickshell.Io.Process
+  // (inexistente fuera de Quickshell). Ahora services/*.qml es una unica
+  // implementacion sobre Omafiles.Backend que sirve a los dos frontends,
+  // asi que no hay dos variantes que seleccionar y services/+standalone/
+  // se ha borrado entero.
 
   // Las variables de entorno se leen ya desde el backend C++
   // (Omafiles.Backend.Env, qEnvironmentVariable real) -- ver
-  // services/+standalone/Env.qml. Fase 4 las inyectaba aqui como context
-  // property; Fase 5 lo elimina.
+  // services/Env.qml. Fase 4 las inyectaba aqui como context property;
+  // Fase 5 lo elimina.
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

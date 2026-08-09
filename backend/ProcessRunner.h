@@ -12,7 +12,7 @@
 // Quickshell.Io.Process -- ver services/ProcessRunner.qml para el
 // contrato y el porque de cada metodo. Se registra como tipo QML
 // Omafiles.Backend.ProcessRunner y lo consume el adaptador
-// services/+standalone/ProcessRunner.qml; el nucleo (logic/) sigue
+// services/ProcessRunner.qml; el nucleo (logic/) sigue
 // escribiendo `ProcessRunner { onFinished: ... }` sin enterarse.
 //
 // No es visual (QObject, no Item) a proposito: ProcessRunner nunca fue
