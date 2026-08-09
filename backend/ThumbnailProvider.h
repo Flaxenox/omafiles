@@ -46,6 +46,23 @@ public:
   // qml). Determinista y estable: mismo `input` -> mismo nombre de fichero.
   Q_INVOKABLE QString cacheKey(const QString &input) const;
 
+  // Poda de mantenimiento de la caché en disco (Fase O1). ÚNICO punto de
+  // entrada de producción: borra (1) los huérfanos del esquema base36 antiguo
+  // -sin consumidor tras B1-, (2) las miniaturas más antiguas que la política
+  // de edad y (3), si el total supera la política de tamaño, las más antiguas
+  // hasta volver por debajo. Se dispara sola una vez al construir el singleton
+  // en un hilo del QThreadPool (sin bloquear el arranque); saltada bajo
+  // --selfcheck. Segura: no es recursiva y solo actúa sobre ficheros con el
+  // patrón de nombre de Omafiles dentro del directorio de caché.
+  Q_INVOKABLE void pruneCache();
+
+  // Primitiva SÍNCRONA de poda sobre `dir` con umbrales explícitos; devuelve
+  // el nº de ficheros borrados. La usa pruneCache() (con las políticas por
+  // defecto) y el arnés --selfcheck (con umbrales de prueba sobre un directorio
+  // temporal, sin tocar la caché real). Misma garantía de seguridad.
+  Q_INVOKABLE int pruneCacheDir(const QString &dir, qint64 maxAgeSecs,
+                                qint64 maxBytes) const;
+
 signals:
   void ready(const QString &path, const QString &thumbPath);
 

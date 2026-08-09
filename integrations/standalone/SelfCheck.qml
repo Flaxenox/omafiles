@@ -331,6 +331,56 @@ QtObject {
            "cacheKey=" + k + (k === expected ? "" : " (esperado " + expected + ")"))
     })
 
+    // Poda de la caché de miniaturas (Fase O1). Ejercita pruneCacheDir sobre
+    // un dir temporal (la caché real NO se toca: el auto-prune del constructor
+    // se salta bajo --selfcheck) con las cuatro políticas: huérfano legacy,
+    // seguridad (ficheros ajenos intactos), edad y tamaño.
+    add("Thumbnail cache pruning: orphans, safety, age, size (O1)", function (done) {
+      var TP = Backend.ThumbnailProvider
+      var pd = sc.dir + "/prunecache-" + Date.now()
+      var h1 = ThumbnailProvider.cacheKey("o1-a")   // nombre 40-hex válido
+      var h2 = ThumbnailProvider.cacheKey("o1-b")
+      var BIG_AGE = 999999999, BIG_SIZE = 999999999999
+      var mk = function (name) { return function () { FileOperations.copy(sc.note, pd + "/" + name) } }
+
+      FileOperations.mkdir(pd)
+      sc._fileOp(done, function () {
+        sc._seqOps([
+          mk(h1 + ".png"),      // miniatura actual (.png)
+          mk(h2 + ".jpg"),      // miniatura actual (.jpg)
+          mk("deadbe.jpg"),     // huérfano legacy base36 (.jpg, 6 chars) -> borrar
+          mk("notahash.png"),   // .png no-hex -> ajeno, dejar (seguridad)
+          mk("readme.txt")      // no-imagen -> dejar (seguridad)
+        ], done, function () {
+          // (1) umbrales grandes -> solo el huérfano legacy.
+          var r1 = TP.pruneCacheDir(pd, BIG_AGE, BIG_SIZE)
+          sc._listOnce(pd, function (e1) {
+            var ok1 = r1 === 1 && !sc._has(e1, "deadbe.jpg")
+              && sc._has(e1, h1 + ".png") && sc._has(e1, h2 + ".jpg")
+              && sc._has(e1, "notahash.png") && sc._has(e1, "readme.txt")
+            if (!ok1) { done(false, "orphan/safety: removed=" + r1 + " entries=" + e1.length); return }
+            // (2) edad: maxAge=0 -> borra las 2 miniaturas actuales; deja ajenas.
+            var r2 = TP.pruneCacheDir(pd, 0, BIG_SIZE)
+            sc._listOnce(pd, function (e2) {
+              var ok2 = r2 === 2 && !sc._has(e2, h1 + ".png") && !sc._has(e2, h2 + ".jpg")
+                && sc._has(e2, "notahash.png") && sc._has(e2, "readme.txt")
+              if (!ok2) { done(false, "edad: removed=" + r2 + " entries=" + e2.length); return }
+              // (3) tamaño: recrea 2 actuales y poda con maxBytes=0 -> las borra
+              // por la política de tamaño (orden por antigüedad).
+              sc._seqOps([mk(h1 + ".png"), mk(h2 + ".jpg")], done, function () {
+                var r3 = TP.pruneCacheDir(pd, BIG_AGE, 0)
+                sc._listOnce(pd, function (e3) {
+                  var ok3 = r3 === 2 && !sc._has(e3, h1 + ".png") && !sc._has(e3, h2 + ".jpg")
+                  done(ok3, ok3 ? "huérfano+seguridad+edad+tamaño OK"
+                                : "tamaño: removed=" + r3 + " entries=" + e3.length)
+                })
+              })
+            })
+          })
+        })
+      })
+    })
+
     add("PreviewProvider text", function (done) {
       function onText(path, content, enc, bytes, lines, trunc) {
         if (path !== sc.note) return
