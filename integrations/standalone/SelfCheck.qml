@@ -48,6 +48,10 @@ QtObject {
   // (servicio no-singleton envuelto sobre el backend C++).
   property Component _dmFactory: Component { DirectoryModel {} }
 
+  // Fábrica de SearchWorker (backend nativo, no-singleton) para el test de
+  // búsqueda recursiva (Fase 16).
+  property Component _searchFactory: Component { Backend.SearchWorker {} }
+
   // Stub de hostPanelsRow para el test de panel de fondo: BackgroundPanel lee
   // slotX(index)/slotWidth/height para su geometría. slotWidth/height 0 => la
   // ListView no instancia delegates (sin dependencias visuales nulas).
@@ -1382,6 +1386,86 @@ QtObject {
           })
         })
       })
+    })
+
+    // -------- Integraciones nativas restantes (Fase 16) --------
+    // Búsqueda recursiva nativa (SearchWorker, sustituye a search-recursive.sh):
+    // coincidencia por nombre, profundidad (subcarpetas) y filtro de ocultos.
+    add("Native recursive search: name, depth, hidden filter (Fase 16)", function (done) {
+      var base = sc.dir + "/srch-" + Date.now()
+      var mk = function (p) { return function () { FileOperations.mkdir(p) } }
+      var cp = function (p) { return function () { FileOperations.copy(sc.note, p) } }
+      // Árbol: match en raíz, match en subcarpeta, match dentro de carpeta oculta.
+      sc._seqOps([
+        mk(base), mk(base + "/sub"), mk(base + "/.hid"),
+        cp(base + "/alpha-root.txt"),
+        cp(base + "/beta.txt"),
+        cp(base + "/sub/alpha-deep.txt"),
+        cp(base + "/.hid/alpha-hidden.txt")
+      ], done, function () {
+        var sw = sc._searchFactory.createObject(sc)
+        var phase = 0
+        function names(entries) { return entries.map(function (e) { return e.name }).sort() }
+        function onResults(entries, truncated) {
+          if (phase === 0) {
+            // showHidden=false: alpha-root.txt + sub/alpha-deep.txt, NO el oculto.
+            var got = names(entries)
+            var ok0 = got.length === 2 && got.indexOf("alpha-root.txt") >= 0
+              && got.indexOf("sub/alpha-deep.txt") >= 0 && truncated === false
+            if (!ok0) { sw.results.disconnect(onResults); sw.destroy(); done(false, "sin ocultos: " + JSON.stringify(got)); return }
+            phase = 1
+            sw.search(base, "alpha", true)
+          } else {
+            // showHidden=true: incluye .hid/alpha-hidden.txt (3 en total).
+            var g2 = names(entries)
+            var ok1 = g2.length === 3 && g2.indexOf(".hid/alpha-hidden.txt") >= 0
+            sw.results.disconnect(onResults); sw.destroy()
+            done(ok1, ok1 ? "nombre+profundidad+ocultos OK" : "con ocultos: " + JSON.stringify(g2))
+          }
+        }
+        sw.results.connect(onResults)
+        sw.search(base, "alpha", false)
+      })
+    })
+
+    // Listado nativo de la Papelera (FileOperations.trashRoots/trashInfo,
+    // sustituyen a trash-roots.sh/trash-info.sh): trash-roots incluye la de
+    // casa; trash-info refleja un ítem recién enviado con su ruta original.
+    add("Native trash listing: trashRoots + trashInfo (Fase 16)", function (done) {
+      var home = Backend.Env.get("HOME")
+      var roots = FileOperations.trashRoots()
+      var homeTrash = home + "/.local/share/Trash"
+      var hasHome = roots.indexOf(homeTrash) >= 0
+      if (!hasHome) { done(false, "trashRoots no incluye la papelera de casa: " + JSON.stringify(roots)); return }
+
+      var fname = "selfcheck-trashinfo-" + Date.now() + ".txt"
+      var target = sc.opsDir + "/" + fname
+      FileOperations.copy(sc.note, target)
+      sc._fileOp(done, function () {          // copy
+        sc._fileOp(done, function () {        // trash
+          // trashInfo debe listar el ítem con su ruta original y epoch>0.
+          var info = FileOperations.trashInfo()
+          var found = null
+          for (var i = 0; i < info.length; i++)
+            if (info[i].origPath === target) found = info[i]
+          var ok = found !== null && found.epoch > 0 && found.trashRoot === homeTrash
+          sc._fileOp(done, function () {      // restore (cleanup)
+            done(ok, ok ? "trashRoots+trashInfo OK" : "trashInfo no refleja el ítem")
+          })
+          FileOperations.restoreByOrigPath(target)
+        })
+        FileOperations.trash(target)
+      })
+    })
+
+    // NetworkMounts.list() nativo (sustituye a list-network-mounts.sh): sin
+    // montajes GVfs activos en el entorno de test, debe devolver una lista
+    // (vacía) sin romper. Smoke test: no se puede afirmar contenido sin un
+    // mount real, pero sí que el camino nativo responde con un array.
+    add("Native network mounts listing returns a list (Fase 16)", function (done) {
+      var l = Backend.NetworkMounts.list()
+      done(l !== undefined && l !== null && typeof l.length === "number",
+           "NetworkMounts.list() -> " + (l ? l.length : "null") + " entradas")
     })
   }
 }

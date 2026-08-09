@@ -21,7 +21,6 @@ import "../Utils.js" as Utils
 // NavigationController y BackgroundPanel siguen igual.
 Item {
   id: dirLister
-  property string pluginDir: ""
   property string trashDir: ""
   property bool showHidden: false
   property Item sortOps: null
@@ -44,8 +43,6 @@ Item {
   signal directoryChanged()
 
   property string _targetPath: ""
-  property bool _waitingForTrashInfo: false
-  property var _pendingEntries: []
   // Modo del último escaneo lanzado al modelo ("dir" o "trash"). Junto con
   // la generación interna del modelo, descarta resultados obsoletos al
   // cambiar entre una carpeta normal y la Papelera (el modelo sirve a
@@ -57,10 +54,13 @@ Item {
     pathError = ""
     if (path === trashDir) {
       // La Papelera agrega la raíz de casa MÁS la .Trash-$UID de cualquier
-      // disco montado (spec XDG Trash). trash-roots.sh las descubre; luego
-      // se fusiona el contenido de todas con listMany. No es una carpeta
-      // única, por eso no pasa por dirModel.list a secas.
-      rootsProc.start([pluginDir + "/trash-roots.sh"])
+      // disco montado (spec XDG Trash). FileOperations.trashRoots() las
+      // descubre (nativo, Fase 16: sustituye a trash-roots.sh); luego se
+      // fusiona el contenido de todas con listMany. No es una carpeta única,
+      // por eso no pasa por dirModel.list a secas.
+      var paths = FileOperations.trashRoots().map(function (r) { return r + "/files" })
+      _dirMode = "trash"
+      dirModel.listMany(paths, showHidden)
     } else {
       _dirMode = "dir"
       dirModel.list(path, showHidden)
@@ -103,43 +103,6 @@ Item {
     return sortOps.isDefaultOrder ? raw : sortOps.sortEntries(raw)
   }
 
-  // Descubrimiento de raíces de papelera (trash-roots.sh, una línea por
-  // raíz). No es "listar una carpeta", es plumbing XDG específico de la
-  // papelera, por eso sigue siendo un script pequeño; el listado en sí ya
-  // es nativo (dirModel.listMany sobre "<raíz>/files").
-  ProcessRunner {
-    id: rootsProc
-    onFinished: function (result) {
-      // Obsoleto si ya se navegó fuera de la Papelera mientras corría.
-      if (_targetPath !== trashDir) return
-      var roots = String(result.stdout || "").split("\n").filter(function (r) { return r !== "" })
-      var paths = roots.map(function (r) { return r + "/files" })
-      _dirMode = "trash"
-      dirModel.listMany(paths, showHidden)
-    }
-  }
-
-  // TrashState.trashInfo es COMPARTIDA entre el panel activo y todos los
-  // paneles de fondo -- quien llegue primero (activo o cualquiera de
-  // fondo) la deja lista para todos los demás, sin que cada lister
-  // tenga que esperar a su propia copia.
-  ProcessRunner {
-    id: trashInfoProc
-    onFinished: function (result) {
-      var fields = String(result.stdout || "").split("\u0000")
-      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-      var info = {}
-      for (var i = 0; i + 3 < fields.length; i += 4) {
-        info[fields[i]] = { origPath: fields[i + 1], epoch: Number(fields[i + 2] || 0), trashRoot: fields[i + 3] }
-      }
-      TrashState.trashInfo = info
-      if (_waitingForTrashInfo) {
-        _waitingForTrashInfo = false
-        _apply(_pendingEntries)
-      }
-    }
-  }
-
   // Backend nativo de listado (Fase 6.C/6.D). Sirve tanto carpetas normales
   // (list) como la Papelera (listMany). El array dirModel.entries tiene la
   // misma forma {type,name,size,mtime,link} que producía Utils.parseEntries,
@@ -159,17 +122,18 @@ Item {
 
       if (isTrash) {
         // listMany no produce códigos de error (agregado); la Papelera
-        // simplemente muestra lo que haya. Coordinación con trash-info
-        // idéntica a antes: pintar ya si trashInfo está cargada, o esperar
-        // a trash-info.sh la primera vez para no parpadear.
-        var parsed = _sorted(dirModel.entries)
-        if (Object.keys(TrashState.trashInfo).length > 0) {
-          _apply(parsed)
-        } else {
-          _pendingEntries = parsed
-          _waitingForTrashInfo = true
-        }
-        trashInfoProc.start([pluginDir + "/trash-info.sh"])
+        // simplemente muestra lo que haya. Metadatos de papelera NATIVOS
+        // (FileOperations.trashInfo, Fase 16: sustituye a trash-info.sh):
+        // síncronos, así que se rellenan ANTES de pintar -- sin la danza
+        // async previa (ni parpadeo). TrashState.trashInfo es compartida por
+        // el panel activo y los de fondo; DeleteOps/FileOps la usan para
+        // saber la raíz física de cada ítem al restaurar/borrar.
+        var arr = FileOperations.trashInfo()
+        var info = {}
+        for (var i = 0; i < arr.length; i++)
+          info[arr[i].name] = { origPath: arr[i].origPath, epoch: arr[i].epoch, trashRoot: arr[i].trashRoot }
+        TrashState.trashInfo = info
+        _apply(_sorted(dirModel.entries))
       } else {
         // Carpeta normal: mapear el error del modelo a pathError con los
         // MISMOS códigos que daban los exit codes de list-dir.sh.

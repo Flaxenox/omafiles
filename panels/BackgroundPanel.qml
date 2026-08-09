@@ -46,7 +46,6 @@ Item {
   // bgPanel -- se leen directo de dirLister en todo el fichero.
   DirLister {
     id: dirLister
-    pluginDir: Paths.pluginDir
     trashDir: Paths.trashDir
     showHidden: NavState.showHidden
     sortOps: hostSortOps

@@ -1,5 +1,6 @@
 #include "FileOperations.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -8,6 +9,7 @@
 #include <QStorageInfo>
 #include <QThreadPool>
 #include <QUrl>
+#include <QVariantMap>
 
 #include <cerrno>
 #include <cstdio>
@@ -153,7 +155,7 @@ void forceRemove(const QString &path) {
 // ~/.local/share/Trash) primero, más la .Trash-$uid de cada punto de montaje
 // que no sea el de $HOME (spec XDG Trash: borrar desde otro disco va a la
 // papelera de ESE disco). Réplica de trash-roots.sh sin shell.
-QStringList trashRoots() {
+QStringList discoverTrashRoots() {
   QStringList roots;
   const QString home = QDir::homePath();
   const QString dataHome =
@@ -174,6 +176,40 @@ QStringList trashRoots() {
       roots << cand;
   }
   return roots;
+}
+
+// Parsea un fichero .trashinfo: rellena name/origPath/epoch. `root` es la
+// raíz física de la papelera (para resolver Path= relativo en papeleras de
+// disco). Mismo decode que restoreByOrigPath (percent-decoding correcto).
+// Devuelve false si el fichero no tiene Path= (corrupto/incompleto).
+bool parseTrashInfo(const QFileInfo &infoFile, const QString &root,
+                    QString &name, QString &origPath, qint64 &epoch) {
+  QFile f(infoFile.absoluteFilePath());
+  if (!f.open(QIODevice::ReadOnly))
+    return false;
+  QString enc, dateStr;
+  while (!f.atEnd()) {
+    const QByteArray line = f.readLine();
+    if (line.startsWith("Path="))
+      enc = QString::fromUtf8(line.mid(5)).trimmed();
+    else if (line.startsWith("DeletionDate="))
+      dateStr = QString::fromUtf8(line.mid(13)).trimmed();
+  }
+  f.close();
+  if (enc.isEmpty())
+    return false;
+
+  QString decoded = QUrl::fromPercentEncoding(enc.toUtf8());
+  if (!decoded.startsWith(QLatin1Char('/')))
+    decoded = QFileInfo(root).absolutePath() + QLatin1Char('/') + decoded;
+
+  // name = stem del .trashinfo (mismo que el fichero en files/).
+  name = infoFile.fileName();
+  name.chop(QStringLiteral(".trashinfo").size());
+  origPath = decoded;
+  const QDateTime dt = QDateTime::fromString(dateStr, Qt::ISODate);
+  epoch = dt.isValid() ? dt.toSecsSinceEpoch() : 0;
+  return true;
 }
 
 } // namespace
@@ -432,7 +468,7 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
     QString bestInfo;
     qint64 bestMtime = -1;
     QString bestRoot;
-    for (const QString &root : trashRoots()) {
+    for (const QString &root : discoverTrashRoots()) {
       QDir infoDir(root + QStringLiteral("/info"));
       if (!infoDir.exists())
         continue;
@@ -500,4 +536,30 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
     QFile::remove(bestInfo);
     return {true, QString()};
   });
+}
+
+QStringList FileOperations::trashRoots() const { return discoverTrashRoots(); }
+
+QVariantList FileOperations::trashInfo() const {
+  QVariantList out;
+  for (const QString &root : discoverTrashRoots()) {
+    QDir infoDir(root + QStringLiteral("/info"));
+    if (!infoDir.exists())
+      continue;
+    const QFileInfoList infos =
+        infoDir.entryInfoList({QStringLiteral("*.trashinfo")}, QDir::Files);
+    for (const QFileInfo &fi : infos) {
+      QString name, origPath;
+      qint64 epoch = 0;
+      if (!parseTrashInfo(fi, root, name, origPath, epoch))
+        continue;
+      QVariantMap e;
+      e[QStringLiteral("name")] = name;
+      e[QStringLiteral("origPath")] = origPath;
+      e[QStringLiteral("epoch")] = epoch;
+      e[QStringLiteral("trashRoot")] = root;
+      out.append(e);
+    }
+  }
+  return out;
 }

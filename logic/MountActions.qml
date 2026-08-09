@@ -23,7 +23,9 @@ Item {
   }
 
   function refreshNetworkMounts() {
-    networkMountsProc.start([Paths.pluginDir + "/list-network-mounts.sh"])
+    // Enumeración NATIVA de montajes GVfs (Fase 16): NetworkMounts.list()
+    // sustituye a list-network-mounts.sh. Síncrona (readdir sobre gvfs).
+    MountsState.networkMounts = NetworkMounts.list()
   }
 
   function disconnectNetworkMount(mount) {
@@ -173,11 +175,6 @@ Item {
   }
 
   ProcessRunner {
-    id: networkMountsProc
-    onFinished: function (result) { MountsState.networkMounts = Utils.parseNetworkMounts(result.stdout) }
-  }
-
-  ProcessRunner {
     id: networkUnmountProc
     property bool wasInside: false
     property int tabIndex: -1
@@ -207,29 +204,17 @@ Item {
       if (result.exitCode === 0) {
         DialogsState.connectServerOpen = false
         // gio no imprime la ruta local igual que udisksctl -- se relista
-        // y se entra al mount que no estaba antes (el que acaba de
-        // aparecer) en vez de parsear la salida de "gio mount".
-        networkMountsAfterConnectProc.beforePaths = MountsState.networkMounts.map(function (m) { return m.path })
-        networkMountsAfterConnectProc.start([Paths.pluginDir + "/list-network-mounts.sh"])
+        // (nativo, síncrono) y se entra al mount que no estaba antes (el que
+        // acaba de aparecer) en vez de parsear la salida de "gio mount".
+        var before = MountsState.networkMounts.map(function (m) { return m.path })
+        var parsed = NetworkMounts.list()
+        MountsState.networkMounts = parsed
+        var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
+        if (fresh.length > 0) navController.navigateTo(fresh[0].path)
       } else {
         DialogsState.connectServerError = result.stderr.trim() || "Could not connect"
       }
     }
   }
 
-  // Segunda pasada de list-network-mounts.sh tras un connect con éxito,
-  // solo para encontrar CUÁL de los mounts es el nuevo (comparando contra
-  // los que ya había antes) y navegar directamente a él -- refreshNetworkMounts()
-  // normal no distingue cuál acaba de aparecer.
-  ProcessRunner {
-    id: networkMountsAfterConnectProc
-    property var beforePaths: []
-    onFinished: function (result) {
-      var parsed = Utils.parseNetworkMounts(result.stdout)
-      MountsState.networkMounts = parsed
-      var before = networkMountsAfterConnectProc.beforePaths
-      var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
-      if (fresh.length > 0) navController.navigateTo(fresh[0].path)
-    }
-  }
 }

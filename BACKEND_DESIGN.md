@@ -420,3 +420,36 @@ La fase se puede dar por cerrada cuando:
 
 Los tres primeros están hechos y verificados. El cuarto es el escalón 5.B
 y es el que de verdad cierra la fase.
+
+---
+
+## 10. System adapters (intencionadamente NO migrados)
+
+Tras la Fase 16, casi toda la plataforma es backend C++ nativo. Quedan **dos**
+scripts de shell que NO son "shell heredado a limpiar" sino **shims finos y
+estables sobre herramientas estándar de Linux** — la forma *correcta* de
+consultar esa información en el sistema. No tienen equivalente limpio en Qt
+puro (requerirían enlazar `libblkid`/`libudev` o reimplementar la resolución
+XDG de aplicaciones), y reimplementarlos a mano regresaría funcionalidad real.
+Se catalogan aquí explícitamente para que futuras auditorías no los confundan
+con residuo:
+
+| Script | Interfaz estable con | Por qué se queda |
+|---|---|---|
+| `list-mounts.sh` | `lsblk` / `findmnt` (util-linux) | Enumera montajes **y dispositivos extraíbles SIN montar** con su `fstype`/`label`/`removable`, para ofrecer "Montar" desde la UI. `QStorageInfo` solo ve lo YA montado; la parte de `lsblk` necesita `libblkid`/`libudev`. |
+| `open-with-list.sh` | GIO (`gio mime`) + `xdg-mime` | Resuelve las aplicaciones asociadas a un tipo MIME según las reglas XDG del sistema (`mimeapps.list`, `mimeinfo.cache`, defaults, subtipos). Qt (`QMimeDatabase`) detecta el tipo pero NO expone la resolución de apps. |
+
+Ambos se ejecutan vía `ProcessRunner` y su salida se parsea en QML
+(`Utils.parseMounts` para el primero; el segundo se lee directo en
+`logic/OpenWithOps.qml`). Contrato de datos estable: si algún día aparece una
+API nativa razonable (o se decide asumir `libblkid`), la migración es local a
+esos dos consumidores.
+
+### Migrados a nativo en la Fase 16
+
+| Script retirado | Sustituto nativo |
+|---|---|
+| `search-recursive.sh` | `backend/SearchWorker` (QDirIterator + QThreadPool, cancelable) |
+| `list-network-mounts.sh` | `backend/NetworkMounts` (lee `$XDG_RUNTIME_DIR/gvfs`) |
+| `trash-roots.sh` | `FileOperations::trashRoots()` (QStorageInfo + XDG Trash) |
+| `trash-info.sh` | `FileOperations::trashInfo()` (parseo `.trashinfo`, reutiliza `restoreByOrigPath`) |

@@ -67,34 +67,6 @@ function thumbKeyFor(entry, basePath) {
   return joinPath(basePath, entry.name) + "|" + entry.mtime
 }
 
-// list-dir.sh/search-recursive.sh separan TODO por NUL (\0) -- campos Y
-// entradas -- en vez de TAB/newline: un nombre de fichero real puede
-// contener un tab o un salto de línea (son bytes válidos en un nombre de
-// Linux, solo "/" y NUL están prohibidos), así que un TSV de toda la
-// vida se podía desalinear con un nombre así y hacer que una operación
-// destructiva actuara sobre el fichero equivocado. NUL es el único byte
-// que nunca puede aparecer dentro de un campo, así que separar por NUL
-// es inequívoco pase lo que pase en el nombre.
-function parseEntries(text) {
-  var s = String(text || "")
-  if (s.length === 0) return []
-  var fields = s.split(String.fromCharCode(0))
-  // Cada campo, incluido el último de la última entrada, termina en
-  // NUL -- split() deja un elemento vacío colgando al final. Se quita
-  // solo ese, no con un filtro genérico: un campo "enlace" vacío en
-  // medio (fichero normal, sin symlink) es válido y no hay que perderlo.
-  if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-  var out = []
-  for (var i = 0; i + 4 < fields.length; i += 5) {
-    out.push({
-      type: fields[i], name: fields[i + 1],
-      size: Number(fields[i + 2] || 0), mtime: Number(fields[i + 3] || 0),
-      link: fields[i + 4] || ""
-    })
-  }
-  return out
-}
-
 // Compara dos listas de entradas por CONTENIDO, barato (O(n), sin
 // asignaciones). Fase 10.A: sustituye a JSON.stringify(a) !== JSON.stringify(b)
 // -- que serializaba ~330 KB por comparación y se hacía 4 veces por refresco
@@ -111,28 +83,15 @@ function entriesEqual(a, b) {
   return true
 }
 
+// parseMounts sigue vivo: list-mounts.sh (enumeración de dispositivos vía
+// lsblk/findmnt) es un "system adapter" que NO se migra (ver BACKEND_DESIGN.md).
+// El TSV que produce se parsea aquí. Los montajes de RED, en cambio, pasaron a
+// backend nativo (NetworkMounts) en la Fase 16, así que parseNetworkMounts se
+// retiró (ya no había consumidor).
 function parseMounts(text) {
   var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
   return lines.map(function (l) {
     var parts = l.split("\t")
     return { label: parts[0], path: parts[1], device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
   })
-}
-
-// list-network-mounts.sh separa por NUL, no por TSV -- ver
-// parseEntries() para el motivo (un dato con tab/salto de línea real no
-// debe poder desalinear campos). Aquí el dato es una etiqueta que el
-// propio script construye, nunca texto arbitrario del usuario, pero se
-// mantiene el mismo protocolo para no tener dos convenciones de parseo
-// distintas.
-function parseNetworkMounts(text) {
-  var s = String(text || "")
-  if (s.length === 0) return []
-  var fields = s.split(String.fromCharCode(0))
-  if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-  var out = []
-  for (var i = 0; i + 2 < fields.length; i += 3) {
-    out.push({ label: fields[i], path: fields[i + 1], scheme: fields[i + 2] })
-  }
-  return out
 }

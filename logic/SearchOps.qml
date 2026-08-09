@@ -1,7 +1,6 @@
 import QtQuick
 import "../state"
 import "../services"
-import "../Utils.js" as Utils
 
 // Búsqueda (filtro en vivo + búsqueda profunda en subcarpetas), ocultos,
 // editar ruta a mano, ir arriba/abajo del todo -- vigésimo componente
@@ -39,6 +38,7 @@ Item {
   }
 
   function exitSearch() {
+    searchWorker.cancel()
     NavState.searching = false
     NavState.searchQuery = ""
     NavState.searchTruncated = false
@@ -50,7 +50,9 @@ Item {
   function runDeepSearch() {
     if (!NavState.searchQuery) return
     list.contentY = list.originY
-    deepSearchProc.start([Paths.pluginDir + "/search-recursive.sh", NavState.currentPath, NavState.searchQuery, NavState.showHidden ? "1" : "0"])
+    // Búsqueda recursiva NATIVA (Fase 16): SearchWorker sustituye a
+    // search-recursive.sh. Cancelable; una nueva búsqueda invalida la anterior.
+    searchWorker.search(NavState.currentPath, NavState.searchQuery, NavState.showHidden)
   }
 
   function goTop() {
@@ -66,17 +68,14 @@ Item {
     list.positionViewAtIndex(last, ListView.Contain)
   }
 
-  ProcessRunner {
-    id: deepSearchProc
-    onFinished: function (result) {
-      var parsed = Utils.parseEntries(result.stdout)
-      // search-recursive.sh pide 201 a propósito -- si llegan los 201 es
-      // que había más de 200 coincidencias reales; se descarta el que
-      // sobra y se avisa en la barra de estado en vez de dar la lista
-      // por completa en silencio.
-      NavState.searchTruncated = parsed.length > 200
-      if (NavState.searchTruncated) parsed = parsed.slice(0, 200)
-      NavState.entries = sortOps.sortEntries(parsed)
+  // SearchWorker (backend nativo) recorta a 200 y marca truncated=true si
+  // hubo más de 200 coincidencias -- mismo contrato que daba el script; el
+  // aviso de lista incompleta lo pinta la barra de estado.
+  SearchWorker {
+    id: searchWorker
+    onResults: function (entries, truncated) {
+      NavState.searchTruncated = truncated
+      NavState.entries = sortOps.sortEntries(entries)
       list.positionViewAtBeginning()
       selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
     }

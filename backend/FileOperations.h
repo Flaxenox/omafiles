@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -104,6 +105,21 @@ public:
   // files/<name> de vuelta a origPath (rename atómico + fallback cross-fs) y
   // borra el .trashinfo. Emite finished("restore", origPath) / error.
   Q_INVOKABLE void restoreByOrigPath(const QString &origPath);
+
+  // Raíces XDG de papelera activas (Fase 16): la de casa (~/.local/share/
+  // Trash) más la .Trash-$uid de cualquier otro punto de montaje. Sustituto
+  // nativo de trash-roots.sh; la vista Papelera lista "<raíz>/files" de cada
+  // una con DirectoryModel.listMany. Síncrono (solo stat sobre los montajes).
+  Q_INVOKABLE QStringList trashRoots() const;
+
+  // Metadatos de todos los .trashinfo de todas las raíces (Fase 16): sustituto
+  // nativo de trash-info.sh. Una lista de objetos {name, origPath, epoch,
+  // trashRoot}: `name` = stem del fichero en files/, `origPath` = Path=
+  // percent-decoded (relativo al punto de montaje resuelto en papeleras de
+  // disco), `epoch` = DeletionDate en segundos, `trashRoot` = la raíz física
+  // que contiene ese ítem (para restaurar/borrar en la papelera correcta).
+  // Reutiliza el mismo parseo que restoreByOrigPath. Síncrono.
+  Q_INVOKABLE QVariantList trashInfo() const;
 
 signals:
   // Progreso por BYTES de una copia/movimiento en curso (Fase 13.G): `done`

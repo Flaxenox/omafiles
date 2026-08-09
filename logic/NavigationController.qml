@@ -67,8 +67,7 @@ Item {
   }
 
   // Ver listProc.onFinished -- lo que queda por hacer una vez
-  // NavState.entries ya está puesto (con la papelera, puede ser justo
-  // después de trashInfoProc en vez de inmediatamente). resetView: false
+  // NavState.entries ya está puesto. resetView: false
   // cuando _applyEntries() decidió que el contenido no había cambiado de
   // verdad -- en ese caso list.contentY ya estaba bien (nadie lo tocó) y
   // no hace falta el reset+restauración de scroll de abajo.
@@ -306,7 +305,6 @@ Item {
   // vez); cada BackgroundPanel tiene la suya propia.
   DirLister {
     id: dirLister
-    pluginDir: Paths.pluginDir
     trashDir: Paths.trashDir
     showHidden: NavState.showHidden
     sortOps: navCtrl.sortOps

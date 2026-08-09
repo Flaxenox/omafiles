@@ -29,6 +29,11 @@ QtObject {
   // Restaura por ruta original (Fase 13.E): busca el .trashinfo correcto en
   // todas las papeleras. Emite finished("restore", origPath) / error.
   function restoreByOrigPath(origPath) { Backend.FileOperations.restoreByOrigPath(origPath) }
+
+  // Listado nativo de la Papelera (Fase 16): raíces XDG activas y metadatos
+  // de los .trashinfo. Sustituyen a trash-roots.sh / trash-info.sh; síncronos.
+  function trashRoots() { return Backend.FileOperations.trashRoots() }
+  function trashInfo() { return Backend.FileOperations.trashInfo() }
   // Cancela la operación en curso (Fase 13.A). El worker aborta y emite
   // error "cancelled", que onError NO notifica (es una cancelación pedida
   // por el usuario, no un fallo).
