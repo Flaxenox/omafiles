@@ -200,12 +200,30 @@ Item {
               focus: root.opened
               // Micro-transición estilo Turbo Frame (Fase 22, DHH/Hotwire): al
               // (re)poblar la lista -- navegar a otra carpeta, o tras una
-              // operación que cambia el listado -- las filas aparecen con un
-              // fade muy corto. NO retrasa la interacción: la lista es
+              // operación que cambia el listado -- la lista aparece con un fade
+              // muy corto. NO retrasa la interacción: la lista es
               // navegable/clicable al instante (la opacidad no bloquea input).
               // Sin rebotes ni resortes, solo un OutCubic de 140 ms.
-              populate: Transition {
-                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+              //
+              // Se funde la opacidad del CONTENEDOR entero, no cada delegado vía
+              // `populate: Transition`. Con populate, la ListView fija las
+              // posiciones de los delegados con su altura del PRIMER frame (una
+              // línea, ~40px) y no las recalcula cuando la fila crece a dos
+              // líneas al llegar el subtítulo async (contador de carpeta) --
+              // dejaba las filas del panel activo solapadas ~9px y con distinta
+              // densidad que un panel de fondo (que, sin populate, sí recoloca).
+              // Fundir el contenedor da el mismo efecto sin capturar geometría,
+              // así los dos paneles quedan idénticos. Verificado en vivo con dos
+              // paneles sobre la misma carpeta: pitch de fila idéntico (49px).
+              onModelChanged: listRepopulateFade.restart()
+              NumberAnimation {
+                id: listRepopulateFade
+                target: listView
+                property: "opacity"
+                from: 0
+                to: 1
+                duration: 140
+                easing.type: Easing.OutCubic
               }
               // Sin esto, arrastrar con el click (botón izquierdo pulsado)
               // hace scroll de la lista -- el mismo gesto que queremos
