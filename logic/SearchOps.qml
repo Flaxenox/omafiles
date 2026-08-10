@@ -48,11 +48,25 @@ Item {
   }
 
   function runDeepSearch() {
-    if (!NavState.searchQuery) return
+    // Fase 19: la búsqueda incremental solo arranca con 2+ caracteres; con
+    // 0-1 el buscador muestra el listado normal (ver restoreListing, llamado
+    // por el debounce de SearchBar).
+    if (NavState.searchQuery.length < 2) return
+    NavState.searchBusy = true
     list.contentY = list.originY
     // Búsqueda recursiva NATIVA (Fase 16): SearchWorker sustituye a
     // search-recursive.sh. Cancelable; una nueva búsqueda invalida la anterior.
     searchWorker.search(NavState.currentPath, NavState.searchQuery, NavState.showHidden)
+  }
+
+  // Vuelve al listado normal de currentPath sin cerrar el buscador (Fase 19):
+  // lo llama el debounce de SearchBar cuando la consulta baja de 2 caracteres.
+  function restoreListing() {
+    searchWorker.cancel()
+    NavState.searchBusy = false
+    NavState.searchTruncated = false
+    list.contentY = list.originY
+    navController.refresh()
   }
 
   function goTop() {
@@ -74,6 +88,7 @@ Item {
   SearchWorker {
     id: searchWorker
     onResults: function (entries, truncated) {
+      NavState.searchBusy = false
       NavState.searchTruncated = truncated
       NavState.entries = sortOps.sortEntries(entries)
       list.positionViewAtBeginning()

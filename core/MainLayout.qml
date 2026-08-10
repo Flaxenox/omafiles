@@ -217,6 +217,7 @@ Item {
           spacing: Style.spacing.controlGap
 
           PanelNavButtons {
+            id: navButtons
             anchors.verticalCenter: parent.verticalCenter
             canGoBack: TabsState.navHistoryIndex > 0
             canGoForward: TabsState.navHistoryIndex < TabsState.navHistory.length - 1
@@ -228,7 +229,12 @@ Item {
 
           Item {
             id: pathArea
-            width: parent.width - 3 * (Style.spacing.controlHeight + Style.spacing.controlGap)
+            // Encoge al expandir la lupa, pero nunca por debajo de un mínimo:
+            // la ruta/breadcrumb SIEMPRE queda visible (truncada), nunca
+            // oculta. searchBar queda fija a la derecha porque es el último
+            // hijo del Row y pathArea absorbe el cambio de ancho.
+            readonly property int minPathW: 120
+            width: Math.max(minPathW, parent.width - navButtons.width - searchBar.width - 2 * Style.spacing.controlGap)
             height: parent.height
 
             MouseArea {
@@ -266,6 +272,19 @@ Item {
               }
             }
           }
+
+          // Lupa de búsqueda expandible (Fase 19): último hijo de navRow,
+          // pegada al borde derecho. maxWidth = lo que sobra tras reservar el
+          // mínimo del breadcrumb, para que la ruta nunca desaparezca.
+          SearchBar {
+            id: searchBar
+            anchors.verticalCenter: parent.verticalCenter
+            maxWidth: navRow.width - navButtons.width - pathArea.minPathW - 2 * Style.spacing.controlGap
+            list: list
+            searchOps: mainLayout.searchOps
+            navController: mainLayout.navController
+            selectionOps: mainLayout.selectionOps
+          }
         }
 
         ActivePanelInputRows {
@@ -277,8 +296,6 @@ Item {
           root: mainLayout.root
           list: list
           conflictActions: mainLayout.conflictActions
-          searchOps: mainLayout.searchOps
-          selectionOps: mainLayout.selectionOps
         }
 
         Item {
@@ -297,8 +314,8 @@ Item {
           // la de la única fila visible, o 0 si ninguna lo está, así
           // que basta un término en vez de sumar los tres por separado.
           height: activePanel.height - navRow.height
-            - (EditModeState.creatingFolder || EditModeState.creatingFile || NavState.searching ? activeInputRows.height + mainColumn.spacing : 0)
-            - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile || NavState.searching ? 1 : 0))
+            - (EditModeState.creatingFolder || EditModeState.creatingFile ? activeInputRows.height + mainColumn.spacing : 0)
+            - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile ? 1 : 0))
 
           ActiveFileList {
             id: list

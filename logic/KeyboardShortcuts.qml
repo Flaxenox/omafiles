@@ -112,7 +112,12 @@ Item {
       }
       return
     }
-    if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath || NavState.searching) return
+    // NavState.searching NO va aquí (Fase 19): mientras la lupa está abierta,
+    // el campo de búsqueda vive en la barra superior y tiene su propio foco;
+    // si el usuario hace clic en un resultado y la lista recupera el foco,
+    // los atajos (navegar, copiar, borrar...) deben funcionar sobre los
+    // resultados igual que sobre cualquier listado (req 7).
+    if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath) return
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 
@@ -127,7 +132,8 @@ Item {
       // requestClose() si solo queda 1, así que el comportamiento
       // de siempre (Escape cierra la ventana) no cambia con una
       // sola pestaña abierta.
-      if (PreviewState.previewOpen) PreviewState.previewOpen = false
+      if (NavState.searching) hostSearchOps.exitSearch()
+      else if (PreviewState.previewOpen) PreviewState.previewOpen = false
       else hostTabOps.closeTab()
       event.accepted = true
     } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
@@ -139,7 +145,8 @@ Item {
     } else if (event.key === Qt.Key_Space) {
       hostPreviewLoader.togglePreview()
       event.accepted = true
-    } else if (event.key === Qt.Key_Slash) {
+    } else if (event.key === Qt.Key_Slash || (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier))) {
+      // Ctrl+F (o /) abre la lupa expandible de la barra superior (Fase 19).
       hostSearchOps.startSearch()
       event.accepted = true
     } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {

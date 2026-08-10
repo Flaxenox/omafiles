@@ -42,8 +42,13 @@ QtObject {
   // búsqueda) que ya gobierna este singleton. logic/ y la capa visual las
   // leen/escriben directamente vía NavState.*, sin `property Item root`.
 
-  // Modo búsqueda del panel activo abierto (barra de búsqueda visible).
+  // Modo búsqueda abierto (Fase 19: la lupa de la barra superior está
+  // expandida; el campo de búsqueda es visible). Reutilizado como flag de
+  // "expandido" para no duplicar estado -- no hay un searchExpanded aparte.
   property bool searching: false
+  // Una búsqueda recursiva (SearchWorker) está en vuelo -- dispara el spinner
+  // de la lupa. Se pone en runDeepSearch() y se limpia en onResults/restore.
+  property bool searchBusy: false
   // La búsqueda recursiva se cortó a los 200 primeros resultados (aviso al
   // usuario de que faltan ítems; ver SearchOps/search-recursive.sh).
   property bool searchTruncated: false
