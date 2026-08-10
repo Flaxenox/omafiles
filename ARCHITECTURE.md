@@ -1,41 +1,47 @@
 # Architecture
 
-Omafiles started as a single-file Quickshell plugin (~6900 lines) and has
-been progressively decoupled into a **host-independent core** plus a
-**thin Quickshell integration layer**. This document describes that
-result as of the `core-v1-ready` milestone — the point from which a
-second frontend (Qt6 standalone) can be built without restructuring
-anything below it.
+Omafiles started as a single-file Quickshell plugin (~6900 lines) and was
+progressively decoupled into a **host-independent core** plus a thin host
+integration layer. As of **Beta 1 (v0.9.0-beta1, Fase 25)** the Quickshell
+frontend has been **removed**: the **Qt6 standalone application is the single
+official frontend**. The core (`core/`, `logic/`, `state/`, `panels/`,
+`dialogs/`, `services/`, and the C++ `Omafiles.Backend`) is unchanged — the
+migration only swapped the host that instantiates it.
+
+The app is installed to `~/.local` (binary `~/.local/bin/omafiles`, no root);
+the QML tree is still loaded from this repo during the beta (packaging into a
+qrc / AUR comes later).
 
 ## Folder structure
 
 ```
-Omafiles.qml                    Quickshell bootstrap (~90 lines)
-core/
-  OmafilesContent.qml            Full visual tree + wiring (composition root)
+main.cpp                        Qt6 bootstrap: engine, single-instance, --selfcheck
 integrations/
   HostAdapter.qml                 Formal host contract + shared size persistence
-  quickshell/
-    HostBridge.qml                FloatingWindow + host `shell` object, isolated
   standalone/
     Main.qml                       ApplicationWindow host (Qt6, main.cpp loads it)
+    SelfCheck.qml                  Headless validation harness (--selfcheck)
     qml_modules/qs/                qs.Commons + qs.Ui adapters (theme/design system)
+core/
+  OmafilesContent.qml            Full visual tree + wiring (composition root)
+backend/                         C++ Omafiles.Backend plugin (shared .so, native ops)
 logic/                           Business logic (Process-based I/O, state mutation)
 state/                           pragma Singleton data holders
 panels/                          Large always-visible UI (sidebar, file lists, preview)
 dialogs/                         Modal/floating UI
 shared/                          Small reusable visual pieces
-services/                        Quickshell process/env/notify wrapped as an Omafiles-owned API
-scripts/, *.sh                   Backing shell scripts (list-dir.sh, trash-info.sh, ...)
+services/                        Backend process/env/notify wrapped as an Omafiles-owned API
+scripts/, *.sh                   Backing shell scripts + desktop integration (FileManager1)
 ```
 
 ## Layers
 
 ```mermaid
 graph TD
-  Omafiles["Omafiles.qml (bootstrap)"] --> HostBridge["integrations/quickshell/HostBridge.qml"]
-  Omafiles --> Content["core/OmafilesContent.qml"]
-  HostBridge -.hosts.-> Content
+  Main["main.cpp (Qt6 bootstrap, single-instance)"] --> MainQml["integrations/standalone/Main.qml (ApplicationWindow)"]
+  MainQml --> Adapter["integrations/HostAdapter.qml"]
+  MainQml --> Content["core/OmafilesContent.qml"]
+  Adapter -.host contract.-> Content
   Content --> panels
   Content --> dialogs
   Content --> logic
@@ -44,15 +50,15 @@ graph TD
   logic --> state
   logic --> services
   panels --> shared
-  services -->|wraps| Quickshell[(Quickshell APIs)]
-  HostBridge -->|wraps| Quickshell
+  services -->|wraps| Backend[(Omafiles.Backend C++ .so)]
 ```
 
-- **`Omafiles.qml`** — the object the Quickshell host loader actually
-  instantiates. Holds only what the plugin ABI requires on the root
-  object (`shell`, `open()`, `close()`, `opened`) and creates
-  `HostBridge` + `OmafilesContent`, wiring them together. No business
-  logic.
+- **`main.cpp` + `integrations/standalone/Main.qml`** — the Qt6 host. `main.cpp`
+  creates the QML engine, handles single-instance (a second `omafiles [path]`
+  hands its payload to the running window and exits) and the `--selfcheck`
+  harness; `Main.qml` is the `ApplicationWindow` that instantiates
+  `OmafilesContent` and fulfils the host contract (`HostAdapter`: show/close +
+  geometry persistence). No business logic.
 - **`core/OmafilesContent.qml`** — the real composition root: every
   property, every controller instantiation (`NavigationController`,
   `DirLister`, `ActionEngine`, `TabOps`, ...), the full visual tree

@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first file manager for [Omarchy](https://omarchy.org), built as a native Quickshell plugin — not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either. It's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0-beta1`; previously a Quickshell plugin) — not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either. It's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -74,26 +74,32 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 
 ## Installation
 
-```bash
-omarchy plugin add https://github.com/Percius04/omafiles --enable
-```
-
-Or clone it manually:
+As of **v0.9.0-beta1** Omafiles is a **Qt6 standalone application** (no longer
+a Quickshell plugin). Build it and install to `~/.local` (no root):
 
 ```bash
 git clone https://github.com/Percius04/omafiles ~/.config/omarchy/plugins/omafiles
-omarchy plugin enable io.github.percius04.omafiles
+cd ~/.config/omarchy/plugins/omafiles
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+ninja -C build
+cmake --install build      # -> ~/.local/bin/omafiles + Omafiles.Backend .so
 ```
 
-Then bind a key in `~/.config/hypr/bindings.lua`:
+Run it from the terminal (`omafiles`, or `omafiles <folder>`), or bind a key in
+`~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + F", "Omafiles (file manager)", "omarchy-shell shell toggle io.github.percius04.omafiles '{}'")
+o.bind("SUPER + ALT + F", "Omafiles (file manager)", { launch = "omafiles" })
 ```
+
+A single instance is enforced: a second `omafiles [path]` navigates the running
+window (raising it) instead of opening a new one. The `.desktop` entry, icon and
+`org.freedesktop.FileManager1` service are installed automatically on first run
+(see below).
 
 ## Default file manager
 
-Enabling the plugin sets Omafiles as the system's default file manager automatically — nothing to run by hand. On first load it registers both handoff mechanisms Linux apps use for "the" file manager:
+Omafiles sets itself as the system's default file manager automatically — nothing to run by hand. On first launch it registers both handoff mechanisms Linux apps use for "the" file manager:
 
 - **Opening directories** (`xdg-open`, "Open folder" actions): a `~/.local/share/applications/omafiles.desktop` with `MimeType=inode/directory`, set via `xdg-mime default`.
 - **"Show in file manager"** (Firefox downloads, GTK/Qt "reveal in folder"): these go over the `org.freedesktop.FileManager1` D-Bus interface, not `.desktop`/`xdg-mime`, and Nautilus normally owns it. Omafiles ships a user-level service file for the same bus name (`~/.local/share/dbus-1/services/`), which takes priority over Nautilus's system one, backed by `scripts/dbus-filemanager1.py` (needs `python-gobject`/`Gio` — already a dependency of most GTK-based desktops).
@@ -102,7 +108,7 @@ This is idempotent and only runs once (tracked in `~/.local/state/omafiles/integ
 
 ## Requirements
 
-- Omarchy 4 (Quickshell-based shell).
+- Omarchy 4 (for the `qs.Commons`/`qs.Ui` design-system theme files it reads live). Omafiles itself no longer runs inside Quickshell — it's a standalone Qt6 app.
 - `ffmpegthumbnailer` for video thumbnails, `ffprobe` (ffmpeg) for audio metadata, `pygmentize` (python-pygments) for syntax-highlighted previews, `pdftoppm` (poppler) for PDF previews, `inotifywait` (inotify-tools) for live folder refresh — all optional, each falls back gracefully without it.
 - `gio` with the relevant GVfs backend for network locations (`gvfs` covers SFTP/FTP/WebDAV; SMB needs `gvfs-smb` too).
 - `gio`, `udisksctl`, `wl-clipboard`, standard coreutils (all present on a stock Omarchy install).
