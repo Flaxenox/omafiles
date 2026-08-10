@@ -46,7 +46,17 @@ Item {
   // panel tiene su búsqueda independiente en vez de una global compartida.
   readonly property bool bgSearching: modelData.searching === true
     && (modelData.searchQuery || "").length >= 2
+  // Resultados EN CRUDO guardados por TabOps (para el "of N" del footer).
   readonly property var bgSearchEntries: modelData.searchEntries || []
+  // Mismo filtro por NOMBRE que aplica el panel activo (NavState.visibleEntries):
+  // la búsqueda global trae también coincidencias por RUTA (p.ej. carpetas
+  // DENTRO de Steam/ como bin/ o logs/, cuyo nombre no contiene el término). El
+  // panel activo las oculta; sin esto, el panel de fondo mostraba MÁS resultados
+  // que el activo para la misma búsqueda. Ahora los dos enseñan lo mismo.
+  readonly property var bgVisibleSearchEntries: {
+    var q = (modelData.searchQuery || "").toLowerCase()
+    return bgSearchEntries.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0 })
+  }
 
   // El listado en sí vive en DirLister (Fase 1.6, josema) -- mismo
   // mecanismo que usa el panel activo (NavigationController), pero con
@@ -304,7 +314,7 @@ Item {
     clip: true
     // Resultados de la búsqueda de ESTE panel si la tiene abierta; si no, su
     // listado normal de carpeta.
-    model: bgPanel.bgSearching ? bgPanel.bgSearchEntries : dirLister.entries
+    model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : dirLister.entries
     boundsBehavior: Flickable.StopAtBounds
 
     delegate: CursorSurface {
@@ -477,7 +487,8 @@ Item {
     // (recuento + aviso de lista recortada), igual que el footer del panel
     // activo al buscar; si no, el listado normal de la carpeta.
     text: bgPanel.bgSearching
-      ? (bgPanel.bgSearchEntries.length + (bgPanel.bgSearchEntries.length === 1 ? " result" : " results")
+      ? (bgPanel.bgVisibleSearchEntries.length + (bgPanel.bgVisibleSearchEntries.length === 1 ? " item" : " items")
+         + " of " + bgPanel.bgSearchEntries.length
          + (bgPanel.modelData.searchTruncated ? " · showing first 200" : ""))
       : (dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
          + " · sort: " + hostSortOps.sortLabel())
