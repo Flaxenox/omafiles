@@ -34,6 +34,8 @@ if [[ -n "$arg" ]]; then
   [[ -d "$path" ]] || path=""
 fi
 
-# summon (no toggle): si Omafiles ya está abierto, queremos que navegue a
-# la ruta en una pestaña nueva, no que se cierre.
-exec omarchy-shell shell summon io.github.percius04.omafiles "$path"
+# Lanza el binario Qt6 standalone (Fase 25). Si Omafiles ya está abierto, su
+# instancia única recibe la ruta y navega a ella en una pestaña nueva
+# trayéndose la ventana al frente; si no, la abre. Ruta vacía = arranque
+# normal (restaura la sesión anterior).
+exec "$HOME/.local/bin/omafiles" "$path"

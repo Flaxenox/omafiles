@@ -1,8 +1,11 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -11,7 +14,9 @@
 #include <QObject>
 #include <QQuickStyle>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <cstdio>
+#include <unistd.h>
 
 // Reporter del selfcheck: salida DETERMINISTA a stdout (no depende de las
 // reglas de logging de QML, que en release pueden silenciar console.log).
@@ -49,6 +54,94 @@ void addImportPaths(QQmlApplicationEngine &engine, const QString &sourceDir) {
   engine.addImportPath(sourceDir + "/integrations/standalone/qml_modules");
   engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));
 }
+
+// Nombre del socket de instancia única, por usuario (para no chocar entre
+// usuarios ni con una sesión headless del selfcheck). Vive bajo
+// XDG_RUNTIME_DIR (QLocalServer lo resuelve por nombre).
+QString instanceSocketName() {
+  return QStringLiteral("omafiles-instance-%1").arg(static_cast<uint>(getuid()));
+}
+
+// Normaliza el argumento de línea de comandos al "payload" que entiende
+// core/OmafilesContent.open(): una ruta absoluta de carpeta, opcionalmente
+// seguida de "\n" y nombres a seleccionar (separados por \x1f). Reglas:
+//   · vacío            -> "" (open() restaura la sesión anterior).
+//   · empieza por "/"  -> se reenvía TAL CUAL. Cubre tanto una ruta absoluta
+//                         como un payload ya montado por dbus-filemanager1.py
+//                         ("/carpeta\nnombre") -- por eso no se toca.
+//   · file:// URI      -> se decodifica; si es un fichero, "dir\nnombre".
+//   · ruta relativa    -> se absolutiza; si es un fichero, "dir\nnombre".
+// La lógica de fichero->carpeta+selección solo se aplica a las dos últimas
+// (uso directo `omafiles ~/x` o xdg-open); los scripts ya mandan algo limpio.
+QString normalizePayload(const QString &arg) {
+  if (arg.isEmpty()) return QString();
+  if (arg.startsWith(QLatin1Char('/'))) return arg;
+
+  QString path;
+  if (arg.startsWith(QLatin1String("file://"))) {
+    const QUrl u(arg);
+    path = u.isLocalFile() ? u.toLocalFile() : QString();
+  } else {
+    path = arg;  // ruta relativa
+  }
+  if (path.isEmpty()) return QString();
+
+  const QFileInfo fi(path);
+  if (!fi.exists()) return QString();
+  if (fi.isFile())
+    return fi.absolutePath() + QLatin1Char('\n') + fi.fileName();
+  return fi.absoluteFilePath();
+}
+
+// Instancia única. La PRIMERA instancia escucha en un QLocalServer y expone
+// received(payload) al QML (Main.qml lo conecta a content.open + raise). Una
+// SEGUNDA invocación (p.ej. abrir una carpeta desde otra app) conecta al
+// socket, manda su payload y termina, en vez de abrir otra ventana.
+class SingleInstance : public QObject {
+  Q_OBJECT
+ public:
+  using QObject::QObject;
+
+  // Intenta entregar `payload` a una instancia ya en marcha. Devuelve true si
+  // lo consiguió (esta invocación debe salir sin abrir ventana).
+  static bool deliverToRunning(const QString &payload) {
+    QLocalSocket sock;
+    sock.connectToServer(instanceSocketName());
+    if (!sock.waitForConnected(300)) return false;
+    sock.write(payload.toUtf8());
+    sock.flush();
+    sock.waitForBytesWritten(300);
+    sock.disconnectFromServer();
+    if (sock.state() != QLocalSocket::UnconnectedState)
+      sock.waitForDisconnected(300);
+    return true;
+  }
+
+  // Empieza a escuchar. removeServer() limpia un socket huérfano de una
+  // instancia anterior que muriera sin cerrarlo.
+  bool listen() {
+    QLocalServer::removeServer(instanceSocketName());
+    connect(&m_server, &QLocalServer::newConnection, this,
+            &SingleInstance::onConnection);
+    return m_server.listen(instanceSocketName());
+  }
+
+ signals:
+  void received(const QString &payload);
+
+ private slots:
+  void onConnection() {
+    QLocalSocket *c = m_server.nextPendingConnection();
+    if (!c) return;
+    connect(c, &QLocalSocket::readyRead, this, [this, c]() {
+      emit received(QString::fromUtf8(c->readAll()));
+    });
+    connect(c, &QLocalSocket::disconnected, c, &QObject::deleteLater);
+  }
+
+ private:
+  QLocalServer m_server;
+};
 
 // Genera los ficheros de prueba deterministas que el selfcheck necesita.
 // Todo cuelga de `base` (un QTemporaryDir), así que se borra solo al salir.
@@ -196,6 +289,23 @@ int runSelfCheck(int argc, char *argv[]) {
 
 int runNormal(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
+  app.setApplicationName(QStringLiteral("omafiles"));
+  app.setDesktopFileName(QStringLiteral("omafiles"));
+
+  // Primer argumento posicional = ruta/URI/payload a abrir (vacío = arranque
+  // normal, que restaura la sesión anterior como el frontend Quickshell).
+  QString payload;
+  for (int i = 1; i < argc; ++i) {
+    const QString a = QString::fromLocal8Bit(argv[i]);
+    if (a.startsWith(QLatin1String("--"))) continue;  // flags (no hay ninguna en modo normal)
+    payload = normalizePayload(a);
+    break;
+  }
+
+  // Instancia única: si ya hay un Omafiles abierto, entrégale el payload
+  // (navegará/seleccionará y se traerá al frente) y termina sin abrir otra
+  // ventana. Si no, esta invocación se convierte en la instancia servidora.
+  if (SingleInstance::deliverToRunning(payload)) return 0;
 
   // qs.Ui usa QtQuick.Controls (Button/TextField) -- Basic es el estilo que
   // no depende de ningún backend nativo extra, el más seguro.
@@ -204,6 +314,12 @@ int runNormal(int argc, char *argv[]) {
   QQmlApplicationEngine engine;
   const QString sourceDir = QStringLiteral(OMAFILES_SOURCE_DIR);
   addImportPaths(engine, sourceDir);
+
+  SingleInstance instance;
+  instance.listen();  // si falla (nombre ocupado por carrera) simplemente no
+                      // recibe summons; la ventana se abre igual.
+  engine.rootContext()->setContextProperty("SingleInstance", &instance);
+  engine.rootContext()->setContextProperty("omafilesInitialPayload", payload);
 
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,

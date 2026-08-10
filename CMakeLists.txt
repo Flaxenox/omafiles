@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Pdf DBus)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Pdf DBus Network)
 
 qt_standard_project_setup()
 
@@ -83,6 +83,7 @@ target_link_libraries(omafiles-standalone PRIVATE
   Qt6::Qml
   Qt6::Quick
   Qt6::QuickControls2
+  Qt6::Network
 )
 
 # OMAFILES_SOURCE_DIR: raiz del arbol QML (se carga del fuente, sin qrc).
@@ -105,6 +106,21 @@ set(OMAFILES_QML_INSTALL_DIR "$ENV{HOME}/.local/lib/qt6/qml"
     CACHE PATH "Ruta estable donde se instala el modulo QML Omafiles.Backend")
 install(DIRECTORY "${CMAKE_BINARY_DIR}/qml/Omafiles"
         DESTINATION "${OMAFILES_QML_INSTALL_DIR}")
+
+# ---------------------------------------------------------------------------
+# Instalacion del binario standalone (Fase 25: frontend Qt6 oficial)
+# ---------------------------------------------------------------------------
+# El ejecutable se instala RENOMBRADO a `omafiles` en ~/.local/bin (en el PATH
+# del usuario, sin root). El QML se sigue cargando del repo (OMAFILES_SOURCE_
+# DIR) durante RC1: el repo es la ruta estable de instalacion por ahora; el
+# empaquetado con qrc/AUR llega despues de v1.0.0-rc1. El .desktop, el icono y
+# el servicio D-Bus FileManager1 los instala scripts/install-integrations.sh
+# (idempotente, lo lanza AppBindings al abrir).
+set(OMAFILES_BIN_INSTALL_DIR "$ENV{HOME}/.local/bin"
+    CACHE PATH "Ruta donde se instala el binario omafiles")
+install(PROGRAMS "$<TARGET_FILE:omafiles-standalone>"
+        DESTINATION "${OMAFILES_BIN_INSTALL_DIR}"
+        RENAME omafiles)
 
 # ---------------------------------------------------------------------------
 # Arnés de validación (Fase 12)

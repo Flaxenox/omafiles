@@ -57,8 +57,24 @@ ApplicationWindow {
     onCloseRequested: window.close()
   }
 
+  // Instancia única (Fase 25): una segunda invocación `omafiles [ruta]` no abre
+  // otra ventana -- main.cpp entrega el payload por el socket local y aquí se
+  // navega/selecciona (content.open) y se trae la ventana al frente. Mismo
+  // content.open() que usa la apertura inicial y que usaba el summon del plugin.
+  Connections {
+    target: SingleInstance
+    function onReceived(payload) {
+      content.open(payload)
+      window.show()
+      window.raise()
+      window.requestActivate()
+    }
+  }
+
   Component.onCompleted: {
     adapter.restore()
-    content.open(Backend.Env.get("HOME"))
+    // Payload inicial de la línea de comandos (main.cpp). Vacío = restaura la
+    // sesión anterior (carpeta/pestañas), igual que el arranque del plugin.
+    content.open(typeof omafilesInitialPayload !== "undefined" ? omafilesInitialPayload : "")
   }
 }

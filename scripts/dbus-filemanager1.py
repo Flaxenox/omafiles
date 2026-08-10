@@ -20,7 +20,9 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "org.freedesktop.FileManager1"
 OBJECT_PATH = "/org/freedesktop/FileManager1"
-PLUGIN_ID = "io.github.percius04.omafiles"
+# Fase 25: se lanza el binario Qt6 standalone (instancia única) en vez de
+# hacer `omarchy-shell shell summon` al plugin de Quickshell.
+OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """
 <node>
@@ -52,14 +54,17 @@ def uri_to_path(uri):
 
 
 def summon(folder, select_name=""):
+    # Mismo payload que entiende core/OmafilesContent.open(): carpeta absoluta,
+    # opcionalmente "\n" + nombres a seleccionar (varios con \x1f). El binario
+    # (instancia única) navega a esa carpeta trayendo la ventana al frente.
     payload = folder if not select_name else folder + "\n" + select_name
     try:
         Gio.Subprocess.new(
-            ["omarchy-shell", "shell", "summon", PLUGIN_ID, payload],
+            [OMAFILES_BIN, payload],
             Gio.SubprocessFlags.NONE,
         )
     except GLib.Error as e:
-        print("omafiles FileManager1: fallo al invocar omarchy-shell:", e, file=sys.stderr)
+        print("omafiles FileManager1: fallo al lanzar omafiles:", e, file=sys.stderr)
 
 
 def handle_show(uris, select_item):
