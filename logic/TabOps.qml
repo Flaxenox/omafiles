@@ -148,7 +148,15 @@ Item {
     saveActiveTab()
     TabsState.activeTabIndex = index
     _restoreTabHistory(TabsState.tabs[index])
+    // El panel activo adopta el listado de la pestaña que ya estaba a la
+    // vista como panel de fondo -- sin fade (ver root.suppressListFade), o
+    // pasar el cursor por un panel produciría un parpadeo redundante. Se
+    // limpia justo después: el único cambio de modelo que dispara el fade lo
+    // hace _goToPath de forma síncrona (pinta desde tabEntriesCache), así que
+    // para cuando vuelve ya se consumió.
+    root.suppressListFade = true
     navController._goToPath(TabsState.tabs[index].path)
+    root.suppressListFade = false
     _restoreTabArchive(TabsState.tabs[index])
     _restoreTabPreview(TabsState.tabs[index])
     _restoreTabScroll(TabsState.tabs[index])
@@ -182,7 +190,11 @@ Item {
     var newIndex = Math.min(TabsState.activeTabIndex, next.length - 1)
     TabsState.activeTabIndex = newIndex
     _restoreTabHistory(TabsState.tabs[newIndex])
+    // Igual que switchToTab: la pestaña que queda ya estaba a la vista como
+    // panel de fondo, así que se adopta sin fade (evita el parpadeo).
+    root.suppressListFade = true
     navController._goToPath(TabsState.tabs[newIndex].path)
+    root.suppressListFade = false
     _restoreTabArchive(TabsState.tabs[newIndex])
     _restoreTabPreview(TabsState.tabs[newIndex])
     _restoreTabScroll(TabsState.tabs[newIndex])

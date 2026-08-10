@@ -34,6 +34,14 @@ Item {
   property bool opened: false
   property bool loaded: false
 
+  // Suprime la micro-transición de fade de la lista (Fase 22) para el
+  // PRÓXIMO repintado del panel activo. Lo activa TabOps al cambiar/cerrar
+  // pestaña: ahí el listado que adopta el panel activo ya estaba a la vista
+  // (era un panel de fondo), así que fundirlo al activarlo es un flash
+  // redundante al pasar el cursor. La navegación real (entrar en una carpeta,
+  // atrás/adelante, operaciones) NO lo activa, así que sigue con su fade.
+  property bool suppressListFade: false
+
   // Posición de scroll pendiente de restaurar EN CUANTO termine el
   // próximo listProc -- ver el comentario largo junto a
   // positionViewAtBeginning() en listProc, quien lo consume. -1 = nada

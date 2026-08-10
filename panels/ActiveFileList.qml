@@ -215,7 +215,14 @@ Item {
               // Fundir el contenedor da el mismo efecto sin capturar geometría,
               // así los dos paneles quedan idénticos. Verificado en vivo con dos
               // paneles sobre la misma carpeta: pitch de fila idéntico (49px).
-              onModelChanged: listRepopulateFade.restart()
+              // Fade de repintado (Fase 22) SOLO en navegación/operación real.
+              // En cambio de pestaña, root.suppressListFade está puesto: el
+              // listado ya estaba a la vista como panel de fondo y fundirlo al
+              // activarlo era el parpadeo redundante al pasar el cursor.
+              onModelChanged: {
+                if (root && root.suppressListFade) return
+                listRepopulateFade.restart()
+              }
               NumberAnimation {
                 id: listRepopulateFade
                 target: listView
