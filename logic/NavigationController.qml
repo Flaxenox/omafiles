@@ -58,6 +58,16 @@ Item {
   // trashInfo también en el panel activo -- atacaban mecanismos reales
   // pero no ESTE, que es el que de verdad causaba el salto).
   function _applyEntries(parsed) {
+    // Búsqueda GLOBAL activa (2+ caracteres): NavState.entries son los
+    // RESULTADOS de la búsqueda, no el listado de la carpeta. Un listProc de
+    // fondo -- el que _goToPath lanza al cambiar de pestaña, o el watcher de la
+    // carpeta -- NO debe pisarlos, o al restaurar una búsqueda por pestaña se
+    // perdería justo después de restaurarla. El filtro en vivo (<2 chars) SÍ
+    // usa el listado, así que solo se ignora con query >= 2.
+    if (NavState.searching && NavState.searchQuery.length >= 2) {
+      root.loaded = true
+      return
+    }
     // Comparación por contenido barata (Fase 10.A): antes eran otros dos
     // JSON.stringify del array completo. entriesEqual es O(n) sin
     // asignaciones.

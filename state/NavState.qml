@@ -52,6 +52,13 @@ QtObject {
   // La búsqueda recursiva se cortó a los 200 primeros resultados (aviso al
   // usuario de que faltan ítems; ver SearchOps/search-recursive.sh).
   property bool searchTruncated: false
+  // Suprime la animación de expandir/colapsar de la lupa durante un cambio de
+  // pestaña (TabOps la pone mientras cambia): al pasar el cursor a otra tab,
+  // `searching` cambia porque adopta el estado de ESA tab, no porque el usuario
+  // abriera/cerrara la búsqueda -- sin esto, la tab a la que llegas reproduce la
+  // animación de minimizar/expandir la barra, que se ve mal (mismo motivo que
+  // suppressListFade para el fade de la lista).
+  property bool suppressSearchAnim: false
   // Mensaje si el listado de currentPath falló (permisos, carpeta borrada
   // entre navegar y listar...). Vacío = sin error o listado en curso.
   property string currentPathError: ""

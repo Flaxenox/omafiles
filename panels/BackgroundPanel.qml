@@ -38,6 +38,16 @@ Item {
   // opacidad, sin tocar colores del tema.
   opacity: 0.72
 
+  // Búsqueda POR PANEL (Fase 26, josema): si esta pestaña quedó en modo
+  // búsqueda GLOBAL (2+ chars) al pasar a segundo plano, el panel de fondo la
+  // mantiene abierta -- barra + resultados -- hasta que se cierre con la X. El
+  // estado (searching/searchQuery/searchEntries/searchTruncated) lo guarda
+  // TabOps.saveActiveTab en el propio objeto de pestaña (modelData), así cada
+  // panel tiene su búsqueda independiente en vez de una global compartida.
+  readonly property bool bgSearching: modelData.searching === true
+    && (modelData.searchQuery || "").length >= 2
+  readonly property var bgSearchEntries: modelData.searchEntries || []
+
   // El listado en sí vive en DirLister (Fase 1.6, josema) -- mismo
   // mecanismo que usa el panel activo (NavigationController), pero con
   // su propia instancia: varias pestañas de fondo pueden estar listando
@@ -173,14 +183,59 @@ Item {
       activePath: bgPanel.modelData.path
     }
 
-    // Reserva del hueco de la lupa de búsqueda del panel activo. Vacío a
-    // propósito: un panel de fondo no busca (la búsqueda es del panel activo),
-    // pero el espacio se reserva para que la cabecera tenga EXACTAMENTE la
-    // misma geometría en ambos estados.
+    // Hueco de la lupa. En reposo va vacío (solo reserva el ancho de la lupa
+    // colapsada del panel activo, para que la cabecera tenga la misma geometría
+    // en ambos estados). Si ESTE panel de fondo tiene una búsqueda abierta,
+    // crece a una barra de solo lectura: consulta + X para cerrarla. Es de solo
+    // lectura porque para EDITAR se activa el panel (pasando el ratón), que ya
+    // trae la lupa interactiva completa.
     Item {
       id: bgSearchPlaceholder
-      width: Style.spacing.controlHeight
+      width: bgPanel.bgSearching
+        ? Math.max(Style.spacing.controlHeight, Math.min(Style.space(300), bgHeaderRow.width * 0.5))
+        : Style.spacing.controlHeight
       height: parent.height
+
+      // Indicador de SOLO LECTURA de la búsqueda abierta en este panel de
+      // fondo (lupa + consulta). No lleva controles propios: con "activar al
+      // pasar el ratón", cualquier botón aquí se volvería inalcanzable (el
+      // hover activaría el panel y sustituiría esta barra por la lupa
+      // interactiva antes de poder pulsarlo). Para editar o CERRAR la búsqueda
+      // se activa el panel (pasando el ratón) y se usa la lupa interactiva de
+      // siempre (Escape, o clic en la propia lupa).
+      Rectangle {
+        anchors.fill: parent
+        visible: bgPanel.bgSearching
+        color: "transparent"
+        border.width: 1
+        border.color: Util.alpha(Color.menu.text, 0.15)
+        radius: Style.cornerRadius
+
+        OpticalGlyph {
+          id: bgSearchIcon
+          anchors.left: parent.left
+          anchors.leftMargin: Style.spacing.sm
+          anchors.verticalCenter: parent.verticalCenter
+          text: "\u{F0349}" // nf-md-magnify
+          fontFamily: Style.font.family
+          fontSize: Style.font.icon
+          color: Color.menu.text
+          opacity: Style.emphasis.strong
+        }
+
+        Text {
+          anchors.left: bgSearchIcon.right
+          anchors.leftMargin: Style.spacing.sm
+          anchors.right: parent.right
+          anchors.rightMargin: Style.spacing.sm
+          anchors.verticalCenter: parent.verticalCenter
+          text: bgPanel.modelData.searchQuery || ""
+          elide: Text.ElideRight
+          color: Color.menu.text
+          font.family: Style.font.family
+          font.pixelSize: Style.font.subtitle
+        }
+      }
     }
   }
 
@@ -204,7 +259,7 @@ Item {
     // Style.spacing.md -- así el mismo error sale en la MISMA posición en los
     // dos paneles (Sprint Visual 3, C-05). Antes era sm y no coincidía con el
     // del panel activo.
-    visible: dirLister.pathError !== ""
+    visible: dirLister.pathError !== "" && !bgPanel.bgSearching
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.md
     // Mismo alineado que el aviso del panel activo (ActiveFileList): columna
@@ -230,7 +285,9 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     clip: true
-    model: dirLister.entries
+    // Resultados de la búsqueda de ESTE panel si la tiene abierta; si no, su
+    // listado normal de carpeta.
+    model: bgPanel.bgSearching ? bgPanel.bgSearchEntries : dirLister.entries
     boundsBehavior: Flickable.StopAtBounds
 
     delegate: CursorSurface {
@@ -257,7 +314,7 @@ Item {
         keys: ["text/uri-list"]
         onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
         onDropped: function (drop) {
-          hostDragDropOps.handleFilesDropped(drop, Utils.joinPath(bgPanel.modelData.path, modelData.name))
+          hostDragDropOps.handleFilesDropped(drop, Utils.entryPath(bgPanel.modelData.path, modelData))
         }
       }
 
@@ -277,7 +334,7 @@ Item {
         // Miniatura nativa (imágenes/SVG/PDF) vía ThumbnailProvider -- Fase
         // 10.A: antes se cargaba el fichero de imagen COMPLETO para pintarlo
         // a 32 px. Mismo patrón que FileListRow, con la ruta de ESTE panel.
-        readonly property string myPath: Utils.joinPath(bgPanel.modelData.path, modelData.name)
+        readonly property string myPath: Utils.entryPath(bgPanel.modelData.path, modelData)
         readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
           || modelData.name.toLowerCase().slice(-4) === ".svg"
         property string imgThumb: ""
@@ -340,10 +397,16 @@ Item {
         drag.target: bgDragProxy
         drag.axis: Drag.XAndYAxis
         onDoubleClicked: {
-          if (modelData.type === "dir") {
+          if (bgPanel.bgSearching) {
+            // Resultado de búsqueda global: REVELAR en este panel -- carpeta ->
+            // entrar en ella; fichero -> ir a su carpeta. navigateTabTo ya deja
+            // el objeto de pestaña sin campos de búsqueda, así que la búsqueda
+            // se cierra sola al navegar.
+            hostTabOps.navigateTabTo(bgPanel.index, modelData.type === "dir" ? modelData.path : modelData.parent)
+          } else if (modelData.type === "dir") {
             hostTabOps.navigateTabTo(bgPanel.index, Utils.joinPath(bgPanel.modelData.path, modelData.name))
           } else {
-            hostRoot.openWithDefault(Utils.joinPath(bgPanel.modelData.path, modelData.name))
+            hostRoot.openWithDefault(Utils.entryPath(bgPanel.modelData.path, modelData))
           }
         }
       }
@@ -393,8 +456,14 @@ Item {
     // vieran distintas al mover el cursor. Los extras del panel activo
     // (selección/portapapeles/búsqueda) son estados que solo existen ahí, no
     // en un panel de fondo, así que no se replican.
-    text: dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
-      + " · sort: " + hostSortOps.sortLabel()
+    // Con búsqueda abierta, el footer refleja los RESULTADOS de este panel
+    // (recuento + aviso de lista recortada), igual que el footer del panel
+    // activo al buscar; si no, el listado normal de la carpeta.
+    text: bgPanel.bgSearching
+      ? (bgPanel.bgSearchEntries.length + (bgPanel.bgSearchEntries.length === 1 ? " result" : " results")
+         + (bgPanel.modelData.searchTruncated ? " · showing first 200" : ""))
+      : (dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
+         + " · sort: " + hostSortOps.sortLabel())
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.menu.text

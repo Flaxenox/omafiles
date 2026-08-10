@@ -78,7 +78,14 @@ Item {
     next[TabsState.activeTabIndex] = {
       path: NavState.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
       previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
-      inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath
+      inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath,
+      // La búsqueda (lupa) es del panel activo, no global: sin guardarla aquí
+      // se "colaba" a la pestaña a la que cambiabas (searching/searchQuery viven
+      // en NavState, singleton). Se guardan los RESULTADOS también, para
+      // restaurarlos al instante sin re-lanzar la búsqueda. Ver _restoreTabSearch.
+      searching: NavState.searching, searchQuery: NavState.searchQuery,
+      searchTruncated: NavState.searchTruncated,
+      searchEntries: NavState.searching ? NavState.entries : undefined
     }
     TabsState.tabs = next
   }
@@ -142,9 +149,34 @@ Item {
     root._pendingScrollY = y
   }
 
+  // Restaura (o limpia) el modo búsqueda propio de `tab`. Se llama DESPUÉS de
+  // _goToPath, que ya repobló NavState.entries con el listado normal de la
+  // carpeta -- si esta pestaña estaba buscando, le devolvemos sus resultados
+  // guardados encima. Si NO estaba buscando, hay que apagar el flag global
+  // igualmente: la pestaña que dejamos podía estar en modo búsqueda y ese
+  // estado, al ser de NavState (singleton), habría quedado activo aquí. Mismo
+  // patrón que _restoreTabArchive/_restoreTabPreview.
+  function _restoreTabSearch(tab) {
+    if (tab.searching) {
+      NavState.searching = true
+      NavState.searchQuery = tab.searchQuery || ""
+      NavState.searchTruncated = tab.searchTruncated || false
+      if (tab.searchEntries !== undefined) NavState.entries = tab.searchEntries
+    } else {
+      NavState.searching = false
+      NavState.searchQuery = ""
+      NavState.searchTruncated = false
+    }
+  }
+
   function switchToTab(index) {
     if (index < 0 || index >= TabsState.tabs.length || index === TabsState.activeTabIndex) return
     if (root.hasBlockingOverlay) return
+    // La lupa NO debe animar su expandir/colapsar por un cambio de pestaña: al
+    // adoptar el estado de búsqueda de la nueva tab, `searching` cambia y la
+    // barra haría la animación de minimizar/expandir en la tab a la que llegas
+    // (se ve mal). Se suprime durante todo el cambio; snap en vez de animación.
+    NavState.suppressSearchAnim = true
     saveActiveTab()
     TabsState.activeTabIndex = index
     _restoreTabHistory(TabsState.tabs[index])
@@ -159,7 +191,9 @@ Item {
     root.suppressListFade = false
     _restoreTabArchive(TabsState.tabs[index])
     _restoreTabPreview(TabsState.tabs[index])
+    _restoreTabSearch(TabsState.tabs[index])
     _restoreTabScroll(TabsState.tabs[index])
+    NavState.suppressSearchAnim = false
   }
 
   function newTab() {
@@ -184,6 +218,7 @@ Item {
 
   function closeTab() {
     if (TabsState.tabs.length <= 1) { root.requestClose(); return }
+    NavState.suppressSearchAnim = true
     var next = TabsState.tabs.slice()
     next.splice(TabsState.activeTabIndex, 1)
     TabsState.tabs = next
@@ -197,7 +232,9 @@ Item {
     root.suppressListFade = false
     _restoreTabArchive(TabsState.tabs[newIndex])
     _restoreTabPreview(TabsState.tabs[newIndex])
+    _restoreTabSearch(TabsState.tabs[newIndex])
     _restoreTabScroll(TabsState.tabs[newIndex])
+    NavState.suppressSearchAnim = false
   }
 
   function nextTab() {

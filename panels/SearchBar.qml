@@ -37,7 +37,7 @@ Item {
   // Expansión/colapso suave (200-250 ms) hacia la izquierda: la lupa queda
   // fija a la derecha porque MainLayout ancla este componente al final de
   // navRow y encoge el breadcrumb en su lugar.
-  Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+  Behavior on width { enabled: !NavState.suppressSearchAnim; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
   function expand() {
     if (NavState.searching) { field.forceActiveFocus(); return }
