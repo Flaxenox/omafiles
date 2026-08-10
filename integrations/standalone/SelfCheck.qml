@@ -1652,5 +1652,63 @@ QtObject {
         done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " líneas=" + lines.length)
       })
     })
+
+    // ======================= BUG-03 (Hardening-2) =======================
+
+    // Properties/chmod construían `du -shc -- <todas>` y `stat -c%a -- <todas>`
+    // en una sola línea bash -> con selección enorme se reventaba el límite de
+    // longitud (ARG_MAX / 128 KiB por argumento) y el diálogo se quedaba sin
+    // tamaño/permisos. Ahora usan FileOperations.totalSize/octalModes (nativo,
+    // sin línea de comandos). La prueba construye una lista que SÍ desborda esa
+    // línea: el camino nativo la maneja; el shell antiguo falla. Falla con el
+    // código anterior (octalModes no existía -> TypeError).
+    add("Properties/chmod handle a huge selection without ARG_MAX (BUG-03)", function (done) {
+      // Dos fixtures que existen (para afirmar suma/modo correctos) + relleno de
+      // rutas largas inexistentes hasta que la línea `stat/du -- <todas>` que
+      // usaba el código viejo desbordaría el límite por-argumento (128 KiB).
+      var reals = [sc.note, sc.png]
+      var expected = FileOperations.totalSize(reals)
+      var pad = new Array(160).join("x")
+      var big = reals.slice()
+      while (big.length < 2000) big.push(sc.opsDir + "/" + pad + big.length)
+      // NATIVO: no construye línea de comandos -> aguanta la lista enorme.
+      var total = FileOperations.totalSize(big)      // suma solo los 2 reales
+      var modes = FileOperations.octalModes(big)     // alineado con big, "" si falta
+      var nativeOk = total === expected
+        && modes.length === big.length && modes[0].length > 0 && modes[2] === ""
+      if (!nativeOk) { done(false, "nativo: total=" + total + " exp=" + expected
+        + " len=" + modes.length + " m0='" + modes[0] + "' m2='" + modes[2] + "'"); return }
+      // ANTIGUO: la MISMA forma `stat -c%a -- <todas>` que usaba el código viejo
+      // -> el arg -c desborda el límite y exec falla (exit != 0).
+      var oldCmd = "stat -c%a -- " + big.map(function (p) { return _q(p) }).join(" ")
+      sc._sh(["bash", "-c", oldCmd], function (r) {
+        done(r.exitCode !== 0,
+             "nativo OK (" + big.length + " rutas); línea shell antigua falló (exit=" + r.exitCode + ")")
+      })
+    })
+
+    // ======================= BUG-05 (Hardening-2) =======================
+
+    // ArchiveActions abría un miembro de archivo con `tar xf A -O <miembro>`
+    // sin "--": un miembro que empiece por "-" (p.ej. "-foo") lo tomaba tar
+    // como opciones y fallaba. El patrón corregido es `tar xf A -O -- <miembro>`.
+    // Se crea un .tar con un miembro "-foo" y se comprueba que la forma NUEVA
+    // lo vuelca y la ANTIGUA falla.
+    add("tar extracts a member whose name starts with '-' (BUG-05)", function (done) {
+      var d = sc.opsDir + "/bug05"
+      var arch = d + "/a.tar"
+      var setup = "mkdir -p " + _q(d) + " && cd " + _q(d)
+        + " && printf 'contenido05' > ./-foo && tar cf " + _q(arch) + " -- -foo"
+      sc._sh(["bash", "-c", setup], function (r0) {
+        if (r0.exitCode !== 0) { done(false, "setup falló: " + r0.stderr); return }
+        sc._sh(["bash", "-c", "tar xf " + _q(arch) + " -O -- " + _q("-foo")], function (rNew) {
+          sc._sh(["bash", "-c", "tar xf " + _q(arch) + " -O " + _q("-foo") + " 2>/dev/null"], function (rOld) {
+            var ok = rNew.exitCode === 0 && String(rNew.stdout) === "contenido05" && rOld.exitCode !== 0
+            done(ok, "nuevo: exit=" + rNew.exitCode + " out='" + String(rNew.stdout)
+              + "' | antiguo exit=" + rOld.exitCode)
+          })
+        })
+      })
+    })
   }
 }

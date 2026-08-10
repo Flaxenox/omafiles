@@ -54,18 +54,26 @@ public:
   Q_INVOKABLE void cancel();
 
   // Detección de conflictos NATIVA (Fase 13.F): devuelve el subconjunto de
-  // `paths` que YA EXISTEN en disco (fichero, carpeta o symlink cuyo destino
-  // existe -- misma semántica que el `test -e` que sustituye y que la
-  // comprobación de conflicto de copy/move). Síncrona (solo stat): rápida
-  // incluso para selecciones grandes. La usan paste/drop para decidir si abrir
-  // el diálogo de conflicto; la RESOLUCIÓN (overwrite/skip) ya la ejecutan
-  // copy/move (parámetro overwrite) y el filtrado de skip en runPaste/runDrop.
+  // `paths` que YA EXISTEN en disco. Criterio lstat (entryExists): cuenta
+  // fichero, carpeta o symlink -- incluido un symlink ROTO -- igual que los
+  // guards sin-overwrite de copy/move (BUG-01, Hardening-1). Síncrona (solo
+  // lstat): rápida incluso para selecciones grandes. La usan paste/drop y las
+  // comprobaciones de conflicto de ConflictActions para decidir si abrir el
+  // diálogo; la RESOLUCIÓN (overwrite/skip) ya la ejecutan copy/move.
   Q_INVOKABLE QStringList existingPaths(const QStringList &paths) const;
 
   // Tamaño total (recursivo, en bytes) de un conjunto de rutas. Nativo, para
-  // el porcentaje de progreso de copy/move sin `du` (Fase 13.G). Síncrono
-  // (recorre el árbol como hacía `du -sbc`, una vez al principio).
+  // el porcentaje de progreso de copy/move sin `du` (Fase 13.G) y para el
+  // tamaño de una selección múltiple en Properties sin construir una línea
+  // `du -shc` gigante (BUG-03, Hardening-2). Síncrono (recorre el árbol).
   Q_INVOKABLE qint64 totalSize(const QStringList &paths) const;
+
+  // Modo octal (%a: mode & 07777, sin cero a la izquierda) de cada ruta, en el
+  // MISMO orden que `paths`; "" si falla el stat. Nativo, para prefijar el
+  // diálogo de chmod de una selección múltiple sin construir una línea
+  // `stat -c%a -- ...` gigante que reventaría ARG_MAX (BUG-03, Hardening-2).
+  // Sigue symlinks, igual que hacía `stat -c%a`. Síncrono.
+  Q_INVOKABLE QStringList octalModes(const QStringList &paths) const;
 
   // Mueve `source` a `destination` (ruta destino COMPLETA). Intenta un
   // rename atomico (mismo sistema de ficheros); si cruza de disco, copia +

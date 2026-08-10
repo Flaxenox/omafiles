@@ -1,5 +1,4 @@
 import QtQuick
-import qs.Commons
 import "../state"
 import "../services"
 import "../Utils.js" as Utils
@@ -25,12 +24,23 @@ Item {
     if (ArchiveState.inArchive) return
     if (!entries || entries.length === 0) return
     ChmodState.chmodNames = entries.map(function (e) { return e.name })
-    ChmodState.chmodMode = ""
-    ChmodState.chmodMixed = false
     ChmodState.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
     ChmodState.chmodRecursive = false
-    var paths = entries.map(function (e) { return Util.shellQuote(Utils.joinPath(NavState.currentPath, e.name)) }).join(" ")
-    chmodStatProc.start(["bash", "-c", "stat -c%a -- " + paths])
+    // Modo octal NATIVO (BUG-03): octalModes en vez de un `stat -c%a -- <todas
+    // las rutas>` en una sola línea bash, que reventaba ARG_MAX con selección
+    // enorme. Devuelve el modo en el MISMO orden que las rutas ("" si falla),
+    // así el mapeo con chmodNames (para deshacer) se mantiene alineado.
+    var modes = FileOperations.octalModes(entries.map(function (e) {
+      return Utils.joinPath(NavState.currentPath, e.name)
+    }))
+    var valid = modes.filter(function (m) { return m.length > 0 })
+    var allSame = valid.length > 0 && valid.every(function (m) { return m === valid[0] })
+    ChmodState.chmodMixed = !allSame
+    ChmodState.chmodMode = allSame ? valid[0] : ""
+    var orig = {}
+    for (var i = 0; i < ChmodState.chmodNames.length && i < modes.length; i++)
+      if (modes[i].length > 0) orig[ChmodState.chmodNames[i]] = modes[i]
+    ChmodState.chmodOriginalModes = orig
     ChmodState.chmodOpen = true
   }
 
@@ -55,11 +65,15 @@ Item {
     PropertiesState.propertiesOwner = ""
     PropertiesState.propertiesMtime = ""
     PropertiesState.propertiesOpen = true
-    var quoted = entries.map(function (e) {
-      return Util.shellQuote(Utils.joinPath(NavState.currentPath, e.name))
-    }).join(" ")
-    PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
-    propertiesDuProc.start(["bash", "-c", "du -shc -- " + quoted + " | tail -n1"])
+    // Tamaño NATIVO (BUG-03): totalSize en vez de un `du -shc -- <todas las
+    // rutas>` en una sola línea bash (ARG_MAX con selección enorme). Suma de
+    // bytes aparentes del árbol, formateada igual; síncrono, sin proceso ni
+    // carrera (por eso ya no hace falta el guard _propertiesDuOwner aquí).
+    var bytes = FileOperations.totalSize(entries.map(function (e) {
+      return Utils.joinPath(NavState.currentPath, e.name)
+    }))
+    PropertiesState.propertiesSize = Utils.formatSize(bytes)
+    PropertiesState.propertiesSizeLoading = false
   }
 
   function showProperties(entry) {
@@ -84,23 +98,6 @@ Item {
     if (entry.type === "dir") {
       PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
       propertiesDuProc.start(["du", "-sh", "--", path])
-    }
-  }
-
-  ProcessRunner {
-    id: chmodStatProc
-    onFinished: function (result) {
-      var lines = String(result.stdout || "").trim().split("\n").filter(function (l) { return l.length > 0 })
-      if (lines.length === 0) return
-      var allSame = lines.every(function (l) { return l === lines[0] })
-      ChmodState.chmodMixed = !allSame
-      ChmodState.chmodMode = allSame ? lines[0] : ""
-      // stat conserva el orden de los argumentos -- lines[i] es el modo
-      // de ChmodState.chmodNames[i]. Guardado para poder deshacer (ver
-      // commitChmod/chmodOriginalModes).
-      var orig = {}
-      for (var i = 0; i < ChmodState.chmodNames.length && i < lines.length; i++) orig[ChmodState.chmodNames[i]] = lines[i]
-      ChmodState.chmodOriginalModes = orig
     }
   }
 

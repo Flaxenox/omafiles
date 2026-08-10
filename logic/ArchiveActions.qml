@@ -58,7 +58,12 @@ Item {
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
     else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
+    // "--" antes del MIEMBRO (no del archivo): un miembro que empiece por "-"
+    // (p.ej. "-foo", "--bar", "-") lo tomaría tar como opciones y fallaría
+    // ("múltiples archivos requieren -M"). zip/7z/rar ya protegen el miembro
+    // por venir tras el "--" del archivo; tar necesita el suyo aquí (BUG-05).
+    // El archivo tras "xf" es siempre una ruta absoluta de Omafiles, nunca "-".
+    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out
     archiveOpenProc.start(["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])

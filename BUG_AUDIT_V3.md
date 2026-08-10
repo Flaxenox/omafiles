@@ -42,9 +42,9 @@ Lo que **no** se pudo ejercitar headless y queda para pasada interactiva: rendim
 |---|---|---|---|---|
 | BUG-01 | 🟠 Alta | Ambos | ✅ **RESUELTO (Hardening-1)** | Detección de conflictos sigue en shell `test -e`: inconsistente con las ops nativas y ciega a symlinks rotos |
 | BUG-02 | 🟠 Alta | Ambos (arnés) | ✅ **RESUELTO (Hardening-1)** | Las operaciones respaldadas por `.sh` (vaciar papelera, montaje, archivos) no tienen ninguna cobertura de selfcheck |
-| BUG-03 | 🟡 Media | Ambos | DEMOSTRADO POR CÓDIGO | Properties construye `stat`/`du` en una sola línea `bash -c`: desbordamiento de ARG_MAX en selección enorme |
+| BUG-03 | 🟡 Media | Ambos | ✅ **RESUELTO (Hardening-2)** | Properties construye `stat`/`du` en una sola línea `bash -c`: desbordamiento de ARG_MAX en selección enorme |
 | BUG-04 | 🟡 Media | Ambos | CONFIRMADO (ya corregido en working tree, sin commitear) | La animación de salida de los diálogos (Fase 22) nunca se renderiza |
-| BUG-05 | 🔵 Baja | Ambos | DEMOSTRADO POR CÓDIGO | Preview de archivos: `tar` sin `--` mientras zip/7z/rar sí lo llevan |
+| BUG-05 | 🔵 Baja | Ambos | ✅ **RESUELTO (Hardening-2)** | Preview de archivos: `tar` sin `--` mientras zip/7z/rar sí lo llevan |
 | OBS-A | ⚪ Obs. | Ambos | CONFIRMADO (negativo) | El contador de items maneja `-1` (dir ilegible) correctamente — no es bug, se documenta como resiliencia verificada |
 
 ---
@@ -133,6 +133,13 @@ El selfcheck pasa de **70 a 75** pruebas, todas verdes.
 
 **Propuesta mínima de fix:** pasar las rutas por `stdin` a `xargs -0 du -shc` / `xargs -0 stat` en vez de en `argv`, o (mejor, alineado con Fase 13) exponer un `FileOperations.totalSize([paths])` / `stat` nativo. La corrección mínima sin backend es el `xargs -0`. Marcar con una prueba de selfcheck de selección de N=5000 ficheros fixture.
 
+**✅ Resolución (Hardening-2):** se optó por la vía nativa (Qt/C++), sin `xargs`:
+- **Tamaño (multi-selección):** `du -shc -- <todas>` → `FileOperations.totalSize(paths)` (ya existía, nativo). Síncrono, sin proceso ni carrera. *Matiz observable:* pasa de tamaño de bloque (`du`) a bytes aparentes (suma del árbol) — mismo formato y orden de magnitud, y consistente con lo que ya mostraban los ficheros sueltos vía `formatSize`.
+- **Permisos (chmod multi):** `stat -c%a -- <todas>` → nuevo `FileOperations.octalModes(paths)` (C++, `::stat`, `%a` = `mode & 07777`), simétrico con `totalSize`/`existingPaths`. Devuelve los modos en el mismo orden ("" si falla) → el mapeo para deshacer se mantiene.
+- **Efecto colateral:** `logic/PropertiesLoader.qml` deja de importar `qs.Commons` (ya no usa `Util.shellQuote`); avanza M1 de AUDIT-V2. Las rutas de ítem único siguen usando `stat`/`du` por **argv** (seguras, sin ARG_MAX).
+- **Gotcha encontrado:** el wrapper `services/FileOperations.qml` reenvía método a método (regla 8); hubo que exponer `octalModes` ahí además de en el backend, o `logic/` no lo veía.
+- **Prueba:** `add("Properties/chmod handle a huge selection without ARG_MAX (BUG-03)")` construye una lista que desborda el límite por-argumento: el nativo la maneja; la MISMA línea `stat -c%a -- <todas>` del código viejo falla (exit 127, E2BIG). Falla con el código anterior (`octalModes` no existía → TypeError).
+
 ---
 
 ### BUG-04 — La animación de salida de los diálogos (Fase 22) nunca se renderiza
@@ -174,6 +181,8 @@ El selfcheck pasa de **70 a 75** pruebas, todas verdes.
 **Cobertura del selfcheck:** ninguna (el listado de archivos usa `list-archive.sh`, y el volcado de miembro no se prueba).
 
 **Propuesta mínima de fix:** añadir `--` tras las opciones de `tar` de forma consistente con las otras ramas (`tar xf -- <ruta> -O <miembro>` no es válido por la posición de `-O`; la forma correcta es `tar -xf <ruta> -O -- <miembro>` o pasar el miembro tras `--`). Verificar con un fixture de miembro con nombre `-x`.
+
+**✅ Resolución (Hardening-2):** `logic/ArchiveActions.qml` pasa a `tar xf <archivo> -O -- <miembro>` (el `--` va antes del MIEMBRO, no del archivo: el archivo tras `xf` es siempre una ruta absoluta de Omafiles, nunca `-`). zip/7z/rar ya protegían el miembro por venir tras su `--`; solo faltaba en la rama tar. Reproducido en shell (miembro `-foo`): forma antigua `exit 2` ("múltiples archivos requieren -M"), forma nueva vuelca el contenido. **Prueba:** `add("tar extracts a member whose name starts with '-' (BUG-05)")` crea un `.tar` con miembro `-foo` y afirma que la forma nueva funciona y la antigua falla.
 
 ---
 
@@ -248,10 +257,10 @@ Por la regla "demostrar antes de proponer", **no listo bugs inventados** para es
 - ✅ **BUG-01** — **RESUELTO**. Detección de conflicto unificada en `existingPaths` nativo con criterio lstat compartido UI/backend; ceguera al symlink roto corregida en el propio backend. Ya no es bloqueante.
 - ✅ **BUG-02** — **RESUELTO**. Cobertura de humo añadida para `empty-trash.sh`/`list-archive.sh`/`mount-iso.sh`/`open-with-list.sh`; una regresión equivalente a la de "vaciar papelera" ahora rompe el selfcheck (demostrado). Ya no es bloqueante.
 
-**No hay bloqueantes de RC1 pendientes.** Recomendados (no bloqueantes) para RC1:
-- **BUG-03** (Media): `xargs -0` en Properties/chmod.
+**No hay bloqueantes de RC1 pendientes.** Estado de los recomendados:
+- ✅ **BUG-03** (Media): **RESUELTO (Hardening-2)** — Properties/chmod nativos (`totalSize`/`octalModes`), sin ARG_MAX.
 - **BUG-04** (Media): ya corregido, solo falta commitear con el resto de la Fase 22.
-- **BUG-05** (Baja): `--` en la rama `tar`.
+- ✅ **BUG-05** (Baja): **RESUELTO (Hardening-2)** — `tar ... -O -- <miembro>`.
 
 Y como trabajo de arnés que convierte el resto en verificable (mismo espíritu que la Fase 12 → Fase 13): extender el selfcheck a **selección, breadcrumbs, tabs, back/forward y comportamiento de diálogos**, que son hoy los huecos de mayor superficie.
 

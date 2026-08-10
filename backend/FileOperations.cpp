@@ -13,6 +13,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace {
@@ -330,6 +331,21 @@ qint64 FileOperations::totalSize(const QStringList &paths) const {
   for (const QString &p : paths)
     total += treeSize(p);
   return total;
+}
+
+QStringList FileOperations::octalModes(const QStringList &paths) const {
+  QStringList out;
+  out.reserve(paths.size());
+  for (const QString &p : paths) {
+    struct stat st;
+    // stat() (sigue symlinks), igual que `stat -c%a` -- %a es mode & 07777 en
+    // octal sin cero a la izquierda (p.ej. "755", "4755"). "" si no se pudo.
+    if (::stat(QFile::encodeName(p).constData(), &st) == 0)
+      out << QString::number(st.st_mode & 07777, 8);
+    else
+      out << QString();
+  }
+  return out;
 }
 
 void FileOperations::move(const QString &source, const QString &destination,

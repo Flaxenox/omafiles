@@ -44,8 +44,13 @@ QtObject {
   function existingPaths(paths) { return Backend.FileOperations.existingPaths(paths) }
 
   // Tamaño total (bytes) de un conjunto de rutas (Fase 13.G): para el
-  // porcentaje de progreso de copy/move sin `du`.
+  // porcentaje de progreso de copy/move sin `du` y el tamaño de una selección
+  // múltiple en Properties (BUG-03).
   function totalSize(paths) { return Backend.FileOperations.totalSize(paths) }
+
+  // Modo octal (%a) de cada ruta, en el mismo orden (BUG-03): para prefijar el
+  // diálogo de chmod de una selección múltiple sin `stat -c%a -- ...`.
+  function octalModes(paths) { return Backend.FileOperations.octalModes(paths) }
 
   // Cualificado con el id: Backend.FileOperations (el target) tiene señales
   // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
