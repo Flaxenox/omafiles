@@ -84,7 +84,7 @@ Item {
             { key: "Shift+Enter", action: "Open a terminal here" },
             { key: "F5", action: "Refresh" },
             { key: "?", action: "Toggle this help" },
-            { key: "Escape", action: "Close preview, or close the window" }
+            { key: "Escape", action: "Close search, preview, or the active tab" }
           ]
 
           Row {

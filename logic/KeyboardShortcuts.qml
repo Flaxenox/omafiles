@@ -125,16 +125,16 @@ Item {
       hostRoot.openTerminalHere()
       event.accepted = true
     } else if (event.key === Qt.Key_Escape) {
-      // Con 2+ pestañas, Escape cierra el panel activo (el que
-      // tiene el cursor encima, gracias al HoverHandler de cada
-      // panel) en vez de la ventana entera -- sustituye a la ×
-      // que había antes en cada cabecera. closeTab() ya cae en
-      // requestClose() si solo queda 1, así que el comportamiento
-      // de siempre (Escape cierra la ventana) no cambia con una
-      // sola pestaña abierta.
+      // Escape cierra, por este orden, lo que esté "abierto": la búsqueda,
+      // la vista previa, o -- con 2+ pestañas -- el panel activo (el que
+      // tiene el cursor encima, gracias al HoverHandler de cada panel;
+      // sustituye a la × que había antes en cada cabecera). Con UNA sola
+      // pestaña y nada abierto, Escape NO hace nada: NO cierra la app
+      // (josema) -- antes closeTab() caía en requestClose() y cerraba la
+      // ventana entera, comportamiento que ya no queremos.
       if (NavState.searching) hostSearchOps.exitSearch()
       else if (PreviewState.previewOpen) PreviewState.previewOpen = false
-      else hostTabOps.closeTab()
+      else if (TabsState.tabs.length > 1) hostTabOps.closeTab()
       event.accepted = true
     } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
       hostNavController.goUp()
