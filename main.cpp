@@ -219,6 +219,14 @@ int runNormal(int argc, char *argv[]) {
 }  // namespace
 
 int main(int argc, char *argv[]) {
+  // Qt6 bloquea por seguridad las lecturas file:// vía XMLHttpRequest salvo que
+  // se habiliten explícitamente. El adaptador qs.Commons/ThemeSource del
+  // standalone lee así los ficheros de tema de Omarchy en vivo
+  // (colors.toml/shell.toml), igual que el FileView de Quickshell en el
+  // frontend real. Sin esto, ThemeSource cae al fallback gris y la paleta NO
+  // coincide con Quickshell (Fase 17, paridad de tema). Debe ir antes de crear
+  // el engine QML.
+  qputenv("QML_XHR_ALLOW_FILE_READ", "1");
   for (int i = 1; i < argc; ++i) {
     if (QString::fromLocal8Bit(argv[i]) == QLatin1String("--selfcheck")) {
       return runSelfCheck(argc, argv);

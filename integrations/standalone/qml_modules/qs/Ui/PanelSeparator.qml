@@ -1,11 +1,18 @@
 import QtQuick
+import qs.Commons
 
-// Adaptador MÍNIMO de qs.Ui/PanelSeparator.qml (Fase 4, josema).
+// 1px horizontal divider for panel sections. The alpha-on-foreground tint
+// keeps the rule legible against the panel background without competing
+// with text or borders.
 Rectangle {
-  property color foreground: "#c0caf5"
-  property real strength: 0.15
+  id: root
+
+  property color foreground: Color.foreground
+  property real strength: 0.12
+
   width: parent ? parent.width : implicitWidth
+  implicitWidth: 100
   implicitHeight: 1
-  color: foreground
-  opacity: strength
+  height: 1
+  color: Qt.rgba(foreground.r, foreground.g, foreground.b, strength)
 }
