@@ -252,11 +252,25 @@ Item {
         readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
           || modelData.name.toLowerCase().slice(-4) === ".svg"
         property string imgThumb: ""
-        onMyPathChanged: imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+        onMyPathChanged: {
+          imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+          _requestCount(false)
+        }
 
         Component.onCompleted: {
           if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
           if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+          _requestCount(false)
+        }
+
+        // Contador de items (Fase 23): igual que FileListRow, con la ruta de
+        // ESTE panel de fondo. La caché FolderCountState es global (por ruta).
+        readonly property bool _isDir: modelData.type === "dir"
+        function _requestCount(force) {
+          if (!_isDir) return
+          if (!force && !FolderCountState.needsRequest(myPath)) return
+          FolderCountState.markPending(myPath)
+          FolderCounter.request(myPath, NavState.showHidden)
         }
 
         Connections {
@@ -264,6 +278,11 @@ Item {
           function onReady(path, thumbPath) {
             if (path === bgRowContent.myPath) bgRowContent.imgThumb = thumbPath
           }
+        }
+
+        Connections {
+          target: NavState
+          function onRefreshTickChanged() { bgRowContent._requestCount(true) }
         }
 
         FileRowVisual {
@@ -280,6 +299,7 @@ Item {
           thumbSource: bgRowContent.imgThumb ? Util.fileUrl(bgRowContent.imgThumb)
             : (bgRowContent.vidThumb ? Util.fileUrl(bgRowContent.vidThumb) : "")
           metaText: hostFileMeta.metaFor(modelData, bgPanel.modelData.path)
+          metaTooltip: hostFileMeta.metaTooltipFor(modelData, bgPanel.modelData.path)
         }
       }
 

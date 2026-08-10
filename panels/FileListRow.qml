@@ -93,11 +93,26 @@ CursorSurface {
     // onMyPathChanged (no Component.onCompleted) porque la ListView recicla
     // los delegados: al reusar una fila para otra entrada hay que volver a
     // pedir la miniatura de la nueva ruta.
-    onMyPathChanged: imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+    onMyPathChanged: {
+      imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+      _requestCount(false)
+    }
 
     Component.onCompleted: {
       if (isVid) hostVideoThumbs.requestVideoThumb(modelData)
       if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+      _requestCount(false)
+    }
+
+    // Contador de items (Fase 23): solo carpetas, perezoso (esta fila está
+    // visible) y con caché. force=true en la invalidación (refreshTick) para
+    // recontar aunque ya estuviera en caché.
+    readonly property bool _isDir: modelData.type === "dir"
+    function _requestCount(force) {
+      if (!_isDir) return
+      if (!force && !FolderCountState.needsRequest(myPath)) return
+      FolderCountState.markPending(myPath)
+      FolderCounter.request(myPath, NavState.showHidden)
     }
 
     Connections {
@@ -105,6 +120,14 @@ CursorSurface {
       function onReady(path, thumbPath) {
         if (path === rowContent.myPath) rowContent.imgThumb = thumbPath
       }
+    }
+
+    // Invalidación: cualquier operación en la app (o el watcher de la carpeta)
+    // sube refreshTick -> se recuenta la carpeta de esta fila. Cubre también
+    // el toggle de ocultos (toggleHidden hace refresh + refreshTick).
+    Connections {
+      target: NavState
+      function onRefreshTickChanged() { rowContent._requestCount(true) }
     }
 
     FileRowVisual {
@@ -119,6 +142,7 @@ CursorSurface {
       thumbSource: rowContent.imgThumb ? Util.fileUrl(rowContent.imgThumb)
         : (rowContent.vidThumb ? Util.fileUrl(rowContent.vidThumb) : "")
       metaText: hostFileMeta.metaFor(modelData)
+      metaTooltip: hostFileMeta.metaTooltipFor(modelData)
       showNameText: EditModeState.renamingIndex !== index
     }
 

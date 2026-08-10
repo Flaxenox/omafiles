@@ -2,6 +2,7 @@ import QtQuick
 import Omafiles.Backend as Backend
 import "../../services"
 import "../../state"
+import "../../Utils.js" as Utils
 
 // SelfCheck -- arnés de validación funcional reproducible de Omafiles (Fase
 // 12, josema). Se carga desde main.cpp cuando el ejecutable standalone
@@ -198,6 +199,30 @@ QtObject {
       var ok = (a === true || a === false)
         && typeof UDisksWatcher.devicesChanged === "function"
       done(ok, "available=" + a)
+    })
+
+    add("FolderCounter counts a directory (async, Fase 23)", function (done) {
+      // list/ = sub/ + alpha/beta/gamma.txt = 4 entradas.
+      function on(path, n) {
+        if (path !== sc.listDir) return
+        FolderCounter.counted.disconnect(on)
+        done(n === 4, "n=" + n + " (esperado 4)")
+      }
+      FolderCounter.counted.connect(on)
+      FolderCounter.request(sc.listDir, false)
+    })
+
+    add("Item count smart formatting (Fase 23)", function (done) {
+      var ok = Utils.formatItemCount(1) === "1 item"
+        && Utils.formatItemCount(2) === "2 items"
+        && Utils.formatItemCount(1234) === "1,234 items"
+        && Utils.formatItemCount(12347) === "12.3k items"
+        && Utils.formatItemCount(1200000) === "1.2M items"
+        && Utils.formatItemCountExact(12347) === "12,347 items"
+        && Utils.itemCountAbbreviated(12347) === true
+        && Utils.itemCountAbbreviated(1234) === false
+      done(ok, ok ? "" : "1=" + Utils.formatItemCount(1) + " 1234=" + Utils.formatItemCount(1234)
+                          + " 12347=" + Utils.formatItemCount(12347))
     })
 
     add("Composition root creates (OmafilesContent)", function (done) {

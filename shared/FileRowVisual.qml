@@ -38,6 +38,9 @@ Item {
   // llama (conoce basePath/root.currentPath, este componente no).
   property url thumbSource: ""
   property string metaText: ""
+  // Valor exacto para el tooltip del subtítulo cuando el contador está
+  // abreviado (12.3k -> "12,347 items"); "" = sin tooltip (Fase 23).
+  property string metaTooltip: ""
   // El campo de renombrar del panel activo ocupa este mismo hueco --
   // oculta el nombre/subtítulo pero deja el icono visible, igual que
   // hacía "nameCol.visible: root.renamingIndex !== index" antes.
@@ -134,6 +137,7 @@ Item {
     }
 
     Text {
+      id: metaTextItem
       visible: root.metaText.length > 0
       width: parent.width
       text: root.metaText
@@ -142,6 +146,14 @@ Item {
       color: root.highlighted ? Color.menu.selectedText : Color.menu.text
       opacity: 0.6
       elide: Text.ElideRight
+
+      // Tooltip con el valor exacto cuando el contador se muestra abreviado
+      // (12.3k items -> 12,347 items). Solo si metaTooltip viene informado.
+      HoverHandler { id: metaHover; enabled: root.metaTooltip.length > 0 }
+      PanelToolTip {
+        visible: metaHover.hovered && root.metaTooltip.length > 0
+        text: root.metaTooltip
+      }
     }
   }
 }

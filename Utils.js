@@ -15,6 +15,35 @@ function formatSize(bytes) {
   return (bytes / 1024 / 1024 / 1024).toFixed(1) + " G"
 }
 
+// Separador de miles: 1234 -> "1,234".
+function _withThousands(n) {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+}
+
+// Formato inteligente del contador de items por carpeta (Fase 23, josema):
+//   <10k -> exacto con separador de miles (1 item / 2 items / 1,234 items)
+//   <1M  -> abreviado 12.3k items
+//   >=1M -> abreviado 1.2M items
+function formatItemCount(n) {
+  if (typeof n !== "number" || n < 0) return ""
+  if (n < 10000) return _withThousands(n) + (n === 1 ? " item" : " items")
+  if (n < 1000000) return (n / 1000).toFixed(1).replace(/\.0$/, "") + "k items"
+  return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M items"
+}
+
+// Valor EXACTO (con separador de miles) para el tooltip cuando el contador se
+// muestra abreviado: 12,347 items.
+function formatItemCountExact(n) {
+  if (typeof n !== "number" || n < 0) return ""
+  return _withThousands(n) + (n === 1 ? " item" : " items")
+}
+
+// ¿El formato mostrado está abreviado (k/M) y por tanto conviene un tooltip
+// con el valor exacto?
+function itemCountAbbreviated(n) {
+  return typeof n === "number" && n >= 10000
+}
+
 function relativeTime(epochSeconds) {
   if (!epochSeconds) return ""
   var diff = Math.floor(Date.now() / 1000) - epochSeconds

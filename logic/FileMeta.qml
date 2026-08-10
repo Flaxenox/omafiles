@@ -1,5 +1,6 @@
 import QtQuick
 import "../state"
+import "../services"
 import "../Utils.js" as Utils
 
 // Metadatos de fichero: subtítulo de fila (tamaño + fecha, o info de
@@ -64,9 +65,36 @@ Item {
       return parts.join(" · ")
     }
     var parts = []
-    if (entry.type !== "dir") parts.push(Utils.formatSize(entry.size))
+    if (entry.type !== "dir") {
+      parts.push(Utils.formatSize(entry.size))
+    } else {
+      // Contador de items (Fase 23): ocupa el "hueco del tamaño" en las
+      // carpetas. Viene de la caché async FolderCountState (lo pide la fila
+      // visible); mientras no ha llegado (o -1 = sin acceso) no se muestra
+      // nada, así que la fila no salta.
+      var fc = FolderCountState.counts[Utils.joinPath(atPath, entry.name)]
+      if (typeof fc === "number" && fc >= 0) parts.push(Utils.formatItemCount(fc))
+    }
     var rel = Utils.relativeTime(entry.mtime)
     if (rel) parts.push(rel)
     return parts.join(" · ")
+  }
+
+  // Tooltip del subtítulo: valor EXACTO del contador solo cuando se muestra
+  // abreviado (12.3k -> "12,347 items"); "" en el resto (sin tooltip).
+  function metaTooltipFor(entry, basePath) {
+    if (entry.type !== "dir") return ""
+    var atPath = basePath !== undefined ? basePath : NavState.currentPath
+    var fc = FolderCountState.counts[Utils.joinPath(atPath, entry.name)]
+    if (typeof fc === "number" && Utils.itemCountAbbreviated(fc)) return Utils.formatItemCountExact(fc)
+    return ""
+  }
+
+  // Camino async del contador de carpetas (Fase 23): el backend cuenta en un
+  // hilo y responde por counted(); aquí se vuelca a la caché reactiva, que
+  // re-evalúa los subtítulos. Un único punto (FileMeta se instancia una vez).
+  Connections {
+    target: FolderCounter
+    function onCounted(path, n) { FolderCountState.set(path, n) }
   }
 }
