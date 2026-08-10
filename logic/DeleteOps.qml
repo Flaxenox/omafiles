@@ -36,7 +36,7 @@ Item {
         paths.push(info.trashRoot + "/files/" + n)
         paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
       })
-      if (paths.length > 0) actionEngine.removeFiles(paths, "", true)
+      if (paths.length > 0) actionEngine.runNativeRemove(paths, "", true)
     } else {
       // Enviar a papelera NATIVO (Fase 13.D): FileOperations.trash
       // (QFile::moveToTrash, XDG Trash) en vez de `gio trash`. Rutas
@@ -45,7 +45,7 @@ Item {
       // el usuario pulse deshacer, mucho más tarde.
       var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      actionEngine.trashFiles(origPaths, "", function () {
+      actionEngine.runNativeTrash(origPaths, "", function () {
         // El undo solo se registra si el envío confirmó éxito. Deshacer =
         // restaurar POR RUTA ORIGINAL (Fase 13.E, restoreByOrigPath): busca
         // en TODAS las papeleras activas el .trashinfo cuya ruta original
@@ -53,9 +53,9 @@ Item {
         // aunque el usuario deshaga mucho después sin haber abierto nunca la
         // Papelera.
         actionEngine.pushUndo(label, function () {
-          return actionEngine.restoreFiles(origPaths, "")
+          return actionEngine.runNativeRestore(origPaths, "")
         }, function () {
-          return actionEngine.trashFiles(origPaths, "")
+          return actionEngine.runNativeTrash(origPaths, "")
         })
       })
     }

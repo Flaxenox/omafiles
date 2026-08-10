@@ -133,6 +133,6 @@ Item {
       .filter(function (e) { return !!TrashState.trashInfo[e.name] })
       .map(function (e) { return TrashState.trashInfo[e.name].origPath })
     if (origPaths.length === 0) return
-    actionEngine.restoreFiles(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
+    actionEngine.runNativeRestore(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 }

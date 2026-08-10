@@ -87,20 +87,20 @@ Item {
       if (!isCut) {
         // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
         // Copiar no tiene undo (deshacerlo es ambiguo, ver ActionEngine).
-        actionEngine.copyFiles(pairs, busyLabel, mode === "overwrite")
+        actionEngine.runNativeCopy(pairs, busyLabel, mode === "overwrite")
       } else {
         // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
         // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
         var overwrite = mode === "overwrite"
-        actionEngine.moveFiles(pairs, busyLabel, overwrite, function () {
+        actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
             ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
             : "move " + pairs.length + " items"
           var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
           actionEngine.pushUndo(label, function () {
-            return actionEngine.moveFiles(reversed, "", false)      // deshacer: no-clobber
+            return actionEngine.runNativeMove(reversed, "", false)      // deshacer: no-clobber
           }, function () {
-            return actionEngine.moveFiles(pairs, "", overwrite)     // rehacer: como el original
+            return actionEngine.runNativeMove(pairs, "", overwrite)     // rehacer: como el original
           })
         })
       }

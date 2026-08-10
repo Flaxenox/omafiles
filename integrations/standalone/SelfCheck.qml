@@ -782,6 +782,36 @@ QtObject {
       })
     })
 
+    // Ejerce el camino de FRONTEND (ActionEngine.runNativeTrash/Restore), no
+    // solo FileOperations del backend: cazaría el bug de Fase 14.D en que los
+    // callers (DeleteOps/FileOps/ClipboardOps/ConflictActions) invocaban
+    // nombres inexistentes (trashFiles/copyFiles/...) tras renombrar la API a
+    // runNative*. El backend pasaba 67/67 pero borrar/copiar/mover no hacían
+    // nada. Instancia ActionEngine con un navController stub (solo refresh()).
+    add("ActionEngine trash+restore end-to-end (frontend wiring)", function (done) {
+      var aeComp = Qt.createComponent(Qt.resolvedUrl("../../logic/ActionEngine.qml"))
+      if (aeComp.status === Component.Error) { done(false, aeComp.errorString()); return }
+      var stubNav = Qt.createQmlObject('import QtQuick; Item { function refresh() {} }', sc)
+      var ae = aeComp.createObject(sc, { "navController": stubNav })
+      if (!ae) { done(false, "no se pudo crear ActionEngine"); return }
+      var work = sc.opsDir + "/ae-trash.txt"
+      sc._seqOps([function () { FileOperations.copy(sc.note, work) }], done, function () {
+        ae.runNativeTrash([work], "", function () {
+          sc._listOnce(sc.opsDir, function (e) {
+            var gone = !sc._has(e, "ae-trash.txt")
+            ae.runNativeRestore([work], "", function () {
+              sc._listOnce(sc.opsDir, function (e2) {
+                var back = sc._has(e2, "ae-trash.txt")
+                ae.destroy(); stubNav.destroy()
+                done(gone && back, gone ? (back ? "trash+restore vía ActionEngine OK" : "restore no repuso el fichero")
+                                        : "runNativeTrash no sacó el fichero del origen")
+              })
+            })
+          })
+        })
+      })
+    })
+
     add("Trash + restore directory (round-trip)", function (done) {
       var dir = sc.opsDir + "/trashdir"
       sc._seqOps([
