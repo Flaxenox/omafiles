@@ -126,7 +126,7 @@ Item {
                 font.pixelSize: Style.font.bodySmall
                 font.family: "monospace"
                 color: Color.menu.text
-                opacity: 0.7
+                opacity: Style.emphasis.strong
                 wrapMode: Text.Wrap
               }
 

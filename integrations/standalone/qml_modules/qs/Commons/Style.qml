@@ -258,6 +258,24 @@ QtObject {
     readonly property int popupPadding: root.spacingToken("popup-padding", 14)
   }
 
+  // -------------------------------------------------------- text emphasis
+  //
+  // Niveles de opacidad para texto NO primario. Existen para que fechas,
+  // tamaños, contadores, subtítulos, footers y breadcrumbs inactivos
+  // compartan un ÚNICO nivel de contraste (`secondary`) en vez de repetir
+  // literales sueltos (0.5 / 0.55 / 0.6 / 0.7 …) por cada componente, que
+  // era lo que hacía que dos grises casi iguales convivieran en la misma
+  // pantalla. El color siempre sale de `Color.*`; esto solo modula su
+  // presencia. Tres escalones bastan para todo el texto secundario:
+  //   strong    — secundario prominente (estado vacío, placeholders, pistas)
+  //   secondary — metadato por defecto (fechas, tamaños, contadores, subtítulos, footers, breadcrumb inactivo)
+  //   muted     — afordancia tenue (separadores de breadcrumb, iconos en reposo)
+  readonly property QtObject emphasis: QtObject {
+    readonly property real strong: 0.75
+    readonly property real secondary: 0.6
+    readonly property real muted: 0.45
+  }
+
   // ---------------------------------------------------------- typography
   //
   // `fontFamily` defaults to "monospace" so the bar and every qs.Ui

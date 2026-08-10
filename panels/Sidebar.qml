@@ -410,7 +410,7 @@ Item {
             // Siempre visible pero discreto en reposo (Omarchy Quattro), más
             // brillante al pasar el ratón por la fila -- oculto del todo (0.0)
             // era imposible de descubrir.
-            opacity: ejectSlot.hovered ? 0.95 : 0.4
+            opacity: ejectSlot.hovered ? 0.95 : Style.emphasis.muted
             Behavior on opacity { NumberAnimation { duration: 120 } }
             Behavior on anchors.rightMargin { NumberAnimation { duration: 120 } }
           }

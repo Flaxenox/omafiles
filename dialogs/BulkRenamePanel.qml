@@ -70,7 +70,7 @@ Item {
         font.pixelSize: Style.font.subtitle
         font.family: Style.font.family
         color: Color.menu.text
-        opacity: 0.6
+        opacity: Style.emphasis.secondary
         wrapMode: Text.Wrap
       }
 

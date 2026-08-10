@@ -144,7 +144,7 @@ Item {
       font.pixelSize: Style.font.bodySmall
       font.family: Style.font.family
       color: root.highlighted ? Color.menu.selectedText : Color.menu.text
-      opacity: 0.6
+      opacity: Style.emphasis.secondary
       elide: Text.ElideRight
 
       // Tooltip con el valor exacto cuando el contador se muestra abreviado

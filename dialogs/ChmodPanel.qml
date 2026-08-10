@@ -94,10 +94,10 @@ Item {
         // Qt.darker se usa en este fichero para texto DESHABILITADO
         // (botones/filas sin acción posible) -- este texto no está
         // deshabilitado, es solo un aviso secundario, así que le
-        // toca la misma convención de opacity:0.6 que el resto del
-        // texto secundario del fichero.
+        // toca la misma convención (Style.emphasis.secondary) que el
+        // resto del texto secundario del fichero.
         color: Color.menu.text
-        opacity: 0.6
+        opacity: Style.emphasis.secondary
         wrapMode: Text.WordWrap
       }
 
@@ -122,7 +122,7 @@ Item {
             font.pixelSize: Style.font.caption
             font.family: Style.font.family
             color: Color.menu.text
-            opacity: 0.6
+            opacity: Style.emphasis.secondary
           }
         }
       }
@@ -194,7 +194,7 @@ Item {
         font.pixelSize: Style.font.subtitle
         font.family: Style.font.family
         color: Color.menu.text
-        opacity: 0.6
+        opacity: Style.emphasis.secondary
       }
 
       Toggle {

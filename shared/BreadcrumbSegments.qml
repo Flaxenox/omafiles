@@ -36,7 +36,7 @@ Row {
         font.family: Style.font.family
         font.bold: modelData.path === root.activePath
         color: Color.menu.text
-        opacity: modelData.path === root.activePath ? 1.0 : 0.5
+        opacity: modelData.path === root.activePath ? 1.0 : Style.emphasis.secondary
       }
 
       Text {
@@ -45,7 +45,7 @@ Row {
         font.pixelSize: Style.font.title
         font.family: Style.font.family
         color: Color.menu.text
-        opacity: 0.4
+        opacity: Style.emphasis.muted
       }
     }
   }

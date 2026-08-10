@@ -27,7 +27,7 @@ Column {
   Text {
     text: "\u{F0209}"
     color: Color.menu.selectedText
-    opacity: 0.8
+    opacity: Style.emphasis.strong
     font.family: Style.font.family
     font.pixelSize: Style.font.displayLarge
     horizontalAlignment: Text.AlignHCenter
@@ -37,7 +37,7 @@ Column {
   Text {
     text: root.message
     color: Color.menu.text
-    opacity: 0.7
+    opacity: Style.emphasis.strong
     font.family: Style.font.family
     font.pixelSize: Style.font.title
     horizontalAlignment: Text.AlignHCenter

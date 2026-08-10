@@ -122,7 +122,7 @@ Item {
       fontFamily: Style.font.family
       fontSize: Style.font.icon
       color: NavState.searching ? Color.menu.selectedText : Color.menu.text
-      opacity: NavState.searching ? 1 : 0.75
+      opacity: NavState.searching ? 1 : Style.emphasis.strong
     }
 
     // Spinner mínimo: un punto en órbita (sin depender de glyph ni de
