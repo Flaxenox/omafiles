@@ -1,4 +1,5 @@
 import QtQuick
+import "../state"
 
 // Detección de tipo de fichero por extensión (icono + is Image/Video/
 // Audio/Pdf) -- lógica de negocio pura que vivía en Omafiles.qml pese a
