@@ -1,11 +1,15 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../shared"
 
 // Diálogo "Abrir con...". Cuarto componente extraído de Omafiles.qml --
 // como con ConnectServer.qml, la acción real (lanzar la app elegida) se
 // expone como señal parametrizada en vez de llamar a root.launchWith()
 // directamente desde dentro del componente.
+//
+// El envoltorio modal (scrim + tarjeta + animación + padding) es
+// shared/ModalSurface.qml, común a todos los diálogos.
 Item {
   id: root
 
@@ -16,95 +20,62 @@ Item {
   signal closeRequested()
   signal appSelected(string appId)
 
-  MouseArea {
-    anchors.fill: parent
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
-    visible: root.open
-    z: 15
-    onClicked: root.closeRequested()
-  }
+  ModalSurface {
+    open: root.open
+    maxWidth: Style.space(320)
+    onDismissed: root.closeRequested()
 
-  BorderSurface {
-    id: openWithCard
-    visible: root.open || opacity > 0
-    width: Math.min(parent.width - 80, 320)
-    height: openWithColumn.implicitHeight + contentTopInset + contentBottomInset
-    anchors.centerIn: parent
-    // Fase 22: entrada discreta del diálogo (opacity 0->1, scale
-    // 0.98->1.0, 120 ms, sin overshoot). No bloquea el clic.
-    opacity: root.open ? 1 : 0
-    scale: root.open ? 1 : 0.98
-    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-    radius: Style.cornerRadius
-    color: Color.menu.background
-    borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    padding: Style.spacing.sm
-    z: 20
+    Text {
+      width: parent.width
+      text: "Open \"" + (root.entry ? root.entry.name : "") + "\" with:"
+      font.pixelSize: Style.font.title
+      font.family: Style.font.family
+      font.bold: true
+      color: Color.menu.text
+      elide: Text.ElideMiddle
+    }
 
-    MouseArea { anchors.fill: parent; onClicked: {} }
+    PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
-    Column {
-      id: openWithColumn
-      anchors.fill: parent
-      anchors.topMargin: openWithCard.contentTopInset
-      anchors.rightMargin: openWithCard.contentRightInset
-      anchors.bottomMargin: openWithCard.contentBottomInset
-      anchors.leftMargin: openWithCard.contentLeftInset
-      spacing: Style.spacing.xs
+    Text {
+      visible: root.apps.length === 0
+      width: parent.width
+      text: "No registered applications for this file type."
+      font.pixelSize: Style.font.title
+      font.family: Style.font.family
+      color: Color.menu.text
+      opacity: Style.emphasis.secondary
+      wrapMode: Text.Wrap
+    }
 
-      Text {
+    Repeater {
+      model: root.apps
+
+      CursorSurface {
+        required property var modelData
         width: parent.width
-        text: "Open \"" + (root.entry ? root.entry.name : "") + "\" with:"
-        font.pixelSize: Style.font.title
-        font.family: Style.font.family
-        font.bold: true
-        color: Color.menu.text
-        elide: Text.ElideMiddle
-      }
+        implicitHeight: Style.spacing.controlHeight
+        foreground: Color.menu.text
+        accent: Color.accent
+        hasCursor: appMouse.containsMouse
 
-      PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.left: parent.left
+          anchors.leftMargin: Style.spacing.sm
+          text: parent.modelData.name
+          font.pixelSize: Style.font.title
+          font.family: Style.font.family
+          font.weight: Font.Medium
+          color: Color.menu.text
+        }
 
-      Text {
-        visible: root.apps.length === 0
-        width: parent.width
-        text: "No registered applications for this file type."
-        font.pixelSize: Style.font.title
-        font.family: Style.font.family
-        color: Color.menu.text
-        opacity: Style.emphasis.secondary
-        wrapMode: Text.Wrap
-      }
-
-      Repeater {
-        model: root.apps
-
-        CursorSurface {
-          required property var modelData
-          width: openWithColumn.width
-          implicitHeight: Style.spacing.controlHeight
-          foreground: Color.menu.text
-          accent: Color.accent
-          hasCursor: appMouse.containsMouse
-
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.leftMargin: Style.spacing.sm
-            text: parent.modelData.name
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.weight: Font.Medium
-            color: Color.menu.text
-          }
-
-          MouseArea {
-            id: appMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.appSelected(modelData.id)
-          }
+        MouseArea {
+          id: appMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.appSelected(modelData.id)
         }
       }
     }

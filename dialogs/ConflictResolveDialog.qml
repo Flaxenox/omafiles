@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../shared"
 
 // Diálogo "ya existe, ¿sobrescribir/omitir/cancelar?". Séptimo
 // componente extraído de Omafiles.qml -- a diferencia de los
@@ -9,6 +10,9 @@ import qs.Ui
 // qué función llamaban, así que se unifican en un solo componente
 // reutilizable con señales genéricas (overwriteRequested/skipRequested/
 // cancelRequested) en vez de mantener la duplicación en dos ficheros.
+//
+// El envoltorio modal (scrim + tarjeta + animación + padding) es
+// shared/ModalSurface.qml, común a todos los diálogos.
 Item {
   id: root
 
@@ -19,63 +23,30 @@ Item {
   signal skipRequested()
   signal cancelRequested()
 
-  MouseArea {
-    anchors.fill: parent
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
-    visible: root.open
-    z: 15
-    onClicked: root.cancelRequested()
-  }
+  ModalSurface {
+    open: root.open
+    maxWidth: Style.space(360)
+    onDismissed: root.cancelRequested()
 
-  BorderSurface {
-    id: conflictCard
-    visible: root.open || opacity > 0
-    width: Math.min(parent.width - 80, 360)
-    height: conflictColumn.implicitHeight + contentTopInset + contentBottomInset
-    anchors.centerIn: parent
-    // Fase 22: entrada discreta del diálogo (opacity 0->1, scale
-    // 0.98->1.0, 120 ms, sin overshoot). No bloquea el clic.
-    opacity: root.open ? 1 : 0
-    scale: root.open ? 1 : 0.98
-    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-    radius: Style.cornerRadius
-    color: Color.menu.background
-    borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    padding: Style.spacing.sm
-    z: 20
-
-    MouseArea { anchors.fill: parent; onClicked: {} }
+    Text {
+      width: parent.width
+      text: root.names.length === 1
+        ? "\"" + root.names[0] + "\" already exists here."
+        : root.names.length + " items already exist here."
+      font.pixelSize: Style.font.title
+      font.family: Style.font.family
+      font.bold: true
+      color: Color.menu.text
+      wrapMode: Text.Wrap
+    }
 
     Column {
-      id: conflictColumn
-      anchors.fill: parent
-      anchors.topMargin: conflictCard.contentTopInset
-      anchors.rightMargin: conflictCard.contentRightInset
-      anchors.bottomMargin: conflictCard.contentBottomInset
-      anchors.leftMargin: conflictCard.contentLeftInset
-      spacing: Style.spacing.sm
+      width: parent.width
+      spacing: Style.spacing.xs
 
-      Text {
-        width: parent.width
-        text: root.names.length === 1
-          ? "\"" + root.names[0] + "\" already exists here."
-          : root.names.length + " items already exist here."
-        font.pixelSize: Style.font.title
-        font.family: Style.font.family
-        font.bold: true
-        color: Color.menu.text
-        wrapMode: Text.Wrap
-      }
-
-      Column {
-        width: parent.width
-        spacing: Style.spacing.xs
-
-        Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.overwriteRequested() }
-        Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.skipRequested() }
-        Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelRequested() }
-      }
+      Button { width: parent.width; leftAlign: true; bordered: true; text: "Overwrite all"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.overwriteRequested() }
+      Button { width: parent.width; leftAlign: true; bordered: true; text: "Skip existing"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.skipRequested() }
+      Button { width: parent.width; leftAlign: true; bordered: true; text: "Cancel"; Accessible.role: Accessible.Button; Accessible.name: text; onClicked: root.cancelRequested() }
     }
   }
 }
