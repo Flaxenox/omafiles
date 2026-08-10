@@ -32,15 +32,23 @@ Item {
     Detached.run([Paths.pluginDir + "/scripts/install-integrations.sh"])
   }
 
-  // Discos/red no tienen un evento fácil de vigilar aquí (habría que
-  // suscribirse a señales D-Bus de UDisks2/GVfs) -- un polling modesto es la
-  // opción honesta dado el alcance. "running: root.opened" para que no siga
-  // en marcha de fondo con la ventana cerrada.
-  Timer {
-    interval: 7000
-    repeat: true
-    running: root.opened
-    onTriggered: { mountOps.refreshMounts(); mountOps.refreshNetworkMounts() }
+  // Dispositivos de bloque (USB/ISO/discos): reactivos vía UDisks2 (Fase 20).
+  // El watcher nativo (backend/UDisksWatcher, suscripción D-Bus) emite
+  // devicesChanged() coalescido ante cualquier conexión/expulsión/montaje/
+  // cambio de label, y aquí se responde volviendo a listar -- sin polling. La
+  // carga inicial la hace OmafilesContent.open(); `enabled: root.opened` evita
+  // relistar con la ventana cerrada (al reabrir, open() pone al día).
+  //
+  // Montajes de RED (GVfs) NO los cubre UDisks2: se refrescan solo por eventos
+  // internos (conectar/desconectar servidor en Omafiles, navegar a red) y al
+  // abrir la ventana -- sin polling periódico. LIMITACIÓN CONOCIDA: un montaje
+  // de red creado desde OTRA app (nautilus...) no aparece hasta el siguiente
+  // evento interno o reapertura. Mejora futura: un watcher específico de GVfs
+  // (señales D-Bus de org.gtk.vfs), nunca polling.
+  Connections {
+    target: UDisksWatcher
+    enabled: root.opened
+    function onDevicesChanged() { mountOps.refreshMounts() }
   }
 
   // Debounce de la tecla `g` (pulsar `g` dos veces seguidas = ir arriba del

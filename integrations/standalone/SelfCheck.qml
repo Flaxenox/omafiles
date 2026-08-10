@@ -190,6 +190,16 @@ QtObject {
       done(!!home && home.length > 0, home ? "HOME=" + home : "Env.get(HOME) vacío")
     })
 
+    add("UDisksWatcher reactive backend (Fase 20, no polling)", function (done) {
+      // El watcher C++ (QtDBus) se registró y expone available()/devicesChanged.
+      // available() es true si conectó al bus de sistema (en CI headless puede
+      // ser false; lo que se valida es que carga y no rompe, no que haya bus).
+      var a = UDisksWatcher.available()
+      var ok = (a === true || a === false)
+        && typeof UDisksWatcher.devicesChanged === "function"
+      done(ok, "available=" + a)
+    })
+
     add("Composition root creates (OmafilesContent)", function (done) {
       var comp = Qt.createComponent(Qt.resolvedUrl("../../core/OmafilesContent.qml"))
       if (comp.status === Component.Error) { done(false, comp.errorString()); return }

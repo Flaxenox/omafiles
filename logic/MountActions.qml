@@ -120,7 +120,26 @@ Item {
 
   ProcessRunner {
     id: mountsProc
-    onFinished: function (result) { MountsState.mounts = Utils.parseMounts(result.stdout) }
+    onFinished: function (result) {
+      MountsState.mounts = Utils.parseMounts(result.stdout)
+      _ensureCurrentPathMounted()
+    }
+  }
+
+  // Req 4 (Fase 20): si la unidad extraíble/externa que estabas navegando se
+  // expulsa (físicamente o desde otra app), UDisks2 dispara refreshMounts() y
+  // aquí se detecta que currentPath cuelga de un punto de montaje que ya no
+  // está montado -> se navega a Home. Solo mira rutas bajo /run/media o /mnt
+  // (las gestionadas por unidades): una ruta normal del home nunca dispara
+  // esto. El eject MANUAL ya navegaba con su propio wasInside; esto cubre la
+  // expulsión que NO inició la app.
+  function _ensureCurrentPathMounted() {
+    var p = NavState.currentPath
+    if (p.indexOf("/run/media/") !== 0 && p.indexOf("/mnt/") !== 0) return
+    var covered = MountsState.mounts.some(function (m) {
+      return m.mounted && (p === m.path || p.indexOf(m.path + "/") === 0)
+    })
+    if (!covered) tabOps.navigateTabTo(TabsState.activeTabIndex, Paths.homeDir)
   }
 
   ProcessRunner {
