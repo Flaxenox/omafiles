@@ -341,7 +341,13 @@ Item {
               anchors.top: listSep.bottom
               anchors.topMargin: Style.spacing.md
               anchors.left: parent.left
+              // Alineado con la COLUMNA DE NOMBRES de las filas (ancho del
+              // icono + hueco, ver FileRowVisual.nameCol), no pegado al borde:
+              // el aviso ocupa el sitio del listado, así que se lee como su
+              // contenido en vez de descolgado a la izquierda.
+              anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
               anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.rowPaddingX
               text: NavState.currentPathError
               font.family: Style.font.family
               font.pixelSize: Style.font.subtitle

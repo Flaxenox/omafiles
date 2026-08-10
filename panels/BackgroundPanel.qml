@@ -207,7 +207,12 @@ Item {
     visible: dirLister.pathError !== ""
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.md
-    width: parent.width
+    // Mismo alineado que el aviso del panel activo (ActiveFileList): a la
+    // columna de nombres (icono + hueco), no pegado al borde izquierdo.
+    anchors.left: parent.left
+    anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
+    anchors.right: parent.right
+    anchors.rightMargin: Style.spacing.rowPaddingX
     text: dirLister.pathError
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
