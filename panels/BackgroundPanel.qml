@@ -347,7 +347,15 @@ Item {
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
+    // Mismo formato que el footer del panel activo (statusText en
+    // MainLayout): "N items · sort: <criterio>". El criterio de orden es
+    // global (SortState, vía hostSortOps.sortLabel()), así que el panel de
+    // fondo lista con el MISMO orden -- omitirlo hacía que las dos vistas se
+    // vieran distintas al mover el cursor. Los extras del panel activo
+    // (selección/portapapeles/búsqueda) son estados que solo existen ahí, no
+    // en un panel de fondo, así que no se replican.
     text: dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
+      + " · sort: " + hostSortOps.sortLabel()
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.menu.text
