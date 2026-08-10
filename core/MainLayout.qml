@@ -81,6 +81,7 @@ Item {
         networkMounts: MountsState.networkMounts
         currentPath: NavState.currentPath
         dropHoverPath: DropHoverState.dropHoverPath
+        ejectingDevice: MountsState.ejectingDevice
         positionRelativeTo: card
         iconForBookmark: bookmarkOps.iconForBookmark
         iconFor: root.iconFor
@@ -99,6 +100,7 @@ Item {
           if (!mount.mounted) mountOps.mountDevice(mount)
           else root.navigateTo(mount.path)
         }
+        onMountEjectRequested: function (mount) { mountOps.ejectMount(mount) }
         onNetworkMountOpened: function (mount) { root.navigateTo(mount.path) }
         onConnectRequested: mountOps.startConnectToServer()
         onFilesDropped: function (drop, destPath) { dragDropOps.handleFilesDropped(drop, destPath) }

@@ -84,6 +84,8 @@ Item {
     ejectProc.wasInside = wasInside
     ejectProc.tabIndex = TabsState.activeTabIndex
     ejectProc.device = mount.device
+    // Spinner del botón de eject (Fase 21): se limpia en ejectProc.onFinished.
+    MountsState.ejectingDevice = mount.device
     ejectProc.start(["udisksctl", "unmount", "-b", mount.device])
   }
 
@@ -149,6 +151,7 @@ Item {
     property int tabIndex: -1
     property string device: ""
     onFinished: function (result) {
+      MountsState.ejectingDevice = ""
       if (result.exitCode === 0) {
         if (ejectProc.wasInside) tabOps.navigateTabTo(ejectProc.tabIndex, Paths.homeDir)
         // Un .iso montado con mountIso() deja el /dev/loopN asociado al
