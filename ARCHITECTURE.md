@@ -14,8 +14,12 @@ Omafiles.qml                    Quickshell bootstrap (~90 lines)
 core/
   OmafilesContent.qml            Full visual tree + wiring (composition root)
 integrations/
+  HostAdapter.qml                 Formal host contract + shared size persistence
   quickshell/
     HostBridge.qml                FloatingWindow + host `shell` object, isolated
+  standalone/
+    Main.qml                       ApplicationWindow host (Qt6, main.cpp loads it)
+    qml_modules/qs/                qs.Commons + qs.Ui adapters (theme/design system)
 logic/                           Business logic (Process-based I/O, state mutation)
 state/                           pragma Singleton data holders
 panels/                          Large always-visible UI (sidebar, file lists, preview)
@@ -103,6 +107,44 @@ graph TD
    `core/`, `logic/`, `state/`, `panels/`, `dialogs/`, `shared/`, or
    `services/` imports `integrations/` at all.
 
+## Host contract (Phase 18)
+
+The core talks to its host through exactly two things, and nothing more:
+`OmafilesContent` exposes `open(payload)` / `close()` / `opened` and emits
+`closeRequested()`. That is the whole surface a host consumes.
+
+Going the other way, a host frontend must provide a **window/lifecycle**
+implementation. This is the only genuinely host-specific capability and it
+is formalized in `integrations/HostAdapter.qml`:
+
+- **Window/lifecycle** (host-specific, one impl per frontend): `show()`,
+  `hide()`, `close()`, and a `closedExternally()` signal (the window went
+  away by a mechanism the host did not start — the WM close button).
+  Implemented by `integrations/quickshell/HostBridge.qml` over
+  `FloatingWindow` and by `integrations/standalone/Main.qml` over
+  `ApplicationWindow`.
+- **Geometry** (host-agnostic, shared): `HostAdapter` persists window
+  **size** to `~/.local/state/omafiles/window.json` and restores it via a
+  `sizeRestored(w, h)` signal each host applies to its own size property.
+  Position/centering are deliberately out of scope — under Wayland the
+  compositor owns window placement, so `center()` is a documented no-op.
+
+Every other capability sometimes thought of as "host" is **not** routed
+through the host; each is already abstracted layer-by-layer with one
+identical API across both frontends:
+
+| Capability      | Where it lives                                  |
+| --------------- | ----------------------------------------------- |
+| Theme           | `qs.Commons` (FileView on Quickshell, `ThemeSource` on Qt6) |
+| Notifications   | `services/Notifier`                              |
+| Open external   | `services/Detached`                              |
+| Environment     | `services/Env`                                   |
+| Process I/O     | `services/ProcessRunner` / `ProcessWatcher` (C++ backend) |
+| JSON / files    | `services/JsonStore`, `DirectoryModel`, ...      |
+
+So "the host" is a thin window/lifecycle adapter, not a god-object the core
+depends on.
+
 ## Host-independent vs. Quickshell-specific
 
 **Independent of the host** (everything a future `integrations/standalone/`
@@ -110,16 +152,18 @@ would reuse untouched): `core/`, `logic/`, `state/`, `panels/`, `dialogs/`,
 `shared/`, `services/`, and the backing `.sh` scripts. None of these
 import `Quickshell` or reference a `FloatingWindow`/host `shell` object.
 
-**Specific to Quickshell** (the only things a second frontend needs to
-replace): `Omafiles.qml` (the bootstrap — a Qt6 standalone frontend
-would have its own, e.g. `integrations/standalone/Main.qml` +
-`main.cpp`) and `integrations/quickshell/HostBridge.qml` (a standalone
-frontend would provide an equivalent backed by `ApplicationWindow`
-instead of `FloatingWindow`, with no host `shell` object to talk to).
-`services/*.qml` implementations also stay Quickshell-specific internally
-(they wrap `Quickshell.Io.Process` etc.), but their *API* is already
-host-agnostic — a standalone port only needs to reimplement their
-insides, not touch any caller.
+**Per-frontend host code** (everything under `integrations/`, and nothing
+else): the Quickshell side is `Omafiles.qml` (the plugin bootstrap that the
+host loader instantiates) + `integrations/quickshell/HostBridge.qml`
+(`FloatingWindow` + the host `shell` object). The Qt6 side is
+`main.cpp` (bootstrap) + `integrations/standalone/Main.qml`
+(`ApplicationWindow`, no host `shell` object) + the `qs.Commons`/`qs.Ui`
+adapters under `integrations/standalone/qml_modules/`. Both hosts consume
+the same core surface and implement the same `HostAdapter` contract. As of
+Phase 18 the Qt6 standalone is a full production frontend, not a
+demonstration: `services/*.qml` already have a single host-agnostic
+implementation (they wrap the C++ backend, no longer `Quickshell.Io`), so a
+frontend swap touches only `integrations/`, never a caller below it.
 
 ## Why this is a reusable core
 
@@ -129,7 +173,6 @@ in (`logic/`, `state/`, `panels/`, `dialogs/`, `shared/`, `services/`) is
 equally Quickshell-free. It exposes exactly the surface a host needs:
 `open(payload)`, `close()`, `opened`, and a `closeRequested()` signal.
 Any QML host that can instantiate an `Item` and connect those four things
-can run it — `integrations/quickshell/HostBridge.qml` is one such host,
-backed by `FloatingWindow`; a future `integrations/standalone/Main.qml`
-backed by `ApplicationWindow` is a mechanical addition, not a
-restructuring.
+can run it. Two do today: `integrations/quickshell/HostBridge.qml` backed
+by `FloatingWindow`, and `integrations/standalone/Main.qml` backed by
+`ApplicationWindow` — both implementing the same `HostAdapter` contract.

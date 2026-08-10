@@ -1,33 +1,64 @@
 import QtQuick
 import QtQuick.Controls
+import qs.Commons
 import Omafiles.Backend as Backend
 import "../../core"
+import ".."
 
-// Frontend Qt6 standalone -- primer arranque (Fase 4, josema: prueba de
-// independencia del núcleo, no una app completa). Instancia el MISMO
-// core/OmafilesContent.qml que usa el frontend Quickshell
-// (integrations/quickshell/HostBridge.qml lo hace bajo un
-// FloatingWindow; aquí va bajo un ApplicationWindow normal de Qt6) --
-// ninguna diferencia de comportamiento pretendida más allá del tipo de
-// ventana anfitriona.
+// Adaptador de host Qt6 standalone (Fase 4 → Fase 18, josema). Es el
+// equivalente de integrations/quickshell/HostBridge.qml para el frontend
+// Qt6: instancia el MISMO core/OmafilesContent.qml pero sobre un
+// ApplicationWindow en vez de un FloatingWindow. Cumple el mismo contrato de
+// host (ver integrations/HostAdapter.qml):
+//   · show()/hide()/close()  -- built-in de Window/ApplicationWindow.
+//   · cierre externo         -- onClosing (botón de cerrar del WM / Alt+F4).
+//   · geometría (tamaño)     -- vía HostAdapter, misma persistencia que
+//                               Quickshell (~/.local/state/omafiles/window.json).
+// El bootstrap (crear el engine, cargar este fichero) lo hace main.cpp; por
+// eso, a diferencia del lado Quickshell, aquí la ventana ES la raíz (main.cpp
+// espera un QQuickWindow) y no hay un Omafiles.qml intermedio ni objeto
+// `shell` del host.
 ApplicationWindow {
   id: window
   visible: true
+  // Tamaño por defecto de la primera apertura; HostAdapter lo sobrescribe si
+  // hay un window.json guardado (ver onSizeRestored).
   width: 1400
   height: 900
+  minimumWidth: 560
+  minimumHeight: 380
   title: "Omafiles"
+  color: Color.menu.background
+
+  HostAdapter {
+    id: adapter
+    window: window
+  }
+
+  Connections {
+    target: adapter
+    function onSizeRestored(w, h) {
+      window.width = w
+      window.height = h
+    }
+  }
+
+  // Cierre externo (botón de cerrar del gestor de ventanas): equivale al
+  // closedExternally() del lado Quickshell. En un standalone de una sola
+  // ventana, cerrar = terminar la app (quitOnLastWindowClosed), así que no
+  // hay que hacer nada más que dejar constancia de que ya no está abierto.
+  onClosing: content.opened = false
 
   OmafilesContent {
     id: content
     anchors.fill: parent
+    // Esc / cerrar la última pestaña: sin objeto `shell` que avisar (no hay
+    // host que oculte el plugin), así que se cierra la ventana directamente.
+    onCloseRequested: window.close()
   }
 
-  // El core solo navega cuando el host llama a open() (en Quickshell lo
-  // hace HostBridge al mostrar la ventana). Fase 4 no lo llamaba, por eso
-  // el standalone salia sin listar nada. HOME sale del Env real (Fase 5,
-  // backend/Env.cpp), no ya de un context property. Con ProcessRunner
-  // respaldado por QProcess real, esto lista la carpeta de verdad.
   Component.onCompleted: {
+    adapter.restore()
     content.open(Backend.Env.get("HOME"))
   }
 }

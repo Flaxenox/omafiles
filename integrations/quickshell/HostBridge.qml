@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import ".."
 
 // Adaptador de host Quickshell -- toda la integración específica de
 // Quickshell para la ventana de Omafiles vive aquí (Fase 2, josema:
@@ -59,4 +60,23 @@ FloatingWindow {
   onVisibleChanged: {
     if (!hostWindow.visible && !suppressExternalClose) closedExternally()
   }
+
+  // Parte host-agnóstica del contrato (Fase 18): persistencia de tamaño.
+  // FloatingWindow se dimensiona por implicitWidth/implicitHeight, así que el
+  // tamaño restaurado se aplica ahí; el valor por defecto de abajo solo rige
+  // la primera vez, antes de que exista window.json.
+  HostAdapter {
+    id: adapter
+    window: hostWindow
+  }
+
+  Connections {
+    target: adapter
+    function onSizeRestored(w, h) {
+      hostWindow.implicitWidth = w
+      hostWindow.implicitHeight = h
+    }
+  }
+
+  Component.onCompleted: adapter.restore()
 }
