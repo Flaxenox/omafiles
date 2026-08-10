@@ -144,6 +144,7 @@ Item {
     // josema pidió que las dos se vean iguales, no solo el panel activo
     // con navegación completa.
     PanelNavButtons {
+      id: bgNavButtons
       canGoBack: (bgPanel.modelData.historyIndex || 0) > 0
       canGoForward: (bgPanel.modelData.historyIndex || 0) < (bgPanel.modelData.history || [bgPanel.modelData.path]).length - 1
       canGoUp: bgPanel.modelData.path !== "/"
@@ -160,10 +161,26 @@ Item {
     // se veía el nombre de la carpeta actual, sin el resto de la ruta.
     BreadcrumbSegments {
       id: bgBreadcrumbRow
-      width: parent.width - 3 * Style.spacing.controlHeight - 3 * Style.spacing.controlGap
+      // Misma anchura que el breadcrumb del panel activo (pathArea en
+      // MainLayout): reserva el hueco de la lupa colapsada (collapsedW =
+      // controlHeight) + su separación, aunque aquí NO haya lupa (la búsqueda
+      // es solo del panel activo). Así el breadcrumb no cambia de anchura al
+      // pasar el panel a activo -- sin desplazamiento horizontal al alternar
+      // de panel (Sprint Visual 3, B-06).
+      width: parent.width - bgNavButtons.width - bgSearchPlaceholder.width - 2 * Style.spacing.controlGap
       height: parent.height
       segments: hostRoot.pathSegmentsFor(bgPanel.modelData.path)
       activePath: bgPanel.modelData.path
+    }
+
+    // Reserva del hueco de la lupa de búsqueda del panel activo. Vacío a
+    // propósito: un panel de fondo no busca (la búsqueda es del panel activo),
+    // pero el espacio se reserva para que la cabecera tenga EXACTAMENTE la
+    // misma geometría en ambos estados.
+    Item {
+      id: bgSearchPlaceholder
+      width: Style.spacing.controlHeight
+      height: parent.height
     }
   }
 
