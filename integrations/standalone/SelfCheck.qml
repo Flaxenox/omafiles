@@ -177,6 +177,27 @@ QtObject {
     _pollTimer.restart()
   }
 
+  // ---- BUG-02: runner de procesos para los smoke-tests de scripts .sh ----
+  // Backend.ProcessRunner (QProcess real) entrega {exitCode,stdout,stderr}.
+  property Component _procFactory: Component { Backend.ProcessRunner {} }
+  // Raíz del plugin (donde viven los .sh), derivada de la URL de este fichero:
+  // integrations/standalone/ -> ../../ = raíz.
+  readonly property string pluginRoot: Qt.resolvedUrl("../../").toString().replace(/^file:\/\//, "").replace(/\/+$/, "")
+  // Comillas POSIX para incrustar rutas en un `bash -c` de setup.
+  function _q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
+  // Ejecuta argv y entrega el resultado por callback. Runner secuencial: solo
+  // hay un _sh en vuelo (igual que el resto del arnés).
+  function _sh(argv, cb) {
+    var p = _procFactory.createObject(sc)
+    function on(result) {
+      p.finished.disconnect(on)
+      cb(result)
+      Qt.callLater(function () { p.destroy() })
+    }
+    p.finished.connect(on)
+    p.start(argv, false)
+  }
+
   Component.onCompleted: {
     _register()
     SelfCheckOut.line("── omafiles --selfcheck · fixtures en " + dir + " ──")
@@ -1534,6 +1555,102 @@ QtObject {
       var l = Backend.NetworkMounts.list()
       done(l !== undefined && l !== null && typeof l.length === "number",
            "NetworkMounts.list() -> " + (l ? l.length : "null") + " entradas")
+    })
+
+    // ======================= BUG-01 (Hardening-1) =======================
+
+    // Regresión del informe BUG_AUDIT_V3: la detección de conflictos debe ver
+    // un symlink ROTO (destino inexistente) como una entrada existente. Con el
+    // criterio antiguo (QFileInfo::exists, que sigue el symlink) existingPaths
+    // devolvía 0 y la UI no avisaba, divergiendo del comportamiento real de la
+    // op nativa. Ahora usa lstat (entryExists) en existingPaths y en los guards
+    // de copy()/move(): mismo criterio en UI y backend. Esta prueba FALLABA con
+    // el código anterior.
+    add("Conflict detection sees a broken symlink (BUG-01)", function (done) {
+      var link = sc.opsDir + "/bug01-broken-" + Date.now()
+      sc._sh(["ln", "-s", "/omafiles-no-such-target-xyz", link], function (r) {
+        if (r.exitCode !== 0) { done(false, "no se pudo crear el symlink roto: " + r.stderr); return }
+        var hit = FileOperations.existingPaths([link])
+        done(hit.length === 1 && hit[0] === link,
+             hit.length === 1 ? "symlink roto detectado como conflicto"
+                              : "existingPaths NO detectó el symlink roto (n=" + hit.length + ")")
+      })
+    })
+
+    // ======================= BUG-02 (Hardening-1) =======================
+    // Smoke tests de los scripts .sh que siguen formando parte del
+    // comportamiento de la UI. Objetivo: que una regresión como la de
+    // empty-trash.sh (que pasó 70/70 en verde) haga fallar el arnés.
+
+    // empty-trash.sh AISLADO: HOME apunta a un home falso dentro del tmp del
+    // selfcheck y un findmnt falso (por PATH) impide que se escaneen montajes
+    // reales -> NUNCA toca la papelera de verdad del usuario. Prepara una
+    // papelera de casa con un ítem y confirma que el script la vacía. Una
+    // regresión que no descubra las raíces (como la de trash-roots.sh) dejaría
+    // el ítem sin borrar y haría fallar esto.
+    add("empty-trash.sh empties an isolated home trash (BUG-02)", function (done) {
+      var fakeHome = sc.dir + "/et-home"
+      var tFiles = fakeHome + "/.local/share/Trash/files"
+      var tInfo = fakeHome + "/.local/share/Trash/info"
+      var fakeBin = sc.dir + "/et-bin"
+      var setup =
+        "mkdir -p " + _q(tFiles) + " " + _q(tInfo) + " " + _q(fakeBin) + " && " +
+        "printf x > " + _q(tFiles + "/victim.txt") + " && " +
+        "printf '[Trash Info]\\n' > " + _q(tInfo + "/victim.txt.trashinfo") + " && " +
+        "printf '#!/bin/sh\\n' > " + _q(fakeBin + "/findmnt") + " && chmod +x " + _q(fakeBin + "/findmnt")
+      sc._sh(["bash", "-c", setup], function (r0) {
+        if (r0.exitCode !== 0) { done(false, "setup falló: " + r0.stderr); return }
+        var run = "env -i HOME=" + _q(fakeHome) + " PATH=" + _q(fakeBin) + ":/usr/bin:/bin bash "
+          + _q(sc.pluginRoot + "/empty-trash.sh")
+        sc._sh(["bash", "-c", run], function (r1) {
+          sc._sh(["bash", "-c", "ls -A " + _q(tFiles) + " | wc -l"], function (r2) {
+            var remaining = parseInt(String(r2.stdout).trim(), 10)
+            done(r1.exitCode === 0 && remaining === 0,
+                 "exit=" + r1.exitCode + " ítems restantes=" + remaining)
+          })
+        })
+      })
+    })
+
+    // list-archive.sh sobre un .tar determinista construido desde listDir
+    // (sub/ + alpha/beta/gamma.txt). Confirma que lista los elementos de primer
+    // nivel en el contrato NUL-delimitado (name\0isdir\0...).
+    add("list-archive.sh lists a tar fixture (BUG-02)", function (done) {
+      var tarPath = sc.opsDir + "/la-fixture.tar"
+      var mk = "tar -cf " + _q(tarPath) + " -C " + _q(sc.listDir) + " sub alpha.txt beta.txt gamma.txt"
+      sc._sh(["bash", "-c", mk], function (r0) {
+        if (r0.exitCode !== 0) { done(false, "tar setup falló: " + r0.stderr); return }
+        sc._sh(["bash", sc.pluginRoot + "/list-archive.sh", tarPath, ""], function (r) {
+          var toks = String(r.stdout).split("\0")
+          var names = []
+          for (var i = 0; i < toks.length; i += 2) if (toks[i]) names.push(toks[i])
+          var ok = r.exitCode === 0 && names.indexOf("sub") >= 0 && names.indexOf("alpha.txt") >= 0
+          done(ok, ok ? "listó " + names.length + " entradas de primer nivel"
+                      : "salida=[" + names.join(",") + "] exit=" + r.exitCode)
+        })
+      })
+    })
+
+    // mount-iso.sh: no se puede montar en headless. Se ejercita la RUTA DE
+    // FALLO: ante una ruta inexistente el script no debe imprimir un "Mounted…"
+    // falso ni colgarse -> sale != 0 y sin stdout. Verifica que se invoca y que
+    // su guardia (set -e + comprobación de loopdev) funciona.
+    add("mount-iso.sh fails safely on a bad path (BUG-02)", function (done) {
+      sc._sh(["bash", sc.pluginRoot + "/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
+        var ok = r.exitCode !== 0 && String(r.stdout).trim() === ""
+        done(ok, "exit=" + r.exitCode + " stdout='" + String(r.stdout).trim() + "'")
+      })
+    })
+
+    // open-with-list.sh sobre un .txt: exit 0 y salida con forma TSV válida
+    // (vacía, o cada línea con un TAB nombre<TAB>id). No fija QUÉ apps hay
+    // (depende del sistema); sí que se invoca y responde en su contrato.
+    add("open-with-list.sh returns valid TSV (BUG-02)", function (done) {
+      sc._sh(["bash", sc.pluginRoot + "/open-with-list.sh", sc.note], function (r) {
+        var lines = String(r.stdout).split("\n").filter(function (l) { return l.length > 0 })
+        var shapeOk = lines.every(function (l) { return l.indexOf("\t") >= 0 })
+        done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " líneas=" + lines.length)
+      })
     })
   }
 }

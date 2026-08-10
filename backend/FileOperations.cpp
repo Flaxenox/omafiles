@@ -19,6 +19,19 @@ namespace {
 
 constexpr qint64 kChunk = 1 << 20; // 1 MiB
 
+// ¿Existe una ENTRADA de directorio en `path`? (lstat, no stat.) A diferencia
+// de QFileInfo::exists() -- que sigue los symlinks y por tanto es ciega a un
+// symlink roto -- esto cuenta como existente cualquier cosa que ocupe el
+// nombre, incluido un symlink cuyo destino no existe. Es el criterio ÚNICO de
+// "conflicto de destino" que comparten existingPaths() (la comprobación de la
+// UI) y los guards sin-overwrite de copy()/move(): antes divergían del `test
+// -e` del shell justo en el caso del symlink roto (BUG-01, Hardening-1). Mismo
+// idioma que ya usaban removeTree/trash/restore más abajo.
+inline bool entryExists(const QString &path) {
+  const QFileInfo fi(path);
+  return fi.exists() || fi.isSymLink();
+}
+
 // Tamano total (recursivo) de una ruta, para el porcentaje de progreso.
 qint64 treeSize(const QString &path) {
   QFileInfo fi(path);
@@ -267,7 +280,7 @@ void FileOperations::copy(const QString &source, const QString &destination,
       [this, source, destination, overwrite]() -> Result {
         if (!QFileInfo::exists(source))
           return {false, QStringLiteral("source does not exist")};
-        if (QFileInfo::exists(destination)) {
+        if (entryExists(destination)) {
           if (!overwrite)
             return {false, QStringLiteral("destination already exists")};
           // Semántica de "overwrite": reemplazo total (borra el destino y
@@ -304,10 +317,9 @@ void FileOperations::cancel() { m_cancelled.store(true); }
 QStringList FileOperations::existingPaths(const QStringList &paths) const {
   QStringList out;
   for (const QString &p : paths) {
-    // QFileInfo::exists sigue los symlinks (como `test -e`): un symlink cuyo
-    // destino existe cuenta como conflicto; uno roto, no -- misma semántica
-    // que usa la comprobación de conflicto de copy()/move().
-    if (QFileInfo::exists(p))
+    // Criterio lstat compartido con copy()/move(): un symlink cuenta como
+    // conflicto tenga o no destino válido (ver entryExists / BUG-01).
+    if (entryExists(p))
       out << p;
   }
   return out;
@@ -327,7 +339,7 @@ void FileOperations::move(const QString &source, const QString &destination,
       [this, source, destination, overwrite]() -> Result {
     if (!QFileInfo::exists(source))
       return {false, QStringLiteral("source does not exist")};
-    if (QFileInfo::exists(destination)) {
+    if (entryExists(destination)) {
       if (!overwrite)
         return {false, QStringLiteral("destination already exists")};
       // "overwrite" (= mv -f): borra el destino y sigue. Así el rename

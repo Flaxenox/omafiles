@@ -12,12 +12,12 @@ import "../services"
 // función a la vez, probada a mano cada una, en vez de mover el bloque
 // entero de golpe.
 //
-// commitRename() se queda aquí junto a renameCheckProc porque es lo único
-// que lo lanza -- pero runPendingRename() (el "mv" de verdad, con su
-// undo) se queda en Omafiles.qml sin tocar: además de responder al
-// resultado automático del check ("0 conflictos" -> renombra ya), lo
-// llama directamente ConflictResolveDialog.onConfirmed, y moverlo aquí
-// solo habría cambiado de sitio ese único call site sin unir nada más.
+// commitRename() comprueba el conflicto aquí (existingPaths nativo, BUG-01)
+// -- pero runPendingRename() (el "mv" de verdad, con su undo) se queda en
+// Omafiles.qml sin tocar: además de responder al resultado del check
+// ("0 conflictos" -> renombra ya), lo llama directamente
+// ConflictResolveDialog.onConfirmed, y moverlo aquí solo habría cambiado de
+// sitio ese único call site sin unir nada más.
 Item {
   property Item root: null
   property Item actionEngine: null
@@ -104,7 +104,11 @@ Item {
     var cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    compressCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(Utils.joinPath(NavState.currentPath, archiveName)) + " && echo 1 || echo 0"])
+    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    if (FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
+      ConflictState.compressConflictOpen = true
+    else
+      archiveActions.runPendingCompress()
   }
 
   function commitBulkRename() {
@@ -137,11 +141,18 @@ Item {
     // ...y también los conflictos DENTRO de la propia selección (dos ítems
     // que el patrón deja con el mismo nombre nuevo).
     ConflictState.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
-    var checkCmd = pairs.map(function (p) {
-      if (p.newName === p.oldName) return "true"
-      return "test -e " + Util.shellQuote(p.newPath) + " && printf '%s\\n' " + Util.shellQuote(p.newName)
-    }).join("; ")
-    bulkRenameCheckProc.start(["bash", "-c", checkCmd])
+    // Conflicto NATIVO (BUG-01): existingPaths sobre los destinos que cambian
+    // de nombre, en vez de un `test -e` por par. El total suma los dupes
+    // internos de la propia selección, igual que antes.
+    var checkPaths = pairs.filter(function (p) { return p.newName !== p.oldName })
+                          .map(function (p) { return p.newPath })
+    var total = FileOperations.existingPaths(checkPaths).length + ConflictState.bulkRenameInternalDupes
+    if (total === 0) {
+      fileOps.runPendingBulkRename()
+    } else {
+      ConflictState.bulkRenameConflictCount = total
+      ConflictState.bulkRenameConflictOpen = true
+    }
   }
 
   function extractHere(entry) {
@@ -193,15 +204,9 @@ Item {
     var oldPath = Utils.joinPath(NavState.currentPath, oldName)
     var newPath = Utils.joinPath(NavState.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
-    renameCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(newPath) + " && echo 1 || echo 0"])
-  }
-
-  ProcessRunner {
-    id: renameCheckProc
-    onFinished: function (result) {
-      if (result.stdout.trim() === "1") ConflictState.renameConflictOpen = true
-      else renameOps.runPendingRename(false)
-    }
+    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    if (FileOperations.existingPaths([newPath]).length > 0) ConflictState.renameConflictOpen = true
+    else renameOps.runPendingRename(false)
   }
 
   // Comprobación de existencia ANTES de crear -- bug real corregido aquí
@@ -218,15 +223,9 @@ Item {
     if (!name) return
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
-    newFileCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
-  }
-
-  ProcessRunner {
-    id: newFileCheckProc
-    onFinished: function (result) {
-      if (result.stdout.trim() === "1") ConflictState.newFileConflictOpen = true
-      else renameOps.runPendingNewFile(false)
-    }
+    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFileConflictOpen = true
+    else renameOps.runPendingNewFile(false)
   }
 
   function commitNewFolder(name) {
@@ -236,15 +235,9 @@ Item {
     if (!name) return
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
-    newFolderCheckProc.start(["bash", "-c", "test -e " + Util.shellQuote(path) + " && echo 1 || echo 0"])
-  }
-
-  ProcessRunner {
-    id: newFolderCheckProc
-    onFinished: function (result) {
-      if (result.stdout.trim() === "1") ConflictState.newFolderConflictOpen = true
-      else renameOps.runPendingNewFolder(false)
-    }
+    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFolderConflictOpen = true
+    else renameOps.runPendingNewFolder(false)
   }
 
   ProcessRunner {
@@ -283,45 +276,19 @@ Item {
       })
       var names = Object.keys(top)
       if (names.length === 0) { archiveActions.runPendingExtract(); return }
-      var checkCmd = names.map(function (n) {
-        return "test -e " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n)) + " && printf '%s\\n' " + Util.shellQuote(n)
-      }).join("; ")
-      extractConflictCheckProc.start(["bash", "-c", checkCmd])
-    }
-  }
-
-  ProcessRunner {
-    id: extractConflictCheckProc
-    onFinished: function (result) {
-      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
+      // Conflicto NATIVO (BUG-01): existingPaths sobre los elementos de primer
+      // nivel del archivo, en vez de un `test -e` por nombre. (El LISTADO del
+      // archivo -- list_raw arriba -- sigue siendo shell: eso no es detección
+      // de conflicto y queda fuera del alcance de BUG-01.)
+      var conflicts = FileOperations.existingPaths(names.map(function (n) {
+        return Utils.joinPath(NavState.currentPath, n)
+      })).map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
       if (conflicts.length === 0) {
         archiveActions.runPendingExtract()
       } else {
         ConflictState.extractConflictNames = conflicts
         ConflictState.extractConflictOpen = true
       }
-    }
-  }
-
-  ProcessRunner {
-    id: bulkRenameCheckProc
-    onFinished: function (result) {
-      var conflicts = String(result.stdout || "").split("\n").filter(function (l) { return l.length > 0 })
-      var total = conflicts.length + ConflictState.bulkRenameInternalDupes
-      if (total === 0) {
-        fileOps.runPendingBulkRename()
-      } else {
-        ConflictState.bulkRenameConflictCount = total
-        ConflictState.bulkRenameConflictOpen = true
-      }
-    }
-  }
-
-  ProcessRunner {
-    id: compressCheckProc
-    onFinished: function (result) {
-      if (result.stdout.trim() === "1") ConflictState.compressConflictOpen = true
-      else archiveActions.runPendingCompress()
     }
   }
 
