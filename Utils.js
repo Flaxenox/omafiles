@@ -88,10 +88,32 @@ function entriesEqual(a, b) {
 // El TSV que produce se parsea aquí. Los montajes de RED, en cambio, pasaron a
 // backend nativo (NetworkMounts) en la Fase 16, así que parseNetworkMounts se
 // retiró (ya no había consumidor).
+// Decodifica una etiqueta de dispositivo (Fase 20, josema). findmnt -r (modo
+// raw, que list-mounts.sh usa para partir campos por tabulador de forma
+// fiable) escapa espacios y UTF-8 como \xNN; algunos proveedores usan %NN.
+// Se convierten los \xNN a %NN y se decodifica todo de una vez con
+// decodeURIComponent, que es UTF-8-aware (equivalente a QUrl::fromPercentEncoding),
+// así "Mafia\x20The\x20Old" -> "Mafia The Old" y "caf\xc3\xa9" -> "café".
+function decodeDeviceLabel(s) {
+  var raw = String(s || "")
+  var pct = raw.replace(/\\x([0-9A-Fa-f]{2})/g, "%$1")
+  try {
+    return decodeURIComponent(pct)
+  } catch (e) {
+    // % suelto no válido para decodeURIComponent: decodifica solo los \xNN.
+    return raw.replace(/\\x([0-9A-Fa-f]{2})/g, function (_, h) {
+      return String.fromCharCode(parseInt(h, 16))
+    })
+  }
+}
+
 function parseMounts(text) {
   var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
   return lines.map(function (l) {
     var parts = l.split("\t")
-    return { label: parts[0], path: parts[1], device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
+    // path también decodificado: findmnt -r escapa los espacios del punto de
+    // montaje (/run/media/.../Mafia\x20The\x20Old); sin decodificar, navegar a
+    // la unidad fallaría (el directorio real lleva espacios, no \x20).
+    return { label: decodeDeviceLabel(parts[0]), path: decodeDeviceLabel(parts[1]), device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
   })
 }

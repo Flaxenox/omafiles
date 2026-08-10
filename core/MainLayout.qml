@@ -70,7 +70,10 @@ Item {
       // ---------- Barra lateral: accesos anclados ----------
       Sidebar {
         id: sidebar
-        width: 160
+        // Un poco más ancha (Fase 20, josema): más espacio para los nombres de
+        // dispositivo (una ISO como "Mafia The Old" cabe antes de truncarse) y
+        // holgura para el futuro botón de expulsión a la derecha.
+        width: 170
         height: parent.height
         bookmarks: BookmarksState.bookmarks
         recentFiles: BookmarksState.recentFiles

@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <unistd.h>
@@ -25,17 +26,21 @@ QVariantList NetworkMounts::list() const {
     const QString scheme = colon >= 0 ? name.left(colon) : name;
     const QString rest = colon >= 0 ? name.mid(colon + 1) : QString();
 
+    // Los valores del nombre de mount de gvfs vienen percent-encoded (un
+    // recurso "My Share" es share=My%20Share). Se decodifican de forma nativa
+    // con QUrl::fromPercentEncoding (UTF-8-aware) para que la etiqueta de la
+    // barra lateral salga legible (Fase 20, josema).
     QString host, share, user;
     const auto pairs = rest.split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &pair : pairs) {
       if (pair.startsWith(QLatin1String("host=")))
-        host = pair.mid(5);
+        host = QUrl::fromPercentEncoding(pair.mid(5).toUtf8());
       else if (pair.startsWith(QLatin1String("server=")))
-        host = pair.mid(7);
+        host = QUrl::fromPercentEncoding(pair.mid(7).toUtf8());
       else if (pair.startsWith(QLatin1String("share=")))
-        share = pair.mid(6);
+        share = QUrl::fromPercentEncoding(pair.mid(6).toUtf8());
       else if (pair.startsWith(QLatin1String("user=")))
-        user = pair.mid(5);
+        user = QUrl::fromPercentEncoding(pair.mid(5).toUtf8());
     }
 
     QString proto;

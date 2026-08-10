@@ -93,7 +93,15 @@ Item {
   }
 
   function iconForMount(mount) {
-    if (mount.fstype === "iso9660") return fileTypeUtils.iconFor({ type: "file", name: "x.iso" })
+    // Óptico/ISO (Fase 20, josema): una ISO montada aparece como loop device
+    // con fstype iso9660 O udf (Mafia: udf) -- antes solo se miraba iso9660,
+    // así que la ISO caía en el icono USB. Se detecta por fstype óptico O por
+    // /dev/loop*, y usa el icono de disco (mismo glyph que el fichero .iso).
+    var fs = (mount.fstype || "").toLowerCase()
+    var optical = fs === "iso9660" || fs === "udf"
+      || (mount.device || "").indexOf("/dev/loop") === 0
+    if (optical) return fileTypeUtils.iconFor({ type: "file", name: "x.iso" })
+    // Extraíble (USB/disco externo) vs partición interna.
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
   }
 
