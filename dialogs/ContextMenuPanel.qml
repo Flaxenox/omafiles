@@ -61,7 +61,10 @@ Item {
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    padding: Style.spacing.sm
+    // popupPadding (14): el token dedicado a popups, como el resto de
+    // superficies del sistema, en vez del sm (4) que pegaba los items al
+    // borde y hacía que el menú se viera más apretado que los demás.
+    padding: Style.spacing.popupPadding
     z: 20
 
     Column {
@@ -71,7 +74,7 @@ Item {
       anchors.rightMargin: contextMenu.contentRightInset
       anchors.bottomMargin: contextMenu.contentBottomInset
       anchors.leftMargin: contextMenu.contentLeftInset
-      spacing: Style.spacing.xs
+      spacing: Style.spacing.sm
 
       Repeater {
         model: root.actions

@@ -42,7 +42,9 @@ Item {
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    padding: Style.spacing.sm
+    // Mismo padding de popup que el menú contextual (popupPadding, 14): los
+    // dos menús comparten el espaciado del sistema en vez del sm (4) apretado.
+    padding: Style.spacing.popupPadding
     z: 30
 
     MouseArea { anchors.fill: parent; onClicked: {} }
@@ -54,7 +56,7 @@ Item {
       anchors.rightMargin: palette.contentRightInset
       anchors.bottomMargin: palette.contentBottomInset
       anchors.leftMargin: palette.contentLeftInset
-      spacing: Style.spacing.xs
+      spacing: Style.spacing.sm
 
       TextField {
         id: paletteField
@@ -92,7 +94,7 @@ Item {
         id: paletteList
         width: parent.width
         height: parent.height - paletteField.height - paletteSep.height - 2 * paletteColumn.spacing
-        spacing: Style.spacing.xs
+        spacing: Style.spacing.sm
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         model: root.commands
