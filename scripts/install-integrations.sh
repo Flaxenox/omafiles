@@ -25,7 +25,7 @@ on_error() {
 }
 trap on_error ERR
 
-INTEGRATION_VERSION=2
+INTEGRATION_VERSION=3
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="$HOME/.local/state/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
@@ -49,7 +49,18 @@ mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
 # integración.
 cp -f "$PLUGIN_DIR/assets/omafiles.svg" "$ICON_DIR/omafiles.svg"
 
-cat >"$APPS_DIR/omafiles.desktop" <<EOF
+# ID reverse-DNS: obligatorio para la activación D-Bus del .desktop (un nombre
+# de bus válido necesita puntos; "omafiles" a secas no vale).
+APP_ID=io.github.percius04.omafiles
+
+# .desktop DBusActivatable (v3). Firefox/Zen "abrir carpeta contenedora" NO usa
+# xdg-mime ni org.freedesktop.FileManager1: activa el gestor por defecto vía
+# org.freedesktop.Application.Open, y solo lo hace con gestores DBusActivatable
+# (Nautilus lo es por ser GApplication). Sin esto, Zen resolvía el default
+# (omafiles) pero no podía activarlo por D-Bus y caía a Nautilus. Sustituye al
+# antiguo omafiles.desktop (no activable).
+rm -f "$APPS_DIR/omafiles.desktop"
+cat >"$APPS_DIR/$APP_ID.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Omafiles
@@ -60,8 +71,19 @@ Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
 MimeType=inode/directory;
+DBusActivatable=true
 EOF
 
+# Servicio D-Bus de org.freedesktop.Application (la interfaz que activa el
+# .desktop DBusActivatable). El Name DEBE ser el mismo id del .desktop.
+cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
+[D-BUS Service]
+Name=$APP_ID
+Exec=$PLUGIN_DIR/scripts/dbus-app-open.py
+EOF
+
+# Servicio D-Bus org.freedesktop.FileManager1 ("Show in file manager" de apps
+# GTK/Qt que sí usan esta interfaz).
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.FileManager1.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.FileManager1
@@ -69,7 +91,7 @@ Exec=$PLUGIN_DIR/scripts/dbus-filemanager1.py
 EOF
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
-command -v xdg-mime >/dev/null 2>&1 && xdg-mime default omafiles.desktop inode/directory >/dev/null 2>&1
+command -v xdg-mime >/dev/null 2>&1 && xdg-mime default "$APP_ID.desktop" inode/directory >/dev/null 2>&1
 
 # Si algo (típicamente Nautilus) ya se activó y cogió el nombre de bus antes
 # de que existiera nuestro .service, forzamos un rescan para que el próximo
