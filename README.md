@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0-beta1`; previously a Quickshell plugin) — not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either. It's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0-beta2`; previously a Quickshell plugin) — not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either. It's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -28,7 +28,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 - Mount `.iso` files (opening one, or "Mount"/"Mount ISO" from the context menu/palette) — unlike archive browsing this is a real loop-device mount, not a read-only virtual view, so an installer or any other file inside runs/copies exactly like it would from a real disc. Shows up in the drives sidebar with its own icon and ejects the same way as any other removable drive.
 - Image and video thumbnails (video via `ffmpegthumbnailer`, cached).
 - Preview (`Space`): images, video thumbnails, syntax-highlighted text (Pygments), first-page PDF render (`pdftoppm`), and audio metadata (duration/codec/bitrate/tags via `ffprobe`).
-- Recursive search, "open with", context menus everywhere.
+- Global indexed search (Tracker/plocate when available, recursive fallback otherwise), "open with", context menus everywhere.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji.
 - Broken symlinks are flagged clearly (distinct icon, red name, "Broken link" instead of a fake size/date) instead of looking like an ordinary 0-byte file from 1970; valid symlinks show their real target's size.
 - Registers itself as the system's default file manager on first load — no manual setup (see below).
@@ -50,7 +50,7 @@ Omarchy is opinionated by design — one good default per decision instead of a 
 | `l` / `Enter` | Open (enter directory / launch file) |
 | `gg` / `Shift+G` | Jump to top / bottom |
 | `Space` | Toggle preview |
-| `/` | Search here (`Ctrl+Enter` searches recursively) |
+| `/` | Search files across the whole system (indexed) |
 | `:` / `Ctrl+P` | Command palette |
 | `Ctrl+A` | Select all |
 | `Ctrl+Shift+A` | Select none |

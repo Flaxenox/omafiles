@@ -64,7 +64,7 @@ Item {
             { key: "l / Enter", action: "Open (enter directory / launch file)" },
             { key: "gg / Shift+G", action: "Jump to top / bottom" },
             { key: "Space", action: "Toggle preview" },
-            { key: "/", action: "Search here (Ctrl+Enter searches recursively)" },
+            { key: "/", action: "Search files across the whole system (indexed)" },
             { key: ": / Ctrl+P", action: "Command palette" },
             { key: "Ctrl+A", action: "Select all" },
             { key: "Ctrl+Shift+A", action: "Select none" },
