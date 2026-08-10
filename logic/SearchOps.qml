@@ -38,7 +38,7 @@ Item {
   }
 
   function exitSearch() {
-    searchWorker.cancel()
+    searchBackend.cancel()
     NavState.searching = false
     NavState.searchQuery = ""
     NavState.searchTruncated = false
@@ -54,15 +54,17 @@ Item {
     if (NavState.searchQuery.length < 2) return
     NavState.searchBusy = true
     list.contentY = list.originY
-    // Búsqueda recursiva NATIVA (Fase 16): SearchWorker sustituye a
-    // search-recursive.sh. Cancelable; una nueva búsqueda invalida la anterior.
-    searchWorker.search(NavState.currentPath, NavState.searchQuery, NavState.showHidden)
+    // Búsqueda GLOBAL indexada (Fase 26): SearchBackend consulta el índice del
+    // sistema (tracker3/plocate) y, si no hay ninguno, cae al SearchWorker
+    // recursivo desde currentPath. Cancelable; una nueva búsqueda invalida la
+    // anterior. La UI no sabe qué backend respondió.
+    searchBackend.search(NavState.searchQuery, NavState.showHidden, NavState.currentPath)
   }
 
   // Vuelve al listado normal de currentPath sin cerrar el buscador (Fase 19):
   // lo llama el debounce de SearchBar cuando la consulta baja de 2 caracteres.
   function restoreListing() {
-    searchWorker.cancel()
+    searchBackend.cancel()
     NavState.searchBusy = false
     NavState.searchTruncated = false
     list.contentY = list.originY
@@ -82,15 +84,17 @@ Item {
     list.positionViewAtIndex(last, ListView.Contain)
   }
 
-  // SearchWorker (backend nativo) recorta a 200 y marca truncated=true si
-  // hubo más de 200 coincidencias -- mismo contrato que daba el script; el
-  // aviso de lista incompleta lo pinta la barra de estado.
-  SearchWorker {
-    id: searchWorker
+  // SearchBackend recorta a 200 y marca truncated=true si hubo más -- mismo
+  // contrato que daba SearchWorker/el script; el aviso de lista incompleta lo
+  // pinta la barra de estado. Las entradas YA vienen ordenadas por relevancia
+  // (no se pasan por sortOps: eso rompería ese orden).
+  SearchBackend {
+    id: searchBackend
+    indexScript: Paths.pluginDir + "/search-index.sh"
     onResults: function (entries, truncated) {
       NavState.searchBusy = false
       NavState.searchTruncated = truncated
-      NavState.entries = sortOps.sortEntries(entries)
+      NavState.entries = entries
       list.positionViewAtBeginning()
       selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
     }

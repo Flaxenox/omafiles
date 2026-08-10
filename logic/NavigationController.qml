@@ -240,6 +240,23 @@ Item {
 
   function enter(entry) {
     if (!entry) return
+    // Resultado de búsqueda GLOBAL (SearchBackend): la entrada trae `path`
+    // absoluto de OTRA carpeta cualquiera. "Abrir" aquí significa REVELAR, como
+    // en Nautilus/Spotlight: una carpeta -> entrar en ella; un fichero -> ir a
+    // su carpeta dejándolo seleccionado (no lanzarlo a ciegas desde una lista
+    // que mezcla ubicaciones dispares). En ambos casos salimos del buscador.
+    if (entry.path) {
+      NavState.searching = false
+      NavState.searchQuery = ""
+      NavState.searchTruncated = false
+      if (entry.type === "dir") {
+        navigateTo(entry.path)
+      } else {
+        NavState.pendingSelectNames = [entry.name]
+        navigateTo(entry.parent)
+      }
+      return
+    }
     if (ArchiveState.inArchive) {
       if (entry.type === "dir") {
         ArchiveState.archiveSubPath = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name

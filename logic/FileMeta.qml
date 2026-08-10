@@ -49,6 +49,16 @@ Item {
   // pinta la fila.
   function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
+    // Resultado de búsqueda GLOBAL (SearchBackend): la entrada trae ruta
+    // absoluta de OTRA carpeta cualquiera, así que el subtítulo da el CONTEXTO
+    // (dónde vive), no tamaño/fecha -- como Nautilus/Spotlight. `parent` ya
+    // viene calculado; abreviamos el home a "~" para que quepa y se lea.
+    if (entry.path && entry.parent) {
+      var home = Paths.homeDir
+      return (entry.parent.indexOf(home) === 0)
+        ? "~" + entry.parent.substring(home.length)
+        : entry.parent
+    }
     var atPath = basePath !== undefined ? basePath : NavState.currentPath
     if (atPath === Paths.trashDir) {
       var parts = []
@@ -83,6 +93,9 @@ Item {
   // Tooltip del subtítulo: valor EXACTO del contador solo cuando se muestra
   // abreviado (12.3k -> "12,347 items"); "" en el resto (sin tooltip).
   function metaTooltipFor(entry, basePath) {
+    // Resultado global: el tooltip muestra la ruta padre COMPLETA (sin abreviar
+    // el home), que en el subtítulo puede ir recortada.
+    if (entry.path && entry.parent) return entry.parent
     if (entry.type !== "dir") return ""
     var atPath = basePath !== undefined ? basePath : NavState.currentPath
     var fc = FolderCountState.counts[Utils.joinPath(atPath, entry.name)]

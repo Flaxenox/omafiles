@@ -50,7 +50,7 @@ Item {
     PreviewContentState.previewImage = ""
     PreviewContentState.previewAudioInfo = []
     var ext = fileTypeUtils.extOf(entry.name)
-    var path = Utils.joinPath(NavState.currentPath, entry.name)
+    var path = Utils.entryPath(NavState.currentPath, entry)
     PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (PreviewContentState.previewIsText && !fileTypeUtils.isImage(entry)) {
       // Texto plano NATIVO (PreviewProvider): lee hasta 256 KB en un hilo,
@@ -105,7 +105,7 @@ Item {
     target: ThumbnailProvider
     function onReady(path, thumbPath) {
       var e = PreviewContentState.previewEntry
-      if (!e || path !== Utils.joinPath(NavState.currentPath, e.name)) return
+      if (!e || path !== Utils.entryPath(NavState.currentPath, e)) return
       if (fileTypeUtils.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
         var p = ThumbnailProvider.request(path, previewSize)
         if (p) PreviewContentState.previewImage = p

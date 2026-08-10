@@ -197,7 +197,14 @@ Item {
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               clip: true
               model: NavState.visibleEntries
-              focus: root.opened
+              // No reclamar el foco mientras la lupa está activa: si la lista lo
+              // toma, al cambiar el modelo (filtro en vivo con cada letra) se lo
+              // quita al campo de búsqueda y solo deja escribir una letra. Con la
+              // lupa abierta el teclado lo lleva SearchBar (Up/Down/Enter/Escape),
+              // así que la lista no necesita el foco -- lo recupera al cerrar la
+              // búsqueda. (Diagnóstico empírico por traza: field focus=false justo
+              // tras el primer textChanged.)
+              focus: root.opened && !NavState.searching
               // Micro-transición estilo Turbo Frame (Fase 22, DHH/Hotwire): al
               // (re)poblar la lista -- navegar a otra carpeta, o tras una
               // operación que cambia el listado -- la lista aparece con un fade

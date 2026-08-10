@@ -13,13 +13,13 @@ Item {
     if (!entry || entry.type === "dir") return
     PreviewState.openWithEntry = entry
     PreviewState.openWithApps = []
-    openWithProc.start([Paths.pluginDir + "/open-with-list.sh", Utils.joinPath(NavState.currentPath, entry.name)])
+    openWithProc.start([Paths.pluginDir + "/open-with-list.sh", Utils.entryPath(NavState.currentPath, entry)])
     PreviewState.openWithOpen = true
   }
 
   function launchWith(desktopId) {
     if (PreviewState.openWithEntry) {
-      var openPath = Utils.joinPath(NavState.currentPath, PreviewState.openWithEntry.name)
+      var openPath = Utils.entryPath(NavState.currentPath, PreviewState.openWithEntry)
       Detached.run(["gtk-launch", desktopId, openPath])
       bookmarkOps.addRecent(openPath, PreviewState.openWithEntry.name)
     }

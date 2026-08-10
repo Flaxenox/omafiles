@@ -87,6 +87,17 @@ function joinPath(base, name) {
   return base === "/" ? "/" + name : base + "/" + name
 }
 
+// Ruta absoluta de una ENTRADA, resuelva de donde resuelva. En un listado
+// normal (o en la búsqueda recursiva de fallback) la entrada solo trae `name`
+// relativo a `base`, así que se une con joinPath -- comportamiento idéntico al
+// de siempre. En la búsqueda GLOBAL indexada la entrada ya trae `path` absoluto
+// (name es solo el basename, puede venir de otra carpeta cualquiera): entonces
+// se usa ese path tal cual. Un único sitio para no acoplar el resto del código
+// a qué backend produjo la entrada (ver services/SearchBackend.qml).
+function entryPath(base, entry) {
+  return entry && entry.path ? entry.path : joinPath(base, entry.name)
+}
+
 // Clave EN MEMORIA del dict VideoThumbState.videoThumbReady (ruta|mtime) --
 // no es un hash de fichero, solo un identificador único por (vídeo, mtime)
 // para deduplicar peticiones y leer el resultado. El nombre del fichero de

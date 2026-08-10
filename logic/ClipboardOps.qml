@@ -17,7 +17,7 @@ Item {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
     ClipboardState.clipboardMode = "copy"
     syncClipboardToSystem()
   }
@@ -26,7 +26,7 @@ Item {
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
+    ClipboardState.clipboardPaths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
     ClipboardState.clipboardMode = "cut"
     syncClipboardToSystem()
   }
@@ -44,7 +44,7 @@ Item {
   // una ruta por línea.
   function copyPathFor(entries) {
     if (!entries || entries.length === 0) return
-    var paths = entries.map(function (e) { return Utils.joinPath(NavState.currentPath, e.name) })
+    var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
     Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
   }
 

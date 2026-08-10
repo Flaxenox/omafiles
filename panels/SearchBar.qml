@@ -85,7 +85,15 @@ Item {
     onVisibleChanged: if (visible) forceActiveFocus(); else if (sb.list) sb.list.forceActiveFocus()
     // Clic fuera con el campo vacío -> colapsar (si hay texto, se mantiene
     // abierto mostrando los resultados aunque el foco se vaya a una fila).
-    onActiveFocusChanged: if (!activeFocus && NavState.searching && NavState.searchQuery.length === 0) sb.collapse()
+    onActiveFocusChanged: {
+      // La ListView reclama el foco activo cada vez que su modelo se resetea
+      // (el filtro en vivo cambia con cada letra), lo que dejaba escribir solo
+      // una letra. Mientras la lupa está abierta con texto, el teclado es del
+      // campo (SearchBar gestiona Up/Down/Enter/Escape), así que se lo
+      // devolvemos en el siguiente ciclo (callLater evita pelear en el mismo).
+      if (!activeFocus && NavState.searching && NavState.searchQuery.length > 0) Qt.callLater(forceActiveFocus)
+      else if (!activeFocus && NavState.searching && NavState.searchQuery.length === 0) sb.collapse()
+    }
     Keys.onPressed: function (event) {
       if (event.key === Qt.Key_Escape) {
         if (NavState.searchQuery.length > 0) { field.text = ""; NavState.searchQuery = ""; sb.searchOps.restoreListing() }
