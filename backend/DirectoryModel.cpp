@@ -168,7 +168,7 @@ void sortInto(QVector<DirectoryModel::Entry> &dirs,
 
 } // namespace
 
-DirectoryModel::DirectoryModel(QObject *parent) : QAbstractListModel(parent) {}
+DirectoryModel::DirectoryModel(QObject *parent) : QObject(parent) {}
 
 DirectoryModel::~DirectoryModel() {
   // Cortar la entrega de cualquier worker en vuelo: bajo el lock, marcar
@@ -204,10 +204,6 @@ DirectoryModel::Result DirectoryModel::scanMany(const QStringList &paths,
 
 void DirectoryModel::startScan(std::function<Result()> job) {
   const quint64 generation = ++m_generation;
-  if (!m_loading) {
-    m_loading = true;
-    emit loadingChanged();
-  }
   // El escaneo pesado (stat de cada entrada) va a un hilo del pool para no
   // bloquear la UI; el resultado se aplica de vuelta en el hilo de UI. Un
   // resultado de una generacion vieja (navegacion rapida) se descarta.
@@ -232,15 +228,12 @@ void DirectoryModel::startScan(std::function<Result()> job) {
 }
 
 void DirectoryModel::list(const QString &path, bool showHidden) {
-  m_path = path;
   startScan([path, showHidden]() { return scan(path, showHidden); });
 }
 
 void DirectoryModel::listMany(const QStringList &paths, bool showHidden) {
-  // Agregado de varias raices (papelera): PathRole no tiene un unico
-  // directorio de origen, se deja vacio. Los consumidores usan el array
-  // `entries` (name/type/size/mtime/link) + trashInfo, no PathRole.
-  m_path.clear();
+  // Agregado de varias raices (papelera). Los consumidores usan el array
+  // `entries` (name/type/size/mtime/link) + trashInfo.
   startScan([paths, showHidden]() { return scanMany(paths, showHidden); });
 }
 
@@ -285,62 +278,13 @@ void DirectoryModel::apply(Result result, quint64 generation) {
   if (generation != m_generation)
     return;
 
-  beginResetModel();
   m_rows = std::move(result.rows);
-  endResetModel();
 
   if (m_error != result.error) {
     m_error = result.error;
     emit errorChanged();
   }
-  if (m_loading) {
-    m_loading = false;
-    emit loadingChanged();
-  }
-  emit countChanged();
   emit listed();
-}
-
-int DirectoryModel::rowCount(const QModelIndex &parent) const {
-  if (parent.isValid())
-    return 0;
-  return static_cast<int>(m_rows.size());
-}
-
-QVariant DirectoryModel::data(const QModelIndex &index, int role) const {
-  if (!index.isValid() || index.row() < 0 || index.row() >= m_rows.size())
-    return QVariant();
-
-  const Entry &e = m_rows.at(index.row());
-  switch (role) {
-  case NameRole:
-    return e.name;
-  case PathRole:
-    return m_path.isEmpty() ? e.name : (m_path + QLatin1Char('/') + e.name);
-  case TypeRole:
-    return e.type;
-  case IsDirRole:
-    return e.isDir;
-  case IsSymlinkRole:
-    return e.isSymlink;
-  case LinkRole:
-    return e.link;
-  case SizeRole:
-    return e.size;
-  case MtimeRole:
-    return e.mtime;
-  default:
-    return QVariant();
-  }
-}
-
-QHash<int, QByteArray> DirectoryModel::roleNames() const {
-  return {
-      {NameRole, "name"},         {PathRole, "path"},
-      {TypeRole, "type"},         {IsDirRole, "isDir"},
-      {IsSymlinkRole, "isSymlink"}, {LinkRole, "link"},
-      {SizeRole, "size"},         {MtimeRole, "mtime"},
-  };
 }
 
 QVariantList DirectoryModel::entries() const {

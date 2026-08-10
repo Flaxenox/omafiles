@@ -291,6 +291,21 @@ introduce como fuente de datos con la API de array intacta, y solo después
 se convierten los consumidores uno a uno. De ahí que esté colocado tarde
 en el plan.
 
+> **RESUELTO — Fase 15 (Opción B), 2026-08-10.** El "solo después se
+> convierten los consumidores" (escalón 8.A, adoptar los roles en la UI) se
+> **cancela definitivamente**, no se aplaza más. Medido (100/1k/10k/50k): el
+> scan domina (~80 % del listado a 50k, 680 ms); el único coste que un
+> modelo-con-roles habría evitado —construir el `QVariantList`— es <20 % y
+> solo aparece en carpetas raras >10k. Y hay un impedimento arquitectónico
+> por encima de la métrica: `NavState.entries` (el `ListView.model` real) se
+> alimenta de CUATRO fuentes heterogéneas —listado normal, búsqueda recursiva
+> (`SearchWorker`), contenido de archivos, papelera— que producen arrays; un
+> `QAbstractListModel` no puede representar las tres últimas. Así que el array
+> **es** la representación canónica, y `DirModel` se degrada a proveedor de
+> datos puro: se retiran los roles muertos, `roleNames()`/`data()`/
+> `rowCount()` y la base `QAbstractListModel`. Fuente de verdad única para las
+> entradas: `NavState.entries`. Ver la tabla de la revalidación del AUDIT-V2.
+
 #### `DirWatcher` — no es un reemplazo directo
 
 `QFileSystemWatcher` no es equivalente a `inotifywait -m` con la lista de

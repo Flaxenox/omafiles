@@ -1,6 +1,6 @@
 #pragma once
 
-#include <QAbstractListModel>
+#include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -13,13 +13,21 @@
 class QFileSystemWatcher;
 
 // Backend C++ del listado de directorios (Fase 6.B, josema). Sustituto
-// nativo de list-dir.sh + Utils.parseEntries: un QAbstractListModel que
-// hace el escaneo con readdir/stat/lstat directos, sin fork por fichero ni
-// tuberia de shell NUL-delimitada. Ver BACKEND_DESIGN.md 5.3.
+// nativo de list-dir.sh + Utils.parseEntries: escanea con readdir/stat/lstat
+// directos, sin fork por fichero ni tuberia de shell NUL-delimitada. Ver
+// BACKEND_DESIGN.md 5.3.
 //
-// En 6.B se INTRODUCE en paralelo: list-dir.sh sigue siendo la fuente viva
-// del panel; este modelo se valida comparando su salida con la del script
-// en varios directorios. La conmutacion de consumidores es posterior.
+// PROVEEDOR DE DATOS, no un modelo Qt (Fase 15, josema): la decision
+// arquitectonica del AUDIT-V2 fue la Opcion B. La UI NUNCA consumio esto como
+// ListView.model -- `NavState.entries` (el modelo real de la lista) se
+// alimenta de CUATRO fuentes heterogeneas (dir normal, busqueda recursiva,
+// contenido de archivos, papelera), que producen arrays; un QAbstractListModel
+// no podria representar las tres ultimas. Asi que este tipo expone solo el
+// array `entries` (+error/watch) y se retiraron los roles muertos, el
+// QAbstractListModel y su interfaz (rowCount/data/roleNames). Medido: el scan
+// domina (~80% del listado a 50k); el unico coste que un modelo-con-roles
+// habria evitado (construir el QVariantList) es <20% y solo en carpetas raras
+// >10k. Ver la tabla en la revalidacion del AUDIT-V2.
 //
 // Paridad EXACTA con list-dir.sh (es lo que permite comparar y, luego,
 // sustituir sin cambiar comportamiento):
@@ -34,7 +42,7 @@ class QFileSystemWatcher;
 // Se registra como tipo QML Omafiles.Backend.DirectoryModel; lo consume el
 // adaptador services/DirectoryModel.qml (no singleton: varias pestanas
 // listan rutas distintas a la vez, cada una su instancia).
-class DirectoryModel : public QAbstractListModel {
+class DirectoryModel : public QObject {
   Q_OBJECT
   QML_ELEMENT
 
@@ -44,34 +52,15 @@ class DirectoryModel : public QAbstractListModel {
   //   1 = otro (no se pudo abrir).
   Q_PROPERTY(int error READ error NOTIFY errorChanged)
 
-  // true mientras hay un escaneo en vuelo (corre en un hilo del pool, la
-  // UI no se bloquea). Util para spinners y para demostrar el no-bloqueo.
-  Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
-
-  // Numero de filas del modelo (comodidad para QML).
-  Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
-
-  // Instantanea de las filas como array de objetos
-  // {type,name,size,mtime,link} -- EXACTAMENTE la forma que producia
-  // Utils.parseEntries(list-dir.sh). Es el puente de la migracion (el
-  // diseno pide "introducir como fuente de datos con la API de array
-  // intacta") y la base de la comparacion con el script.
+  // Instantanea de las filas como array de objetos {type,name,size,mtime,
+  // link} -- EXACTAMENTE la forma que produce el resto de fuentes de
+  // NavState.entries (SearchWorker, contenido de archivos, papelera). Es la
+  // UNICA API de datos: la UI la ordena y la pone como ListView.model.
   Q_PROPERTY(QVariantList entries READ entries NOTIFY listed)
 
 public:
   explicit DirectoryModel(QObject *parent = nullptr);
   ~DirectoryModel() override;
-
-  enum Role {
-    NameRole = Qt::UserRole + 1,
-    PathRole,
-    TypeRole,     // "dir" | "file"
-    IsDirRole,    // bool
-    IsSymlinkRole,// bool
-    LinkRole,     // "" | "valid" | "broken"
-    SizeRole,     // qint64 (0 para carpetas, como el script)
-    MtimeRole,    // qint64, epoch en segundos
-  };
 
   // Una entrada del listado. Publica porque las funciones de escaneo del
   // .cpp (gatherOne/sortInto) la manejan como valor; no expone nada
@@ -113,18 +102,10 @@ public:
   Q_INVOKABLE void unwatch();
 
   int error() const { return m_error; }
-  bool loading() const { return m_loading; }
   QVariantList entries() const;
-
-  // QAbstractListModel
-  int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-  QVariant data(const QModelIndex &index, int role) const override;
-  QHash<int, QByteArray> roleNames() const override;
 
 signals:
   void errorChanged();
-  void loadingChanged();
-  void countChanged();
   // Emitida cada vez que un listado se aplica de verdad (paridad con
   // DirLister.listed): quien resetee scroll/seleccion por CADA listado se
   // engancha aqui, no a un *Changed que QML puede no disparar.
@@ -153,8 +134,6 @@ private:
   void startScan(std::function<Result()> job);
 
   int m_error = 0;
-  bool m_loading = false;
-  QString m_path;
   QVector<Entry> m_rows;
   quint64 m_generation = 0; // ultima generacion pedida (escaneo)
 
