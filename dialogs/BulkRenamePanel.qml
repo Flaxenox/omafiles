@@ -28,10 +28,16 @@ Item {
 
   BorderSurface {
     id: bulkRenameCard
-    visible: root.open
+    visible: root.open || opacity > 0
     width: Math.min(parent.width - 80, 380)
     height: bulkRenameColumn.implicitHeight + contentTopInset + contentBottomInset
     anchors.centerIn: parent
+    // Fase 22: entrada discreta del diálogo (opacity 0->1, scale
+    // 0.98->1.0, 120 ms, sin overshoot). No bloquea el clic.
+    opacity: root.open ? 1 : 0
+    scale: root.open ? 1 : 0.98
+    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)

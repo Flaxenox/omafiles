@@ -43,7 +43,7 @@ Lo que **no** se pudo ejercitar headless y queda para pasada interactiva: rendim
 | BUG-01 | 🟠 Alta | Ambos | ✅ **RESUELTO (Hardening-1)** | Detección de conflictos sigue en shell `test -e`: inconsistente con las ops nativas y ciega a symlinks rotos |
 | BUG-02 | 🟠 Alta | Ambos (arnés) | ✅ **RESUELTO (Hardening-1)** | Las operaciones respaldadas por `.sh` (vaciar papelera, montaje, archivos) no tienen ninguna cobertura de selfcheck |
 | BUG-03 | 🟡 Media | Ambos | ✅ **RESUELTO (Hardening-2)** | Properties construye `stat`/`du` en una sola línea `bash -c`: desbordamiento de ARG_MAX en selección enorme |
-| BUG-04 | 🟡 Media | Ambos | CONFIRMADO (ya corregido en working tree, sin commitear) | La animación de salida de los diálogos (Fase 22) nunca se renderiza |
+| BUG-04 | 🟡 Media | Ambos | ✅ **RESUELTO (Hardening-2)** | La animación de salida de los diálogos (Fase 22) nunca se renderiza |
 | BUG-05 | 🔵 Baja | Ambos | ✅ **RESUELTO (Hardening-2)** | Preview de archivos: `tar` sin `--` mientras zip/7z/rar sí lo llevan |
 | OBS-A | ⚪ Obs. | Ambos | CONFIRMADO (negativo) | El contador de items maneja `-1` (dir ilegible) correctamente — no es bug, se documenta como resiliencia verificada |
 
@@ -159,7 +159,9 @@ El selfcheck pasa de **70 a 75** pruebas, todas verdes.
 
 **Cobertura del selfcheck:** ninguna. El selfcheck confirma que los diálogos *instancian* (builders/`OmafilesContent` crea), pero no ejercita su ciclo abrir→cerrar ni su render. Este bug vivió justo en el hueco típico: comportamiento visual de diálogo.
 
-**Fix aplicado (mínimo):** en los 7 cards, `visible: root.open` → `visible: root.open || opacity > 0`, para que el ítem siga renderizando mientras se desvanece. Sin tocar los valores de la animación. **Pendiente:** decidir si se commitea junto al resto de la Fase 22 (todo el bloque sigue sin commitear).
+**Fix aplicado (mínimo):** en los 7 cards, `visible: root.open` → `visible: root.open || opacity > 0`, para que el ítem siga renderizando mientras se desvanece. Sin tocar los valores de la animación.
+
+**✅ Resolución (Hardening-2):** consolidado en su propio commit (`fix: preserve dialog fade-out animation on close`). El fix del cierre (`visible: root.open || opacity > 0`) es inseparable del binding de opacidad de la Fase 22 (sin él, `opacity` sería siempre 1 y el diálogo no se ocultaría), así que el commit lleva los 7 diálogos con su bloque de animación entrada+salida **tal cual** — no se reescribe la Fase 22. Los otros cambios de la Fase 22 que NO son el fade-out de diálogos (`core/DialogLayer.qml` = duración de la barra de progreso; `panels/ActiveFileList`, `PreviewPanel`, `Sidebar`) se dejan **fuera** de este commit, sin mezclar. Verificado en Quickshell (reinicio, vivo) y Qt6 (el core instancia los diálogos en el selfcheck). *Nota:* la animación visual no es testeable headless de forma fiable (la propia auditoría lo señala); la verificación es abrir/cerrar un diálogo en ambos frontends.
 
 ---
 
@@ -259,8 +261,10 @@ Por la regla "demostrar antes de proponer", **no listo bugs inventados** para es
 
 **No hay bloqueantes de RC1 pendientes.** Estado de los recomendados:
 - ✅ **BUG-03** (Media): **RESUELTO (Hardening-2)** — Properties/chmod nativos (`totalSize`/`octalModes`), sin ARG_MAX.
-- **BUG-04** (Media): ya corregido, solo falta commitear con el resto de la Fase 22.
+- ✅ **BUG-04** (Media): **RESUELTO (Hardening-2)** — fade-out de diálogos consolidado en su commit.
 - ✅ **BUG-05** (Baja): **RESUELTO (Hardening-2)** — `tar ... -O -- <miembro>`.
+
+**Con Hardening-1 + Hardening-2, no quedan incidencias abiertas de severidad Alta o Media** (BUG-01…05 resueltos; solo OBS-A, que no es bug). El proyecto puede declarar **RC1 freeze** sin bugs conocidos de severidad alta o media.
 
 Y como trabajo de arnés que convierte el resto en verificable (mismo espíritu que la Fase 12 → Fase 13): extender el selfcheck a **selección, breadcrumbs, tabs, back/forward y comportamiento de diálogos**, que son hoy los huecos de mayor superficie.
 
