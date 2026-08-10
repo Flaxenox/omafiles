@@ -207,12 +207,14 @@ Item {
     visible: dirLister.pathError !== ""
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.md
-    // Mismo alineado que el aviso del panel activo (ActiveFileList): a la
-    // columna de nombres (icono + hueco), no pegado al borde izquierdo.
+    // Mismo alineado que el aviso del panel activo (ActiveFileList): columna
+    // del icono (sin leftMargin) y centrado en el alto de una fila, para
+    // quedar a la altura del glyph con el mismo espaciado superior que el resto.
     anchors.left: parent.left
-    anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
     anchors.right: parent.right
     anchors.rightMargin: Style.spacing.rowPaddingX
+    height: Style.spacing.controlHeight
+    verticalAlignment: Text.AlignVCenter
     text: dirLister.pathError
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family

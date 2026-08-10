@@ -340,14 +340,18 @@ Item {
               visible: NavState.currentPathError !== ""
               anchors.top: listSep.bottom
               anchors.topMargin: Style.spacing.md
+              // Sin leftMargin: se alinea con la COLUMNA DEL ICONO (el glyph
+              // arranca en el borde del contenido), no con la de nombres -- el
+              // aviso no tiene glyph, así que ocupa su sitio.
               anchors.left: parent.left
-              // Alineado con la COLUMNA DE NOMBRES de las filas (ancho del
-              // icono + hueco, ver FileRowVisual.nameCol), no pegado al borde:
-              // el aviso ocupa el sitio del listado, así que se lee como su
-              // contenido en vez de descolgado a la izquierda.
-              anchors.leftMargin: Style.spacing.controlHeight + Style.spacing.rowGap
               anchors.right: parent.right
               anchors.rightMargin: Style.spacing.rowPaddingX
+              // Ocupa el alto del icono (controlHeight) y centra el texto en
+              // vertical, para quedar a la ALTURA del glyph (que es
+              // controlHeight y va centrado en la fila) en vez de pegado al
+              // top, con el mismo espaciado superior que el resto.
+              height: Style.spacing.controlHeight
+              verticalAlignment: Text.AlignVCenter
               text: NavState.currentPathError
               font.family: Style.font.family
               font.pixelSize: Style.font.subtitle
