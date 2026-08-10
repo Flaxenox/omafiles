@@ -38,13 +38,22 @@ Item {
     return false
   }
 
-  visible: opened
+  // Sigue visible durante el fundido de salida (opacity animándose a 0), no
+  // solo mientras opened -- misma técnica que shared/ModalSurface para que los
+  // diálogos de confirmación entren/salgan igual que el resto (fade+scale
+  // 120 ms OutCubic, scrim sincronizado) en vez de aparecer/desaparecer de golpe.
+  visible: opened || backdrop.opacity > 0
 
   Rectangle {
+    id: backdrop
     anchors.fill: parent
     color: root.scrim
+    opacity: root.opened ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-    MouseArea { anchors.fill: parent; onClicked: root.canceled() }
+    // enabled solo mientras está abierto: durante el fundido de salida el clic
+    // no debe volver a disparar canceled() ni bloquear lo de debajo.
+    MouseArea { anchors.fill: parent; enabled: root.opened; onClicked: root.canceled() }
 
     BorderSurface {
       id: card
@@ -53,6 +62,10 @@ Item {
       // don't squeeze the text into the buttons.
       height: card.contentTopInset + card.contentBottomInset + messageText.implicitHeight + Style.space(20) + Style.space(34)
       anchors.centerIn: parent
+      opacity: root.opened ? 1 : 0
+      scale: root.opened ? 1 : 0.98
+      Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+      Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
       color: root.background
       borderSpec: Border.flat(root.selectedText, Style.normalBorderWidth)
       padding: Style.space(18)
