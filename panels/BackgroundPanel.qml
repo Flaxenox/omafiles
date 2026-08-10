@@ -337,7 +337,17 @@ Item {
   }
 
   EmptyState {
-    visible: dirLister.pathError === "" && dirLister.entries.length === 0
+    // `dirLister.loaded` (no solo entries.length === 0): el logo de carpeta
+    // vacía SOLO cuando el listado está confirmado. Un panel de fondo que
+    // acaba de hacerse visible (al cambiar de pestaña o al pasar el cursor)
+    // arranca con entries=[] y loaded=false hasta que refreshMe() termina de
+    // listar de forma asíncrona -- sin este guard, EmptyState cumplía
+    // entries.length===0 && pathError==="" y parpadeaba un frame aunque la
+    // carpeta no estuviera vacía. loaded se pone a true en el primer _apply
+    // (incluido el de una carpeta realmente vacía) y no vuelve a false, y
+    // list() nunca vacía entries en un refresh, así que esto no oculta nunca
+    // un vacío real ni parpadea al refrescar.
+    visible: dirLister.loaded && dirLister.pathError === "" && dirLister.entries.length === 0
     centerOn: bgList
     message: bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Nothing here yet"
   }

@@ -335,7 +335,14 @@ Item {
             }
 
             EmptyState {
-              visible: NavState.currentPathError === "" && NavState.visibleEntries.length === 0
+              // `root.loaded` (listado confirmado al menos una vez) antepuesto
+              // por el mismo motivo que en BackgroundPanel: en el arranque, y
+              // en cualquier instante en que entries esté vacío pero AÚN sin
+              // confirmar, no debe aparecer el logo de carpeta vacía como frame
+              // transitorio. loaded no vuelve a false y sigue true durante la
+              // búsqueda, así que el "No results"/"Nothing here yet" real se
+              // sigue mostrando en cuanto visibleEntries queda a 0 de verdad.
+              visible: root.loaded && NavState.currentPathError === "" && NavState.visibleEntries.length === 0
               centerOn: listView
               message: NavState.searchQuery
                 ? "No results for “" + NavState.searchQuery + "”"
