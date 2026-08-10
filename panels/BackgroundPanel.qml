@@ -199,9 +199,14 @@ Item {
 
   Text {
     id: bgErrorText
+    // Mismo ancla y margen que el aviso de error del panel activo
+    // (ActiveFileList): justo bajo el separador de la cabecera, a
+    // Style.spacing.md -- así el mismo error sale en la MISMA posición en los
+    // dos paneles (Sprint Visual 3, C-05). Antes era sm y no coincidía con el
+    // del panel activo.
     visible: dirLister.pathError !== ""
     anchors.top: bgHeaderSep.bottom
-    anchors.topMargin: Style.spacing.sm
+    anchors.topMargin: Style.spacing.md
     width: parent.width
     text: dirLister.pathError
     font.pixelSize: Style.font.subtitle

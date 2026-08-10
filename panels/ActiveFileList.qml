@@ -331,10 +331,17 @@ Item {
             // antes esto se veía igual que una carpeta vacía de verdad, sin
             // ningún indicio de que el problema era de permisos.
             Text {
+              // Mismo ancla y margen que el aviso de error del panel de fondo
+              // (bgErrorText): justo bajo el separador de la cabecera, a
+              // Style.spacing.md -- donde arrancaría la primera fila. Antes
+              // este iba a parent.top + lg y el de fondo a separador + sm, así
+              // que el mismo error salía en dos sitios distintos según el panel
+              // (Sprint Visual 3, C-05).
               visible: NavState.currentPathError !== ""
-              anchors.top: parent.top
-              anchors.topMargin: Style.spacing.lg
+              anchors.top: listSep.bottom
+              anchors.topMargin: Style.spacing.md
               anchors.left: parent.left
+              anchors.right: parent.right
               text: NavState.currentPathError
               font.family: Style.font.family
               font.pixelSize: Style.font.subtitle
