@@ -238,7 +238,11 @@ Item {
 
         Text {
           anchors.left: bgSearchIconSlot.right
-          anchors.leftMargin: Style.spacing.xs
+          // El TextField activo empieza el texto en xs + su leftPadding interno
+          // (Style.spacing.controlPaddingX). Un Text plano no tiene ese padding,
+          // así que se replica aquí para que "steam" arranque a la MISMA x que en
+          // la barra activa (si no, queda más a la izquierda).
+          anchors.leftMargin: Style.spacing.xs + Style.spacing.controlPaddingX
           anchors.right: parent.right
           anchors.rightMargin: Style.spacing.sm
           anchors.verticalCenter: parent.verticalCenter

@@ -57,7 +57,10 @@ Item {
     color: NavState.searching ? Color.menu.selectedBackground : "transparent"
     border.width: NavState.searching ? Style.spacing.hairline : 0
     border.color: Color.menu.border
-    Behavior on color { ColorAnimation { duration: 200 } }
+    // Igual que la animación de ancho: durante un cambio de pestaña el fondo NO
+    // debe hacer fade (si no, la lupa colapsada de la tab a la que llegas
+    // parpadea "seleccionada" al desvanecerse el selectedBackground). Snap.
+    Behavior on color { enabled: !NavState.suppressSearchAnim; ColorAnimation { duration: 200 } }
   }
 
   TextField {
