@@ -191,8 +191,12 @@ Item {
     // trae la lupa interactiva completa.
     Item {
       id: bgSearchPlaceholder
+      // Mismo ancho expandido que la SearchBar activa (core/MainLayout): 300 px
+      // literales (NO Style.space, que lo escalaría y lo hacía más ancho que la
+      // original), recortado por lo que quede tras reservar 120 px de breadcrumb
+      // (pathArea.minPathW). En reposo, solo el ancho de la lupa colapsada.
       width: bgPanel.bgSearching
-        ? Math.max(Style.spacing.controlHeight, Math.min(Style.space(300), bgHeaderRow.width * 0.5))
+        ? Math.max(Style.spacing.controlHeight, Math.min(300, bgHeaderRow.width - bgNavButtons.width - 120 - 2 * Style.spacing.controlGap))
         : Style.spacing.controlHeight
       height: parent.height
 
