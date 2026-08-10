@@ -51,7 +51,10 @@ Item {
 
   Column {
     id: sidebar
-    width: 160
+    // Sigue el ancho real del componente (lo fija MainLayout), no un 160 fijo:
+    // así los separadores/cabeceras/filas (todos width: sidebar.width) ocupan
+    // todo el ancho. Antes, al ensanchar la Sidebar, se quedaban cortos.
+    width: parent.width
     height: parent.height
     spacing: Style.spacing.md
 
