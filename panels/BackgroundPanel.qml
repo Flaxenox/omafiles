@@ -203,35 +203,44 @@ Item {
       // interactiva antes de poder pulsarlo). Para editar o CERRAR la búsqueda
       // se activa el panel (pasando el ratón) y se usa la lupa interactiva de
       // siempre (Escape, o clic en la propia lupa).
+      // Misma geometría y tokens que la SearchBar activa expandida (fondo
+      // selectedBackground + borde menu.border, lupa CENTRADA en un slot de
+      // controlHeight, texto arrancando en iconSlot.right + xs) para que las dos
+      // barras se vean idénticas -- antes la lupa quedaba pegada al texto y
+      // desalineada respecto al original.
       Rectangle {
         anchors.fill: parent
         visible: bgPanel.bgSearching
-        color: "transparent"
-        border.width: 1
-        border.color: Util.alpha(Color.menu.text, 0.15)
         radius: Style.cornerRadius
+        color: Color.menu.selectedBackground
+        border.width: Style.spacing.hairline
+        border.color: Color.menu.border
 
-        OpticalGlyph {
-          id: bgSearchIcon
+        Item {
+          id: bgSearchIconSlot
           anchors.left: parent.left
-          anchors.leftMargin: Style.spacing.sm
           anchors.verticalCenter: parent.verticalCenter
-          text: "\u{F0349}" // nf-md-magnify
-          fontFamily: Style.font.family
-          fontSize: Style.font.icon
-          color: Color.menu.text
-          opacity: Style.emphasis.strong
+          width: Style.spacing.controlHeight
+          height: Style.spacing.controlHeight
+
+          OpticalGlyph {
+            anchors.centerIn: parent
+            text: "\u{F0349}" // nf-md-magnify
+            fontFamily: Style.font.family
+            fontSize: Style.font.icon
+            color: Color.menu.selectedText
+          }
         }
 
         Text {
-          anchors.left: bgSearchIcon.right
-          anchors.leftMargin: Style.spacing.sm
+          anchors.left: bgSearchIconSlot.right
+          anchors.leftMargin: Style.spacing.xs
           anchors.right: parent.right
           anchors.rightMargin: Style.spacing.sm
           anchors.verticalCenter: parent.verticalCenter
           text: bgPanel.modelData.searchQuery || ""
           elide: Text.ElideRight
-          color: Color.menu.text
+          color: Color.menu.selectedText
           font.family: Style.font.family
           font.pixelSize: Style.font.subtitle
         }
