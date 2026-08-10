@@ -176,7 +176,9 @@ Item {
           radius: height / 2
           color: Color.accent
 
-          Behavior on width { NumberAnimation { duration: 200 } }
+          // Fase 22: 120 ms sin overshoot (antes 200 ms). Solo suaviza el
+          // avance del progreso; nada de rebote/elástico.
+          Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
       }
     }

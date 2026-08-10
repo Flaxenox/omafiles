@@ -69,6 +69,10 @@ Item {
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         source: root.isImageEntry ? root.imageSource : ""
+        // Fase 22: fade-in al terminar de cargar (0 -> 1, 120 ms), nada de
+        // aparecer de golpe. Sin bloquear nada.
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Image {
@@ -78,6 +82,8 @@ Item {
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         source: root.videoThumbSource
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Flickable {
@@ -123,6 +129,8 @@ Item {
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         source: root.pdfImageSource
+        opacity: status === Image.Ready ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Column {

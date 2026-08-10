@@ -198,6 +198,15 @@ Item {
               clip: true
               model: NavState.visibleEntries
               focus: root.opened
+              // Micro-transición estilo Turbo Frame (Fase 22, DHH/Hotwire): al
+              // (re)poblar la lista -- navegar a otra carpeta, o tras una
+              // operación que cambia el listado -- las filas aparecen con un
+              // fade muy corto. NO retrasa la interacción: la lista es
+              // navegable/clicable al instante (la opacidad no bloquea input).
+              // Sin rebotes ni resortes, solo un OutCubic de 140 ms.
+              populate: Transition {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 140; easing.type: Easing.OutCubic }
+              }
               // Sin esto, arrastrar con el click (botón izquierdo pulsado)
               // hace scroll de la lista -- el mismo gesto que queremos
               // libre por completo para el lazo de selección. Solo debe

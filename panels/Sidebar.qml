@@ -78,6 +78,10 @@ Item {
       model: root.bookmarks
 
       CursorSurface {
+        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
+        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
+        // rebotes; la opacidad no bloquea el clic.
+        OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path
         width: sidebar.width
@@ -189,6 +193,10 @@ Item {
       model: root.recentFiles
 
       CursorSurface {
+        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
+        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
+        // rebotes; la opacidad no bloquea el clic.
+        OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         width: sidebar.width
         implicitHeight: Style.spacing.controlHeight
@@ -283,6 +291,10 @@ Item {
       model: root.mounts
 
       CursorSurface {
+        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
+        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
+        // rebotes; la opacidad no bloquea el clic.
+        OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path
         width: sidebar.width
@@ -471,6 +483,10 @@ Item {
       model: root.networkMounts
 
       CursorSurface {
+        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
+        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
+        // rebotes; la opacidad no bloquea el clic.
+        OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path
         width: sidebar.width
