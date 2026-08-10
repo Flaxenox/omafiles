@@ -819,14 +819,17 @@ QtObject {
       var stubNav = Qt.createQmlObject('import QtQuick; Item { function refresh() {} }', sc)
       var ae = aeComp.createObject(sc, { "navController": stubNav })
       if (!ae) { done(false, "no se pudo crear ActionEngine"); return }
-      var work = sc.opsDir + "/ae-trash.txt"
+      // Nombre único por ejecución (como los otros tests de papelera): evita
+      // colisiones en Trash/files que dejarían residuo entre corridas.
+      var work = sc.opsDir + "/ae-trash-" + Date.now() + ".txt"
+      var wname = work.substring(work.lastIndexOf("/") + 1)
       sc._seqOps([function () { FileOperations.copy(sc.note, work) }], done, function () {
         ae.runNativeTrash([work], "", function () {
           sc._listOnce(sc.opsDir, function (e) {
-            var gone = !sc._has(e, "ae-trash.txt")
+            var gone = !sc._has(e, wname)
             ae.runNativeRestore([work], "", function () {
               sc._listOnce(sc.opsDir, function (e2) {
-                var back = sc._has(e2, "ae-trash.txt")
+                var back = sc._has(e2, wname)
                 ae.destroy(); stubNav.destroy()
                 done(gone && back, gone ? (back ? "trash+restore vía ActionEngine OK" : "restore no repuso el fichero")
                                         : "runNativeTrash no sacó el fichero del origen")
