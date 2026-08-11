@@ -18,6 +18,11 @@ QtObject {
   readonly property string trashDir: homeDir + "/.local/share/Trash/files"
   readonly property string thumbCacheDir: homeDir + "/.cache/omafiles/thumbnails"
 
+  // Acciones definidas por el usuario (Fase 26): TOML opcional en la config de
+  // Omarchy, leído por logic/CustomActions.qml. No lo escribe la app -- lo edita
+  // el usuario a mano.
+  readonly property string actionsFile: homeDir + "/.config/omarchy/omafiles/actions.toml"
+
   // Estado persistente del plugin (JsonStore los lee/escribe vía Persistence).
   readonly property string bookmarksFile: homeDir + "/.local/state/omafiles/bookmarks.json"
   readonly property string recentFile: homeDir + "/.local/state/omafiles/recent.json"

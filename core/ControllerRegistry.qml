@@ -45,6 +45,7 @@ Item {
   readonly property alias conflictActions: conflictActions
   readonly property alias previewLoader: previewLoader
   readonly property alias propertiesLoader: propertiesLoader
+  readonly property alias customActions: customActions
 
   ArchiveActions {
     id: archiveActions
@@ -219,5 +220,10 @@ Item {
     id: propertiesLoader
     root: registry.root
     selectionOps: selectionOps
+  }
+
+  CustomActions {
+    id: customActions
+    root: registry.root
   }
 }

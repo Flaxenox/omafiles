@@ -33,6 +33,7 @@ Item {
   property var selectionOps
   property var sortOps
   property var tabOps
+  property var customActions
 
   function paletteCommands() {
     var hasSelection = SelectionState.selectedIndices.length > 0
@@ -110,6 +111,12 @@ Item {
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
+    // Acciones del usuario (actions.toml). Al final de la lista y nunca dentro
+    // de un comprimido (sus rutas no existen en disco de verdad). Reciben la
+    // selección actual para casar su `context` y sustituir placeholders.
+    if (!ArchiveState.inArchive && customActions) {
+      cmds = cmds.concat(customActions.paletteEntries(selectionOps.selectedEntries()))
+    }
     return cmds
   }
 
@@ -121,6 +128,7 @@ Item {
   }
 
   function openPalette() {
+    if (customActions) customActions.reload() // recoge cambios del actions.toml sin reiniciar
     PaletteState.paletteQuery = ""
     PaletteState.paletteIndex = 0
     PaletteState.paletteOpen = true
@@ -147,6 +155,7 @@ Item {
   }
 
   function itemActions() {
+    if (customActions) customActions.reload() // recoge cambios del actions.toml sin reiniciar
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return []
     // Dentro de un comprimido solo se navega/abre -- nada de lo demás
@@ -222,6 +231,11 @@ Item {
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
     actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
+    // Acciones del usuario (actions.toml) que casan con esta selección -- al
+    // final del menú, tras las nativas. inTrash/inArchive ya han salido antes.
+    if (customActions) {
+      actions = actions.concat(customActions.menuActions(entries))
+    }
     return actions
   }
 

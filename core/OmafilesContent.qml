@@ -462,6 +462,7 @@ Item {
     selectionOps: registry.selectionOps
     sortOps: registry.sortOps
     tabOps: registry.tabOps
+    customActions: registry.customActions
   }
 
   // Wiring de ciclo de vida y temporizadores. Fase 11.C.
