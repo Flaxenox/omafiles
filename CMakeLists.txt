@@ -168,10 +168,20 @@ install(DIRECTORY scripts DESTINATION "${OMAFILES_RES_DEST}"
 # assets/ (icono fuente y variantes).
 install(DIRECTORY assets DESTINATION "${OMAFILES_RES_DEST}")
 
-# Icono en el tema hicolor del usuario, para que aparezca en menu / dock /
+# Iconos en el tema hicolor del usuario, para que aparezcan en menu / dock /
 # barra de tareas / xdg-open / FileManager1 (Icon=omafiles en el .desktop).
-install(FILES assets/omafiles.svg
-  DESTINATION "${OMAFILES_DATA_INSTALL_DIR}/icons/hicolor/scalable/apps")
+#   - omafiles.svg          : icono principal (fondo claro + carpeta oscura).
+#   - omafiles-symbolic.svg : variante simbolica (currentColor, recoloreable
+#                             por GTK/Qt segun el tema); misma geometria.
+#   - omafiles-<n>.png      : rasterizaciones para los tamanos hicolor.
+set(OMAFILES_ICON_DIR "${OMAFILES_DATA_INSTALL_DIR}/icons/hicolor")
+install(FILES assets/omafiles.svg assets/omafiles-symbolic.svg
+  DESTINATION "${OMAFILES_ICON_DIR}/scalable/apps")
+foreach(sz 32 48 64 128 256)
+  install(FILES "assets/omafiles-${sz}.png"
+    DESTINATION "${OMAFILES_ICON_DIR}/${sz}x${sz}/apps"
+    RENAME omafiles.png)
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Arnés de validación (Fase 12)

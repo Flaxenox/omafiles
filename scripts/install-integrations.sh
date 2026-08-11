@@ -25,11 +25,11 @@ on_error() {
 }
 trap on_error ERR
 
-# v4 (Fase 29): las rutas Exec del .desktop y los servicios D-Bus pasan de
-# apuntar al repo a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles), para que
-# la integracion sobreviva al borrado del repositorio. Subir la version fuerza
-# la reescritura en instalaciones anteriores.
-INTEGRATION_VERSION=4
+# Fase 29: v4 movio las rutas Exec del .desktop y los servicios D-Bus del repo
+# a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles); v5 anade el icono
+# oficial y su variante simbolica. Subir la version fuerza la reescritura y la
+# recopia de iconos en instalaciones anteriores.
+INTEGRATION_VERSION=5
 
 # RES_DIR: raiz ESTABLE de recursos instalados (Fase 29). Los Exec apuntan aqui,
 # no al repo, asi que borrar el repositorio no rompe abrir carpetas ni "show in
@@ -72,7 +72,9 @@ mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
 # archivos" sin ningún aviso. Ahora el SVG vive en el propio repo
 # (assets/omafiles.svg) y este script lo instala como cualquier otra
 # integración.
-[[ -f "$SELF_RES/assets/omafiles.svg" ]] && cp -f "$SELF_RES/assets/omafiles.svg" "$ICON_DIR/omafiles.svg"
+for _ic in omafiles.svg omafiles-symbolic.svg; do
+  [[ -f "$SELF_RES/assets/$_ic" ]] && cp -f "$SELF_RES/assets/$_ic" "$ICON_DIR/$_ic"
+done
 
 # ID reverse-DNS: obligatorio para la activación D-Bus del .desktop (un nombre
 # de bus válido necesita puntos; "omafiles" a secas no vale).
