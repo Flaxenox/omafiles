@@ -222,7 +222,7 @@ Config lives in `~/.config/omafiles/` (`$XDG_CONFIG_HOME`), persistent state in 
 Run it from the terminal (`omafiles`, or `omafiles <folder>`), or bind a key in `~/.config/hypr/bindings.lua`:
 
 ```lua
-o.bind("SUPER + ALT + F", "Omafiles (file manager)", { launch = "omafiles" })
+o.bind("SUPER + SHIFT + F", "Omafiles (file manager)", { launch = "omafiles" })
 ```
 
 ### Dependencies
