@@ -26,7 +26,12 @@ void SearchWorker::search(const QString &root, const QString &query,
 
   auto life = m_life;
   const QString rootPath = root;
-  const QString q = query.toLower();
+  // Fase 27 (PERF_AUDIT_RC1): NO se baja la query a minúsculas para luego
+  // hacer fileName().toLower().contains(q) -> eso asignaba una QString nueva
+  // por cada fichero escaneado (100k asignaciones en un árbol grande). Se
+  // compara con Qt::CaseInsensitive, que hace el case-folding sin materializar
+  // el nombre en minúsculas.
+  const QString q = query;
 
   QThreadPool::globalInstance()->start(QRunnable::create([this, life, gen,
                                                           rootPath, q,
@@ -47,7 +52,7 @@ void SearchWorker::search(const QString &root, const QString &query,
         return;
       it.next();
       const QFileInfo fi = it.fileInfo();
-      if (!fi.fileName().toLower().contains(q))
+      if (!fi.fileName().contains(q, Qt::CaseInsensitive))
         continue;
       const bool isDir = fi.isDir();
       QVariantMap e;
