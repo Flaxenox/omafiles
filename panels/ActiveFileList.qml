@@ -63,6 +63,31 @@ Item {
   function forceActiveFocus() { listView.forceActiveFocus() }
   function positionViewAtBeginning() { listView.positionViewAtBeginning() }
   function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
+  // Índice de la primera fila visible (para guardar/restaurar el scroll por
+  // índice al cambiar de pestaña). Encapsula el listView interno: usa su propio
+  // ancho/contentY, no los del wrapper (que difieren con la preview abierta).
+  function firstVisibleIndex() { return listView.indexAt(listView.width / 2, listView.contentY + 4) }
+  // Offset SUB-FILA: cuántos píxeles está desplazada hacia arriba la fila de
+  // arriba respecto al borde del viewport. Sin esto, restaurar por índice
+  // alinea la fila al borde (Beginning) y, si estabas a media fila, saltaba
+  // para cuajar. Se guarda junto al índice y se suma al restaurar.
+  function firstVisibleOffset() {
+    var idx = firstVisibleIndex()
+    if (idx < 0) return 0
+    var it = listView.itemAtIndex(idx)
+    return it ? (listView.contentY - it.y) : 0
+  }
+  // Posiciona la fila `idx` reproduciendo el offset sub-fila EXACTO. Se ancla en
+  // la y real de la fila (itemAtIndex(idx).y), la MISMA geometría que usó
+  // firstVisibleOffset al guardar -- si en su lugar se usara el contentY que
+  // deja positionViewAtIndex, ambas geometrías difieren (~un puñado de px) y el
+  // scroll iba derivando cada vez. positionViewAtIndex primero instancia la fila.
+  function positionAtIndexWithOffset(idx, offset) {
+    listView.forceLayout()
+    listView.positionViewAtIndex(idx, ListView.Beginning)
+    var it = listView.itemAtIndex(idx)
+    if (it) listView.contentY = it.y + offset
+  }
 
   KeyboardShortcuts {
     id: keyboardShortcuts

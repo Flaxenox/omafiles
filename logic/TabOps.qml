@@ -79,6 +79,19 @@ Item {
       path: NavState.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
       previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
       inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath,
+      // Índice de la primera fila visible (además del scrollY en píxeles): el
+      // panel de fondo lo restaura con positionViewAtIndex, que es INMUNE a que
+      // el contentHeight del ListView se calcule perezosamente (por píxel el
+      // scroll del fondo quedaba clampado/desplazado respecto al activo).
+      scrollIndex: list.firstVisibleIndex(),
+      scrollOffset: list.firstVisibleOffset(),
+      // Contenido de la carpeta EN CRUDO (lo que ve el panel activo ahora). El
+      // panel de fondo lo adopta SÍNCRONO al pasar a segundo plano, así su lista
+      // no está vacía ni se puebla async -> positionViewAtIndex acierta al
+      // instante y el scroll queda congelado sin salto. Es una referencia al
+      // array, barato. (Con búsqueda abierta el panel de fondo usa searchEntries,
+      // no esto.)
+      entries: NavState.entries,
       // La búsqueda (lupa) es del panel activo, no global: sin guardarla aquí
       // se "colaba" a la pestaña a la que cambiabas (searching/searchQuery viven
       // en NavState, singleton). Se guardan los RESULTADOS también, para
@@ -144,9 +157,21 @@ Item {
   // origen real del parpadeo al cambiar de panel de fondo a activo con
   // la papelera).
   function _restoreTabScroll(tab) {
-    var y = tab.scrollY || list.originY
-    list.contentY = y
-    root._pendingScrollY = y
+    // Por ÍNDICE (positionViewAtIndex), igual que el panel de fondo, para que la
+    // posición coincida EXACTAMENTE al ir y volver (mezclar píxel/índice
+    // derivaba ~1 fila por ida y vuelta). _pendingScrollIndex lo re-aplica tras
+    // el listProc async de _goToPath (que resetea con positionViewAtBeginning).
+    if (tab.scrollIndex !== undefined && tab.scrollIndex >= 0) {
+      list.positionAtIndexWithOffset(tab.scrollIndex, tab.scrollOffset || 0)
+      root._pendingScrollIndex = tab.scrollIndex
+      root._pendingScrollOffset = tab.scrollOffset || 0
+      root._pendingScrollY = -1
+    } else {
+      var y = tab.scrollY || list.originY
+      list.contentY = y
+      root._pendingScrollY = y
+      root._pendingScrollIndex = -1
+    }
   }
 
   // Restaura (o limpia) el modo búsqueda propio de `tab`. Se llama DESPUÉS de

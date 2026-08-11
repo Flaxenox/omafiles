@@ -26,17 +26,18 @@ Item {
   property Item hostSortOps: null
   required property var modelData
   required property int index
-  visible: index !== TabsState.activeTabIndex
+  // SIEMPRE renderizado (no `visible:false`): una ListView invisible no hace su
+  // layout (contentHeight=0), así que al pasar a fondo positionViewAtIndex no
+  // acertaba hasta un par de frames después -> el salto de scroll. Con opacity:0
+  // (en el slot activo) la ListView SIGUE con layout real (ch>0), tapada por el
+  // activePanel que va encima en el mismo slot; al pasar a fondo se posiciona al
+  // instante, congelada. Los slots de fondo van al 0.72 de atenuado de siempre.
+  visible: true
+  opacity: index === TabsState.activeTabIndex ? 0 : 0.72
   x: hostPanelsRow.slotX(index)
   y: 0
   width: hostPanelsRow.slotWidth
   height: hostPanelsRow.height
-  // Atenuado respecto al panel activo -- con "el panel activo es el que
-  // tiene el ratón encima" (ver HoverHandler más abajo), sin ninguna señal
-  // visual era fácil no darse cuenta de a qué panel le estaban llegando
-  // los atajos de teclado y actuar sobre el equivocado sin querer. Solo
-  // opacidad, sin tocar colores del tema.
-  opacity: 0.72
 
   // Búsqueda POR PANEL (Fase 26, josema): si esta pestaña quedó en modo
   // búsqueda GLOBAL (2+ chars) al pasar a segundo plano, el panel de fondo la
@@ -73,7 +74,17 @@ Item {
     // en una ruta que un panel de fondo ya tenía lista -- solo lo
     // rellenan los paneles de fondo (ver NavigationController, que NO
     // escribe aquí).
-    onListed: bgPanel._cachePut(bgPanel.modelData.path, dirLister.entries)
+    onListed: {
+      bgPanel._cachePut(bgPanel.effectivePath, dirLister.entries)
+      // Refresca el contenido pintado SOLO si de verdad cambió (Utils
+      // .entriesEqual): así, al pasar a fondo con la carpeta sin cambios, NO se
+      // reasigna el modelo -> la ListView no resetea el scroll -> sin salto. Si
+      // cambió (ficheros nuevos), se reasigna y se re-posiciona.
+      if (!Utils.entriesEqual(dirLister.entries, bgPanel._content)) {
+        bgPanel._content = dirLister.entries
+        bgPanel._restoreScroll()
+      }
+    }
   }
 
   // LRU de la caché de entradas por ruta (Fase 10.A): antes crecía sin
@@ -117,23 +128,44 @@ Item {
   // ver onModelDataChanged más abajo.
   property string _lastRefreshedPath: ""
 
+  // Ruta que este panel debe listar. Para la pestaña ACTIVA es NavState
+  // .currentPath (el objeto de pestaña NO se actualiza hasta el cambio, así que
+  // usar modelData.path dejaba el panel del slot activo con la carpeta ANTERIOR
+  // y su lista VACÍA/desfasada -> al pasar a fondo se poblaba async y saltaba).
+  // Para las pestañas de fondo es su propia ruta guardada. Así el panel del slot
+  // activo (opacity:0, tapado por el panel activo) va PRECARGANDO la carpeta
+  // actual, y al pasar a fondo ya tiene el contenido y el layout -> el
+  // reposicionamiento es instantáneo, congelado, sin salto.
+  readonly property string effectivePath: index === TabsState.activeTabIndex
+    ? NavState.currentPath : (modelData.path || "")
+  onEffectivePathChanged: bgPanel.refreshMe()
+
+  // Contenido que pinta la ListView de fondo. Se adopta SÍNCRONO desde el objeto
+  // de pestaña (modelData.entries, que TabOps guardó = lo que veía el panel
+  // activo) al pasar a segundo plano, para que la lista NO esté vacía en ese
+  // instante (si se poblara async, el scroll saltaría de 0 a su sitio). El
+  // dirLister lo refresca por detrás sin resetear si el contenido no cambió.
+  property var _content: []
+
   function refreshMe() {
-    if (!bgPanel.visible) return
-    bgPanel._lastRefreshedPath = bgPanel.modelData.path
-    dirLister.list(bgPanel.modelData.path)
+    if (bgPanel.effectivePath === "") return
+    bgPanel._lastRefreshedPath = bgPanel.effectivePath
+    dirLister.list(bgPanel.effectivePath)
   }
 
-  onVisibleChanged: if (visible) bgPanel.refreshMe()
-  // TabOps.saveActiveTab() reasigna TabsState.tabs entero (para guardar el
-  // estado de la pestaña que se abandona) cada vez que se cambia de
-  // pestaña -- eso dispara onModelDataChanged en TODOS los paneles de
-  // fondo del Repeater, aunque la ruta de ESTE panel concreto no haya
-  // cambiado en absoluto. Sin este guard, cada cambio de pestaña recargaba
-  // el listado de fondo DOS veces (una por el reset del array, otra real
-  // por el cambio de visibilidad) -- trabajo doble e innecesario que
-  // contribuía al asentamiento visible al cambiar de panel con la
-  // papelera abierta (reportado por josema).
-  onModelDataChanged: if (bgPanel.modelData.path !== bgPanel._lastRefreshedPath) bgPanel.refreshMe()
+  // Al pasar a segundo plano (ya no es la pestaña activa): restaurar el scroll.
+  // El contenido ya está precargado (el slot activo listaba effectivePath en
+  // vivo) y con layout (opacity:0 mantiene la ListView en el scene graph), así
+  // que positionViewAtIndex acierta al instante. NO se re-lista aquí: la ruta no
+  // ha cambiado, y re-listar reseteaba la lista -> el salto.
+  readonly property bool isBackground: index !== TabsState.activeTabIndex
+  onIsBackgroundChanged: if (isBackground) {
+    // Adopta el contenido guardado en la pestaña (síncrono, no vacío) ANTES de
+    // posicionar, y refresca por detrás.
+    bgPanel._content = bgPanel.modelData.entries || []
+    bgPanel._restoreScroll()
+    bgPanel.refreshMe()
+  }
   // refreshTick es la señal para que los paneles NO activos se refresquen
   // tras una acción (borrar/mover/pegar/renombrar), que puede afectar a
   // cualquier panel y no solo al activo. Vive en NavState desde la Fase 14.C
@@ -145,6 +177,47 @@ Item {
     function onRefreshTickChanged() { bgPanel.refreshMe() }
   }
   Component.onCompleted: bgPanel.refreshMe()
+
+  // Scroll compartido con el panel activo (tab.scrollY = list.contentY). Al
+  // pasar ESTE panel a segundo plano hay que reflejar en su bgList el scroll que
+  // tenía como panel activo; si no, saltaba al principio. Se llama desde
+  // dirLister.onListed (cuando el relistado async ya está puesto, si no ese
+  // relistado resetearía el contentY justo después).
+  function _restoreScroll() {
+    // Por ÍNDICE (positionViewAtIndex), no por píxel: inmune a que el
+    // contentHeight se estime perezosamente. Fallback a contentY si no hay
+    // índice guardado (pestañas antiguas / raíz sin scroll).
+    var idx = modelData.scrollIndex
+    if (idx !== undefined && idx >= 0) {
+      // Una ListView recién hecha visible aún no ha hecho su layout (contentHeight
+      // = 0), así que positionViewAtIndex daría 0 y el scroll saltaría al medirse
+      // async. forceLayout() completa el layout SÍNCRONO -> geometría real ->
+      // positionViewAtIndex acierta a la primera, sin salto.
+      // Anclado en la y REAL de la fila (misma geometría que firstVisibleOffset
+      // al guardar), no en el contentY que deja positionViewAtIndex -> sin drift.
+      bgList.forceLayout()
+      bgList.positionViewAtIndex(idx, ListView.Beginning)
+      var it = bgList.itemAtIndex(idx)
+      if (it) bgList.contentY = it.y + (modelData.scrollOffset || 0)
+    } else {
+      bgList.contentY = modelData.scrollY || bgList.originY
+    }
+  }
+  // Y al revés: si desplazas este panel de fondo, se guarda en su objeto de
+  // pestaña para que al activarlo (list.contentY = tab.scrollY) quede igual.
+  // Solo al soltar (onMovementEnded), no por píxel, para no reasignar
+  // TabsState.tabs constantemente.
+  function _saveScroll() {
+    if (index < 0 || index >= TabsState.tabs.length) return
+    var t = TabsState.tabs[index]
+    if (!t || t.scrollY === bgList.contentY) return
+    var idx = bgList.indexAt(bgList.width / 2, bgList.contentY + 4)
+    var it = idx >= 0 ? bgList.itemAtIndex(idx) : null
+    var off = it ? (bgList.contentY - it.y) : 0
+    var next = TabsState.tabs.slice()
+    next[index] = Object.assign({}, t, { "scrollY": bgList.contentY, "scrollIndex": idx, "scrollOffset": off })
+    TabsState.tabs = next
+  }
 
   DropArea {
     anchors.fill: parent
@@ -314,8 +387,9 @@ Item {
     clip: true
     // Resultados de la búsqueda de ESTE panel si la tiene abierta; si no, su
     // listado normal de carpeta.
-    model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : dirLister.entries
+    model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
     boundsBehavior: Flickable.StopAtBounds
+    onMovementEnded: bgPanel._saveScroll()
 
     delegate: CursorSurface {
       id: bgRowSurface

@@ -48,6 +48,14 @@ Item {
   // pendiente (sentinel, ya que 0 es una posición de scroll válida en sí
   // misma). Estado puramente de vista: se queda en el composition root.
   property real _pendingScrollY: -1
+  // Igual que _pendingScrollY pero por ÍNDICE (positionViewAtIndex): el panel
+  // activo restaura el scroll por índice, no por píxel, para que coincida
+  // EXACTAMENTE con el panel de fondo (que también usa índice). Si mezclaran
+  // píxel/índice, la conversión entre ambos derivaba ~1 fila por ida y vuelta.
+  property int _pendingScrollIndex: -1
+  // Offset sub-fila que acompaña a _pendingScrollIndex (píxeles dentro de la
+  // fila de arriba), para reproducir el scroll EXACTO, no alineado a fila.
+  property real _pendingScrollOffset: 0
 
   // undoStack/redoStack viven ahora en state/UndoState.qml (singleton) --
   // tercer slice de la capa state/. Lógica sin cambios en

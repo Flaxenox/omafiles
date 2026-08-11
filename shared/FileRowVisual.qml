@@ -46,10 +46,24 @@ Item {
   // hacía "nameCol.visible: root.renamingIndex !== index" antes.
   property bool showNameText: true
 
-  implicitHeight: Math.max(thumbSlot.height, nameCol.implicitHeight)
+  // Altura de fila DETERMINISTA (opción 3, josema): NO se calcula desde el
+  // contenido real (nameCol.implicitHeight sale de Text.height, que varía según
+  // el estado de carga de la fuente/miniaturas -> la MISMA fila medía distinto
+  // en cada panel y el scroll derivaba). Se deriva de FontMetrics (cálculo puro
+  // del tipo de letra: alto de línea idéntico en TODAS las filas y en ambos
+  // paneles, independiente de qué haya cargado). Se reservan SIEMPRE las dos
+  // líneas (nombre + subtítulo) aunque una fila no tenga subtítulo, para que la
+  // altura no cambie nunca -> position = index * rowHeight + subOffset exacto.
+  FontMetrics { id: _nameFM; font.family: Style.font.family; font.pixelSize: Style.font.title; font.weight: Font.Medium }
+  FontMetrics { id: _metaFM; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
+  implicitHeight: Math.max(Style.spacing.controlHeight,
+    Math.ceil(_nameFM.height) + Style.spacing.xs + Math.ceil(_metaFM.height))
 
   Item {
     id: thumbSlot
+    // Contenedor de tamaño FIJO para la miniatura: la imagen (asíncrona) se
+    // recorta dentro (clip) y NUNCA altera la geometría del delegado.
+    clip: true
     anchors.left: parent.left
     // Alineado con el nombre (nameText), no con el bloque de dos
     // líneas completo -- ver la nota larga que ya existía junto a esta

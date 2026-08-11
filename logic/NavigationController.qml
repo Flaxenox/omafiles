@@ -103,11 +103,15 @@ Item {
       // forma de que quien pidió la restauración sobreviva a este reset,
       // aplicándose EN el mismo tick que positionViewAtBeginning en vez de
       // antes.
-      if (root._pendingScrollY >= 0) {
+      if (root._pendingScrollIndex >= 0) {
+        list.positionAtIndexWithOffset(root._pendingScrollIndex, root._pendingScrollOffset)
+      } else if (root._pendingScrollY >= 0) {
         list.contentY = root._pendingScrollY
       }
     }
     root._pendingScrollY = -1
+    root._pendingScrollIndex = -1
+    root._pendingScrollOffset = 0
     root.loaded = true
     var selectNames = NavState.pendingSelectNames
     NavState.pendingSelectNames = []
