@@ -25,9 +25,13 @@ inline bool asciiDigit(QChar c) {
 // naturalCompare, tirando el trabajo de C++; ahora se hace una sola vez aquí
 // y SortOps ya no re-ordena el caso por defecto (name/asc). Devuelve <0, 0,
 // >0.
-int naturalCompare(const QString &an, const QString &bn) {
-  const QString a = an.toLower();
-  const QString b = bn.toLower();
+//
+// Fase 27 (PERF_AUDIT_RC1): ESPERA los dos nombres YA en minúsculas. std::sort
+// hace O(n log n) comparaciones, así que hacer `.toLower()` aquí dentro
+// asignaba ~2·n·log n QString por listado (tormenta de asignaciones medida en
+// el benchmark). El toLower se hace ahora UNA vez por entrada en sortInto
+// (transformada de Schwartz) y esta función opera sobre las claves ya bajadas.
+int naturalCompareLowered(const QString &a, const QString &b) {
   int i = 0, j = 0;
   const int na = a.size(), nb = b.size();
   while (i < na && j < nb) {
@@ -110,11 +114,24 @@ int gatherOne(const QByteArray &p, bool showHidden,
     full += '/';
     full += n;
 
-    struct stat s;
+    // Fase 27 (PERF_AUDIT_RC1): una sola syscall en el caso común. Antes se
+    // hacían SIEMPRE lstat + stat (2 syscalls/entrada -> 200k a 100k ficheros).
+    // Para un NO-symlink stat==lstat, así que el segundo era redundante: se
+    // hace lstat primero y solo se sigue con stat cuando de verdad hay un
+    // enlace que resolver. Comportamiento idéntico (un path que stat resuelve
+    // pero lstat no es imposible: lstat no deja de resolver el path, solo no
+    // deref-a el último componente).
     struct stat ls;
     const bool lok = (::lstat(full.constData(), &ls) == 0);
     const bool isLink = lok && S_ISLNK(ls.st_mode);
-    const bool followed = (::stat(full.constData(), &s) == 0);
+    struct stat s;
+    bool followed;
+    if (isLink) {
+      followed = (::stat(full.constData(), &s) == 0); // seguir el enlace
+    } else {
+      s = ls; // no-symlink: lstat ya es el stat, sin segunda syscall
+      followed = lok;
+    }
 
     DirectoryModel::Entry e;
     e.name = QFile::decodeName(n);
@@ -151,17 +168,39 @@ int gatherOne(const QByteArray &p, bool showHidden,
   return 0;
 }
 
+// Ordena UN grupo por nombre (case-insensitive, number-aware) con una
+// transformada de Schwartz: baja cada nombre a minúsculas UNA sola vez, ordena
+// un vector de índices sobre esas claves precomputadas, y reordena el grupo con
+// un único barrido de moves al final. Antes (Fase 10.A) el toLower vivía dentro
+// del comparador, que std::sort llama O(n log n) veces -> a 100k eran ~1,7M
+// comparaciones × 2 toLower = tormenta de asignaciones (Fase 27, medido).
+void sortGroup(QVector<DirectoryModel::Entry> &v) {
+  const int n = v.size();
+  if (n < 2)
+    return;
+  QVector<QString> keys(n);
+  for (int i = 0; i < n; ++i)
+    keys[i] = v[i].name.toLower();
+  QVector<int> idx(n);
+  for (int i = 0; i < n; ++i)
+    idx[i] = i;
+  std::sort(idx.begin(), idx.end(), [&keys](int a, int b) {
+    return naturalCompareLowered(keys[a], keys[b]) < 0;
+  });
+  QVector<DirectoryModel::Entry> out;
+  out.reserve(n);
+  for (int i : idx)
+    out.push_back(std::move(v[i]));
+  v = std::move(out);
+}
+
 // Ordena dirs y files por nombre (carpetas primero al concatenar) con la
 // collation de glibc, y los deja en rows.
 void sortInto(QVector<DirectoryModel::Entry> &dirs,
               QVector<DirectoryModel::Entry> &files,
               QVector<DirectoryModel::Entry> &rows) {
-  const auto cmp = [](const DirectoryModel::Entry &a,
-                      const DirectoryModel::Entry &b) {
-    return naturalCompare(a.name, b.name) < 0;
-  };
-  std::sort(dirs.begin(), dirs.end(), cmp);
-  std::sort(files.begin(), files.end(), cmp);
+  sortGroup(dirs);
+  sortGroup(files);
   rows = std::move(dirs); // carpetas primero, luego ficheros
   rows += files;
 }
