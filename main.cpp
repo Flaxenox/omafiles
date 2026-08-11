@@ -47,12 +47,43 @@ class SelfCheckReporter : public QObject {
 
 namespace {
 
-// Añade al engine los mismos import paths que necesita el core: los
-// adaptadores qs.Commons/qs.Ui del standalone y el plugin C++
-// Omafiles.Backend (el mismo .so que carga Quickshell).
-void addImportPaths(QQmlApplicationEngine &engine, const QString &sourceDir) {
-  engine.addImportPath(sourceDir + "/integrations/standalone/qml_modules");
-  engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));
+// Fase 29 (josema): resuelve la raíz de RECURSOS (scripts .sh + árbol QML).
+// Omafiles ya no depende del repositorio: si está instalado en
+// $XDG_DATA_HOME/omafiles (o donde CMake lo puso), carga de ahí; si no, del
+// árbol de desarrollo. Gana el primer candidato cuyo Main.qml exista, así el
+// binario funciona tanto tras `cmake --install` (aunque se borre el repo) como
+// ejecutándose desde el checkout de desarrollo.
+QString resolveResourceDir() {
+  QStringList candidates;
+  // 1. Árbol de desarrollo (el repo). Va PRIMERO a propósito: si el repo
+  //    existe, se ejecuta desde él (edición de QML en vivo, como siempre). Si
+  //    se borra el repo, esta ruta deja de existir y se cae a la instalación.
+  candidates << QStringLiteral(OMAFILES_SOURCE_DIR);
+  // 2. Donde CMake instaló los recursos (respeta un -D de configure).
+  candidates << QStringLiteral(OMAFILES_DATA_INSTALL_DIR) + "/omafiles";
+  // 3. $XDG_DATA_HOME/omafiles en runtime (por si difiere del de configure).
+  const QByteArray xdg = qgetenv("XDG_DATA_HOME");
+  const QString dataHome = (!xdg.isEmpty() && xdg.startsWith('/'))
+                               ? QString::fromLocal8Bit(xdg)
+                               : QDir::homePath() + "/.local/share";
+  candidates << dataHome + "/omafiles";
+  for (const QString &c : candidates) {
+    if (QFileInfo::exists(c + "/integrations/standalone/Main.qml"))
+      return c;
+  }
+  // Fallback: la instalación estándar (mensaje de error claro si tampoco está).
+  return QDir::homePath() + "/.local/share/omafiles";
+}
+
+// Añade al engine los import paths que necesita el core: los adaptadores
+// qs.Commons/qs.Ui (bajo la raíz de recursos) y el plugin C++ Omafiles.Backend.
+// Para el backend se añaden las DOS ubicaciones posibles -- el build/ de
+// desarrollo y la instalación estable en ~/.local/lib/qt6/qml -- y Qt ignora la
+// que no exista, así funciona en ambos modos.
+void addImportPaths(QQmlApplicationEngine &engine, const QString &resourceDir) {
+  engine.addImportPath(resourceDir + "/integrations/standalone/qml_modules");
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));  // dev build/qml
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // instalado
 }
 
 // Nombre del socket de instancia única, por usuario (para no chocar entre
@@ -241,7 +272,11 @@ int runSelfCheck(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
   QQuickStyle::setStyle("Basic");
 
-  const QString sourceDir = QStringLiteral(OMAFILES_SOURCE_DIR);
+  // Fase 29: misma resolución de recursos que el modo normal, para que el
+  // selfcheck funcione tanto desde el árbol de desarrollo como desde la
+  // instalación (sin el repo).
+  const QString resourceDir = resolveResourceDir();
+  qputenv("OMAFILES_RESOURCE_DIR", resourceDir.toLocal8Bit());
 
   // Bajo $HOME/.cache (no /tmp): así los fixtures viven en el MISMO montaje
   // que la papelera XDG del usuario, y trash/restore hacen round-trip como en
@@ -255,7 +290,7 @@ int runSelfCheck(int argc, char *argv[]) {
   }
 
   QQmlApplicationEngine engine;
-  addImportPaths(engine, sourceDir);
+  addImportPaths(engine, resourceDir);
   SelfCheckReporter reporter;
   engine.rootContext()->setContextProperty("selfCheckTmpDir", tmp.path());
   engine.rootContext()->setContextProperty("SelfCheckOut", &reporter);
@@ -269,7 +304,7 @@ int runSelfCheck(int argc, char *argv[]) {
       },
       Qt::QueuedConnection);
 
-  engine.load(QUrl::fromLocalFile(sourceDir +
+  engine.load(QUrl::fromLocalFile(resourceDir +
                                   "/integrations/standalone/SelfCheck.qml"));
   if (failedToCreate || engine.rootObjects().isEmpty()) {
     fprintf(stderr, "[selfcheck] no se pudo cargar SelfCheck.qml\n");
@@ -312,8 +347,12 @@ int runNormal(int argc, char *argv[]) {
   QQuickStyle::setStyle("Basic");
 
   QQmlApplicationEngine engine;
-  const QString sourceDir = QStringLiteral(OMAFILES_SOURCE_DIR);
-  addImportPaths(engine, sourceDir);
+  // Fase 29: raíz de recursos resuelta (instalado vs dev). Se publica por env
+  // para que state/Paths.qml (resourceDir) localice los scripts .sh sin conocer
+  // el repo.
+  const QString resourceDir = resolveResourceDir();
+  qputenv("OMAFILES_RESOURCE_DIR", resourceDir.toLocal8Bit());
+  addImportPaths(engine, resourceDir);
 
   SingleInstance instance;
   instance.listen();  // si falla (nombre ocupado por carrera) simplemente no
@@ -326,7 +365,7 @@ int runNormal(int argc, char *argv[]) {
       []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
   engine.load(
-      QUrl::fromLocalFile(sourceDir + "/integrations/standalone/Main.qml"));
+      QUrl::fromLocalFile(resourceDir + "/integrations/standalone/Main.qml"));
   if (engine.rootObjects().isEmpty()) return -1;
 
   return app.exec();

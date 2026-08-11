@@ -29,7 +29,7 @@ Item {
     // arranque normal OMAFILES_SELFCHECK no existe y el comportamiento es el
     // de siempre.
     if (Env.get("OMAFILES_SELFCHECK") === "1") return
-    Detached.run([Paths.pluginDir + "/scripts/install-integrations.sh"])
+    Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
   }
 
   // Dispositivos de bloque (USB/ISO/discos): reactivos vía UDisks2 (Fase 20).

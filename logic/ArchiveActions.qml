@@ -41,7 +41,7 @@ Item {
   function refreshArchiveListing() {
     selectionOps.selectOnly(-1)
     list.contentY = list.originY
-    archiveListProc.start([Paths.pluginDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
+    archiveListProc.start([Paths.resourceDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
   }
 
   // Extrae SOLO ese fichero a una caché temporal (no todo el archivo) y lo

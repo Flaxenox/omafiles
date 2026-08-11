@@ -231,7 +231,7 @@ Item {
     // la vista agrega la de cualquier disco montado (ver
     // trash-roots.sh), vaciar tiene que cubrir las mismas o el botón
     // dejaría cosas huérfanas afirmando haber vaciado del todo.
-    registry.actionEngine.runAction("bash " + Util.shellQuote(Paths.pluginDir + "/empty-trash.sh"), "Emptying trash…")
+    registry.actionEngine.runAction("bash " + Util.shellQuote(Paths.resourceDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
   // parseEntries: movida a Utils.js (función pura, comentario completo

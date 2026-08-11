@@ -90,8 +90,8 @@ Item {
   // (no se pasan por sortOps: eso rompería ese orden).
   SearchBackend {
     id: searchBackend
-    indexScript: Paths.pluginDir + "/search-index.sh"
-    contentScript: Paths.pluginDir + "/content-search.sh"
+    indexScript: Paths.resourceDir + "/search-index.sh"
+    contentScript: Paths.resourceDir + "/content-search.sh"
     onResults: function (entries, truncated) {
       NavState.searchBusy = false
       NavState.searchTruncated = truncated

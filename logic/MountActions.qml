@@ -19,7 +19,7 @@ Item {
   property Item tabOps: null
 
   function refreshMounts() {
-    mountsProc.start([Paths.pluginDir + "/list-mounts.sh"])
+    mountsProc.start([Paths.resourceDir + "/list-mounts.sh"])
   }
 
   function refreshNetworkMounts() {
@@ -117,7 +117,7 @@ Item {
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.start(["bash", Paths.pluginDir + "/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
+    mountIsoProc.start(["bash", Paths.resourceDir + "/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
   }
 
   ProcessRunner {

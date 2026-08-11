@@ -88,12 +88,24 @@ target_link_libraries(omafiles-standalone PRIVATE
   Qt6::Network
 )
 
-# OMAFILES_SOURCE_DIR: raiz del arbol QML (se carga del fuente, sin qrc).
-# OMAFILES_QML_IMPORT_DIR: donde vive el plugin Omafiles.Backend, para
-# anadirlo al import path del engine (ver main.cpp).
+# Rutas que main.cpp necesita conocer en compilacion (Fase 29, desacople del
+# repo). resolveResourceDir() prueba en orden: OMAFILES_SOURCE_DIR (arbol dev)
+# -> OMAFILES_DATA_INSTALL_DIR/omafiles (instalado) -> $XDG_DATA_HOME/omafiles.
+#   OMAFILES_SOURCE_DIR      : arbol QML de desarrollo (se carga del fuente).
+#   OMAFILES_QML_IMPORT_DIR  : plugin Omafiles.Backend en el build/ (dev).
+#   OMAFILES_QML_INSTALL_DIR : plugin Omafiles.Backend instalado (estable).
+#   OMAFILES_DATA_INSTALL_DIR: raiz XDG_DATA donde se instalan los recursos.
+set(OMAFILES_DATA_INSTALL_DIR "$ENV{HOME}/.local/share"
+    CACHE PATH "Raiz XDG_DATA donde se instala el arbol de recursos de Omafiles")
+# Ruta estable del modulo backend (definida aqui, ANTES de los compile
+# definitions que la referencian; el install() que la usa vive mas abajo).
+set(OMAFILES_QML_INSTALL_DIR "$ENV{HOME}/.local/lib/qt6/qml"
+    CACHE PATH "Ruta estable donde se instala el modulo QML Omafiles.Backend")
 target_compile_definitions(omafiles-standalone PRIVATE
   OMAFILES_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   OMAFILES_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml"
+  OMAFILES_QML_INSTALL_DIR="${OMAFILES_QML_INSTALL_DIR}"
+  OMAFILES_DATA_INSTALL_DIR="${OMAFILES_DATA_INSTALL_DIR}"
 )
 
 # ---------------------------------------------------------------------------
@@ -104,8 +116,7 @@ target_compile_definitions(omafiles-standalone PRIVATE
 # ~/.config/environment.d/omafiles-backend.conf. Esa variable apunta a una
 # ruta ESTABLE de usuario, no al build/ (efimero, se borra al limpiar).
 # `cmake --install build` copia el modulo ahi. Ver BACKEND_DESIGN.md 4.
-set(OMAFILES_QML_INSTALL_DIR "$ENV{HOME}/.local/lib/qt6/qml"
-    CACHE PATH "Ruta estable donde se instala el modulo QML Omafiles.Backend")
+# (OMAFILES_QML_INSTALL_DIR se define mas arriba, junto a los compile defs.)
 install(DIRECTORY "${CMAKE_BINARY_DIR}/qml/Omafiles"
         DESTINATION "${OMAFILES_QML_INSTALL_DIR}")
 
@@ -123,6 +134,44 @@ set(OMAFILES_BIN_INSTALL_DIR "$ENV{HOME}/.local/bin"
 install(PROGRAMS "$<TARGET_FILE:omafiles-standalone>"
         DESTINATION "${OMAFILES_BIN_INSTALL_DIR}"
         RENAME omafiles)
+
+# ---------------------------------------------------------------------------
+# Instalacion del arbol de RECURSOS (Fase 29: independiente del repo)
+# ---------------------------------------------------------------------------
+# main.cpp (resolveResourceDir) carga el QML y localiza los scripts .sh desde
+# aqui cuando el repo ya no existe. El layout se PRESERVA: state/Paths.qml
+# espera <resourceDir>/<script>.sh en la raiz y <resourceDir>/scripts/... .
+set(OMAFILES_RES_DEST "${OMAFILES_DATA_INSTALL_DIR}/omafiles")
+
+# Arbol QML completo que carga el engine en runtime.
+install(DIRECTORY
+    core logic state panels dialogs shared services integrations
+  DESTINATION "${OMAFILES_RES_DEST}"
+  FILES_MATCHING
+    PATTERN "*.qml"
+    PATTERN "*.js"
+    PATTERN "qmldir")
+install(FILES Utils.js DESTINATION "${OMAFILES_RES_DEST}")
+
+# Scripts de sistema en la raiz (los invoca logic/ como <resourceDir>/X.sh).
+install(PROGRAMS
+    list-mounts.sh mount-iso.sh list-archive.sh open-with-list.sh
+    thumbnail-video.sh search-index.sh content-search.sh
+    highlight-preview.sh empty-trash.sh
+  DESTINATION "${OMAFILES_RES_DEST}")
+
+# scripts/ (install-integrations.sh, dbus-*.py, open-path.sh) con permisos de
+# ejecucion preservados.
+install(DIRECTORY scripts DESTINATION "${OMAFILES_RES_DEST}"
+        USE_SOURCE_PERMISSIONS)
+
+# assets/ (icono fuente y variantes).
+install(DIRECTORY assets DESTINATION "${OMAFILES_RES_DEST}")
+
+# Icono en el tema hicolor del usuario, para que aparezca en menu / dock /
+# barra de tareas / xdg-open / FileManager1 (Icon=omafiles en el .desktop).
+install(FILES assets/omafiles.svg
+  DESTINATION "${OMAFILES_DATA_INSTALL_DIR}/icons/hicolor/scalable/apps")
 
 # ---------------------------------------------------------------------------
 # Arnés de validación (Fase 12)

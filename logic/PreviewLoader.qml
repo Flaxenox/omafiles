@@ -64,7 +64,7 @@ Item {
       // previewHighlighted se queda vacío y se ve el texto plano.
       if (FileTypeConfig.codeExt.indexOf(ext) >= 0) {
         PreviewContentState._previewHighlightOwner = reqId
-        highlightPreviewProc.start([Paths.pluginDir + "/highlight-preview.sh", path, "4000", ext])
+        highlightPreviewProc.start([Paths.resourceDir + "/highlight-preview.sh", path, "4000", ext])
       }
     }
     // Imagen y PDF: render escalado + caché vía ThumbnailProvider. request()

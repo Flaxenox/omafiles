@@ -13,7 +13,7 @@ Item {
     if (!entry || entry.type === "dir") return
     PreviewState.openWithEntry = entry
     PreviewState.openWithApps = []
-    openWithProc.start([Paths.pluginDir + "/open-with-list.sh", Utils.entryPath(NavState.currentPath, entry)])
+    openWithProc.start([Paths.resourceDir + "/open-with-list.sh", Utils.entryPath(NavState.currentPath, entry)])
     PreviewState.openWithOpen = true
   }
 

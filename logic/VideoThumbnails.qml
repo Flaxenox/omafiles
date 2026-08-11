@@ -36,7 +36,7 @@ Item {
     var dest = Paths.thumbCacheDir + "/" + ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
-    thumbProc.start(["bash", Paths.pluginDir + "/thumbnail-video.sh", src, dest])
+    thumbProc.start(["bash", Paths.resourceDir + "/thumbnail-video.sh", src, dest])
   }
 
   ProcessRunner {
