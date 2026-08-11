@@ -18,9 +18,17 @@ migration only swapped the host that instantiates it.
 > siendo válidos; solo hay una implementación de host viva
 > (`integrations/standalone/Main.qml`).
 
-The app is installed to `~/.local` (binary `~/.local/bin/omafiles`, no root);
-the QML tree is still loaded from this repo during the beta (packaging into a
-qrc / AUR comes later).
+The app is installed to `~/.local` (no root) and, as of **Fase 29**, is fully
+independent of both Omarchy and this repository: `cmake --install` deploys the
+binary (`~/.local/bin/omafiles`), the backend module
+(`~/.local/lib/qt6/qml/Omafiles/Backend/`) and the whole resource tree — QML,
+scripts and assets — to `$XDG_DATA_HOME/omafiles` (`~/.local/share/omafiles`).
+`main.cpp` (`resolveResourceDir`) loads from the source checkout when it exists
+(live dev editing) and otherwise from the installed tree, so **deleting the repo
+leaves a working app**. All paths follow XDG (`$XDG_CONFIG_HOME/omafiles`,
+`$XDG_STATE_HOME/omafiles`, `$XDG_CACHE_HOME/omafiles`). The live theme is still
+read from Omarchy when present (a runtime path, not a repo dependency), with a
+graceful fallback.
 
 ## Folder structure
 

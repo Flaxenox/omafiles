@@ -163,7 +163,7 @@ Every shortcut below is handled in `logic/KeyboardShortcuts.qml`; the in-app ref
 
 ## Custom actions
 
-Drop a TOML file at `~/.config/omarchy/omafiles/actions.toml` to add your own commands. They appear in the command palette (`:` / `Ctrl+P`) and in the context menu of the selected file(s).
+Drop a TOML file at `~/.config/omafiles/actions.toml` to add your own commands. They appear in the command palette (`:` / `Ctrl+P`) and in the context menu of the selected file(s).
 
 Each `[[action]]` block:
 
@@ -200,15 +200,24 @@ The command runs fire-and-forget with a `cd` into the item's folder. The file is
 
 ## Installation
 
-Omafiles is a **Qt6 standalone application** (no longer a Quickshell plugin). Build it and install to `~/.local` (no root):
+Omafiles is a **Qt6 standalone application** (no longer a Quickshell plugin), fully independent of Omarchy and of this repository. Clone it **anywhere**, build, and install to `~/.local` (no root):
 
 ```bash
-git clone https://github.com/Percius04/omafiles ~/.config/omarchy/plugins/omafiles
-cd ~/.config/omarchy/plugins/omafiles
+git clone https://github.com/Percius04/omafiles
+cd omafiles
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
-cmake --install build      # -> ~/.local/bin/omafiles + Omafiles.Backend .so
+cmake --install build      # binary, backend .so, QML/scripts/assets, icon
 ```
+
+`cmake --install` deploys everything to standard XDG locations, so **once installed you can delete the cloned repo and Omafiles keeps working**:
+
+- binary → `~/.local/bin/omafiles`
+- backend module → `~/.local/lib/qt6/qml/Omafiles/Backend/`
+- QML, scripts and assets → `~/.local/share/omafiles/` (`$XDG_DATA_HOME`)
+- icon → `~/.local/share/icons/hicolor/scalable/apps/omafiles.svg`
+
+Config lives in `~/.config/omafiles/` (`$XDG_CONFIG_HOME`), persistent state in `~/.local/state/omafiles/` (`$XDG_STATE_HOME`), and caches in `~/.cache/omafiles/` (`$XDG_CACHE_HOME`). Running from a source checkout still loads QML live from the tree, so development iteration is unchanged.
 
 Run it from the terminal (`omafiles`, or `omafiles <folder>`), or bind a key in `~/.config/hypr/bindings.lua`:
 
