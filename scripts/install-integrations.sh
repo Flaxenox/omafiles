@@ -26,10 +26,11 @@ on_error() {
 trap on_error ERR
 
 # Fase 29: v4 movio las rutas Exec del .desktop y los servicios D-Bus del repo
-# a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles); v5 anade el icono
-# oficial y su variante simbolica. Subir la version fuerza la reescritura y la
-# recopia de iconos en instalaciones anteriores.
-INTEGRATION_VERSION=5
+# a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles); v5 anadio el icono
+# oficial + su variante simbolica; v6 anade StartupWMClass=omafiles (para que el
+# dock/taskbar case la ventana con este .desktop y pinte el icono). Subir la
+# version fuerza la reescritura y la recopia en instalaciones anteriores.
+INTEGRATION_VERSION=6
 
 # RES_DIR: raiz ESTABLE de recursos instalados (Fase 29). Los Exec apuntan aqui,
 # no al repo, asi que borrar el repositorio no rompe abrir carpetas ni "show in
@@ -99,6 +100,7 @@ Terminal=false
 Categories=System;FileManager;
 MimeType=inode/directory;
 DBusActivatable=true
+StartupWMClass=omafiles
 EOF
 
 # Servicio D-Bus de org.freedesktop.Application (la interfaz que activa el

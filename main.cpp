@@ -325,6 +325,12 @@ int runSelfCheck(int argc, char *argv[]) {
 int runNormal(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("omafiles"));
+  // app_id de Wayland = "omafiles" (se conserva a propósito: cualquier
+  // windowrule de Hyprland con class:omafiles sigue funcionando). El .desktop
+  // instalado tiene otro basename (io.github.percius04.omafiles, obligatorio
+  // para la activación D-Bus), así que se casa con esta ventana vía
+  // StartupWMClass=omafiles en el propio .desktop -> el dock/taskbar resuelve
+  // Icon=omafiles sin cambiar el app_id (Fase 29).
   app.setDesktopFileName(QStringLiteral("omafiles"));
 
   // Primer argumento posicional = ruta/URI/payload a abrir (vacío = arranque
