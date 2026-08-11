@@ -1,0 +1,69 @@
+// Micro-benchmark del camino de listado de DirectoryModel (Fase 27, PERF_AUDIT_RC1).
+// Usa SOLO la API pública async (list + listed + entries), que es el camino real
+// que sufre la UI. Mide: (a) scan+dispatch+apply hasta la señal listed(),
+// (b) construcción del QVariantList en entries(). Reporta la mediana de N runs
+// con caché caliente. No se instala ni se enlaza en la app; se compila a mano
+// contra backend/DirectoryModel.cpp (ver bench/README.md).
+#include "DirectoryModel.h"
+#include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QVariantList>
+#include <algorithm>
+#include <cstdio>
+#include <vector>
+
+static double medianOf(std::vector<double> v) {
+  std::sort(v.begin(), v.end());
+  return v[v.size() / 2];
+}
+
+// Mide un directorio: devuelve {mediana_listado_ms, mediana_entries_ms, filas}.
+static void benchDir(const QString &path, int iters) {
+  std::vector<double> listMs, convMs;
+  int rows = 0;
+  for (int k = 0; k < iters; ++k) {
+    DirectoryModel m;
+    QEventLoop loop;
+    QElapsedTimer t;
+    double listedAt = 0, convAt = 0;
+    int localRows = 0;
+    QObject::connect(&m, &DirectoryModel::listed, &loop, [&]() {
+      listedAt = t.nsecsElapsed() / 1e6;
+      // entries(): construcción del QVariantList (coste de conversión).
+      QElapsedTimer tc;
+      tc.start();
+      QVariantList e = m.entries();
+      convAt = tc.nsecsElapsed() / 1e6;
+      localRows = e.size();
+      loop.quit();
+    });
+    t.start();
+    m.list(path, /*showHidden=*/false);
+    loop.exec();
+    listMs.push_back(listedAt);
+    convMs.push_back(convAt);
+    rows = localRows;
+  }
+  std::printf("%-42s rows=%-7d  listado=%7.2f ms   entries()=%7.2f ms\n",
+              qPrintable(path), rows, medianOf(listMs), medianOf(convMs));
+}
+
+int main(int argc, char **argv) {
+  QCoreApplication app(argc, argv);
+  const char *base = "/home/josema/.cache/omafiles-perfbench";
+  const char *sizes[] = {"1k", "10k", "50k", "100k"};
+  const int iters = 9;
+  // Warm-up: una pasada por cada dir para calentar la caché de inodos.
+  for (const char *s : sizes) {
+    DirectoryModel m;
+    QEventLoop loop;
+    QObject::connect(&m, &DirectoryModel::listed, &loop, &QEventLoop::quit);
+    m.list(QString("%1/%2").arg(base, s));
+    loop.exec();
+  }
+  std::printf("=== DirectoryModel listado (mediana de %d runs, caché caliente) ===\n", iters);
+  for (const char *s : sizes)
+    benchDir(QString("%1/%2").arg(base, s), iters);
+  return 0;
+}
