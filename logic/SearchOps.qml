@@ -91,6 +91,7 @@ Item {
   SearchBackend {
     id: searchBackend
     indexScript: Paths.pluginDir + "/search-index.sh"
+    contentScript: Paths.pluginDir + "/content-search.sh"
     onResults: function (entries, truncated) {
       NavState.searchBusy = false
       NavState.searchTruncated = truncated

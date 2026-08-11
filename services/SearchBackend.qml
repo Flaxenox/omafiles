@@ -22,9 +22,12 @@ import QtQuick
 Item {
   id: backend
 
-  // Ruta absoluta al script de índice. La fija el llamador (logic/, que sí
-  // conoce Paths) para no acoplar services/ a state/.
+  // Ruta absoluta al script de índice de NOMBRES. La fija el llamador (logic/,
+  // que sí conoce Paths) para no acoplar services/ a state/.
   property string indexScript: ""
+  // Script de búsqueda por CONTENIDO (ripgrep). Cuarto backend, se dispara con
+  // el prefijo `content:` en la consulta (Fase 26 / Beta 3).
+  property string contentScript: ""
 
   signal results(var entries, bool truncated)
 
@@ -33,6 +36,9 @@ Item {
   property string _query: ""
   property string _root: ""
   property bool _hidden: false
+  // "name" (índice/recursivo) o "content" (ripgrep) -- fija el parseo y si hay
+  // fallback recursivo (solo en name).
+  property string _mode: "name"
 
   // Coalescing de la consulta EN VUELO. ProcessRunner.start() se niega si ya hay
   // un proceso vivo (devuelve false), así que teclear rápido perdería las
@@ -65,8 +71,25 @@ Item {
     _query = query
     _root = fallbackRoot
     _hidden = showHidden
-    // Pedimos maxResults+1 al script para poder marcar truncated con exactitud
-    // (él sobre-pide internamente para compensar el filtrado de ruido/ocultos).
+    // Modo CONTENIDO: prefijo `content:`. El término va detrás, sin comillas
+    // envolventes (`content:"foo bar"` -> foo bar). Busca DENTRO de los ficheros
+    // del árbol de fallbackRoot (la carpeta actual), como `rg` en su cwd.
+    if (query.indexOf("content:") === 0) {
+      _mode = "content"
+      var term = query.substring(8)
+      if ((term.charAt(0) === '"' && term.charAt(term.length - 1) === '"')
+          || (term.charAt(0) === "'" && term.charAt(term.length - 1) === "'"))
+        term = term.substring(1, term.length - 1)
+      if (term.length < 2) { // término muy corto: nada que buscar todavía
+        backend.results([], false)
+        return
+      }
+      indexProc.start([contentScript, term, fallbackRoot, String(maxResults + 1)])
+      return
+    }
+    // Modo NOMBRE (índice del sistema). Pedimos maxResults+1 para marcar
+    // truncated con exactitud (el script sobre-pide para compensar el filtrado).
+    _mode = "name"
     indexProc.start([indexScript, query, String(maxResults + 1), showHidden ? "1" : "0"])
   }
 
@@ -88,11 +111,17 @@ Item {
       if (result.cancelled)
         return
       if (result.exitCode === 2) {
-        // Ningún índice instalado -> recursivo desde la carpeta actual.
-        recursive.search(backend._root, backend._query, backend._hidden)
+        // Sin backend disponible. En NOMBRE: recursivo desde la carpeta actual.
+        // En CONTENIDO: ripgrep no instalado, no hay fallback -> vacío.
+        if (backend._mode === "content")
+          backend.results([], false)
+        else
+          recursive.search(backend._root, backend._query, backend._hidden)
         return
       }
-      var parsed = backend._rank(String(result.stdout || ""), backend._query)
+      var parsed = backend._mode === "content"
+        ? backend._parseContent(String(result.stdout || ""))
+        : backend._rank(String(result.stdout || ""), backend._query)
       backend.results(parsed.entries, parsed.truncated)
     }
   }
@@ -103,6 +132,43 @@ Item {
     onResults: function (entries, truncated) {
       backend.results(entries, truncated)
     }
+  }
+
+  // Parsea el TSV de content-search.sh ("RUTA\tLINEA\tSNIPPET" por línea). El
+  // orden lo da ripgrep (recorrido del árbol); no se re-ordena. Cada línea es un
+  // resultado independiente (un mismo fichero aparece una vez por coincidencia,
+  // con su línea) -> saltar a esa línea concreta. Lleva {line, snippet} extra.
+  function _parseContent(stdout) {
+    var lines = stdout.split("\n")
+    var out = []
+    for (var i = 0; i < lines.length && out.length < maxResults; i++) {
+      var line = lines[i]
+      if (line === "")
+        continue
+      var t1 = line.indexOf("\t")
+      if (t1 < 0)
+        continue
+      var t2 = line.indexOf("\t", t1 + 1)
+      if (t2 < 0)
+        continue
+      var path = line.substring(0, t1)
+      var lineNo = parseInt(line.substring(t1 + 1, t2), 10) || 0
+      var snippet = line.substring(t2 + 1)
+      var slash = path.lastIndexOf("/")
+      out.push({
+        "type": "file",
+        "name": slash >= 0 ? path.substring(slash + 1) : path,
+        "path": path,
+        "parent": slash > 0 ? path.substring(0, slash) : "/",
+        "size": 0,
+        "mtime": 0,
+        "link": false,
+        "line": lineNo,
+        "snippet": snippet
+      })
+    }
+    var truncated = out.length >= maxResults
+    return { "entries": out, "truncated": truncated }
   }
 
   // Parsea el TSV del script ("tipo\tRUTA_ABSOLUTA" por línea) y lo ordena por

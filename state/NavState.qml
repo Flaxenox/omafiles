@@ -32,7 +32,11 @@ QtObject {
   // Subconjunto visible de `entries` tras aplicar el filtro rápido. Derivada
   // (readonly): antes se calculaba en root.visibleEntries y la leían 24
   // sitios de logic/. Misma expresión, ahora junto a su fuente de datos.
-  readonly property var visibleEntries: searchQuery
+  // La búsqueda por NOMBRE filtra el listado por el término (coincidencia en el
+  // basename). La búsqueda por CONTENIDO (`content:`) NO se filtra: sus
+  // resultados son coincidencias dentro de ficheros y su nombre no contiene el
+  // prefijo, así que filtrar los ocultaría todos.
+  readonly property var visibleEntries: (searchQuery && searchQuery.indexOf("content:") !== 0)
     ? entries.filter(function (e) { return e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0 })
     : entries
 

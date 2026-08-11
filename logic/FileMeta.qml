@@ -49,6 +49,10 @@ Item {
   // pinta la fila.
   function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
+    // Resultado de búsqueda por CONTENIDO (ripgrep, Beta 3): el subtítulo es la
+    // LÍNEA + el snippet de la coincidencia (lo que buscabas), no tamaño/fecha
+    // ni la ruta -- la ruta va en el tooltip (metaTooltipFor). Es lo útil aquí.
+    if (entry.snippet !== undefined) return "L" + (entry.line || 0) + "  " + entry.snippet
     // Resultado de búsqueda GLOBAL (SearchBackend): la entrada trae ruta
     // absoluta de OTRA carpeta cualquiera, así que el subtítulo da el CONTEXTO
     // (dónde vive), no tamaño/fecha -- como Nautilus/Spotlight. `parent` ya
@@ -93,6 +97,9 @@ Item {
   // Tooltip del subtítulo: valor EXACTO del contador solo cuando se muestra
   // abreviado (12.3k -> "12,347 items"); "" en el resto (sin tooltip).
   function metaTooltipFor(entry, basePath) {
+    // Resultado de contenido: el tooltip muestra la RUTA completa del fichero
+    // (el subtítulo la sustituyó por el snippet).
+    if (entry.snippet !== undefined) return entry.path || ""
     // Resultado global: el tooltip muestra la ruta padre COMPLETA (sin abreviar
     // el home), que en el subtítulo puede ir recortada.
     if (entry.path && entry.parent) return entry.parent
