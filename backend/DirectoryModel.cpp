@@ -205,6 +205,32 @@ void sortInto(QVector<DirectoryModel::Entry> &dirs,
   rows += files;
 }
 
+// Hash 64-bit (FNV-1a) del CONTENIDO visible del listado, en orden. Cubre
+// exactamente los campos que Utils.entriesEqual comparaba y que decidirian un
+// relayout: name, size, mtime, isDir (type) y link. Corre en el hilo worker.
+// Fase 27 (PERF_AUDIT_RC1). Devuelto como hex para que QML lo compare como
+// string (un double JS no representa 64 bits exactos).
+QString signatureOf(const QVector<DirectoryModel::Entry> &rows) {
+  quint64 h = 1469598103934665603ULL; // offset basis FNV-1a
+  const auto mix = [&h](quint64 v) {
+    h ^= v;
+    h *= 1099511628211ULL; // prime FNV-1a
+  };
+  mix(static_cast<quint64>(rows.size()));
+  for (const DirectoryModel::Entry &e : rows) {
+    for (QChar c : e.name)
+      mix(c.unicode());
+    mix(0x1F); // separador de campo (evita colisiones por concatenacion)
+    mix(static_cast<quint64>(e.size));
+    mix(static_cast<quint64>(e.mtime));
+    mix(e.isDir ? 1u : 0u);
+    // link: "" -> 0, "valid" -> 1, "broken" -> 2
+    mix(e.link.isEmpty() ? 0u
+                         : (e.link == QLatin1String("valid") ? 1u : 2u));
+  }
+  return QString::number(h, 16);
+}
+
 } // namespace
 
 DirectoryModel::DirectoryModel(QObject *parent) : QObject(parent) {}
@@ -225,6 +251,7 @@ DirectoryModel::Result DirectoryModel::scan(const QString &path,
   r.error = gatherOne(QFile::encodeName(path), showHidden, dirs, files);
   if (r.error == 0)
     sortInto(dirs, files, r.rows);
+  r.signature = signatureOf(r.rows); // en el worker, no en la UI
   return r;
 }
 
@@ -238,6 +265,7 @@ DirectoryModel::Result DirectoryModel::scanMany(const QStringList &paths,
   for (const QString &path : paths)
     gatherOne(QFile::encodeName(path), showHidden, dirs, files);
   sortInto(dirs, files, r.rows);
+  r.signature = signatureOf(r.rows);
   return r;
 }
 
@@ -318,6 +346,7 @@ void DirectoryModel::apply(Result result, quint64 generation) {
     return;
 
   m_rows = std::move(result.rows);
+  m_signature = std::move(result.signature);
 
   if (m_error != result.error) {
     m_error = result.error;

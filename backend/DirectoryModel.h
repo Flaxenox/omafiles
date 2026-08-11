@@ -58,6 +58,18 @@ class DirectoryModel : public QObject {
   // UNICA API de datos: la UI la ordena y la pone como ListView.model.
   Q_PROPERTY(QVariantList entries READ entries NOTIFY listed)
 
+  // Firma de CONTENIDO del ultimo listado (hex de un hash 64-bit sobre
+  // name/size/mtime/type/link de todas las filas, en orden). Fase 27
+  // (PERF_AUDIT_RC1): permite a DirLister decidir "cambio o no la carpeta?"
+  // con una comparacion de string O(1) en el hilo de UI, en vez del
+  // Utils.entriesEqual O(n) que iteraba las 100k entradas y, al hacerlo,
+  // FORZABA la materializacion perezosa de todo el array (medido: 342 ms de
+  // bloqueo de UI a 100k por refresco). El hash se calcula en el hilo worker,
+  // durante el scan que ya corria alli. Colision -> refresco visual perdido
+  // hasta el siguiente evento (nunca corrupcion); 64 bits lo hace
+  // practicamente imposible para este uso.
+  Q_PROPERTY(QString signature READ signature NOTIFY listed)
+
 public:
   explicit DirectoryModel(QObject *parent = nullptr);
   ~DirectoryModel() override;
@@ -103,6 +115,7 @@ public:
 
   int error() const { return m_error; }
   QVariantList entries() const;
+  QString signature() const { return m_signature; }
 
 signals:
   void errorChanged();
@@ -117,6 +130,7 @@ private:
   struct Result {
     int error = 0;
     QVector<Entry> rows;
+    QString signature; // hash de contenido, calculado en el worker
   };
 
   // Corre en el hilo worker: escanea UN directorio (comprobaciones de
@@ -135,6 +149,7 @@ private:
 
   int m_error = 0;
   QVector<Entry> m_rows;
+  QString m_signature;      // firma de contenido del ultimo listado aplicado
   quint64 m_generation = 0; // ultima generacion pedida (escaneo)
 
   // Bandera de vida compartida con los workers del pool (Fase 10.A). El

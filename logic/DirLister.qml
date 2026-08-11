@@ -1,7 +1,6 @@
 import QtQuick
 import "../state"
 import "../services"
-import "../Utils.js" as Utils
 
 // Lista un directorio y expone el resultado ya ordenado -- vigésimo tercer
 // componente extraído de Omafiles.qml (Fase 1.6, josema). Reutilizado por
@@ -48,6 +47,12 @@ Item {
   // cambiar entre una carpeta normal y la Papelera (el modelo sirve a
   // ambos): un resultado cuyo modo no coincide con la ruta actual se tira.
   property string _dirMode: "dir"
+  // Firma de contenido del último listado APLICADO (DirectoryModel.signature,
+  // hash 64-bit calculado en el worker). Fase 27 (PERF_AUDIT_RC1): la guarda
+  // "¿cambió la carpeta?" pasa de un Utils.entriesEqual O(n) —que iteraba las
+  // 100k entradas en el hilo de UI y forzaba materializar todo el array
+  // (medido: 342 ms/refresco a 100k)— a una comparación de string O(1).
+  property string _lastSignature: ""
 
   function list(path) {
     _targetPath = path
@@ -84,12 +89,21 @@ Item {
   // dispara un relayout completo (recrea TODAS las filas desde cero,
   // salto visible reportado por josema -- ver el historial de
   // NavigationController/BackgroundPanel antes de esta extracción).
-  function _apply(parsed) {
-    // Comparación por contenido barata (Fase 10.A): antes eran dos
-    // JSON.stringify del array completo por refresco. Se mantiene la MISMA
-    // referencia de `entries` cuando no cambió, para que NavigationController
-    // pueda comparar por referencia aguas arriba.
-    if (!Utils.entriesEqual(parsed, entries)) entries = parsed
+  function _apply() {
+    // Guarda "¿cambió la carpeta?" por FIRMA (Fase 27), no por contenido:
+    // DirectoryModel.signature es un hash del contenido calculado en el hilo
+    // worker. Antes (Fase 10.A) se comparaba con Utils.entriesEqual, O(n) en
+    // el hilo de UI, que además forzaba materializar TODO el array perezoso
+    // (dirModel.entries) al recorrerlo. Ahora sólo se lee/materializa
+    // dirModel.entries cuando la firma cambió de verdad -> los refrescos del
+    // watcher sobre carpetas sin cambios cuestan una comparación de string.
+    // Se mantiene la MISMA referencia de `entries` cuando no cambió, para que
+    // NavigationController pueda comparar por referencia aguas arriba.
+    var sig = dirModel.signature
+    if (sig !== _lastSignature) {
+      _lastSignature = sig
+      entries = _sorted(dirModel.entries)
+    }
     loaded = true
     listed()
   }
@@ -133,7 +147,7 @@ Item {
         for (var i = 0; i < arr.length; i++)
           info[arr[i].name] = { origPath: arr[i].origPath, epoch: arr[i].epoch, trashRoot: arr[i].trashRoot }
         TrashState.trashInfo = info
-        _apply(_sorted(dirModel.entries))
+        _apply()
       } else {
         // Carpeta normal: mapear el error del modelo a pathError con los
         // MISMOS códigos que daban los exit codes de list-dir.sh.
@@ -142,7 +156,7 @@ Item {
         else if (e === 3) pathError = "This folder no longer exists"
         else if (e === 4) pathError = "Not a folder"
         else if (e !== 0) pathError = "Couldn't open this folder"
-        _apply(_sorted(dirModel.entries))
+        _apply()
       }
     }
   }
