@@ -43,11 +43,15 @@ ApplicationWindow {
     }
   }
 
-  // Cierre externo (botón de cerrar del gestor de ventanas): equivale al
-  // closedExternally() del lado Quickshell. En un standalone de una sola
-  // ventana, cerrar = terminar la app (quitOnLastWindowClosed), así que no
-  // hay que hacer nada más que dejar constancia de que ya no está abierto.
-  onClosing: content.opened = false
+  // Cierre externo (botón de cerrar del gestor de ventanas / Alt+F4) y cierre
+  // interno (Esc / cerrar la última pestaña, vía onCloseRequested -> window.
+  // close()). En un standalone de una sola ventana, cerrar = terminar la app
+  // (quitOnLastWindowClosed). content.close() es quien PERSISTE la sesión
+  // (saveSession, síncrono) además de parar el watcher y resetear diálogos;
+  // llamarlo aquí es imprescindible, si no la sesión no se guarda nunca en el
+  // standalone (regresión de la Fase 25: antes esto solo ponía opened=false y
+  // se saltaba el guardado, así que session.json quedaba congelado).
+  onClosing: content.close()
 
   OmafilesContent {
     id: content
