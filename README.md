@@ -119,7 +119,7 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 ### Hyprland / Wayland integration
 
-- A real tiled Wayland window (`FloatingWindow`), not a modal overlay or layer-shell popup — it tiles alongside your terminal and editor like any other app.
+- A real tiled Wayland window (a Qt `ApplicationWindow`), not a modal overlay or layer-shell popup — it tiles alongside your terminal and editor like any other app.
 - A single instance is enforced: a second `omafiles [path]` navigates the running window (raising it) instead of opening a new one.
 - The active panel's folder refreshes live (via a native `QFileSystemWatcher`) instead of only on `F5`; drives and network locations are polled every few seconds.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji. Broken symlinks are flagged clearly (distinct icon, red name, "Broken link").
@@ -237,7 +237,7 @@ Optional — each feature degrades gracefully if its tool is missing:
 
 Omafiles sets itself as the system's default file manager automatically on first launch — nothing to run by hand. It registers both handoff mechanisms Linux apps use:
 
-- **Opening directories** (`xdg-open`, "Open folder" actions): a `~/.local/share/applications/omafiles.desktop` with `MimeType=inode/directory`, set via `xdg-mime default`.
+- **Opening directories** (`xdg-open`, "Open folder" actions): a `~/.local/share/applications/io.github.percius04.omafiles.desktop` (a reverse-DNS ID, required for D-Bus activation) with `MimeType=inode/directory`, set via `xdg-mime default`.
 - **"Show in file manager"** (Firefox downloads, GTK/Qt "reveal in folder"): these go over the `org.freedesktop.FileManager1` D-Bus interface, not `.desktop`/`xdg-mime`, and Nautilus normally owns it. Omafiles ships a user-level service file for the same bus name (`~/.local/share/dbus-1/services/`), which takes priority over Nautilus's system one, backed by `scripts/dbus-filemanager1.py`.
 
 This is idempotent and only runs once (tracked in `~/.local/state/omafiles/integrations-version`), so it won't fight you if you switch the default back by hand. To undo it: `xdg-mime default nautilus.desktop inode/directory`, then remove the two files above.
@@ -250,7 +250,7 @@ Omafiles is a thin QML front-end over a shared native backend:
 
 - **QML (front-end)** — the UI, split into `core/` (composition root, controller registry, main layout), `panels/` (the file lists and background panels), `dialogs/`, `shared/` (reusable visuals), `logic/` (controllers: navigation, selection, search, file ops, custom actions…), `services/` (thin singletons wrapping the backend), and `state/` (singletons holding hot state — current path, entries, selection, tabs…). No god object: controllers are owned by a single `ControllerRegistry` and receive their dependencies by property.
 - **C++ (`Omafiles.Backend`)** — one shared QML module (`libomafiles-backend.so`) doing the native work, so there are no shell-outs where a native call suffices:
-  - `DirectoryModel` — `QAbstractListModel` over `readdir`/`stat`, with a `QFileSystemWatcher` for live refresh.
+  - `DirectoryModel` — a native `readdir`/`stat` lister that exposes the sorted directory as an entries array (plus a content signature), with a `QFileSystemWatcher` for live refresh.
   - `FileOperations` — copy/move/trash/remove with real progress and cancellation, no partial residue.
   - `SearchBackend` (QML) over `SearchWorker` (C++, `QDirIterator` + `QThreadPool`) plus the indexed and `ripgrep` content backends.
   - `ThumbnailProvider` / `PreviewProvider` — cached image/video thumbnails and native text preview.

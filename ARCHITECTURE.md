@@ -8,6 +8,16 @@ official frontend**. The core (`core/`, `logic/`, `state/`, `panels/`,
 `dialogs/`, `services/`, and the C++ `Omafiles.Backend`) is unchanged — the
 migration only swapped the host that instantiates it.
 
+> **Nota (RC1).** Las secciones de abajo que describen
+> `integrations/quickshell/` (`HostBridge.qml`, `Omafiles.qml`) y los
+> `services/` sobre `Quickshell.Io.Process`/`Quickshell.env` documentan el
+> **contrato original de dos hosts** por contexto histórico. Esos ficheros
+> **ya no están en el árbol**: solo se distribuye `integrations/standalone/`,
+> y los `services/` envuelven el backend C++ (`Omafiles.Backend`), no
+> Quickshell. El contrato de host (Fase 18) y las reglas de dependencia siguen
+> siendo válidos; solo hay una implementación de host viva
+> (`integrations/standalone/Main.qml`).
+
 The app is installed to `~/.local` (binary `~/.local/bin/omafiles`, no root);
 the QML tree is still loaded from this repo during the beta (packaging into a
 qrc / AUR comes later).
