@@ -6,9 +6,8 @@
 # contenedora" -- llaman a este interfaz D-Bus, que tradicionalmente solo
 # provee Nautilus (org.freedesktop.FileManager1.service en
 # /usr/share/dbus-1/services/). Este servicio de usuario, activado por
-# D-Bus a demanda (ver ../../../../.local/share/dbus-1/services/), le quita
-# el puesto reenviando la petición a Omafiles vía `omarchy-shell shell
-# summon`.
+# D-Bus a demanda, le quita el puesto reenviando la petición al binario
+# Omafiles (instancia única).
 
 import sys
 import urllib.parse
@@ -20,8 +19,7 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "org.freedesktop.FileManager1"
 OBJECT_PATH = "/org/freedesktop/FileManager1"
-# Fase 25: se lanza el binario Qt6 standalone (instancia única) en vez de
-# hacer `omarchy-shell shell summon` al plugin de Quickshell.
+# Se lanza el binario Qt6 standalone (instancia única) desde su ruta estable.
 OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """

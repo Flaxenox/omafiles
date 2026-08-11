@@ -2,8 +2,8 @@
 # Autoregistra Omafiles como gestor de archivos del sistema: .desktop con
 # MimeType=inode/directory (xdg-open/"Open folder") + servicio D-Bus
 # org.freedesktop.FileManager1 ("Show in file manager" de Firefox/GTK/Qt).
-# Se llama desde Omafiles.qml (Component.onCompleted) al cargar el plugin --
-# nadie tiene que ejecutar esto a mano tras un `omarchy plugin add`.
+# Lo lanza la app al arrancar (core/AppBindings.qml) desde
+# <resourceDir>/scripts/, así que nadie tiene que ejecutarlo a mano.
 #
 # Idempotente y versionado: no repite el trabajo en cada arranque del shell,
 # solo la primera vez o cuando INTEGRATION_VERSION suba (si en el futuro
@@ -20,14 +20,26 @@ set -euo pipefail
 # que al menos se vea UNA notificación de que algo falló, en vez de un
 # fallo mudo repitiéndose cada arranque sin que nadie se entere.
 on_error() {
-  command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send \
-    "Omafiles" "Failed to set up default-file-manager integrations (see ~/.config/omarchy/plugins/omafiles/scripts/install-integrations.sh). Will retry on next shell restart." >/dev/null 2>&1
+  command -v notify-send >/dev/null 2>&1 && notify-send \
+    "Omafiles" "Failed to set up default-file-manager integrations. Will retry on next launch." >/dev/null 2>&1
 }
 trap on_error ERR
 
-INTEGRATION_VERSION=3
-PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STATE_DIR="$HOME/.local/state/omafiles"
+# v4 (Fase 29): las rutas Exec del .desktop y los servicios D-Bus pasan de
+# apuntar al repo a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles), para que
+# la integracion sobreviva al borrado del repositorio. Subir la version fuerza
+# la reescritura en instalaciones anteriores.
+INTEGRATION_VERSION=4
+
+# RES_DIR: raiz ESTABLE de recursos instalados (Fase 29). Los Exec apuntan aqui,
+# no al repo, asi que borrar el repositorio no rompe abrir carpetas ni "show in
+# file manager". Requiere `cmake --install` (que copia scripts/ y assets/ aqui).
+RES_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omafiles"
+# SELF_RES: la raiz de recursos donde vive ESTE script (para leer el icono sin
+# depender de que el install haya corrido ya). En una instalacion == RES_DIR.
+SELF_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
 
 mkdir -p "$STATE_DIR"
@@ -35,9 +47,10 @@ if [[ -f $STATE_FILE ]] && [[ "$(cat "$STATE_FILE" 2>/dev/null)" == "$INTEGRATIO
   exit 0
 fi
 
-APPS_DIR="$HOME/.local/share/applications"
-DBUS_SERVICES_DIR="$HOME/.local/share/dbus-1/services"
-ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+XDG_DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+APPS_DIR="$XDG_DATA/applications"
+DBUS_SERVICES_DIR="$XDG_DATA/dbus-1/services"
+ICON_DIR="$XDG_DATA/icons/hicolor/scalable/apps"
 mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
 
 # Bug real: el .desktop de abajo referencia Icon=omafiles, pero nada
@@ -47,7 +60,7 @@ mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
 # archivos" sin ningún aviso. Ahora el SVG vive en el propio repo
 # (assets/omafiles.svg) y este script lo instala como cualquier otra
 # integración.
-cp -f "$PLUGIN_DIR/assets/omafiles.svg" "$ICON_DIR/omafiles.svg"
+[[ -f "$SELF_RES/assets/omafiles.svg" ]] && cp -f "$SELF_RES/assets/omafiles.svg" "$ICON_DIR/omafiles.svg"
 
 # ID reverse-DNS: obligatorio para la activación D-Bus del .desktop (un nombre
 # de bus válido necesita puntos; "omafiles" a secas no vale).
@@ -66,7 +79,7 @@ Type=Application
 Name=Omafiles
 GenericName=File manager
 Comment=Custom file manager for Omarchy
-Exec=$PLUGIN_DIR/scripts/open-path.sh %u
+Exec=$RES_DIR/scripts/open-path.sh %u
 Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
@@ -79,7 +92,7 @@ EOF
 cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
 [D-BUS Service]
 Name=$APP_ID
-Exec=$PLUGIN_DIR/scripts/dbus-app-open.py
+Exec=$RES_DIR/scripts/dbus-app-open.py
 EOF
 
 # Servicio D-Bus org.freedesktop.FileManager1 ("Show in file manager" de apps
@@ -87,7 +100,7 @@ EOF
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.FileManager1.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.FileManager1
-Exec=$PLUGIN_DIR/scripts/dbus-filemanager1.py
+Exec=$RES_DIR/scripts/dbus-filemanager1.py
 EOF
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
@@ -102,11 +115,9 @@ command -v dbus-send >/dev/null 2>&1 && dbus-send --session --type=method_call \
 
 echo -n "$INTEGRATION_VERSION" >"$STATE_FILE"
 
-# md-folder, matches the Nerd Font glyph used in Omafiles.qml -- built
-# from the codepoint at runtime, never pasted literally, to avoid an
-# editor silently swapping in a different invisible private-use char.
-folder_glyph=$(printf '\U000F024B')
-command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send -g "$folder_glyph" \
+# notify-send estándar (freedesktop), independiente de Omarchy. El icono es el
+# propio de la app (Icon=omafiles ya instalado en hicolor).
+command -v notify-send >/dev/null 2>&1 && notify-send -i omafiles \
   "Omafiles" "Set as the default file manager (folders, xdg-open, and \"show in file manager\")." >/dev/null 2>&1
 
 exit 0
