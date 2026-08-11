@@ -258,23 +258,12 @@ Item {
               activePath: NavState.currentPath
             }
 
-            TextField {
+            PathCompletionField {
               id: pathField
               visible: EditModeState.editingPath
               anchors.fill: parent
-              verticalPadding: 2
-              Accessible.role: Accessible.EditableText
-              Accessible.name: "Path"
-              onVisibleChanged: if (visible) { text = NavState.currentPath; forceActiveFocus(); selectAll() } else list.forceActiveFocus()
-              Keys.onPressed: function (event) {
-                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  root.navigateTo(text)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Escape) {
-                  EditModeState.editingPath = false
-                  event.accepted = true
-                }
-              }
+              root: mainLayout.root
+              list: list
             }
           }
 

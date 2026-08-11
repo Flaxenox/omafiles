@@ -9,3 +9,4 @@ singleton PreviewProvider 1.0 PreviewProvider.qml
 singleton NetworkMounts 1.0 NetworkMounts.qml
 singleton UDisksWatcher 1.0 UDisksWatcher.qml
 singleton FolderCounter 1.0 FolderCounter.qml
+singleton PathCompleter 1.0 PathCompleter.qml
