@@ -42,6 +42,18 @@ SELF_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
 
+# Fase 29: migración idempotente de la config heredada. actions.toml pasó de
+# ~/.config/omarchy/omafiles/ a la config XDG propia (~/.config/omafiles/). Va
+# ANTES del early-exit por versión, para que corra aunque las integraciones ya
+# estén al día. Solo copia si la antigua existe y la nueva todavía no, y NO
+# borra la antigua (por si el usuario aún corre una versión vieja en paralelo).
+LEGACY_ACTIONS="$HOME/.config/omarchy/omafiles/actions.toml"
+NEW_ACTIONS="${XDG_CONFIG_HOME:-$HOME/.config}/omafiles/actions.toml"
+if [[ -f "$LEGACY_ACTIONS" && ! -e "$NEW_ACTIONS" ]]; then
+  mkdir -p "$(dirname "$NEW_ACTIONS")"
+  cp "$LEGACY_ACTIONS" "$NEW_ACTIONS" 2>/dev/null || true
+fi
+
 mkdir -p "$STATE_DIR"
 if [[ -f $STATE_FILE ]] && [[ "$(cat "$STATE_FILE" 2>/dev/null)" == "$INTEGRATION_VERSION" ]]; then
   exit 0
