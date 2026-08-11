@@ -285,11 +285,16 @@ moderados (máx. 10k), luego 20 s de reposo muestreando:
 V8 reclama. Cumple "memoria estable tras uso intenso" para conteos de
 pestañas normales.
 
-**Techo de escalado documentado (no bloqueante):** ~30-50 MB por pestaña,
-dominado por el array de entradas retenido, **sin tope en nº de pestañas**.
-Decenas de pestañas sobre carpetas enormes llevan el RSS a los GB. Mitigación
-futura posible (post-RC1, sería característica nueva): evacuar/comprimir el
-array de las pestañas de fondo no visibles. Se registra como techo conocido.
+**Techo de escalado documentado (no bloqueante):** el coste por pestaña lo
+domina el array de entradas retenido y escala con el tamaño de la carpeta:
+~30-50 MB por pestaña de dirs moderados (≤10k), pero **una sola pestaña sobre
+una carpeta de 100k mide ~580 MB** (RSS 98 → 677 MB, smoke test del app real
+en frío) — ~5,8 KB/entrada entre el array JS, el `QVariantList` y la
+contabilidad del ListView. **Sin tope en nº de pestañas**, así que varias
+pestañas sobre carpetas enormes llevan el RSS a los GB. Mitigación futura
+posible (post-RC1, sería característica nueva): evacuar/comprimir el array de
+las pestañas de fondo no visibles, o degradar a un modelo perezoso las
+carpetas >50k. Se registra como techo conocido.
 
 ---
 
@@ -391,8 +396,9 @@ interacción principal medida responde por debajo de su objetivo.
 
 ### Techos conocidos (no bloqueantes, se aceptan para RC1)
 
-- Memoria por pestaña ~30-50 MB sin tope de pestañas → decenas de pestañas
-  sobre dirs enormes llegan a los GB. Uso de abuso.
+- Memoria por pestaña dominada por el array retenido: ~30-50 MB (dirs ≤10k),
+  ~580 MB (una pestaña de 100k, medido), sin tope de pestañas → varias
+  pestañas sobre dirs enormes llegan a los GB. Uso de abuso.
 - `entries()` 45 ms a 100k en hilo de UI al cambiar de contenido.
 - Latencia de búsqueda indexada en queries muy amplias (~100 ms) por el
   over-fetch ×4.
