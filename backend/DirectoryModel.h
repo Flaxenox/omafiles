@@ -12,71 +12,71 @@
 
 class QFileSystemWatcher;
 
-// Backend C++ del listado de directorios (Fase 6.B, josema). Sustituto
-// nativo de list-dir.sh + Utils.parseEntries: escanea con readdir/stat/lstat
-// directos, sin fork por fichero ni tuberia de shell NUL-delimitada. Ver
-// BACKEND_DESIGN.md 5.3.
+// C++ backend for directory listing (Phase 6.B, josema). Native
+// replacement for list-dir.sh + Utils.parseEntries: it scans with direct
+// readdir/stat/lstat, without a fork per file nor a NUL-delimited shell pipe.
+// See BACKEND_DESIGN.md 5.3.
 //
-// PROVEEDOR DE DATOS, no un modelo Qt (Fase 15, josema): la decision
-// arquitectonica del AUDIT-V2 fue la Opcion B. La UI NUNCA consumio esto como
-// ListView.model -- `NavState.entries` (el modelo real de la lista) se
-// alimenta de CUATRO fuentes heterogeneas (dir normal, busqueda recursiva,
-// contenido de archivos, papelera), que producen arrays; un QAbstractListModel
-// no podria representar las tres ultimas. Asi que este tipo expone solo el
-// array `entries` (+error/watch) y se retiraron los roles muertos, el
-// QAbstractListModel y su interfaz (rowCount/data/roleNames). Medido: el scan
-// domina (~80% del listado a 50k); el unico coste que un modelo-con-roles
-// habria evitado (construir el QVariantList) es <20% y solo en carpetas raras
-// >10k. Ver la tabla en la revalidacion del AUDIT-V2.
+// DATA PROVIDER, not a Qt model (Phase 15, josema): the architectural
+// decision of AUDIT-V2 was Option B. The UI NEVER consumed this as
+// ListView.model -- `NavState.entries` (the real list model) is
+// fed from FOUR heterogeneous sources (normal dir, recursive search,
+// file content, trash), which produce arrays; a QAbstractListModel
+// could not represent the last three. So this type exposes only the
+// `entries` array (+error/watch) and the dead roles, the
+// QAbstractListModel and its interface (rowCount/data/roleNames) were removed.
+// Measured: the scan dominates (~80% of the listing at 50k); the only cost that
+// a model-with-roles would have avoided (building the QVariantList) is <20% and
+// only in rare folders >10k. See the table in the AUDIT-V2 revalidation.
 //
-// Paridad EXACTA con list-dir.sh (es lo que permite comparar y, luego,
-// sustituir sin cambiar comportamiento):
-//   - carpetas primero, luego ficheros;
-//   - dentro de cada grupo, orden case-insensitive con la MISMA collation
-//     de glibc que usa `sort -f` (wcscoll_l sobre un locale_t del entorno);
-//   - symlink a dir cuenta como dir; roto va a ficheros con tamano/mtime
-//     del propio enlace (lstat), estado "broken";
-//   - tamano de las carpetas forzado a 0, igual que el script;
-//   - codigos de error equivalentes a los exit codes (2/3/4/1).
+// EXACT parity with list-dir.sh (which is what allows comparing and, later,
+// replacing without changing behaviour):
+//   - folders first, then files;
+//   - within each group, case-insensitive order with the SAME glibc
+//     collation that `sort -f` uses (wcscoll_l over a locale_t from the env);
+//   - a symlink to a dir counts as a dir; a broken one goes to files with the
+//     link's own size/mtime (lstat), state "broken";
+//   - folder size forced to 0, like the script;
+//   - error codes equivalent to the exit codes (2/3/4/1).
 //
-// Se registra como tipo QML Omafiles.Backend.DirectoryModel; lo consume el
-// adaptador services/DirectoryModel.qml (no singleton: varias pestanas
-// listan rutas distintas a la vez, cada una su instancia).
+// It is registered as the QML type Omafiles.Backend.DirectoryModel; consumed by
+// the adapter services/DirectoryModel.qml (not a singleton: several tabs
+// list different paths at once, each its own instance).
 class DirectoryModel : public QObject {
   Q_OBJECT
   QML_ELEMENT
 
-  // Codigo del ultimo listado, con los MISMOS valores que los exit codes
-  // de list-dir.sh para que logic/ pueda mapearlos igual:
-  //   0 = ok, 2 = sin permiso (r/x), 3 = no existe, 4 = no es carpeta,
-  //   1 = otro (no se pudo abrir).
+  // Code of the last listing, with the SAME values as the exit codes
+  // of list-dir.sh so logic/ can map them the same:
+  //   0 = ok, 2 = no permission (r/x), 3 = does not exist, 4 = not a folder,
+  //   1 = other (could not open).
   Q_PROPERTY(int error READ error NOTIFY errorChanged)
 
-  // Instantanea de las filas como array de objetos {type,name,size,mtime,
-  // link} -- EXACTAMENTE la forma que produce el resto de fuentes de
-  // NavState.entries (SearchWorker, contenido de archivos, papelera). Es la
-  // UNICA API de datos: la UI la ordena y la pone como ListView.model.
+  // Snapshot of the rows as an array of objects {type,name,size,mtime,
+  // link} -- EXACTLY the shape that the rest of NavState.entries's sources
+  // produce (SearchWorker, file content, trash). It is the
+  // ONLY data API: the UI sorts it and sets it as ListView.model.
   Q_PROPERTY(QVariantList entries READ entries NOTIFY listed)
 
-  // Firma de CONTENIDO del ultimo listado (hex de un hash 64-bit sobre
-  // name/size/mtime/type/link de todas las filas, en orden). Fase 27
-  // (PERF_AUDIT_RC1): permite a DirLister decidir "cambio o no la carpeta?"
-  // con una comparacion de string O(1) en el hilo de UI, en vez del
-  // Utils.entriesEqual O(n) que iteraba las 100k entradas y, al hacerlo,
-  // FORZABA la materializacion perezosa de todo el array (medido: 342 ms de
-  // bloqueo de UI a 100k por refresco). El hash se calcula en el hilo worker,
-  // durante el scan que ya corria alli. Colision -> refresco visual perdido
-  // hasta el siguiente evento (nunca corrupcion); 64 bits lo hace
-  // practicamente imposible para este uso.
+  // CONTENT signature of the last listing (hex of a 64-bit hash over
+  // name/size/mtime/type/link of all the rows, in order). Phase 27
+  // (PERF_AUDIT_RC1): it lets DirLister decide "did the folder change or not?"
+  // with an O(1) string comparison on the UI thread, instead of the
+  // O(n) Utils.entriesEqual that iterated the 100k entries and, in doing so,
+  // FORCED the lazy materialization of the whole array (measured: 342 ms of
+  // UI blocking at 100k per refresh). The hash is computed on the worker thread,
+  // during the scan that already ran there. Collision -> visual refresh lost
+  // until the next event (never corruption); 64 bits makes it
+  // practically impossible for this use.
   Q_PROPERTY(QString signature READ signature NOTIFY listed)
 
 public:
   explicit DirectoryModel(QObject *parent = nullptr);
   ~DirectoryModel() override;
 
-  // Una entrada del listado. Publica porque las funciones de escaneo del
-  // .cpp (gatherOne/sortInto) la manejan como valor; no expone nada
-  // sensible, es un POD de datos.
+  // A listing entry. Public because the scan functions of the
+  // .cpp (gatherOne/sortInto) handle it by value; it exposes nothing
+  // sensitive, it is a data POD.
   struct Entry {
     QString name;
     QString type; // "dir" | "file"
@@ -87,30 +87,30 @@ public:
     qint64 mtime = 0;
   };
 
-  // Lanza el listado ASINCRONO de `path`. `showHidden` incluye dotfiles.
-  // Vuelve al instante; el escaneo corre en un hilo del pool y el
-  // resultado se aplica en el hilo de UI (listed()/errorChanged). Un
-  // listado que llega con una generacion vieja se descarta (contador de
-  // generacion, patron del proyecto: PreviewLoader/previewRequestId).
+  // Launches the ASYNCHRONOUS listing of `path`. `showHidden` includes
+  // dotfiles. Returns immediately; the scan runs on a pool thread and the
+  // result is applied on the UI thread (listed()/errorChanged). A
+  // listing that arrives with an old generation is discarded (generation
+  // counter, project pattern: PreviewLoader/previewRequestId).
   Q_INVOKABLE void list(const QString &path, bool showHidden = false);
 
-  // Igual que list() pero fusiona el contenido de VARIOS directorios en un
-  // solo listado (Fase 6.C, papelera nativa). Sustituye a list-trash.sh,
-  // que hacia lo mismo lanzando list-dir.sh por cada raiz XDG y
-  // concatenando. Los directorios que no existen o no se pueden leer se
-  // saltan en silencio (igual que el `[[ -d ]] &&` del script). Mismo
-  // contrato async y misma senal listed()/entries.
+  // Like list() but merges the content of SEVERAL directories into a
+  // single listing (Phase 6.C, native trash). Replaces list-trash.sh,
+  // which did the same by launching list-dir.sh for each XDG root and
+  // concatenating. Directories that do not exist or cannot be read are
+  // skipped silently (like the script's `[[ -d ]] &&`). Same
+  // async contract and same listed()/entries signal.
   Q_INVOKABLE void listMany(const QStringList &paths, bool showHidden = false);
 
-  // Vigilancia nativa del ultimo directorio pedido (Fase 6.D). Arranca un
-  // QFileSystemWatcher sobre `path` (inotify del kernel via Qt, SIN forkear
-  // inotifywait). Emite directoryChanged() cuando su contenido cambia; el
-  // debounce + el refresco los sigue haciendo NavigationController, que
-  // conserva su guarda de no-refrescar-a-mitad-de-renombrado. Devuelve
-  // false si no se pudo vigilar (ruta invalida, limite de descriptores) ->
-  // el llamador cae al fallback ProcessWatcher/inotifywait.
+  // Native watching of the last requested directory (Phase 6.D). Starts a
+  // QFileSystemWatcher over `path` (kernel inotify via Qt, WITHOUT forking
+  // inotifywait). Emits directoryChanged() when its content changes; the
+  // debounce + the refresh are still done by NavigationController, which
+  // keeps its guard against not-refreshing-mid-rename. Returns
+  // false if it could not watch (invalid path, descriptor limit) ->
+  // the caller falls back to ProcessWatcher/inotifywait.
   Q_INVOKABLE bool watch(const QString &path);
-  // Deja de vigilar. No-op si no habia vigilancia.
+  // Stops watching. No-op if there was no watching.
   Q_INVOKABLE void unwatch();
 
   int error() const { return m_error; }
@@ -119,56 +119,57 @@ public:
 
 signals:
   void errorChanged();
-  // Emitida cada vez que un listado se aplica de verdad (paridad con
-  // DirLister.listed): quien resetee scroll/seleccion por CADA listado se
-  // engancha aqui, no a un *Changed que QML puede no disparar.
+  // Emitted every time a listing is actually applied (parity with
+  // DirLister.listed): whoever resets scroll/selection on EACH listing hooks
+  // here, not to a *Changed that QML might not fire.
   void listed();
-  // El contenido del directorio vigilado cambio (ver watch()).
+  // The content of the watched directory changed (see watch()).
   void directoryChanged();
 
 private:
   struct Result {
     int error = 0;
     QVector<Entry> rows;
-    QString signature; // hash de contenido, calculado en el worker
+    QString signature; // content hash, computed on the worker
   };
 
-  // Corre en el hilo worker: escanea UN directorio (comprobaciones de
-  // error + readdir + stat/lstat + orden). Estatico a proposito: no toca
-  // el modelo ni ningun miembro, asi que es seguro aunque el modelo se
-  // destruya mientras el hilo corre. Crea su propio locale_t por llamada.
+  // Runs on the worker thread: scans ONE directory (error
+  // checks + readdir + stat/lstat + order). Static on purpose: it touches
+  // neither the model nor any member, so it is safe even if the model is
+  // destroyed while the thread runs. Creates its own locale_t per call.
   static Result scan(const QString &path, bool showHidden);
-  // Igual, pero fusiona varios directorios (papelera). Los que fallan se
-  // saltan; error siempre 0 (agregado, sin concepto de "esta carpeta
-  // fallo").
+  // Same, but merges several directories (trash). The ones that fail are
+  // skipped; error always 0 (aggregate, without the concept of "this folder
+  // failed").
   static Result scanMany(const QStringList &paths, bool showHidden);
-  // Corre en el hilo de UI: reemplaza las filas y emite las senales.
+  // Runs on the UI thread: replaces the rows and emits the signals.
   void apply(Result result, quint64 generation);
-  // Lanza un escaneo (uno o varios dirs) en el pool y aplica async.
+  // Launches a scan (one or several dirs) on the pool and applies async.
   void startScan(std::function<Result()> job);
 
   int m_error = 0;
   QVector<Entry> m_rows;
-  QString m_signature;      // firma de contenido del ultimo listado aplicado
-  quint64 m_generation = 0; // ultima generacion pedida (escaneo)
+  QString m_signature;      // content signature of the last applied listing
+  quint64 m_generation = 0; // last requested generation (scan)
 
-  // Bandera de vida compartida con los workers del pool (Fase 10.A). El
-  // escaneo es estatico, pero la ENTREGA del resultado hace
-  // invokeMethod(this): si el modelo se destruye (cerrar una pestana)
-  // mientras un worker sigue en vuelo, eso desreferenciaria un QObject
-  // muerto. El worker toma el lock y solo invoca si alive sigue true; el
-  // destructor toma el mismo lock y lo pone a false, asi que nunca coinciden.
+  // Life flag shared with the pool workers (Phase 10.A). The
+  // scan is static, but the DELIVERY of the result does
+  // invokeMethod(this): if the model is destroyed (closing a tab)
+  // while a worker is still in flight, that would dereference a dead
+  // QObject. The worker takes the lock and only invokes if alive is still true;
+  // the destructor takes the same lock and sets it to false, so they never
+  // coincide.
   struct Life {
     std::mutex mtx;
     bool alive = true;
   };
   std::shared_ptr<Life> m_life = std::make_shared<Life>();
 
-  QFileSystemWatcher *m_watcher = nullptr; // vigilancia nativa (lazy)
-  // Ruta vigilada AHORA MISMO: actua como token de cancelacion del
-  // watcher, el equivalente de m_generation para el escaneo. Un evento de
-  // QFileSystemWatcher cuya ruta no sea esta es de un watcher viejo (el
-  // usuario cambio de carpeta) y se descarta antes de reemitir
-  // directoryChanged, para que no repueble la carpeta nueva.
+  QFileSystemWatcher *m_watcher = nullptr; // native watching (lazy)
+  // The path watched RIGHT NOW: acts as a cancellation token for the
+  // watcher, the equivalent of m_generation for the scan. An event from
+  // QFileSystemWatcher whose path is not this one is from an old watcher (the
+  // user changed folder) and is discarded before re-emitting
+  // directoryChanged, so it does not repopulate the new folder.
   QString m_watchedPath;
 };

@@ -2,44 +2,44 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Superficie modal compartida de Omafiles: scrim oscurecido + tarjeta
-// centrada animada. Unifica el fondo, la animación de apertura/cierre, el
-// radio, el borde, el color y el padding de TODOS los diálogos centrados de
-// la app, para que se perciban como una única familia (Sprint Visual 2 --
-// hallazgos A-01/A-03/B-02 de VISUAL_AUDIT_V1). Antes cada diálogo repetía
-// casi idéntico este envoltorio (backdrop MouseArea + card BorderSurface +
-// Behaviors + Column con insets), con pequeñas divergencias (spacing xs/sm,
-// altura fija con hueco muerto, y NINGÚN scrim visible salvo en ConfirmDialog).
+// Omafiles' shared modal surface: darkened scrim + animated
+// centered card. Unifies the background, the open/close animation, the
+// radius, border, color and padding of ALL the centered dialogs of
+// the app, so they are perceived as a single family (Visual Sprint 2 --
+// findings A-01/A-03/B-02 of VISUAL_AUDIT_V1). Previously each dialog repeated
+// this wrapper nearly identically (backdrop MouseArea + card BorderSurface +
+// Behaviors + Column with insets), with small divergences (spacing xs/sm,
+// fixed height with dead space, and NO visible scrim except in ConfirmDialog).
 //
-// Cada diálogo conserva su propia API (open + señales + contenido) y solo
-// delega aquí el aspecto visual: instancia ModalSurface, fija su maxWidth y
-// mete su contenido dentro; el scrim, la animación y el padding ya no se
-// repiten en cada fichero.
+// Each dialog keeps its own API (open + signals + content) and only
+// delegates the visual look here: it instantiates ModalSurface, sets its maxWidth and
+// puts its content inside; the scrim, the animation and the padding are no longer
+// repeated in each file.
 //
-// El scrim usa EXACTAMENTE el mismo valor que qs.Ui/ConfirmDialog
-// (Util.alpha(Color.background, 0.7)) -- que no se puede tocar (qs.Ui
-// compartido) -- para que el fondo oscurecido sea idéntico venga el diálogo
-// de donde venga.
+// The scrim uses EXACTLY the same value as qs.Ui/ConfirmDialog
+// (Util.alpha(Color.background, 0.7)) -- which cannot be touched (qs.Ui
+// shared) -- so the darkened background is identical wherever the dialog
+// comes from.
 Item {
   id: root
   anchors.fill: parent
 
   property bool open: false
-  // Ancho máximo de la tarjeta (cada diálogo elige el suyo según su
-  // contenido). El ALTO sale siempre del contenido, acotado a la ventana.
+  // Maximum width of the card (each dialog chooses its own according to its
+  // content). The HEIGHT always comes from the content, bounded to the window.
   property real maxWidth: Style.space(360)
-  // Algunos diálogos bloquean el cierre por clic-fuera en ciertos estados
-  // (p.ej. ConnectServer mientras conecta). false lo desactiva.
+  // Some dialogs block the click-outside close in certain states
+  // (e.g. ConnectServer while connecting). false disables it.
   property bool dismissable: true
-  // Contenido de la tarjeta: se coloca como hijos de la Column interna, con
-  // el mismo espaciado para todos.
+  // Content of the card: it is placed as children of the inner Column, with
+  // the same spacing for all.
   default property alias content: contentColumn.data
 
-  // Clic sobre el scrim (fuera de la tarjeta).
+  // Click on the scrim (outside the card).
   signal dismissed()
 
-  // Única duración/curva de la familia modal (Fase 22): 120 ms OutCubic,
-  // sin overshoot, entrada y salida iguales, scrim y tarjeta sincronizados.
+  // Single duration/curve of the modal family (Phase 22): 120 ms OutCubic,
+  // no overshoot, entry and exit equal, scrim and card synchronized.
   readonly property int transitionDuration: 120
 
   Rectangle {
@@ -62,9 +62,9 @@ Item {
     id: card
     visible: root.open || opacity > 0
     width: Math.min(parent.width - Style.space(32), root.maxWidth)
-    // Tamaño por contenido (implicitHeight, intrínseco -> no crea ciclo con
-    // el height real de la Column), acotado a la ventana. Así ningún diálogo
-    // reserva hueco muerto de más (antes ShortcutsHelp fijaba 460).
+    // Sized by content (implicitHeight, intrinsic -> does not create a cycle with
+    // the Column's real height), bounded to the window. This way no dialog
+    // reserves extra dead space (previously ShortcutsHelp fixed 460).
     height: Math.min(parent.height - Style.space(32),
                      contentColumn.implicitHeight + contentTopInset + contentBottomInset)
     anchors.centerIn: parent
@@ -77,7 +77,7 @@ Item {
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
     padding: Style.spacing.panelPadding
 
-    // Come clics dentro de la tarjeta para que no cierren el diálogo.
+    // Eats clicks inside the card so they do not close the dialog.
     MouseArea { anchors.fill: parent; onClicked: {} }
 
     Column {

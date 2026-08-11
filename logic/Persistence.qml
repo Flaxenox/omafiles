@@ -2,35 +2,35 @@ import QtQuick
 import "../state"
 import "../services"
 
-// Persistencia en disco (marcadores, recientes, sesión de pestañas,
-// historial de renombrado en bloque) -- decimosexto componente extraído
-// de Omafiles.qml, y el primero que saca un grupo de Process fuera del
-// fichero principal. Solo se movieron aquí las funciones de I/O puro
-// (leer/escribir el JSON en disco); la lógica de negocio que decide QUÉ
-// guardar (addRecent, removeBookmark, addBulkRenameHistory...) se queda en
-// Omafiles.qml y simplemente llama a "persistence.saveX()" en vez de
-// "root.saveX()" -- mismo patrón que el resto de componentes: root.xxx
-// para leer/escribir estado de la app, pasado como propiedad en vez de
-// buscarlo con un id propio.
+// On-disk persistence (bookmarks, recents, tab session,
+// bulk-rename history) -- sixteenth component extracted
+// from Omafiles.qml, and the first that takes a group of Process out of the
+// main file. Only the pure I/O functions were moved here
+// (read/write the JSON on disk); the business logic that decides WHAT
+// to save (addRecent, removeBookmark, addBulkRenameHistory...) stays in
+// Omafiles.qml and simply calls "persistence.saveX()" instead of
+// "root.saveX()" -- same pattern as the rest of the components: root.xxx
+// to read/write app state, passed as a property instead of
+// looking it up with its own id.
 //
-// Fase 6.A (josema): la I/O ya no lanza procesos de shell. Antes cada
-// lectura era un `cat` (ProcessRunner→QProcess) y cada escritura un
-// `bash -c 'mkdir -p ... && printf > ...'` (Detached); ahora todo pasa
-// por Omafiles.Services.JsonStore, adaptador fino sobre el backend C++
-// (QFile/QSaveFile/QJsonDocument). El parseo es en C++, la escritura es
-// atómica y no hay forks. El contrato observable es el mismo: read() sigue
-// siendo async (loaded llega en el siguiente ciclo), por eso loadSession()
-// puede seguir disparando refresh()/startDirWatch ella sola.
+// Phase 6.A (josema): the I/O no longer launches shell processes. Previously each
+// read was a `cat` (ProcessRunner→QProcess) and each write a
+// `bash -c 'mkdir -p ... && printf > ...'` (Detached); now everything goes
+// through Omafiles.Services.JsonStore, a thin adapter over the C++ backend
+// (QFile/QSaveFile/QJsonDocument). The parsing is in C++, the write is
+// atomic and there are no forks. The observable contract is the same: read() is still
+// async (loaded arrives on the next cycle), which is why loadSession()
+// can keep triggering refresh()/startDirWatch on its own.
 Item {
   property Item root: null
   property Item navController: null
 
   property Item tabOps: null
 
-  // Escritura fire-and-forget de un JSON a disco -- JsonStore.write crea la
-  // carpeta ~/.local/state/omafiles/ si hace falta y escribe de forma
-  // atómica. Ninguna de las 4 llamadas de más abajo necesita saber cuándo
-  // termina, así que se ignora el valor de retorno y la señal saved.
+  // Fire-and-forget write of a JSON to disk -- JsonStore.write creates the
+  // folder ~/.local/state/omafiles/ if needed and writes
+  // atomically. None of the 4 calls below needs to know when
+  // it finishes, so the return value and the saved signal are ignored.
   function _saveJson(path, data) {
     JsonStore.write(path, data)
   }
@@ -51,19 +51,19 @@ Item {
     _saveJson(Paths.recentFile, BookmarksState.recentFiles)
   }
 
-  // Solo se llama en la primera apertura de la sesión de Quickshell, sin
-  // ruta pedida por el host -- ver open(). Carga async (JsonStore.read);
-  // refresh()/startDirWatch se disparan desde el handler de sessionFile en
-  // cuanto sabe la ruta real, no aquí (evita listar homeDir de más si sí
-  // había sesión).
+  // Only called on the first open of the Quickshell session, without
+  // a path requested by the host -- see open(). Async load (JsonStore.read);
+  // refresh()/startDirWatch are triggered from the sessionFile handler
+  // as soon as it knows the real path, not here (avoids listing homeDir extra if there
+  // was a session).
   function loadSession() {
     JsonStore.read(Paths.sessionFile)
   }
 
-  // Solo guarda la ruta de cada pestaña -- no historial/preview/scroll,
-  // eso es sesión "en caliente" (ya sobrevive a cerrar/reabrir sin salir
-  // de Quickshell gracias a keepLoaded) y no vale la pena la complejidad de
-  // restaurarlo tras un reinicio real del shell.
+  // Only saves the path of each tab -- not history/preview/scroll,
+  // that is "hot" session (it already survives close/reopen without leaving
+  // Quickshell thanks to keepLoaded) and it is not worth the complexity of
+  // restoring it after a real restart of the shell.
   function saveSession() {
     tabOps.saveActiveTab()
     var snapshot = TabsState.tabs.map(function (t) { return { path: t.path } })
@@ -78,12 +78,12 @@ Item {
     _saveJson(Paths.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
   }
 
-  // Un único punto de entrega para las cuatro lecturas: JsonStore es un
-  // singleton, así que loaded() se despacha por `path`. `data` ya viene
-  // parseado desde C++ (objeto/array JS) o undefined si el fichero no
-  // existe o el JSON era inválido -- se normaliza a null para conservar la
-  // misma lógica de "válido o valor por defecto" que tenían los cuatro
-  // ProcessRunner separados.
+  // A single delivery point for the four reads: JsonStore is a
+  // singleton, so loaded() is dispatched by `path`. `data` already comes
+  // parsed from C++ (JS object/array) or undefined if the file does not
+  // exist or the JSON was invalid -- it is normalized to null to keep the
+  // same "valid or default value" logic that the four
+  // separate ProcessRunner had.
   Connections {
     target: JsonStore
 

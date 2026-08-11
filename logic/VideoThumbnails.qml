@@ -3,11 +3,11 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) --
-// decimosexto componente extraído de Omafiles.qml. Los tres paneles que
-// pintan filas (panel activo, panel de fondo, PreviewLoader) piden una
-// miniatura con requestVideoThumb() y esperan a que videoThumbReady (sigue
-// siendo propiedad de root, se lee desde muchos sitios) se rellene solo.
+// Video thumbnails (ffmpegthumbnailer, queued 1 at a time) --
+// sixteenth component extracted from Omafiles.qml. The three panels that
+// paint rows (active panel, background panel, PreviewLoader) request a
+// thumbnail with requestVideoThumb() and wait for videoThumbReady (still
+// a property of root, read from many places) to fill on its own.
 Item {
   property Item root: null
 
@@ -29,10 +29,10 @@ Item {
     var entry = queued.entry
     var basePath = queued.basePath
     var src = Utils.joinPath(basePath, entry.name)
-    // Nombre de fichero de caché por el hash canónico del backend (SHA-1),
-    // el mismo esquema que las miniaturas de imagen/PDF (Fase B1). La clave
-    // de invalidación sigue siendo ruta|mtime (thumbKeyFor); solo cambia el
-    // hash. Extensión .jpg porque lo genera ffmpegthumbnailer.
+    // Cache file name by the backend's canonical hash (SHA-1),
+    // the same scheme as the image/PDF thumbnails (Phase B1). The
+    // invalidation key is still path|mtime (thumbKeyFor); only the
+    // hash changes. .jpg extension because ffmpegthumbnailer generates it.
     var dest = Paths.thumbCacheDir + "/" + ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
@@ -44,22 +44,22 @@ Item {
     property string currentKey: ""
     property string currentDest: ""
     onFinished: function (result) {
-      // Bug real: antes se marcaba "lista" pase lo que pase, aunque
-      // ffmpegthumbnailer fallara (formato raro, fichero corrupto, sin
-      // memoria un instante) -- requestVideoThumb() nunca reintentaba
-      // porque videoThumbReady[key] ya era verdadero (con una ruta que
-      // en realidad no existe), así que ese vídeo se quedaba sin
-      // miniatura real el resto de la sesión. Ahora solo se marca lista
-      // si el proceso terminó bien, así una próxima visita a la carpeta
-      // (nueva key por mtime, o simplemente request() de nuevo) puede
-      // reintentar.
+      // Real bug: previously it was marked "ready" no matter what, even if
+      // ffmpegthumbnailer failed (weird format, corrupt file, out of
+      // memory for a moment) -- requestVideoThumb() never retried
+      // because videoThumbReady[key] was already true (with a path that
+      // actually does not exist), so that video was left without a
+      // real thumbnail the rest of the session. Now it is only marked ready
+      // if the process finished well, so a next visit to the folder
+      // (new key by mtime, or simply request() again) can
+      // retry.
       if (result.exitCode === 0) {
-        // Reasignar el objeto (nueva referencia) es lo que dispara los
-        // bindings de los delegados que leen videoThumbReady[key]. Fase
-        // 10.A: el mapa se ACOTA (LRU-256) para que (a) no crezca sin
-        // límite en sesiones largas y (b) esta copia sea O(1) en vez de
-        // O(n) -- antes copiaba un diccionario que crecía sin fin por cada
-        // miniatura (coste cuadrático a lo largo de la sesión).
+        // Reassigning the object (new reference) is what triggers the
+        // bindings of the delegates that read videoThumbReady[key]. Phase
+        // 10.A: the map is BOUNDED (LRU-256) so (a) it does not grow without
+        // limit in long sessions and (b) this copy is O(1) instead of
+        // O(n) -- previously it copied a dictionary that grew without end per
+        // thumbnail (quadratic cost over the session).
         var ready = Object.assign({}, VideoThumbState.videoThumbReady)
         ready[thumbProc.currentKey] = thumbProc.currentDest
         var keys = Object.keys(ready)

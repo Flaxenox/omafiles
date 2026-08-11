@@ -18,9 +18,9 @@
 #include <cstdio>
 #include <unistd.h>
 
-// Reporter del selfcheck: salida DETERMINISTA a stdout (no depende de las
-// reglas de logging de QML, que en release pueden silenciar console.log).
-// Expuesto al QML como context property `SelfCheckOut`.
+// Selfcheck reporter: DETERMINISTIC output to stdout (does not depend on the
+// QML logging rules, which in release may silence console.log).
+// Exposed to QML as the context property `SelfCheckOut`.
 class SelfCheckReporter : public QObject {
   Q_OBJECT
  public:
@@ -31,37 +31,39 @@ class SelfCheckReporter : public QObject {
   }
 };
 
-// Bootstrap Qt6 del frontend standalone (Fase 4, josema). En modo normal
-// carga integrations/standalone/Main.qml, que instancia el MISMO
-// core/OmafilesContent.qml que el frontend Quickshell, dentro de un
-// ApplicationWindow real.
+// Qt6 bootstrap of the standalone frontend (Phase 4, josema). In normal mode it
+// loads integrations/standalone/Main.qml, which instantiates the SAME
+// core/OmafilesContent.qml as the Quickshell frontend, inside a real
+// ApplicationWindow.
 //
-// Fase 12 (josema): añade `--selfcheck`. En ese modo el ejecutable deja de
-// ser un host alternativo y pasa a ser el entorno OFICIAL de validación
-// automática: arranca headless (offscreen), monta fixtures en un directorio
-// temporal auto-limpiable y carga integrations/standalone/SelfCheck.qml, que
-// ejercita los subsistemas de backend/frontend/integración y termina con
-// Qt.exit(nº de fallos). Ver AUDIT-V2.md (Fase 12) y SelfCheck.qml.
+// Phase 12 (josema): adds `--selfcheck`. In that mode the executable stops
+// being an alternative host and becomes the OFFICIAL environment for automatic
+// validation: it starts headless (offscreen), sets up fixtures in a
+// self-cleaning temporary directory and loads
+// integrations/standalone/SelfCheck.qml, which exercises the
+// backend/frontend/integration subsystems and ends with Qt.exit(number of
+// failures). See AUDIT-V2.md (Phase 12) and SelfCheck.qml.
 //
-// OMAFILES_SOURCE_DIR / OMAFILES_QML_IMPORT_DIR los define CMakeLists.txt.
+// OMAFILES_SOURCE_DIR / OMAFILES_QML_IMPORT_DIR are defined by CMakeLists.txt.
 
 namespace {
 
-// Fase 29 (josema): resuelve la raíz de RECURSOS (scripts .sh + árbol QML).
-// Omafiles ya no depende del repositorio: si está instalado en
-// $XDG_DATA_HOME/omafiles (o donde CMake lo puso), carga de ahí; si no, del
-// árbol de desarrollo. Gana el primer candidato cuyo Main.qml exista, así el
-// binario funciona tanto tras `cmake --install` (aunque se borre el repo) como
-// ejecutándose desde el checkout de desarrollo.
+// Phase 29 (josema): resolves the RESOURCE root (.sh scripts + QML tree).
+// Omafiles no longer depends on the repository: if it is installed in
+// $XDG_DATA_HOME/omafiles (or wherever CMake put it), it loads from there; if
+// not, from the development tree. The first candidate whose Main.qml exists
+// wins, so the binary works both after `cmake --install` (even if the repo is
+// deleted) and running from the development checkout.
 QString resolveResourceDir() {
   QStringList candidates;
-  // 1. Árbol de desarrollo (el repo). Va PRIMERO a propósito: si el repo
-  //    existe, se ejecuta desde él (edición de QML en vivo, como siempre). Si
-  //    se borra el repo, esta ruta deja de existir y se cae a la instalación.
+  // 1. Development tree (the repo). It goes FIRST on purpose: if the repo
+  //    exists, it runs from it (live QML editing, as always). If
+  //    the repo is deleted, this path stops existing and it falls back to the
+  //    installation.
   candidates << QStringLiteral(OMAFILES_SOURCE_DIR);
-  // 2. Donde CMake instaló los recursos (respeta un -D de configure).
+  // 2. Where CMake installed the resources (respects a configure -D).
   candidates << QStringLiteral(OMAFILES_DATA_INSTALL_DIR) + "/omafiles";
-  // 3. $XDG_DATA_HOME/omafiles en runtime (por si difiere del de configure).
+  // 3. $XDG_DATA_HOME/omafiles at runtime (in case it differs from configure's).
   const QByteArray xdg = qgetenv("XDG_DATA_HOME");
   const QString dataHome = (!xdg.isEmpty() && xdg.startsWith('/'))
                                ? QString::fromLocal8Bit(xdg)
@@ -71,39 +73,39 @@ QString resolveResourceDir() {
     if (QFileInfo::exists(c + "/integrations/standalone/Main.qml"))
       return c;
   }
-  // Fallback: la instalación estándar (mensaje de error claro si tampoco está).
+  // Fallback: the standard installation (clear error message if it is not there either).
   return QDir::homePath() + "/.local/share/omafiles";
 }
 
-// Añade al engine los import paths que necesita el core: los adaptadores
-// qs.Commons/qs.Ui (bajo la raíz de recursos) y el plugin C++ Omafiles.Backend.
-// Para el backend se añaden las DOS ubicaciones posibles -- el build/ de
-// desarrollo y la instalación estable en ~/.local/lib/qt6/qml -- y Qt ignora la
-// que no exista, así funciona en ambos modos.
+// Adds to the engine the import paths the core needs: the
+// qs.Commons/qs.Ui adapters (under the resource root) and the C++ plugin
+// Omafiles.Backend. For the backend the TWO possible locations are added -- the
+// development build/ and the stable installation in ~/.local/lib/qt6/qml -- and
+// Qt ignores the one that does not exist, so it works in both modes.
 void addImportPaths(QQmlApplicationEngine &engine, const QString &resourceDir) {
   engine.addImportPath(resourceDir + "/integrations/standalone/qml_modules");
   engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));  // dev build/qml
-  engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // instalado
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // installed
 }
 
-// Nombre del socket de instancia única, por usuario (para no chocar entre
-// usuarios ni con una sesión headless del selfcheck). Vive bajo
-// XDG_RUNTIME_DIR (QLocalServer lo resuelve por nombre).
+// Name of the single-instance socket, per user (to not clash between
+// users nor with a headless selfcheck session). It lives under
+// XDG_RUNTIME_DIR (QLocalServer resolves it by name).
 QString instanceSocketName() {
   return QStringLiteral("omafiles-instance-%1").arg(static_cast<uint>(getuid()));
 }
 
-// Normaliza el argumento de línea de comandos al "payload" que entiende
-// core/OmafilesContent.open(): una ruta absoluta de carpeta, opcionalmente
-// seguida de "\n" y nombres a seleccionar (separados por \x1f). Reglas:
-//   · vacío            -> "" (open() restaura la sesión anterior).
-//   · empieza por "/"  -> se reenvía TAL CUAL. Cubre tanto una ruta absoluta
-//                         como un payload ya montado por dbus-filemanager1.py
-//                         ("/carpeta\nnombre") -- por eso no se toca.
-//   · file:// URI      -> se decodifica; si es un fichero, "dir\nnombre".
-//   · ruta relativa    -> se absolutiza; si es un fichero, "dir\nnombre".
-// La lógica de fichero->carpeta+selección solo se aplica a las dos últimas
-// (uso directo `omafiles ~/x` o xdg-open); los scripts ya mandan algo limpio.
+// Normalizes the command-line argument to the "payload" that
+// core/OmafilesContent.open() understands: an absolute folder path, optionally
+// followed by "\n" and names to select (separated by \x1f). Rules:
+//   · empty            -> "" (open() restores the previous session).
+//   · starts with "/"  -> forwarded AS IS. Covers both an absolute path
+//                         and a payload already built by dbus-filemanager1.py
+//                         ("/folder\nname") -- that is why it is not touched.
+//   · file:// URI      -> decoded; if it is a file, "dir\nname".
+//   · relative path    -> made absolute; if it is a file, "dir\nname".
+// The file->folder+selection logic only applies to the last two
+// (direct use `omafiles ~/x` or xdg-open); the scripts already send something clean.
 QString normalizePayload(const QString &arg) {
   if (arg.isEmpty()) return QString();
   if (arg.startsWith(QLatin1Char('/'))) return arg;
@@ -113,7 +115,7 @@ QString normalizePayload(const QString &arg) {
     const QUrl u(arg);
     path = u.isLocalFile() ? u.toLocalFile() : QString();
   } else {
-    path = arg;  // ruta relativa
+    path = arg;  // relative path
   }
   if (path.isEmpty()) return QString();
 
@@ -124,17 +126,17 @@ QString normalizePayload(const QString &arg) {
   return fi.absoluteFilePath();
 }
 
-// Instancia única. La PRIMERA instancia escucha en un QLocalServer y expone
-// received(payload) al QML (Main.qml lo conecta a content.open + raise). Una
-// SEGUNDA invocación (p.ej. abrir una carpeta desde otra app) conecta al
-// socket, manda su payload y termina, en vez de abrir otra ventana.
+// Single instance. The FIRST instance listens on a QLocalServer and exposes
+// received(payload) to QML (Main.qml connects it to content.open + raise). A
+// SECOND invocation (e.g. opening a folder from another app) connects to the
+// socket, sends its payload and exits, instead of opening another window.
 class SingleInstance : public QObject {
   Q_OBJECT
  public:
   using QObject::QObject;
 
-  // Intenta entregar `payload` a una instancia ya en marcha. Devuelve true si
-  // lo consiguió (esta invocación debe salir sin abrir ventana).
+  // Tries to deliver `payload` to an already-running instance. Returns true if
+  // it succeeded (this invocation must exit without opening a window).
   static bool deliverToRunning(const QString &payload) {
     QLocalSocket sock;
     sock.connectToServer(instanceSocketName());
@@ -148,8 +150,8 @@ class SingleInstance : public QObject {
     return true;
   }
 
-  // Empieza a escuchar. removeServer() limpia un socket huérfano de una
-  // instancia anterior que muriera sin cerrarlo.
+  // Starts listening. removeServer() cleans up an orphan socket from a
+  // previous instance that died without closing it.
   bool listen() {
     QLocalServer::removeServer(instanceSocketName());
     connect(&m_server, &QLocalServer::newConnection, this,
@@ -174,9 +176,9 @@ class SingleInstance : public QObject {
   QLocalServer m_server;
 };
 
-// Genera los ficheros de prueba deterministas que el selfcheck necesita.
-// Todo cuelga de `base` (un QTemporaryDir), así que se borra solo al salir.
-// Requiere una QGuiApplication viva (QImage/QPdfWriter/QPainter).
+// Generates the deterministic test files the selfcheck needs.
+// Everything hangs off `base` (a QTemporaryDir), so it is deleted on its own on
+// exit. Requires a live QGuiApplication (QImage/QPdfWriter/QPainter).
 bool writeSelfCheckFixtures(const QString &base) {
   QDir d(base);
   if (!d.mkpath("list/sub") || !d.mkpath("watch") || !d.mkpath("ops") ||
@@ -184,8 +186,8 @@ bool writeSelfCheckFixtures(const QString &base) {
     return false;
   }
 
-  // Directorio con contenido conocido para DirectoryModel (orden natural:
-  // la subcarpeta primero, luego los .txt).
+  // Directory with known content for DirectoryModel (natural order:
+  // the subfolder first, then the .txt).
   for (const QString &name : {QStringLiteral("alpha.txt"),
                               QStringLiteral("beta.txt"),
                               QStringLiteral("gamma.txt")}) {
@@ -195,19 +197,19 @@ bool writeSelfCheckFixtures(const QString &base) {
     f.close();
   }
 
-  // Fichero de texto para PreviewProvider.
+  // Text file for PreviewProvider.
   QFile note(base + "/note.txt");
   if (!note.open(QIODevice::WriteOnly)) return false;
   note.write("hello selfcheck\nsecond line\n");
   note.close();
 
-  // Symlink para validar que copy/move preservan enlaces como enlaces.
+  // Symlink to validate that copy/move preserve links as links.
   QFile::remove(base + "/link.txt");
   QFile::link(base + "/note.txt", base + "/link.txt");
 
-  // Fichero grande (32 MiB) para probar la cancelación cooperativa a mitad
-  // de copia: lo bastante grande para que la copia abarque muchos trozos y
-  // el cancel() caiga en medio.
+  // Large file (32 MiB) to test cooperative cancellation mid-copy:
+  // large enough that the copy spans many chunks and
+  // the cancel() lands in the middle.
   {
     QFile big(base + "/big.bin");
     if (!big.open(QIODevice::WriteOnly)) return false;
@@ -216,10 +218,10 @@ bool writeSelfCheckFixtures(const QString &base) {
     big.close();
   }
 
-  // Carpeta con muchos ficheros: para la cancelación de borrado recursivo
-  // (removeTree recorre entrada a entrada comprobando el flag, así que con
-  // suficientes entradas el cancel síncrono aborta a mitad de forma
-  // determinista).
+  // Folder with many files: for the cancellation of a recursive delete
+  // (removeTree walks entry by entry checking the flag, so with
+  // enough entries the synchronous cancel aborts mid-way
+  // deterministically).
   if (!d.mkpath("bigdir")) return false;
   for (int i = 0; i < 500; ++i) {
     QFile f(base + QStringLiteral("/bigdir/f%1").arg(i));
@@ -228,10 +230,10 @@ bool writeSelfCheckFixtures(const QString &base) {
     f.close();
   }
 
-  // Carpeta de solo lectura con un fichero dentro: borrar el hijo falla
-  // (EACCES, hace falta permiso de escritura en el padre). Se restaura a
-  // escribible tras la ejecución (ver runSelfCheck) para que QTemporaryDir
-  // pueda limpiarla.
+  // Read-only folder with a file inside: deleting the child fails
+  // (EACCES, write permission on the parent is needed). It is restored to
+  // writable after the run (see runSelfCheck) so that QTemporaryDir
+  // can clean it up.
   if (!d.mkpath("readonly")) return false;
   {
     QFile f(base + "/readonly/locked.txt");
@@ -242,12 +244,12 @@ bool writeSelfCheckFixtures(const QString &base) {
   QFile::setPermissions(base + "/readonly",
                         QFileDevice::ReadOwner | QFileDevice::ExeOwner);
 
-  // PNG real para ThumbnailProvider (ruta QImageReader).
+  // Real PNG for ThumbnailProvider (QImageReader path).
   QImage img(16, 16, QImage::Format_RGB32);
   img.fill(Qt::red);
   if (!img.save(base + "/img.png", "PNG")) return false;
 
-  // PDF real de una página para ThumbnailProvider (ruta QPdfDocument/qpdf).
+  // Real one-page PDF for ThumbnailProvider (QPdfDocument/qpdf path).
   {
     QPdfWriter pdf(base + "/doc.pdf");
     pdf.setPageSize(QPageSize(QPageSize::A4));
@@ -261,31 +263,31 @@ bool writeSelfCheckFixtures(const QString &base) {
 }
 
 int runSelfCheck(int argc, char *argv[]) {
-  // Headless por defecto (CI): si el usuario no forzó plataforma, offscreen.
+  // Headless by default (CI): if the user did not force a platform, offscreen.
   if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
   }
-  // El core lee esto en AppBindings para NO autoregistrarse como gestor de
-  // archivos durante la validación (sin efectos secundarios en el sistema).
+  // The core reads this in AppBindings to NOT self-register as the file
+  // manager during validation (no side effects on the system).
   qputenv("OMAFILES_SELFCHECK", "1");
 
   QGuiApplication app(argc, argv);
   QQuickStyle::setStyle("Basic");
 
-  // Fase 29: misma resolución de recursos que el modo normal, para que el
-  // selfcheck funcione tanto desde el árbol de desarrollo como desde la
-  // instalación (sin el repo).
+  // Phase 29: same resource resolution as normal mode, so the
+  // selfcheck works both from the development tree and from the
+  // installation (without the repo).
   const QString resourceDir = resolveResourceDir();
   qputenv("OMAFILES_RESOURCE_DIR", resourceDir.toLocal8Bit());
 
-  // Bajo $HOME/.cache (no /tmp): así los fixtures viven en el MISMO montaje
-  // que la papelera XDG del usuario, y trash/restore hacen round-trip como en
-  // uso real (en /tmp, tmpfs aparte, moveToTrash y restore usan papeleras
-  // distintas). Sigue siendo auto-limpiable (QTemporaryDir).
+  // Under $HOME/.cache (not /tmp): this way the fixtures live on the SAME mount
+  // as the user's XDG trash, and trash/restore round-trip as in
+  // real use (in /tmp, a separate tmpfs, moveToTrash and restore use
+  // different trashes). It is still self-cleaning (QTemporaryDir).
   QDir().mkpath(QDir::homePath() + "/.cache");
   QTemporaryDir tmp(QDir::homePath() + "/.cache/omafiles-selfcheck-XXXXXX");
   if (!tmp.isValid() || !writeSelfCheckFixtures(tmp.path())) {
-    fprintf(stderr, "[selfcheck] no se pudieron crear los fixtures\n");
+    fprintf(stderr, "[selfcheck] could not create the fixtures\n");
     return 2;
   }
 
@@ -307,62 +309,62 @@ int runSelfCheck(int argc, char *argv[]) {
   engine.load(QUrl::fromLocalFile(resourceDir +
                                   "/integrations/standalone/SelfCheck.qml"));
   if (failedToCreate || engine.rootObjects().isEmpty()) {
-    fprintf(stderr, "[selfcheck] no se pudo cargar SelfCheck.qml\n");
+    fprintf(stderr, "[selfcheck] could not load SelfCheck.qml\n");
     return 2;
   }
 
-  // SelfCheck.qml llama Qt.exit(nº de fallos) al terminar; ese código sale
-  // por app.exec().
+  // SelfCheck.qml calls Qt.exit(number of failures) on finishing; that code
+  // exits through app.exec().
   const int rc = app.exec();
-  // Restaura permisos de la carpeta readonly (fixture de fallo de permisos)
-  // para que QTemporaryDir pueda borrarla al destruir tmp.
+  // Restore permissions of the readonly folder (permission-failure fixture)
+  // so QTemporaryDir can delete it when destroying tmp.
   QFile::setPermissions(tmp.path() + "/readonly",
                         QFileDevice::ReadOwner | QFileDevice::WriteOwner |
                             QFileDevice::ExeOwner);
-  return rc; // tmp se destruye (y limpia) al volver de main.
+  return rc; // tmp is destroyed (and cleaned) on returning from main.
 }
 
 int runNormal(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("omafiles"));
-  // app_id de Wayland = "omafiles" (se conserva a propósito: cualquier
-  // windowrule de Hyprland con class:omafiles sigue funcionando). El .desktop
-  // instalado tiene otro basename (io.github.percius04.omafiles, obligatorio
-  // para la activación D-Bus), así que se casa con esta ventana vía
-  // StartupWMClass=omafiles en el propio .desktop -> el dock/taskbar resuelve
-  // Icon=omafiles sin cambiar el app_id (Fase 29).
+  // Wayland app_id = "omafiles" (kept on purpose: any
+  // Hyprland windowrule with class:omafiles keeps working). The installed
+  // .desktop has a different basename (io.github.percius04.omafiles, mandatory
+  // for D-Bus activation), so it is matched to this window via
+  // StartupWMClass=omafiles in the .desktop itself -> the dock/taskbar resolves
+  // Icon=omafiles without changing the app_id (Phase 29).
   app.setDesktopFileName(QStringLiteral("omafiles"));
 
-  // Primer argumento posicional = ruta/URI/payload a abrir (vacío = arranque
-  // normal, que restaura la sesión anterior como el frontend Quickshell).
+  // First positional argument = path/URI/payload to open (empty = normal
+  // start, which restores the previous session like the Quickshell frontend).
   QString payload;
   for (int i = 1; i < argc; ++i) {
     const QString a = QString::fromLocal8Bit(argv[i]);
-    if (a.startsWith(QLatin1String("--"))) continue;  // flags (no hay ninguna en modo normal)
+    if (a.startsWith(QLatin1String("--"))) continue;  // flags (there are none in normal mode)
     payload = normalizePayload(a);
     break;
   }
 
-  // Instancia única: si ya hay un Omafiles abierto, entrégale el payload
-  // (navegará/seleccionará y se traerá al frente) y termina sin abrir otra
-  // ventana. Si no, esta invocación se convierte en la instancia servidora.
+  // Single instance: if there is already an Omafiles open, deliver it the payload
+  // (it will navigate/select and bring itself to the front) and exit without
+  // opening another window. If not, this invocation becomes the server instance.
   if (SingleInstance::deliverToRunning(payload)) return 0;
 
-  // qs.Ui usa QtQuick.Controls (Button/TextField) -- Basic es el estilo que
-  // no depende de ningún backend nativo extra, el más seguro.
+  // qs.Ui uses QtQuick.Controls (Button/TextField) -- Basic is the style that
+  // does not depend on any extra native backend, the safest.
   QQuickStyle::setStyle("Basic");
 
   QQmlApplicationEngine engine;
-  // Fase 29: raíz de recursos resuelta (instalado vs dev). Se publica por env
-  // para que state/Paths.qml (resourceDir) localice los scripts .sh sin conocer
-  // el repo.
+  // Phase 29: resolved resource root (installed vs dev). It is published by env
+  // so state/Paths.qml (resourceDir) locates the .sh scripts without knowing
+  // the repo.
   const QString resourceDir = resolveResourceDir();
   qputenv("OMAFILES_RESOURCE_DIR", resourceDir.toLocal8Bit());
   addImportPaths(engine, resourceDir);
 
   SingleInstance instance;
-  instance.listen();  // si falla (nombre ocupado por carrera) simplemente no
-                      // recibe summons; la ventana se abre igual.
+  instance.listen();  // if it fails (name taken by a race) it simply does not
+                      // receive summons; the window opens anyway.
   engine.rootContext()->setContextProperty("SingleInstance", &instance);
   engine.rootContext()->setContextProperty("omafilesInitialPayload", payload);
 
@@ -380,13 +382,13 @@ int runNormal(int argc, char *argv[]) {
 }  // namespace
 
 int main(int argc, char *argv[]) {
-  // Qt6 bloquea por seguridad las lecturas file:// vía XMLHttpRequest salvo que
-  // se habiliten explícitamente. El adaptador qs.Commons/ThemeSource del
-  // standalone lee así los ficheros de tema de Omarchy en vivo
-  // (colors.toml/shell.toml), igual que el FileView de Quickshell en el
-  // frontend real. Sin esto, ThemeSource cae al fallback gris y la paleta NO
-  // coincide con Quickshell (Fase 17, paridad de tema). Debe ir antes de crear
-  // el engine QML.
+  // Qt6 blocks, for security, file:// reads via XMLHttpRequest unless
+  // they are explicitly enabled. The standalone's qs.Commons/ThemeSource
+  // adapter reads Omarchy's live theme files this way
+  // (colors.toml/shell.toml), just like the Quickshell FileView in the
+  // real frontend. Without this, ThemeSource falls back to grey and the palette
+  // does NOT match Quickshell (Phase 17, theme parity). It must go before
+  // creating the QML engine.
   qputenv("QML_XHR_ALLOW_FILE_READ", "1");
   for (int i = 1; i < argc; ++i) {
     if (QString::fromLocal8Bit(argv[i]) == QLatin1String("--selfcheck")) {

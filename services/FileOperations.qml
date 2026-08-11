@@ -2,17 +2,17 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Operaciones de fichero -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.FileOperations (QFile/QDir, ver backend/FileOperations.
-// cpp). Fase 7 (josema): backend nativo introducido; de momento solo
-// "nueva carpeta" (mkdir) lo consume en vivo (ver logic/RenameOps.qml).
+// File operations -- thin adapter over the C++ singleton
+// Omafiles.Backend.FileOperations (QFile/QDir, see backend/FileOperations.
+// cpp). Phase 7 (josema): native backend introduced; for now only
+// "new folder" (mkdir) consumes it live (see logic/RenameOps.qml).
 //
-// Reenvia las llamadas y re-emite progress/finished/error para que logic/
-// no importe Omafiles.Backend (regla 8). Integra Notifier (req 4): un
-// error se avisa aqui, en un solo sitio, con el mismo texto que daba
-// ActionEngine ("Action failed: ..."). El refresco tras la operacion NO se
-// dispara aqui -- lo hace el QFileSystemWatcher de DirectoryModel (Fase
-// 6.D) al cambiar el directorio activo.
+// It forwards the calls and re-emits progress/finished/error so logic/
+// does not import Omafiles.Backend (rule 8). It integrates Notifier (req 4): an
+// error is warned here, in a single place, with the same text that
+// ActionEngine gave ("Action failed: ..."). The refresh after the operation is NOT
+// triggered here -- it is done by DirectoryModel's QFileSystemWatcher (Phase
+// 6.D) when the active directory changes.
 QtObject {
   id: fileOps
   signal progress(string op, string path, var done, var total)
@@ -26,44 +26,44 @@ QtObject {
   function mkdir(path) { Backend.FileOperations.mkdir(path) }
   function trash(path) { Backend.FileOperations.trash(path) }
   function restore(path) { Backend.FileOperations.restore(path) }
-  // Restaura por ruta original (Fase 13.E): busca el .trashinfo correcto en
-  // todas las papeleras. Emite finished("restore", origPath) / error.
+  // Restore by original path (Phase 13.E): finds the correct .trashinfo in
+  // all the trashes. Emits finished("restore", origPath) / error.
   function restoreByOrigPath(origPath) { Backend.FileOperations.restoreByOrigPath(origPath) }
 
-  // Listado nativo de la Papelera (Fase 16): raíces XDG activas y metadatos
-  // de los .trashinfo. Sustituyen a trash-roots.sh / trash-info.sh; síncronos.
+  // Native Trash listing (Phase 16): active XDG roots and metadata
+  // of the .trashinfo. They replace trash-roots.sh / trash-info.sh; synchronous.
   function trashRoots() { return Backend.FileOperations.trashRoots() }
   function trashInfo() { return Backend.FileOperations.trashInfo() }
-  // Cancela la operación en curso (Fase 13.A). El worker aborta y emite
-  // error "cancelled", que onError NO notifica (es una cancelación pedida
-  // por el usuario, no un fallo).
+  // Cancels the operation in progress (Phase 13.A). The worker aborts and emits
+  // error "cancelled", which onError does NOT notify (it is a cancellation requested
+  // by the user, not a failure).
   function cancel() { Backend.FileOperations.cancel() }
 
-  // Detección de conflictos nativa (Fase 13.F): subconjunto de `paths` que ya
-  // existen. Síncrona; sustituye a los `test -e` de shell en paste/drop.
+  // Native conflict detection (Phase 13.F): subset of `paths` that already
+  // exist. Synchronous; replaces the shell `test -e` in paste/drop.
   function existingPaths(paths) { return Backend.FileOperations.existingPaths(paths) }
 
-  // Tamaño total (bytes) de un conjunto de rutas (Fase 13.G): para el
-  // porcentaje de progreso de copy/move sin `du` y el tamaño de una selección
-  // múltiple en Properties (BUG-03).
+  // Total size (bytes) of a set of paths (Phase 13.G): for the
+  // copy/move progress percentage without `du` and the size of a multiple
+  // selection in Properties (BUG-03).
   function totalSize(paths) { return Backend.FileOperations.totalSize(paths) }
 
-  // Modo octal (%a) de cada ruta, en el mismo orden (BUG-03): para prefijar el
-  // diálogo de chmod de una selección múltiple sin `stat -c%a -- ...`.
+  // Octal mode (%a) of each path, in the same order (BUG-03): to prefill the
+  // chmod dialog of a multiple selection without `stat -c%a -- ...`.
   function octalModes(paths) { return Backend.FileOperations.octalModes(paths) }
 
-  // Cualificado con el id: Backend.FileOperations (el target) tiene señales
-  // del mismo nombre; sin el id, re-emitir podría resolverse al signal del
-  // propio target en vez del de este adaptador (misma clase de colisión que
-  // hubo en DirLister.directoryChanged).
+  // Qualified with the id: Backend.FileOperations (the target) has signals
+  // of the same name; without the id, re-emitting could resolve to the target's
+  // own signal instead of this adapter's (same kind of collision that
+  // there was in DirLister.directoryChanged).
   property Connections _backend: Connections {
     target: Backend.FileOperations
     function onProgress(op, path, done, total) { fileOps.progress(op, path, done, total) }
     function onFinished(op, path) { fileOps.finished(op, path) }
     function onError(op, path, message) {
-      // "cancelled" = cancelación pedida por el usuario (FileOperations.
-      // cancel), no un fallo: no se avisa. El consumidor (ActionEngine) ya
-      // limpia el estado y el destino parcial. Fase 13.A.
+      // "cancelled" = cancellation requested by the user (FileOperations.
+      // cancel), not a failure: it is not warned. The consumer (ActionEngine) already
+      // cleans up the state and the partial destination. Phase 13.A.
       if (message !== "cancelled")
         Backend.Notifier.notify("Action failed: " + message)
       fileOps.error(op, path, message)

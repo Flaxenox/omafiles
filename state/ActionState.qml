@@ -1,21 +1,21 @@
 pragma Singleton
 import QtQuick
 
-// Estado del motor de acciones (runAction/cancelAction/progreso de
-// copia/movimiento) -- duodécimo singleton de la capa state/, completa
-// la migración de logic/ActionEngine.qml (cuyo undoStack/redoStack ya
-// viven en state/UndoState.qml). actionBusyDots se queda en Omafiles.qml
-// a propósito -- es una animación puramente visual (un Timer en la propia
-// UI), ActionEngine.qml no la lee ni la escribe.
+// State of the action engine (runAction/cancelAction/copy/move
+// progress) -- twelfth singleton of the state/ layer, completes
+// the migration of logic/ActionEngine.qml (whose undoStack/redoStack already
+// live in state/UndoState.qml). actionBusyDots stays in Omafiles.qml
+// on purpose -- it is a purely visual animation (a Timer in the UI
+// itself), ActionEngine.qml neither reads nor writes it.
 QtObject {
   property bool actionBusy: false
   property string actionLabel: ""
-  // -1 = sin progreso que mostrar (renombrar/chmod/comprimir...), solo
-  // copiar/mover lo rellenan de verdad -- ver startCopyProgress().
+  // -1 = no progress to show (rename/chmod/compress...), only
+  // copy/move actually fill it -- see startCopyProgress().
   property real actionProgressPct: -1
-  // Callback pendiente del runAction en curso -- ver actionProc.onFinished
-  // en ActionEngine.qml. (_actionCancelled desapareció en la Fase 1.5:
-  // ProcessRunner.finished ya lleva `cancelled` en el resultado, ver
+  // Pending callback of the running runAction -- see actionProc.onFinished
+  // in ActionEngine.qml. (_actionCancelled disappeared in Phase 1.5:
+  // ProcessRunner.finished already carries `cancelled` in the result, see
   // services/ProcessRunner.qml.)
   property var _actionOnSuccess: null
 }

@@ -10,9 +10,10 @@ const QString kProps = QStringLiteral("org.freedesktop.DBus.Properties");
 } // namespace
 
 UDisksWatcher::UDisksWatcher(QObject *parent) : QObject(parent) {
-  // Coalescedor: una ráfaga de señales D-Bus (conectar un USB dispara varias
-  // InterfacesAdded + PropertiesChanged casi a la vez) se agrupa en un solo
-  // devicesChanged() -> un solo refreshMounts(). Evita relistar N veces.
+  // Coalescer: a burst of D-Bus signals (plugging a USB fires several
+  // InterfacesAdded + PropertiesChanged almost at once) is grouped into a
+  // single devicesChanged() -> a single refreshMounts(). Avoids relisting N
+  // times.
   m_coalesce.setSingleShot(true);
   m_coalesce.setInterval(150);
   connect(&m_coalesce, &QTimer::timeout, this, &UDisksWatcher::devicesChanged);
@@ -22,14 +23,14 @@ UDisksWatcher::UDisksWatcher(QObject *parent) : QObject(parent) {
     return;
 
   bool ok = true;
-  // Aparición/desaparición de objetos (particiones, filesystems, drives...).
+  // Appearance/disappearance of objects (partitions, filesystems, drives...).
   ok &= bus.connect(kService, kObjPath, kObjManager,
                     QStringLiteral("InterfacesAdded"), this, SLOT(schedule()));
   ok &= bus.connect(kService, kObjPath, kObjManager,
                     QStringLiteral("InterfacesRemoved"), this, SLOT(schedule()));
-  // Cambios de propiedades de cualquier objeto del servicio (label, punto de
-  // montaje, estado montado/desmontado). path vacío = todos los objetos de
-  // UDisks2; el filtro por `sender` (kService) lo acota a este servicio.
+  // Property changes of any object of the service (label, mount
+  // point, mounted/unmounted state). empty path = all objects of
+  // UDisks2; the `sender` filter (kService) narrows it to this service.
   ok &= bus.connect(kService, QString(), kProps,
                     QStringLiteral("PropertiesChanged"), this, SLOT(schedule()));
   m_available = ok;

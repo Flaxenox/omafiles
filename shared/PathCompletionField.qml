@@ -4,28 +4,28 @@ import qs.Ui
 import "../state"
 import "../services"
 
-// Barra de dirección con autocompletado NATIVO (Ctrl+L, Fase 26). Sustituye al
-// TextField suelto que había en MainLayout: mismo comportamiento base (Enter
-// navega, Escape cancela) más un desplegable de sugerencias en vivo, Tab para
-// completar el tramo y flechas para recorrer las opciones. Toda la resolución
-// de rutas es C++ (services/PathCompleter -> QDir), sin procesos externos:
-// resuelve ~, rutas absolutas y relativas a la carpeta actual.
+// Address bar with NATIVE autocompletion (Ctrl+L, Phase 26). Replaces the
+// standalone TextField that was in MainLayout: same base behaviour (Enter
+// navigates, Escape cancels) plus a live suggestions dropdown, Tab to
+// complete the segment and arrows to walk the options. All the path
+// resolution is C++ (services/PathCompleter -> QDir), without external processes:
+// it resolves ~, absolute paths and paths relative to the current folder.
 Item {
   id: field
-  property Item root: null // para root.navigateTo
-  property Item list: null // para devolver el foco al ocultarse
+  property Item root: null // for root.navigateTo
+  property Item list: null // to return focus on hiding
 
   property var suggestions: []
   property int highlight: -1
-  // El desplegable solo se ve con el campo enfocado y con algo que sugerir. Al
-  // abrir NO se autocompleta (el campo trae la ruta actual seleccionada): las
-  // sugerencias aparecen en cuanto el usuario teclea.
+  // The dropdown is only shown with the field focused and with something to suggest. On
+  // opening it does NOT autocomplete (the field carries the current path selected): the
+  // suggestions appear as soon as the user types.
   readonly property bool dropdownVisible: input.activeFocus && suggestions.length > 0
 
-  // El foco/selección se dispara desde AQUÍ (no desde input.onVisibleChanged):
-  // `visible` es una property de este Item raíz (la pone MainLayout con
-  // editingPath); el `visible` local del TextField interior nunca cambia, así
-  // que su onVisibleChanged no llegaría a dispararse al abrir.
+  // The focus/selection is triggered from HERE (not from input.onVisibleChanged):
+  // `visible` is a property of this root Item (set by MainLayout with
+  // editingPath); the inner TextField's local `visible` never changes, so
+  // its onVisibleChanged would not fire on opening.
   onVisibleChanged: {
     if (visible) {
       input.text = NavState.currentPath
@@ -48,8 +48,8 @@ Item {
     input.cursorPosition = path.length
   }
 
-  // Tab: acepta la sugerencia resaltada y recompleta -> muestra el contenido de
-  // la carpeta recién elegida, listo para bajar otro tramo.
+  // Tab: accepts the highlighted suggestion and re-completes -> shows the content of
+  // the just-chosen folder, ready to go down another segment.
   function acceptHighlighted() {
     if (highlight < 0 || highlight >= suggestions.length)
       return
@@ -68,8 +68,8 @@ Item {
     verticalPadding: 2
     Accessible.role: Accessible.EditableText
     Accessible.name: "Path"
-    // Solo al teclear el usuario (no cuando fillWith/onVisibleChanged asignan
-    // text por código: onTextEdited no dispara con asignaciones programáticas).
+    // Only when the user types (not when fillWith/onVisibleChanged assign
+    // text by code: onTextEdited does not fire with programmatic assignments).
     onTextEdited: field.refresh()
     Keys.onPressed: function (event) {
       if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
@@ -98,8 +98,8 @@ Item {
     }
   }
 
-  // Desplegable flotante bajo el campo. z alto: se dibuja SOBRE la lista de
-  // ficheros; ningún ancestro del panel activo recorta (verificado).
+  // Floating dropdown below the field. High z: it is drawn OVER the file
+  // list; no ancestor of the active panel clips (verified).
   BorderSurface {
     id: dropdown
     visible: field.dropdownVisible

@@ -2,16 +2,16 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Persistencia JSON -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.JsonStore (QFile/QSaveFile/QJsonDocument, ver
-// backend/JsonStore.cpp). Fase 6.A (josema): implementacion UNICA para los
-// dos frontends, igual que el resto de services/.
+// JSON persistence -- thin adapter over the C++ singleton
+// Omafiles.Backend.JsonStore (QFile/QSaveFile/QJsonDocument, see
+// backend/JsonStore.cpp). Phase 6.A (josema): a SINGLE implementation for both
+// frontends, like the rest of services/.
 //
-// Su razon de existir es la regla 8 de BACKEND_DESIGN.md: logic/ no importa
-// Omafiles.Backend, pasa por aqui. Como los consumidores necesitan las
-// senales (read es async), este adaptador las re-emite: reenvia read/write
-// al backend y propaga loaded/saved para que logic/ se conecte a
-// Omafiles.Services.JsonStore sin conocer el nombre del modulo backend.
+// Its reason to exist is rule 8 of BACKEND_DESIGN.md: logic/ does not import
+// Omafiles.Backend, it goes through here. Since the consumers need the
+// signals (read is async), this adapter re-emits them: it forwards read/write
+// to the backend and propagates loaded/saved so logic/ connects to
+// Omafiles.Services.JsonStore without knowing the backend module's name.
 QtObject {
   signal loaded(string path, var data, bool ok)
   signal saved(string path, bool ok)

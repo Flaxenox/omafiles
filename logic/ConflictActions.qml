@@ -4,20 +4,20 @@ import qs.Commons
 import "../state"
 import "../services"
 
-// Comprobación de conflicto antes de ejecutar una acción que puede
-// sobrescribir algo -- decimonoveno componente extraído de Omafiles.qml,
-// y el primero que toca una acción que de verdad mueve/sobrescribe
-// ficheros del usuario (a diferencia de Persistence/PreviewLoader/
-// PropertiesLoader, que solo leían). Por eso se ha ido añadiendo una
-// función a la vez, probada a mano cada una, en vez de mover el bloque
-// entero de golpe.
+// Conflict check before executing an action that may
+// overwrite something -- nineteenth component extracted from Omafiles.qml,
+// and the first one to touch an action that actually moves/overwrites
+// the user's files (unlike Persistence/PreviewLoader/
+// PropertiesLoader, which only read). That's why one function was
+// added at a time, each hand-tested, instead of moving the whole block
+// at once.
 //
-// commitRename() comprueba el conflicto aquí (existingPaths nativo, BUG-01)
-// -- pero runPendingRename() (el "mv" de verdad, con su undo) se queda en
-// Omafiles.qml sin tocar: además de responder al resultado del check
-// ("0 conflictos" -> renombra ya), lo llama directamente
-// ConflictResolveDialog.onConfirmed, y moverlo aquí solo habría cambiado de
-// sitio ese único call site sin unir nada más.
+// commitRename() checks the conflict here (native existingPaths, BUG-01)
+// -- but runPendingRename() (the real "mv", with its undo) stays in
+// Omafiles.qml untouched: besides responding to the check result
+// ("0 conflicts" -> renames now), it is called directly by
+// ConflictResolveDialog.onConfirmed, and moving it here would only have moved
+// that single call site without joining anything else.
 Item {
   property Item root: null
   property Item actionEngine: null
@@ -33,12 +33,12 @@ Item {
   function paste() {
     if (ArchiveState.inArchive) return
     if (ClipboardState.clipboardPaths.length === 0) {
-      // Nada copiado desde DENTRO de Omafiles -- probar el portapapeles
-      // del sistema (copiar en Nautilus/el navegador/un chat/etc. y pegar
-      // aquí). Se trata siempre como "copy", nunca "cut": un
-      // text/uri-list suelto no lleva esa distinción (a diferencia del
-      // x-special/gnome-copied-files propio de GTK, que no todas las apps
-      // que copian rutas escriben).
+      // Nothing copied from INSIDE Omafiles -- try the system
+      // clipboard (copy in Nautilus/the browser/a chat/etc. and paste
+      // here). It is always treated as "copy", never "cut": a
+      // loose text/uri-list does not carry that distinction (unlike
+      // GTK's own x-special/gnome-copied-files, which not all apps
+      // that copy paths write).
       systemClipboardReadProc.start(["wl-paste", "-t", "text/uri-list"])
       return
     }
@@ -46,9 +46,9 @@ Item {
       var name = src.substring(src.lastIndexOf("/") + 1)
       return Utils.joinPath(NavState.currentPath, name)
     })
-    // Detección de conflictos NATIVA (Fase 13.F): FileOperations.existingPaths
-    // (stat síncrono) en vez de un `test -e` por shell. Mismo resultado
-    // observable: 0 conflictos -> pega ya; si hay, abre el diálogo.
+    // NATIVE conflict detection (Phase 13.F): FileOperations.existingPaths
+    // (synchronous stat) instead of a `test -e` via shell. Same observable
+    // result: 0 conflicts -> pastes now; if any, opens the dialog.
     var conflicts = FileOperations.existingPaths(destPaths)
     if (conflicts.length === 0) {
       clipboardOps.runPaste("all")
@@ -62,8 +62,8 @@ Item {
     if (!destDir) return
     sourcePaths = sourcePaths.filter(function (src) {
       var srcDir = src.substring(0, src.lastIndexOf("/"))
-      // Evita soltar sobre la propia carpeta de origen (no-op) o dentro de
-      // sí mismo si el fichero arrastrado es en realidad una carpeta.
+      // Avoids dropping onto the source folder itself (no-op) or inside
+      // itself if the dragged file is actually a folder.
       return src !== destDir && srcDir !== destDir && (destDir + "/").indexOf(src + "/") !== 0
     })
     if (sourcePaths.length === 0) return
@@ -73,7 +73,7 @@ Item {
     var destPaths = sourcePaths.map(function (src) {
       return Utils.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
-    // Detección de conflictos NATIVA (Fase 13.F): igual que paste().
+    // NATIVE conflict detection (Phase 13.F): same as paste().
     var conflicts = FileOperations.existingPaths(destPaths)
     if (conflicts.length === 0) {
       runDrop("all")
@@ -91,20 +91,20 @@ Item {
       ? entries[0].name.replace(/\/$/, "") + ".zip"
       : "selected-files.zip"
     var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
-    // "rm -f" antes del zip: si el usuario confirma sobrescribir un
-    // archiveName ya existente, que sea un reemplazo real -- sin el rm,
-    // "zip -r" AÑADE/actualiza entradas dentro del zip existente en vez de
-    // sustituirlo, así que confirmar "overwrite" no dejaba en realidad un
-    // zip limpio con solo lo seleccionado ahora.
-    // "./" delante del nombre del zip + "--" delante de la lista: un
-    // archivo real llamado, por ejemplo, "-rf" (nombre válido en Linux) se
-    // interpretaría como flags de zip en vez de como nombre de fichero.
-    // zip no admite "--" antes del propio nombre del zip (error "can't use
-    // -- before archive name"), de ahí el "./" en su lugar.
+    // "rm -f" before the zip: if the user confirms overwriting an
+    // already-existing archiveName, make it a real replacement -- without the rm,
+    // "zip -r" ADDS/updates entries inside the existing zip instead of
+    // replacing it, so confirming "overwrite" did not actually leave a
+    // clean zip with only what is selected now.
+    // "./" before the zip name + "--" before the list: a
+    // real file named, for example, "-rf" (a valid name in Linux) would be
+    // interpreted as zip flags instead of as a file name.
+    // zip does not accept "--" before the zip name itself (error "can't use
+    // -- before archive name"), hence the "./" instead.
     var cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
-    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
       ConflictState.compressConflictOpen = true
     else
@@ -128,22 +128,22 @@ Item {
       }
     })
     ConflictState.pendingBulkRename = pairs
-    // Antes esto usaba "mv -n" a ciegas: un patrón que produce un nombre ya
-    // existente (o que dos ítems de la propia selección acaben con el
-    // mismo nombre nuevo) hacía que mv -n no tocara ESE ítem en concreto,
-    // sin ningún aviso de cuál se había quedado sin renombrar. Ahora se
-    // comprueban antes los conflictos con lo que ya existe en disco...
+    // Before, this used "mv -n" blindly: a pattern that produces an
+    // already-existing name (or that two items of the selection itself end up
+    // with the same new name) made mv -n not touch THAT particular item,
+    // with no notice of which one was left unrenamed. Now the
+    // conflicts with what already exists on disk are checked beforehand...
     var targetCounts = {}
     pairs.forEach(function (p) {
       if (p.newName === p.oldName) return
       targetCounts[p.newPath] = (targetCounts[p.newPath] || 0) + 1
     })
-    // ...y también los conflictos DENTRO de la propia selección (dos ítems
-    // que el patrón deja con el mismo nombre nuevo).
+    // ...and also the conflicts WITHIN the selection itself (two items
+    // that the pattern leaves with the same new name).
     ConflictState.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
-    // Conflicto NATIVO (BUG-01): existingPaths sobre los destinos que cambian
-    // de nombre, en vez de un `test -e` por par. El total suma los dupes
-    // internos de la propia selección, igual que antes.
+    // NATIVE conflict (BUG-01): existingPaths over the destinations that change
+    // name, instead of a `test -e` per pair. The total adds the internal
+    // dupes of the selection itself, same as before.
     var checkPaths = pairs.filter(function (p) { return p.newName !== p.oldName })
                           .map(function (p) { return p.newPath })
     var total = FileOperations.existingPaths(checkPaths).length + ConflictState.bulkRenameInternalDupes
@@ -160,28 +160,28 @@ Item {
     var path = Util.shellQuote(Utils.joinPath(NavState.currentPath, entry.name))
     var dir = Util.shellQuote(NavState.currentPath)
     var cmd, listCmd
-    // Todas fuerzan sobrescritura (-o/-y/-o+) -- necesario para que
-    // runPendingExtract pueda de verdad sobrescribir tras confirmar el
-    // aviso de conflicto de abajo. listCmd usa el modo "lista plana" de
-    // cada herramienta (nombre por línea, sin cabecera) para saber qué se
-    // pisaría, sin necesidad de parsear tablas.
+    // All force overwrite (-o/-y/-o+) -- needed so that
+    // runPendingExtract can actually overwrite after confirming the
+    // conflict notice below. listCmd uses the "flat list" mode of
+    // each tool (name per line, no header) to know what would be
+    // clobbered, without needing to parse tables.
     if (ext === "zip") { cmd = "unzip -o -q " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
     else if (ext === "7z") { cmd = "7z x -y " + path + " -o" + dir; listCmd = "7z l -ba -slt -- " + path + " | grep '^Path = ' | sed 's/^Path = //'" }
     else if (ext === "rar") { cmd = "unrar x -o+ " + path + " " + dir + "/"; listCmd = "unrar lb -- " + path }
-    // Sin "--" a propósito, a diferencia de las otras tres -- con "tf"
-    // (forma corta agrupada de -t -f) tar toma el token SIGUIENTE como
-    // argumento directo de -f, así que un "--" ahí se interpreta como el
-    // propio nombre de fichero a abrir y tar falla con "--: No such file or
-    // directory". Bug real: esto hacía que la comprobación de conflictos
-    // SIEMPRE fallara en silencio para tar/tar.gz/tar.bz2/tar.xz (listCmd
-    // no devolvía nada -> 0 conflictos detectados siempre), aunque zip/7z/
-    // rar no se vieran afectados.
+    // No "--" on purpose, unlike the other three -- with "tf"
+    // (grouped short form of -t -f) tar takes the NEXT token as
+    // the direct argument of -f, so a "--" there is interpreted as the
+    // file name itself to open and tar fails with "--: No such file or
+    // directory". Real bug: this made the conflict check
+    // ALWAYS fail silently for tar/tar.gz/tar.bz2/tar.xz (listCmd
+    // returned nothing -> 0 conflicts always detected), although zip/7z/
+    // rar were not affected.
     else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
     else return
-    // Antes esto sobrescribía sin preguntar, a diferencia de pegar/soltar/
-    // renombrar (que sí comprueban conflictos). Antes de extraer, se lista
-    // el contenido del archivo y se comprueba si algún elemento de primer
-    // nivel ya existe en la carpeta actual.
+    // Before, this overwrote without asking, unlike paste/drop/
+    // rename (which do check conflicts). Before extracting, the
+    // content of the archive is listed and it is checked whether any top-
+    // level element already exists in the current folder.
     ConflictState.pendingExtract = { entry: entry, cmd: cmd }
     extractListProc.start(["bash", "-c", listCmd])
   }
@@ -189,13 +189,13 @@ Item {
   function commitRename(newName) {
     var index = EditModeState.renamingIndex
     EditModeState.renamingIndex = -1
-    // Defensa en profundidad: startRename() ya bloquea EMPEZAR un
-    // renombrado dentro de un archivo, pero no cubre el caso de empezar a
-    // renombrar FUERA, no confirmar, y entrar en un .zip mientras tanto --
-    // renamingIndex se queda apuntando a un índice que ahora pertenece a
-    // una entrada del archivo, y sin este guard commitRename ejecutaría mv
-    // sobre currentPath/<nombre-del-zip>, que puede coincidir por
-    // casualidad con un fichero real.
+    // Defense in depth: startRename() already blocks STARTING a
+    // rename inside an archive, but it doesn't cover the case of starting to
+    // rename OUTSIDE, not confirming, and entering a .zip in the meantime --
+    // renamingIndex keeps pointing to an index that now belongs to
+    // an archive entry, and without this guard commitRename would run mv
+    // over currentPath/<zip-name>, which may coincide by
+    // chance with a real file.
     if (ArchiveState.inArchive) return
     if (index < 0 || index >= NavState.visibleEntries.length) return
     var oldName = NavState.visibleEntries[index].name
@@ -204,26 +204,26 @@ Item {
     var oldPath = Utils.joinPath(NavState.currentPath, oldName)
     var newPath = Utils.joinPath(NavState.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
-    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (FileOperations.existingPaths([newPath]).length > 0) ConflictState.renameConflictOpen = true
     else renameOps.runPendingRename(false)
   }
 
-  // Comprobación de existencia ANTES de crear -- bug real corregido aquí
-  // (josema, 2026-08-05): touch/mkdir -p son idempotentes (éxito
-  // silencioso sobre algo que ya existía), así que sin este guard "New
-  // file"/"New folder" con un nombre en conflicto no creaba nada nuevo
-  // pero SÍ registraba un undo -- un Ctrl+Z posterior mandaba a la
-  // papelera el ítem PREEXISTENTE de verdad. Ahora, en vez de fallar en
-  // silencio (notify-send fácil de no ver), se ofrece el mismo diálogo
-  // Overwrite/Cancel que ya usa renombrar.
+  // Existence check BEFORE creating -- real bug fixed here
+  // (josema, 2026-08-05): touch/mkdir -p are idempotent (silent
+  // success over something that already existed), so without this guard "New
+  // file"/"New folder" with a conflicting name created nothing new
+  // but DID register an undo -- a later Ctrl+Z sent to the
+  // trash the truly PRE-EXISTING item. Now, instead of failing
+  // silently (a notify-send easy to miss), the same
+  // Overwrite/Cancel dialog that rename already uses is offered.
   function commitNewFile(name) {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
-    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFileConflictOpen = true
     else renameOps.runPendingNewFile(false)
   }
@@ -235,7 +235,7 @@ Item {
     if (!name) return
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
-    // Conflicto NATIVO (BUG-01): existingPaths en vez de `test -e` por shell.
+    // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFolderConflictOpen = true
     else renameOps.runPendingNewFolder(false)
   }
@@ -243,20 +243,20 @@ Item {
   ProcessRunner {
     id: systemClipboardReadProc
     onFinished: function (result) {
-      // Bug real: RFC 2483 exige CRLF entre URIs de un text/uri-list, y
-      // las apps GTK reales (Nautilus, selectores de fichero,
-      // Firefox...) lo escriben así -- sin quitar el "\r" que queda
-      // pegado al final de cada línea, decodeURIComponent lo dejaba
-      // colado en el path, pasteCheckProc.test -e nunca lo encontraba, y
-      // pegar desde fuera de Omafiles fallaba en silencio sin ningún
-      // aviso.
+      // Real bug: RFC 2483 requires CRLF between URIs of a text/uri-list, and
+      // the real GTK apps (Nautilus, file pickers,
+      // Firefox...) write it that way -- without removing the "\r" that stays
+      // stuck at the end of each line, decodeURIComponent left it
+      // stuck in the path, pasteCheckProc.test -e never found it, and
+      // pasting from outside Omafiles failed silently with no
+      // notice.
       var uris = String(result.stdout || "").split("\n").map(function (l) { return l.replace(/\r$/, "") }).filter(function (l) { return l.length > 0 })
       var paths = uris.map(function (u) {
         return u.indexOf("file://") === 0 ? decodeURIComponent(u.substring(7)) : ""
       }).filter(function (p) { return p.length > 0 })
-      // Vacío = portapapeles del sistema sin uris (o sin nada) -- no hay
-      // nada que avisar, paste() ya no hacía nada tampoco antes en este
-      // caso.
+      // Empty = system clipboard with no uris (or nothing) -- there is
+      // nothing to notify, paste() did nothing either before in this
+      // case.
       if (paths.length === 0) return
       ClipboardState.clipboardPaths = paths
       ClipboardState.clipboardMode = "copy"
@@ -276,10 +276,10 @@ Item {
       })
       var names = Object.keys(top)
       if (names.length === 0) { archiveActions.runPendingExtract(); return }
-      // Conflicto NATIVO (BUG-01): existingPaths sobre los elementos de primer
-      // nivel del archivo, en vez de un `test -e` por nombre. (El LISTADO del
-      // archivo -- list_raw arriba -- sigue siendo shell: eso no es detección
-      // de conflicto y queda fuera del alcance de BUG-01.)
+      // NATIVE conflict (BUG-01): existingPaths over the top-level
+      // elements of the archive, instead of a `test -e` per name. (The archive
+      // LISTING -- list_raw above -- is still shell: that is not conflict
+      // detection and is out of BUG-01's scope.)
       var conflicts = FileOperations.existingPaths(names.map(function (n) {
         return Utils.joinPath(NavState.currentPath, n)
       })).map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
@@ -293,14 +293,14 @@ Item {
   }
 
 
-  // Ficheros soltados sobre `destDir` (una fila de carpeta, un marcador,
-  // una unidad, o el fondo de la lista = la carpeta abierta ahora mismo).
-  // `isMove` viene de DragEvent.source !== null (arrastre interno) --
-  // arrastres que vienen de fuera siempre copian, nunca mueven el origen.
-  // mode: "all" (sin conflictos) | "overwrite" | "skip". Vivía en
-  // logic/DragDropOps.qml -- movido aquí para romper una dependencia
-  // circular (DragDropOps necesitaba conflictActions para comprobar
-  // conflictos, y conflictActions necesitaba dragDropOps solo para esto).
+  // Files dropped onto `destDir` (a folder row, a bookmark,
+  // a drive, or the background of the list = the folder open right now).
+  // `isMove` comes from DragEvent.source !== null (internal drag) --
+  // drags coming from outside always copy, never move the source.
+  // mode: "all" (no conflicts) | "overwrite" | "skip". It lived in
+  // logic/DragDropOps.qml -- moved here to break a circular
+  // dependency (DragDropOps needed conflictActions to check
+  // conflicts, and conflictActions needed dragDropOps only for this).
   function runDrop(mode) {
     var conflictSet = {}
     ConflictState.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
@@ -323,11 +323,11 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       if (!isMove) {
-        // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
+        // NATIVE copy (Phase 13.A): FileOperations.copy instead of `cp -r`.
         actionEngine.runNativeCopy(pairs, busyLabel, mode === "overwrite")
       } else {
-        // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
-        // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
+        // NATIVE move (Phase 13.B): FileOperations.move. Same undo model
+        // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
         actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
@@ -335,9 +335,9 @@ Item {
             : "move " + pairs.length + " items"
           var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
           actionEngine.pushUndo(label, function () {
-            return actionEngine.runNativeMove(reversed, "", false)      // deshacer: no-clobber
+            return actionEngine.runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return actionEngine.runNativeMove(pairs, "", overwrite)     // rehacer: como el original
+            return actionEngine.runNativeMove(pairs, "", overwrite)     // redo: like the original
           })
         })
       }

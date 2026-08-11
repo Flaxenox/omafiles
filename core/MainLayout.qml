@@ -5,14 +5,14 @@ import "../panels"
 import "../shared"
 import "../state"
 
-// MainLayout -- árbol visual principal de Omafiles (Fase 11.B, josema:
-// descomponer el god object core/OmafilesContent.qml). La tarjeta
-// (BorderSurface), la barra lateral, la fila de paneles (fondo + activo con
-// su navegación/migas/entradas/lista) y el MouseArea del lazo de selección
-// que arranca en el hueco barra-lateral↔contenido. Deps inyectadas
-// explícitamente (patrón ActiveFileList, no root.*). Expone `list` como
-// alias porque los controladores (NavigationController, SearchOps, TabOps,
-// ArchiveActions) y DialogLayer lo referencian de vuelta.
+// MainLayout -- main visual tree of Omafiles (Phase 11.B, josema:
+// decompose the god object core/OmafilesContent.qml). The card
+// (BorderSurface), the sidebar, the panel row (background + active with
+// its navigation/breadcrumbs/inputs/list) and the MouseArea of the selection
+// lasso that starts in the sidebar↔content gap. Deps injected
+// explicitly (ActiveFileList pattern, not root.*). It exposes `list` as an
+// alias because the controllers (NavigationController, SearchOps, TabOps,
+// ArchiveActions) and DialogLayer reference it back.
 Item {
   id: mainLayout
 
@@ -48,12 +48,12 @@ Item {
     id: card
     anchors.fill: parent
     color: Color.menu.background
-    // Sin borde propio: Hyprland ya dibuja el borde de ventana activa/
-    // inactiva alrededor de toda la ventana (como en el resto de apps del
-    // sistema) -- un BorderSurface aquí dibujaría un segundo borde, con
-    // su propio color, pegado al de Hyprland. Eso sí hace falta en los
-    // popups reales de Omarchy (audio, red...) porque son layer-shell y
-    // Hyprland nunca los decora; Omafiles ya es una ventana normal.
+    // No border of its own: Hyprland already draws the active/
+    // inactive window border around the whole window (as in the rest of the
+    // system's apps) -- a BorderSurface here would draw a second border, with
+    // its own color, right next to Hyprland's. That IS needed in the real
+    // Omarchy popups (audio, network...) because they are layer-shell and
+    // Hyprland never decorates them; Omafiles is already a normal window.
     borderSpec: Border.none()
     radius: Style.cornerRadius
     padding: Style.spacing.panelPadding
@@ -67,12 +67,12 @@ Item {
       anchors.leftMargin: card.contentLeftInset
       spacing: Style.spacing.panelGap
 
-      // ---------- Barra lateral: accesos anclados ----------
+      // ---------- Sidebar: pinned shortcuts ----------
       Sidebar {
         id: sidebar
-        // Un poco más ancha (Fase 20, josema): más espacio para los nombres de
-        // dispositivo (una ISO como "Mafia The Old" cabe antes de truncarse) y
-        // holgura para el futuro botón de expulsión a la derecha.
+        // A bit wider (Phase 20, josema): more space for the device
+        // names (an ISO like "Mafia The Old" fits before truncating) and
+        // room for the future eject button on the right.
         width: 170
         height: parent.height
         bookmarks: BookmarksState.bookmarks
@@ -111,16 +111,16 @@ Item {
         width: Style.spacing.hairline
         height: parent.height
         color: Color.menu.border
-        // Bajado de 0.3 a 0.15 -- misma alpha que usa PanelSeparator
-        // (el separador horizontal real de Omarchy) para el mismo rol
-        // conceptual de "línea divisoria discreta". No hay un
-        // componente vertical real con el que comparar, pero no hay
-        // motivo para que esta línea sea el doble de fuerte que las
-        // horizontales del mismo fichero.
+        // Lowered from 0.3 to 0.15 -- same alpha that PanelSeparator
+        // (Omarchy's real horizontal separator) uses for the same
+        // conceptual role of "discreet dividing line". There is no real
+        // vertical component to compare with, but there is no
+        // reason for this line to be twice as strong as the
+        // horizontal ones in the same file.
         opacity: 0.15
       }
 
-      // ---------- Contenido principal ----------
+      // ---------- Main content ----------
       Column {
         id: mainColumn
         width: parent.width - sidebar.width - 1 - parent.spacing * 2
@@ -132,19 +132,19 @@ Item {
           width: parent.width
           height: parent.height
           readonly property int panelCount: TabsState.tabs.length
-          // El hueco entre dos paneles lleva panelGap A CADA LADO del
-          // divisor (no panelGap repartido entre los dos) -- para que el
-          // margen "interior" de un panel (hacia el divisor) sea tan ancho
-          // como el "exterior" (hacia la barra lateral o el borde de la
-          // ventana), en vez de la mitad.
+          // The gap between two panels carries panelGap ON EACH SIDE of the
+          // divider (not panelGap split between the two) -- so that the
+          // "inner" margin of a panel (toward the divider) is as wide
+          // as the "outer" one (toward the sidebar or the window
+          // edge), instead of half.
           readonly property real interPanelGap: 2 * Style.spacing.panelGap + Style.spacing.hairline
           readonly property real slotWidth: (panelsRow.width - (panelCount - 1) * interPanelGap) / panelCount
           function slotX(i) { return i * (panelsRow.slotWidth + panelsRow.interPanelGap) }
 
-          // ---------- Divisores entre paneles ----------
-          // Una simple línea, no un recuadro con borde propio -- mismo
-          // estilo que ya usa el divisor entre la barra lateral y el
-          // contenido (Color.menu.border, opacity 0.15, Style.spacing.hairline).
+          // ---------- Dividers between panels ----------
+          // A simple line, not a box with its own border -- same
+          // style already used by the divider between the sidebar and the
+          // content (Color.menu.border, opacity 0.15, Style.spacing.hairline).
           Repeater {
             model: Math.max(0, TabsState.tabs.length - 1)
             delegate: Rectangle {
@@ -158,14 +158,14 @@ Item {
             }
           }
 
-          // ---------- Paneles simples (todas las pestañas salvo la activa) ----------
-          // Generalización de lo que antes era un único panel de "vista
-          // dividida" fijo -- ahora hay uno por cada pestaña que no sea la
-          // activa, cada uno con su propio listado (su propio Process,
-          // hijo del delegado). Deliberadamente simple: sin lazo de
-          // selección ni menú contextual propio, solo navegar con doble
-          // clic y arrastrar -- para eso sirve, el panel activo (más
-          // abajo) ya tiene todo lo demás.
+          // ---------- Simple panels (all tabs except the active one) ----------
+          // Generalization of what used to be a single fixed "split
+          // view" panel -- now there is one per tab that is not the
+          // active one, each with its own listing (its own Process,
+          // child of the delegate). Deliberately simple: no selection
+          // lasso nor its own context menu, only navigate with double
+          // click and drag -- that's what it's for, the active panel (further
+          // down) already has everything else.
           Repeater {
             model: TabsState.tabs
 
@@ -180,12 +180,12 @@ Item {
             }
           }
 
-          // ---------- Panel activo ----------
-          // Todo lo que ya existía (barra de navegación, campos de
-          // nueva carpeta/fichero/búsqueda, la lista completa con lazo de
-          // selección/menú contextual/drag&drop/etc.) sin tocar su lógica
-          // interna -- solo movido a su propio hueco dentro de la fila de
-          // paneles, en la posición de la pestaña activa.
+          // ---------- Active panel ----------
+          // Everything that already existed (navigation bar, new
+          // folder/file/search fields, the full list with selection
+          // lasso/context menu/drag&drop/etc.) without touching its internal
+          // logic -- only moved to its own slot within the panel
+          // row, at the position of the active tab.
           Item {
             id: activePanel
             x: panelsRow.slotX(TabsState.activeTabIndex)
@@ -193,21 +193,21 @@ Item {
             width: panelsRow.slotWidth
             height: panelsRow.height
 
-        // Sin tinte de fondo propio en el panel activo -- se probó un
-        // Rectangle de Util.alpha(Color.accent, 0.08) de pared a pared,
-        // pero josema lo vio feo al pasar el ratón (mancha de color
-        // sobre todo el panel). El atenuado opacity:0.8 de bgPanel ya
-        // basta por sí solo para distinguir cuál está activo, sin
-        // añadir color encima.
+        // No background tint of its own in the active panel -- a wall-to-wall
+        // Rectangle of Util.alpha(Color.accent, 0.08) was tried,
+        // but josema found it ugly on hover (a color smear
+        // over the whole panel). bgPanel's dimmed opacity:0.8 already
+        // suffices by itself to tell which one is active, without
+        // adding color on top.
 
-        // navRow/listContainer/etc. van en su propia Column interior en
-        // vez de directamente en activePanel -- así statusText, fuera de
-        // ella, puede anclarse a parent.bottom (igual que bgStatusText)
-        // y quedar en el mismo píxel exacto en los dos tipos de panel.
-        // Antes, al ser el último hijo de la Column, su posición salía de
-        // sumar navRow+listContainer+márgenes -- una cadena de números
-        // reales que no siempre cuadraba pixel a pixel con el bottom:
-        // parent.bottom de los paneles de fondo (una simple resta).
+        // navRow/listContainer/etc. go in their own inner Column instead
+        // of directly in activePanel -- so statusText, outside of
+        // it, can be anchored to parent.bottom (like bgStatusText)
+        // and land on the exact same pixel in both types of panel.
+        // Before, being the last child of the Column, its position came from
+        // summing navRow+listContainer+margins -- a chain of real
+        // numbers that didn't always match pixel by pixel the bottom:
+        // parent.bottom of the background panels (a simple subtraction).
         Column {
           id: activeTop
           anchors.top: parent.top
@@ -234,16 +234,16 @@ Item {
 
           Item {
             id: pathArea
-            // Encoge al expandir la lupa, pero nunca por debajo de un mínimo:
-            // la ruta/breadcrumb SIEMPRE queda visible (truncada), nunca
-            // oculta. searchBar queda fija a la derecha porque es el último
-            // hijo del Row y pathArea absorbe el cambio de ancho.
+            // Shrinks when expanding the search, but never below a minimum:
+            // the path/breadcrumb is ALWAYS visible (truncated), never
+            // hidden. searchBar stays fixed to the right because it's the last
+            // child of the Row and pathArea absorbs the width change.
             readonly property int minPathW: 120
             width: Math.max(minPathW, parent.width - navButtons.width - searchBar.width - 2 * Style.spacing.controlGap)
             height: parent.height
 
             MouseArea {
-              // Detrás de las migas de pan: clic en hueco vacío -> editar ruta a mano.
+              // Behind the breadcrumbs: click on empty space -> edit path by hand.
               anchors.fill: parent
               visible: !EditModeState.editingPath
               cursorShape: Qt.IBeamCursor
@@ -267,9 +267,9 @@ Item {
             }
           }
 
-          // Lupa de búsqueda expandible (Fase 19): último hijo de navRow,
-          // pegada al borde derecho. maxWidth = lo que sobra tras reservar el
-          // mínimo del breadcrumb, para que la ruta nunca desaparezca.
+          // Expandable search magnifier (Phase 19): last child of navRow,
+          // stuck to the right edge. maxWidth = what's left after reserving the
+          // breadcrumb's minimum, so the path never disappears.
           SearchBar {
             id: searchBar
             anchors.verticalCenter: parent.verticalCenter
@@ -283,10 +283,10 @@ Item {
 
         ActivePanelInputRows {
           id: activeInputRows
-          // RHS cualificado con mainLayout.* (Fase 11.B): estas deps son
-          // properties de MainLayout, no ids -- sin cualificar, `root: root`
-          // se autorreferencia a la property root del propio
-          // ActivePanelInputRows (binding loop -> null). `list` sí es un id.
+          // RHS qualified with mainLayout.* (Phase 11.B): these deps are
+          // properties of MainLayout, not ids -- without qualifying, `root: root`
+          // self-references the root property of ActivePanelInputRows
+          // itself (binding loop -> null). `list` is an id.
           root: mainLayout.root
           list: list
           conflictActions: mainLayout.conflictActions
@@ -295,18 +295,18 @@ Item {
         Item {
           id: listContainer
           width: parent.width
-          // Sin el "- Style.spacing.hairline" que llevaba antes: ese
-          // único píxel de más hacía que list.height quedara 1px por
-          // debajo de bgList.height (misma fórmula, pero bgList lo
-          // deriva de anchors reales, sin ese fudge). En una lista con
-          // filas no se notaba (solo cambia el margen bajo la última
-          // fila), pero el estado vacío, centrado en el alto total,
-          // amplificaba ese único píxel a un desajuste visible al
-          // cambiar entre panel activo/de fondo.
-          // Las tres filas de activeInputRows son mutuamente excluyentes
-          // (ver comentario del propio componente) -- su altura ya ES
-          // la de la única fila visible, o 0 si ninguna lo está, así
-          // que basta un término en vez de sumar los tres por separado.
+          // Without the "- Style.spacing.hairline" it used to have: that
+          // single extra pixel made list.height end up 1px below
+          // bgList.height (same formula, but bgList derives it
+          // from real anchors, without that fudge). In a list with
+          // rows it wasn't noticeable (it only changes the margin under the last
+          // row), but the empty state, centered in the total height,
+          // amplified that single pixel into a visible mismatch when
+          // switching between active/background panel.
+          // The three rows of activeInputRows are mutually exclusive
+          // (see the component's own comment) -- their height already IS
+          // that of the single visible row, or 0 if none is, so
+          // a single term suffices instead of summing the three separately.
           height: activePanel.height - navRow.height
             - (EditModeState.creatingFolder || EditModeState.creatingFile ? activeInputRows.height + mainColumn.spacing : 0)
             - statusText.height - mainColumn.spacing * (2 + (EditModeState.creatingFolder || EditModeState.creatingFile ? 1 : 0))
@@ -314,12 +314,12 @@ Item {
           ActiveFileList {
             id: list
             anchors.fill: parent
-            // RHS cualificado con mainLayout.* (Fase 11.B): son properties de
-            // MainLayout, no ids -- sin cualificar cada `X: X` se
-            // autorreferencia a la property homónima del propio ActiveFileList
-            // (binding loop -> null). `card` y `list` sí son ids. Los siete
-            // ConfirmDialog los recibe MainLayout de root (antes apuntaban a
-            // `dialogLayer`, que no existe en este ámbito).
+            // RHS qualified with mainLayout.* (Phase 11.B): they are properties of
+            // MainLayout, not ids -- without qualifying each `X: X`
+            // self-references the homonymous property of ActiveFileList itself
+            // (binding loop -> null). `card` and `list` are ids. The seven
+            // ConfirmDialog are received by MainLayout from root (before they pointed to
+            // `dialogLayer`, which doesn't exist in this scope).
             root: mainLayout.root
             card: card
             actionEngine: mainLayout.actionEngine
@@ -349,14 +349,14 @@ Item {
           }
 
         }
-        } // fin activeTop (Column)
-            // ---------- Barra de estado ----------
-            // Dentro del panel activo, no como hermana global de
-            // panelsRow -- antes quedaba siempre debajo de la columna
-            // izquierda aunque la información fuera de la pestaña de la
-            // derecha, algo que josema notó como desalineado. Fuera de
-            // activeTop y anclada a activePanel.bottom (como
-            // bgStatusText) para que quede en el mismo píxel exacto.
+        } // end activeTop (Column)
+            // ---------- Status bar ----------
+            // Inside the active panel, not as a global sibling of
+            // panelsRow -- before it always ended up below the left
+            // column even though the information was of the right
+            // tab, something josema noticed as misaligned. Outside
+            // activeTop and anchored to activePanel.bottom (like
+            // bgStatusText) so it lands on the exact same pixel.
             Text {
               id: statusText
               anchors.bottom: parent.bottom
@@ -365,11 +365,11 @@ Item {
               text: NavState.visibleEntries.length + (NavState.visibleEntries.length === 1 ? " item" : " items")
                 + (NavState.searchQuery ? " of " + NavState.entries.length : "")
                 + (NavState.searchTruncated ? " · showing first 200" : "")
-                // Sin tope en la carpeta en sí (a diferencia de la
-                // búsqueda) -- cortar un listado normal a los N primeros
-                // rompería el manejo de ficheros de verdad para carpetas
-                // grandes (node_modules, caches de paquetes...). Solo un
-                // aviso informativo de que puede ir lento, no un límite.
+                // No cap on the folder itself (unlike the
+                // search) -- cutting a normal listing to the first N
+                // would break real file management for large
+                // folders (node_modules, package caches...). Only an
+                // informative notice that it may be slow, not a limit.
                 + (!NavState.searchQuery && NavState.entries.length > 5000 ? " · large folder, may be slow" : "")
                 + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
                 + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
@@ -379,19 +379,19 @@ Item {
               color: Color.menu.text
               opacity: Style.emphasis.secondary
             }
-          } // fin activePanel (Item)
-        } // fin panelsRow (Item)
+          } // end activePanel (Item)
+        } // end panelsRow (Item)
       }
     }
 
-    // El lazo de selección también debe poder arrancar en el hueco entre
-    // la barra lateral y el contenido -- `cardRow` es un Row con
-    // `spacing: Style.spacing.panelGap` a cada lado del separador
-    // vertical, y ese espaciado no pertenece a ningún hijo (ni sidebar ni
-    // mainColumn lo cubren), así que ningún MouseArea dentro de
-    // `listContainer` llega hasta ahí por mucho z-order que se ajuste.
-    // `mapToItem` en vez de aritmética manual con list.y/contentY --
-    // ya nos hemos equivocado antes a mano con esas cuentas.
+    // The selection lasso must also be able to start in the gap between
+    // the sidebar and the content -- `cardRow` is a Row with
+    // `spacing: Style.spacing.panelGap` on each side of the vertical
+    // separator, and that spacing belongs to no child (neither sidebar nor
+    // mainColumn cover it), so no MouseArea inside
+    // `listContainer` reaches there no matter how the z-order is adjusted.
+    // `mapToItem` instead of manual arithmetic with list.y/contentY --
+    // we've already gotten those calculations wrong by hand before.
     MouseArea {
       x: cardRow.x + sidebar.width
       y: cardRow.y

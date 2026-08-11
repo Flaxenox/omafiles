@@ -2,16 +2,16 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Lectura de variables de entorno -- adaptador fino sobre el singleton
-// C++ Omafiles.Backend.Env (qEnvironmentVariable real, ver
-// backend/Env.cpp). Fase 5.C (josema): implementacion UNICA y compartida
-// por los dos frontends (Quickshell y Qt6 standalone), ambos cargando el
-// mismo .so por import path -- ya no hay variante +standalone.
+// Reading environment variables -- thin adapter over the C++ singleton
+// Omafiles.Backend.Env (real qEnvironmentVariable, see
+// backend/Env.cpp). Phase 5.C (josema): a SINGLE implementation shared
+// by both frontends (Quickshell and Qt6 standalone), both loading the
+// same .so by import path -- there is no more +standalone variant.
 //
-// La razon de existir de este fichero es solo dar el nombre
-// Omafiles.Services.Env y aislar a logic/ del nombre del modulo backend
-// (regla 8 de BACKEND_DESIGN.md). logic/ sigue llamando Env.get(name)
-// igual que cuando esto delegaba en Quickshell.env().
+// The reason this file exists is only to give the name
+// Omafiles.Services.Env and isolate logic/ from the backend module's name
+// (rule 8 of BACKEND_DESIGN.md). logic/ keeps calling Env.get(name)
+// just like when this delegated to Quickshell.env().
 QtObject {
   function get(name) { return Backend.Env.get(name) }
 }

@@ -4,14 +4,14 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Backend C++ de services/Env.qml (Fase 5, josema). Da acceso REAL a
-// variables de entorno via qEnvironmentVariable -- QML no las expone de
-// forma nativa (por eso Quickshell.env() existe del lado Quickshell, y
-// por eso Fase 4 tuvo que inyectar HOME como context property). Con esto
-// desaparece ese truco: el standalone lee el entorno directamente.
+// C++ backend for services/Env.qml (Phase 5, josema). Gives REAL access to
+// environment variables via qEnvironmentVariable -- QML does not expose them
+// natively (that is why Quickshell.env() exists on the Quickshell side, and
+// why Phase 4 had to inject HOME as a context property). This removes that
+// trick: the standalone reads the environment directly.
 //
-// Singleton QML (Omafiles.Backend.Env): no tiene estado, una sola
-// instancia basta y se consume como Env.get("HOME").
+// QML singleton (Omafiles.Backend.Env): stateless, a single instance is
+// enough and it is consumed as Env.get("HOME").
 class Env : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -20,7 +20,7 @@ class Env : public QObject {
 public:
   explicit Env(QObject *parent = nullptr);
 
-  // Valor de la variable `name`, o "" si no existe (mismo contrato que la
-  // version Quickshell sobre Quickshell.env()).
+  // Value of the variable `name`, or "" if it does not exist (same contract as
+  // the Quickshell version over Quickshell.env()).
   Q_INVOKABLE QString get(const QString &name) const;
 };

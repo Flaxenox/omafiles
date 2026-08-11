@@ -1,8 +1,8 @@
 import QtQuick
 import "../state"
 
-// Selección de filas (individual, rango, lazo de arrastre) -- vigésimo
-// quinto componente extraído de Omafiles.qml.
+// Row selection (single, range, drag marquee) -- twenty-fifth
+// component extracted from Omafiles.qml.
 Item {
   property Item root: null
   property Item previewLoader: null
@@ -59,13 +59,13 @@ Item {
     SelectionState.selectedIndex = index
   }
 
-  // Arranca/mueve/termina el lazo -- compartido por todos los catchers que
-  // pueden recibir el press inicial (huecos de arriba/abajo/izquierda,
-  // gutters de cada fila) para no duplicar la lógica. `contentY` es la
-  // posición dentro de list.contentItem (mapToItem ya la da corregida por
-  // scroll); `viewportY` es la posición dentro de `list` sin corregir,
-  // para detectar si el cursor está pegado a un borde y hace falta
-  // auto-scroll.
+  // Starts/moves/ends the marquee -- shared by all the catchers that
+  // can receive the initial press (top/bottom/left empty areas,
+  // gutters of each row) so as not to duplicate the logic. `contentY` is the
+  // position inside list.contentItem (mapToItem already gives it corrected for
+  // scroll); `viewportY` is the position inside `list` uncorrected,
+  // to detect if the cursor is stuck to an edge and
+  // auto-scroll is needed.
   function startMarquee(x, contentY, viewportY, ctrlHeld) {
     SelectionState.marqueeAdditive = ctrlHeld
     SelectionState.marqueeBaseSelection = ctrlHeld ? SelectionState.selectedIndices.slice() : []
@@ -90,11 +90,11 @@ Item {
     SelectionState.marqueeActive = false
   }
 
-  // Recalcula la selección a partir del rectángulo del lazo (marqueeStartY/
-  // marqueeCurrentY, en coordenadas de contenido). Filas de altura uniforme
-  // (nombres/metadatos no hacen wrap, siempre una línea) -- basta con
-  // dividir por la altura media en vez de inspeccionar los delegados reales
-  // de la ListView, más simple y ajeno a la virtualización.
+  // Recomputes the selection from the marquee rectangle (marqueeStartY/
+  // marqueeCurrentY, in content coordinates). Rows of uniform height
+  // (names/metadata do not wrap, always one line) -- it is enough to
+  // divide by the average height instead of inspecting the ListView's real
+  // delegates, simpler and independent of the virtualization.
   function updateMarqueeSelection(additive, base) {
     var total = NavState.visibleEntries.length
     if (total === 0 || root.measuredRowHeight <= 0) return

@@ -2,15 +2,15 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Ejecucion "dispara y olvida" de un proceso externo -- sin seguimiento
-// de resultado, sin busy/cancel (para eso, services/ProcessRunner.qml).
-// Adaptador fino sobre el singleton C++ Omafiles.Backend.Detached
-// (QProcess::startDetached, ver backend/Detached.cpp).
+// "Fire and forget" execution of an external process -- no result
+// tracking, no busy/cancel (for that, services/ProcessRunner.qml).
+// Thin adapter over the C++ singleton Omafiles.Backend.Detached
+// (QProcess::startDetached, see backend/Detached.cpp).
 //
-// Fase 5.C (josema): implementacion UNICA para los dos frontends. Antes
-// esto delegaba en Quickshell.execDetached() y el standalone tenia un stub
-// que solo avisaba por consola; ahora ambos usan el mismo backend C++ y el
-// stub desaparece. logic/ sigue llamando Detached.run(args) igual.
+// Phase 5.C (josema): a SINGLE implementation for both frontends. Previously
+// this delegated to Quickshell.execDetached() and the standalone had a stub
+// that only warned on the console; now both use the same C++ backend and the
+// stub disappears. logic/ keeps calling Detached.run(args) the same.
 QtObject {
   function run(args) { Backend.Detached.run(args) }
 }

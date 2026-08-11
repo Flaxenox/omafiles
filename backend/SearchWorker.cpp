@@ -19,26 +19,26 @@ void SearchWorker::cancel() { m_gen.fetch_add(1); }
 
 void SearchWorker::search(const QString &root, const QString &query,
                           bool showHidden) {
-  // Invalida cualquier búsqueda anterior y abre la generación de esta.
+  // Invalidates any previous search and opens this one's generation.
   const quint64 gen = m_gen.fetch_add(1) + 1;
   if (query.isEmpty())
     return;
 
   auto life = m_life;
   const QString rootPath = root;
-  // Fase 27 (PERF_AUDIT_RC1): NO se baja la query a minúsculas para luego
-  // hacer fileName().toLower().contains(q) -> eso asignaba una QString nueva
-  // por cada fichero escaneado (100k asignaciones en un árbol grande). Se
-  // compara con Qt::CaseInsensitive, que hace el case-folding sin materializar
-  // el nombre en minúsculas.
+  // Phase 27 (PERF_AUDIT_RC1): the query is NOT lowercased to then do
+  // fileName().toLower().contains(q) -> that allocated a new QString
+  // per scanned file (100k allocations on a large tree). It is
+  // compared with Qt::CaseInsensitive, which does the case-folding without
+  // materializing the lowercased name.
   const QString q = query;
 
   QThreadPool::globalInstance()->start(QRunnable::create([this, life, gen,
                                                           rootPath, q,
                                                           showHidden]() {
-    // Sin QDir::Hidden en el filtro, QDirIterator NO emite entradas ocultas
-    // NI recurre dentro de carpetas ocultas -- equivale a los
-    // `-not -path './.*' -not -path '*/.*'` del script.
+    // Without QDir::Hidden in the filter, QDirIterator does NOT emit hidden
+    // entries NOR recurse into hidden folders -- equivalent to the
+    // `-not -path './.*' -not -path '*/.*'` of the script.
     QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
     if (showHidden)
       filters |= QDir::Hidden;
@@ -47,7 +47,7 @@ void SearchWorker::search(const QString &root, const QString &query,
     QDirIterator it(rootPath, filters, QDirIterator::Subdirectories);
     QVariantList out;
     while (it.hasNext()) {
-      // Cancelada o superada por otra búsqueda -> abortar sin emitir.
+      // Cancelled or superseded by another search -> abort without emitting.
       if (m_gen.load() != gen)
         return;
       it.next();
@@ -58,7 +58,7 @@ void SearchWorker::search(const QString &root, const QString &query,
       QVariantMap e;
       e[QStringLiteral("type")] =
           isDir ? QStringLiteral("dir") : QStringLiteral("file");
-      // Ruta relativa a root (mismo "nombre" que producía el script).
+      // Path relative to root (same "name" that the script produced).
       e[QStringLiteral("name")] =
           base.relativeFilePath(fi.absoluteFilePath());
       e[QStringLiteral("size")] =
@@ -67,7 +67,7 @@ void SearchWorker::search(const QString &root, const QString &query,
           static_cast<qint64>(fi.lastModified().toSecsSinceEpoch());
       e[QStringLiteral("link")] = QString();
       out.append(e);
-      // Tope de 201: el 201 solo sirve para saber que hubo más de 200.
+      // Cap of 201: the 201st only serves to know there were more than 200.
       if (out.size() >= 201)
         break;
     }
@@ -82,7 +82,7 @@ void SearchWorker::search(const QString &root, const QString &query,
           if (!life->alive)
             return;
           if (m_gen.load() != gen)
-            return; // superada mientras se entregaba
+            return; // superseded while delivering
           emit results(out, truncated);
         },
         Qt::QueuedConnection);

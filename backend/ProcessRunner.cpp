@@ -5,8 +5,8 @@
 
 ProcessRunner::ProcessRunner(QObject *parent)
     : QObject(parent), m_proc(new QProcess(this)) {
-  // Acumular a medida que llega -- du/find/search pueden emitir mas de lo
-  // que cabe en el buffer interno, no se puede posponer todo al final.
+  // Accumulate as it arrives -- du/find/search can emit more than fits
+  // in the internal buffer, it cannot all be deferred to the end.
   connect(m_proc, &QProcess::readyReadStandardOutput, this, [this]() {
     m_stdout += QString::fromUtf8(m_proc->readAllStandardOutput());
   });
@@ -15,17 +15,18 @@ ProcessRunner::ProcessRunner(QObject *parent)
   });
   connect(m_proc, &QProcess::finished, this,
           [this](int exitCode, QProcess::ExitStatus) {
-            // Vaciar lo que quede en los buffers antes de cerrar.
+            // Flush whatever is left in the buffers before closing.
             m_stdout += QString::fromUtf8(m_proc->readAllStandardOutput());
             m_stderr += QString::fromUtf8(m_proc->readAllStandardError());
             emitFinished(exitCode);
           });
   connect(m_proc, &QProcess::errorOccurred, this,
           [this](QProcess::ProcessError err) {
-            // FailedToStart NO dispara finished() en QProcess -- hay que
-            // cerrar el ciclo a mano (programa inexistente, sin permisos).
-            // El resto de errores ocurren con el proceso ya lanzado y si
-            // acaban en finished(), asi que se ignoran aqui.
+            // FailedToStart does NOT fire finished() in QProcess -- the
+            // cycle has to be closed by hand (nonexistent program, no
+            // permissions). The rest of the errors happen with the process
+            // already launched and do end in finished(), so they are ignored
+            // here.
             if (err == QProcess::FailedToStart) {
               if (m_stderr.isEmpty())
                 m_stderr = m_proc->errorString();
@@ -64,22 +65,22 @@ void ProcessRunner::cancel() {
   m_cancelled = true;
 
   if (m_group) {
-    // Lanzado con setsid: el hijo lidera su propio grupo (pgid == pid),
-    // asi que kill(-pid) alcanza tambien a sus descendientes reales.
+    // Launched with setsid: the child leads its own group (pgid == pid),
+    // so kill(-pid) also reaches its real descendants.
     const qint64 pid = m_proc->processId();
     if (pid > 0)
       ::kill(-static_cast<pid_t>(pid), SIGTERM);
   } else {
-    // Sin grupo: solo el proceso inmediato, nunca tocar nuestro pgid.
+    // No group: only the immediate process, never touch our own pgid.
     m_proc->terminate();
   }
-  // finished() se disparara cuando el proceso muera de verdad, ya con
+  // finished() will fire when the process actually dies, already with
   // cancelled:true (via m_cancelled).
 }
 
 void ProcessRunner::emitFinished(int exitCode) {
   if (!m_running)
-    return; // guarda contra doble emision (p.ej. error + finished)
+    return; // guard against double emission (e.g. error + finished)
   m_running = false;
 
   const bool wasCancelled = m_cancelled;

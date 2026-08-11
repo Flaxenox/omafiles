@@ -1,18 +1,18 @@
 import Omafiles.Backend as Backend
 
-// Ejecuta un proceso externo y entrega su resultado completo de una vez
+// Runs an external process and delivers its full result at once
 // (start / busy / cancel / finished{exitCode,stdout,stderr,cancelled}).
-// Adaptador fino que re-exporta el tipo C++ Omafiles.Backend.ProcessRunner
-// (respaldado por QProcess real, ver backend/ProcessRunner.cpp) bajo el
-// nombre Omafiles.Services.ProcessRunner que espera logic/.
+// Thin adapter that re-exports the C++ type Omafiles.Backend.ProcessRunner
+// (backed by a real QProcess, see backend/ProcessRunner.cpp) under the
+// name Omafiles.Services.ProcessRunner that logic/ expects.
 //
-// Fase 5.C (josema): implementacion UNICA para los dos frontends. Antes
-// habia dos -- esta (Quickshell.Io.Process) y services/+standalone/ sobre
-// el backend C++; ahora Quickshell tambien carga el .so por import path,
-// asi que la version Quickshell se retira y queda solo esta costura
-// QML<->C++. La API (start/busy/cancel/finished) es identica; logic/ sigue
-// escribiendo `ProcessRunner { onFinished: ... }` sin enterarse.
+// Phase 5.C (josema): a SINGLE implementation for both frontends. Previously
+// there were two -- this one (Quickshell.Io.Process) and services/+standalone/ over
+// the C++ backend; now Quickshell also loads the .so by import path,
+// so the Quickshell version is retired and only this QML<->C++ seam
+// remains. The API (start/busy/cancel/finished) is identical; logic/ keeps
+// writing `ProcessRunner { onFinished: ... }` without noticing.
 //
-// Para procesos que NO terminan solos (inotifywait -m y similares), ver
+// For processes that do NOT end on their own (inotifywait -m and similar), see
 // services/ProcessWatcher.qml.
 Backend.ProcessRunner {}

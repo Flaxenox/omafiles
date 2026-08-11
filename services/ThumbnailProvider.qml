@@ -2,27 +2,27 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Miniaturas -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.ThumbnailProvider (QImageReader/QPdfDocument + caché en
-// disco, ver backend/ThumbnailProvider.cpp). Fase 8 (josema).
+// Thumbnails -- thin adapter over the C++ singleton
+// Omafiles.Backend.ThumbnailProvider (QImageReader/QPdfDocument + on-disk
+// cache, see backend/ThumbnailProvider.cpp). Phase 8 (josema).
 //
-// Reenvía request() y re-emite ready() para que logic/ y la UI no importen
-// Omafiles.Backend (regla 8). Igual que el resto de services/.
+// It forwards request() and re-emits ready() so logic/ and the UI do not import
+// Omafiles.Backend (rule 8). Like the rest of services/.
 QtObject {
   id: thumbs
 
-  // La miniatura de `path` (lado máximo `size` px) si ya está en caché, o
-  // "" si no (se genera async y llega por ready). "" también para tipos no
-  // soportados.
+  // The thumbnail of `path` (max side `size` px) if it is already cached, or
+  // "" if not (it is generated async and arrives via ready). "" also for
+  // unsupported types.
   function request(path, size) { return Backend.ThumbnailProvider.request(path, size || 256) }
 
-  // Hash canónico de clave de caché en disco (SHA-1 hex) -- el ÚNICO esquema
-  // de hash de Omafiles (Fase B1). Lo consumen las rutas de QML que antes
-  // usaban Utils.simpleHash: miniaturas de vídeo (logic/VideoThumbnails.qml)
-  // y caché de extracción de archivos (logic/ArchiveActions.qml).
+  // Canonical on-disk cache-key hash (SHA-1 hex) -- the ONLY hash scheme
+  // of Omafiles (Phase B1). Consumed by the QML paths that previously
+  // used Utils.simpleHash: video thumbnails (logic/VideoThumbnails.qml)
+  // and archive extraction cache (logic/ArchiveActions.qml).
   function cacheKey(input) { return Backend.ThumbnailProvider.cacheKey(input) }
 
-  // Se dispara cuando una miniatura pedida antes queda lista.
+  // Fires when a previously requested thumbnail becomes ready.
   signal ready(string path, string thumbPath)
 
   property Connections _backend: Connections {

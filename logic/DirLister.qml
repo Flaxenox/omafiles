@@ -2,22 +2,22 @@ import QtQuick
 import "../state"
 import "../services"
 
-// Lista un directorio y expone el resultado ya ordenado -- vigésimo tercer
-// componente extraído de Omafiles.qml (Fase 1.6, josema). Reutilizado por
-// NavigationController (panel activo, una instancia) y BackgroundPanel (una
-// por pestaña de fondo). Cada uno tiene su instancia: varias pestañas
-// pueden listar rutas distintas a la vez.
+// Lists a directory and exposes the result already sorted -- twenty-third
+// component extracted from Omafiles.qml (Phase 1.6, josema). Reused by
+// NavigationController (active panel, one instance) and BackgroundPanel (one
+// per background tab). Each has its instance: several tabs
+// can list different paths at once.
 //
-// Fase 6.C/6.D (josema): backend de listado 100% NATIVO. Ya no se lanza
-// list-dir.sh ni list-trash.sh; el listado lo hace Omafiles.Backend.
-// DirectoryModel (QAbstractListModel sobre readdir/stat), y la vigilancia
-// de cambios la hace su QFileSystemWatcher interno (sin forkear
-// inotifywait). Adaptador fino sobre el modelo:
-//   - carpeta normal -> dirModel.list(path)
-//   - Papelera -> trash-roots.sh (descubrir raíces XDG) + dirModel.listMany
-//     (fusionar el contenido de todas) + trash-info.sh (metadatos)
-// La API pública (entries/pathError/loaded/listed/list) no cambia, así que
-// NavigationController y BackgroundPanel siguen igual.
+// Phase 6.C/6.D (josema): 100% NATIVE listing backend. list-dir.sh
+// and list-trash.sh are no longer launched; the listing is done by Omafiles.Backend.
+// DirectoryModel (QAbstractListModel over readdir/stat), and the change
+// watching is done by its internal QFileSystemWatcher (without forking
+// inotifywait). Thin adapter over the model:
+//   - normal folder -> dirModel.list(path)
+//   - Trash -> trash-roots.sh (discover XDG roots) + dirModel.listMany
+//     (merge the content of all) + trash-info.sh (metadata)
+// The public API (entries/pathError/loaded/listed/list) does not change, so
+// NavigationController and BackgroundPanel stay the same.
 Item {
   id: dirLister
   property string trashDir: ""
@@ -28,41 +28,41 @@ Item {
   property string pathError: ""
   property bool loaded: false
 
-  // Emitida cada vez que entries se resuelve de verdad (con contenido
-  // nuevo o repetido) -- distinto de onEntriesChanged, que con QML no
-  // dispara si el array resultante es igual (mismo bug que _apply()
-  // evita reasignando solo si cambió). Quien necesite reaccionar a CADA
-  // listado, cambie o no el contenido (ej. _finishListLoad en el panel
-  // activo: reset de scroll/selección), debe usar esta señal.
+  // Emitted every time entries is actually resolved (with new
+  // or repeated content) -- different from onEntriesChanged, which with QML does not
+  // fire if the resulting array is equal (same bug that _apply()
+  // avoids by reassigning only if it changed). Whoever needs to react to EACH
+  // listing, whether or not the content changed (e.g. _finishListLoad in the active
+  // panel: scroll/selection reset), must use this signal.
   signal listed()
 
-  // El contenido de la carpeta vigilada cambió (reenvía dirModel.
-  // directoryChanged, vigilancia nativa). NavigationController se engancha
-  // aquí en vez de a inotifywait para su debounce + refresco.
+  // The content of the watched folder changed (re-forwards dirModel.
+  // directoryChanged, native watching). NavigationController hooks
+  // here instead of inotifywait for its debounce + refresh.
   signal directoryChanged()
 
   property string _targetPath: ""
-  // Modo del último escaneo lanzado al modelo ("dir" o "trash"). Junto con
-  // la generación interna del modelo, descarta resultados obsoletos al
-  // cambiar entre una carpeta normal y la Papelera (el modelo sirve a
-  // ambos): un resultado cuyo modo no coincide con la ruta actual se tira.
+  // Mode of the last scan launched to the model ("dir" or "trash"). Together with
+  // the model's internal generation, it discards obsolete results on
+  // switching between a normal folder and the Trash (the model serves
+  // both): a result whose mode does not match the current path is thrown away.
   property string _dirMode: "dir"
-  // Firma de contenido del último listado APLICADO (DirectoryModel.signature,
-  // hash 64-bit calculado en el worker). Fase 27 (PERF_AUDIT_RC1): la guarda
-  // "¿cambió la carpeta?" pasa de un Utils.entriesEqual O(n) —que iteraba las
-  // 100k entradas en el hilo de UI y forzaba materializar todo el array
-  // (medido: 342 ms/refresco a 100k)— a una comparación de string O(1).
+  // Content signature of the last APPLIED listing (DirectoryModel.signature,
+  // 64-bit hash computed on the worker). Phase 27 (PERF_AUDIT_RC1): the guard
+  // "did the folder change?" goes from an O(n) Utils.entriesEqual —which iterated the
+  // 100k entries on the UI thread and forced materializing the whole array
+  // (measured: 342 ms/refresh at 100k)— to an O(1) string comparison.
   property string _lastSignature: ""
 
   function list(path) {
     _targetPath = path
     pathError = ""
     if (path === trashDir) {
-      // La Papelera agrega la raíz de casa MÁS la .Trash-$UID de cualquier
-      // disco montado (spec XDG Trash). FileOperations.trashRoots() las
-      // descubre (nativo, Fase 16: sustituye a trash-roots.sh); luego se
-      // fusiona el contenido de todas con listMany. No es una carpeta única,
-      // por eso no pasa por dirModel.list a secas.
+      // The Trash aggregates the home root PLUS the .Trash-$UID of any
+      // mounted disk (XDG Trash spec). FileOperations.trashRoots()
+      // discovers them (native, Phase 16: replaces trash-roots.sh); then the
+      // content of all is merged with listMany. It is not a single folder,
+      // which is why it does not go through dirModel.list plainly.
       var paths = FileOperations.trashRoots().map(function (r) { return r + "/files" })
       _dirMode = "trash"
       dirModel.listMany(paths, showHidden)
@@ -72,9 +72,9 @@ Item {
     }
   }
 
-  // Vigilancia nativa del directorio actual (Fase 6.D). Devuelve false si
-  // el modelo no pudo vigilar (ruta inválida, límite de descriptores) para
-  // que el llamador caiga al fallback inotifywait.
+  // Native watching of the current directory (Phase 6.D). Returns false if
+  // the model could not watch (invalid path, descriptor limit) so
+  // the caller falls back to inotifywait.
   function watch(path) {
     return dirModel.watch(path)
   }
@@ -83,22 +83,22 @@ Item {
     dirModel.unwatch()
   }
 
-  // Reasigna entries SOLO si el contenido de verdad cambió -- QML/
-  // ListView no compara el contenido de un array modelo, solo la
-  // referencia, así que reasignar aunque los datos sean idénticos
-  // dispara un relayout completo (recrea TODAS las filas desde cero,
-  // salto visible reportado por josema -- ver el historial de
-  // NavigationController/BackgroundPanel antes de esta extracción).
+  // Reassigns entries ONLY if the content actually changed -- QML/
+  // ListView does not compare the content of a model array, only the
+  // reference, so reassigning even if the data is identical
+  // triggers a full relayout (recreates ALL the rows from scratch,
+  // a visible jump reported by josema -- see the history of
+  // NavigationController/BackgroundPanel before this extraction).
   function _apply() {
-    // Guarda "¿cambió la carpeta?" por FIRMA (Fase 27), no por contenido:
-    // DirectoryModel.signature es un hash del contenido calculado en el hilo
-    // worker. Antes (Fase 10.A) se comparaba con Utils.entriesEqual, O(n) en
-    // el hilo de UI, que además forzaba materializar TODO el array perezoso
-    // (dirModel.entries) al recorrerlo. Ahora sólo se lee/materializa
-    // dirModel.entries cuando la firma cambió de verdad -> los refrescos del
-    // watcher sobre carpetas sin cambios cuestan una comparación de string.
-    // Se mantiene la MISMA referencia de `entries` cuando no cambió, para que
-    // NavigationController pueda comparar por referencia aguas arriba.
+    // Guard "did the folder change?" by SIGNATURE (Phase 27), not by content:
+    // DirectoryModel.signature is a content hash computed on the worker
+    // thread. Previously (Phase 10.A) it was compared with Utils.entriesEqual, O(n) on
+    // the UI thread, which also forced materializing the WHOLE lazy array
+    // (dirModel.entries) on walking it. Now dirModel.entries is only
+    // read/materialized when the signature actually changed -> the watcher's
+    // refreshes over unchanged folders cost a string comparison.
+    // The SAME `entries` reference is kept when it did not change, so
+    // NavigationController can compare by reference upstream.
     var sig = dirModel.signature
     if (sig !== _lastSignature) {
       _lastSignature = sig
@@ -108,40 +108,40 @@ Item {
     listed()
   }
 
-  // Orden final: C++ (DirectoryModel) ya devuelve las entradas ordenadas por
-  // naturalCompare (carpetas primero) -- el orden por defecto que ve el
-  // usuario. Solo hace falta re-ordenar en JS si el usuario eligió otro
-  // criterio (tamaño/fecha/tipo o descendente). Fase 10.A: elimina los ~31 ms
-  // de re-ordenar en el hilo de UI lo que C++ ya ordenó.
+  // Final order: C++ (DirectoryModel) already returns the entries sorted by
+  // naturalCompare (folders first) -- the default order the user
+  // sees. It only needs re-sorting in JS if the user chose another
+  // criterion (size/date/type or descending). Phase 10.A: eliminates the ~31 ms
+  // of re-sorting on the UI thread what C++ already sorted.
   function _sorted(raw) {
     return sortOps.isDefaultOrder ? raw : sortOps.sortEntries(raw)
   }
 
-  // Backend nativo de listado (Fase 6.C/6.D). Sirve tanto carpetas normales
-  // (list) como la Papelera (listMany). El array dirModel.entries tiene la
-  // misma forma {type,name,size,mtime,link} que producía Utils.parseEntries,
-  // y pasa por el mismo sortOps.sortEntries + _apply.
+  // Native listing backend (Phase 6.C/6.D). Serves both normal folders
+  // (list) and the Trash (listMany). The dirModel.entries array has the
+  // same shape {type,name,size,mtime,link} that Utils.parseEntries produced,
+  // and goes through the same sortOps.sortEntries + _apply.
   DirectoryModel {
     id: dirModel
-    // Cualificado con el id: dirModel TAMBIEN tiene una senal
-    // directoryChanged, asi que sin cualificar se reemitiria la del propio
-    // modelo (colision de nombres) en vez de la de DirLister.
+    // Qualified with the id: dirModel ALSO has a directoryChanged
+    // signal, so without qualifying, the model's own one would be re-emitted
+    // (name collision) instead of DirLister's.
     onDirectoryChanged: dirLister.directoryChanged()
     onListed: {
       var isTrash = (_targetPath === trashDir)
-      // Descarta resultados de un modo que ya no corresponde a la ruta
-      // actual (carrera carpeta<->papelera). La generación interna del
-      // modelo cubre carpeta->carpeta; esta guarda cubre el cruce de modo.
+      // Discards results of a mode that no longer matches the current
+      // path (folder<->trash race). The model's internal generation
+      // covers folder->folder; this guard covers the mode crossing.
       if (isTrash !== (_dirMode === "trash")) return
 
       if (isTrash) {
-        // listMany no produce códigos de error (agregado); la Papelera
-        // simplemente muestra lo que haya. Metadatos de papelera NATIVOS
-        // (FileOperations.trashInfo, Fase 16: sustituye a trash-info.sh):
-        // síncronos, así que se rellenan ANTES de pintar -- sin la danza
-        // async previa (ni parpadeo). TrashState.trashInfo es compartida por
-        // el panel activo y los de fondo; DeleteOps/FileOps la usan para
-        // saber la raíz física de cada ítem al restaurar/borrar.
+        // listMany does not produce error codes (aggregate); the Trash
+        // simply shows whatever is there. NATIVE trash metadata
+        // (FileOperations.trashInfo, Phase 16: replaces trash-info.sh):
+        // synchronous, so it is filled BEFORE painting -- without the previous
+        // async dance (nor flicker). TrashState.trashInfo is shared by
+        // the active panel and the background ones; DeleteOps/FileOps use it to
+        // know the physical root of each item on restore/delete.
         var arr = FileOperations.trashInfo()
         var info = {}
         for (var i = 0; i < arr.length; i++)
@@ -149,8 +149,8 @@ Item {
         TrashState.trashInfo = info
         _apply()
       } else {
-        // Carpeta normal: mapear el error del modelo a pathError con los
-        // MISMOS códigos que daban los exit codes de list-dir.sh.
+        // Normal folder: map the model's error to pathError with the
+        // SAME codes that list-dir.sh's exit codes gave.
         var e = dirModel.error
         if (e === 2) pathError = "Permission denied"
         else if (e === 3) pathError = "This folder no longer exists"

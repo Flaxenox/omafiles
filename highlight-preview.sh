@@ -1,22 +1,22 @@
 #!/bin/bash
-# Resalta sintaxis para la previsualización de texto (tecla Espacio) --
-# Pygments con estilos EN LÍNEA (noclasses=True), no clases CSS: el
-# Text.RichText de QML solo entiende HTML básico con atributos style=
-# inline, no hojas de estilo externas. Solo se resaltan los primeros
-# $2 bytes, igual que ya hacía la previsualización de texto plano sin
-# resaltar -- no tiene sentido colorear un fichero entero de varios MB
-# solo para enseñar un fragmento.
+# Highlights syntax for the text preview (Space key) --
+# Pygments with INLINE styles (noclasses=True), not CSS classes: QML's
+# Text.RichText only understands basic HTML with inline style=
+# attributes, not external stylesheets. Only the first
+# $2 bytes are highlighted, just as the plain-text preview without
+# highlighting already did -- there's no point coloring a whole several-MB file
+# just to show a fragment.
 #
-# $1 = ruta al fichero, $2 = bytes a leer, $3 = extensión (ya la conoce
-# Omafiles.qml vía extOf(), evita adivinar el lenguaje por contenido)
+# $1 = path to the file, $2 = bytes to read, $3 = extension (Omafiles.qml
+# already knows it via extOf(), avoids guessing the language by content)
 
 path="$1"
 bytes="${2:-4000}"
 ext="${3,,}"
 
-# Pygments no reconoce estos dos alias tal cual -- se mapean a su lexer
-# real. Cualquier otra extensión de codeExt (ver Omafiles.qml) coincide
-# con un alias válido de Pygments directamente.
+# Pygments doesn't recognize these two aliases as is -- they're mapped to their
+# real lexer. Any other codeExt extension (see Omafiles.qml) matches
+# a valid Pygments alias directly.
 case "$ext" in
   h) lexer=c ;;
   yml) lexer=yaml ;;
@@ -26,19 +26,19 @@ esac
 html="$(head -c "$bytes" -- "$path" | pygmentize -l "$lexer" -f html -O "noclasses=True,style=gruvbox-dark" 2>/dev/null)"
 [[ -z "$html" ]] && exit 1
 
-# Se conserva el <pre> a propósito (no nowrap): es lo que hace que
-# Text.RichText de QML respete los saltos de línea de verdad -- fuera de
-# un <pre>, HTML colapsa el texto en una sola línea igual que en un
-# navegador normal. Solo se quita el <div> exterior (trae su propio
-# fondo, que no queremos -- el fondo lo pone Color.menu.background) y los
-# atributos propios del <pre> (line-height fijo de Pygments, que no
-# queremos -- eso lo controla Style.font.* como el resto del fichero).
+# The <pre> is kept on purpose (not nowrap): it's what makes
+# QML's Text.RichText respect real line breaks -- outside of
+# a <pre>, HTML collapses the text into a single line just like in a
+# normal browser. Only the outer <div> is removed (it brings its own
+# background, which we don't want -- the background is set by Color.menu.background) and the
+# <pre>'s own attributes (Pygments' fixed line-height, which we don't
+# want -- that's controlled by Style.font.* like the rest of the file).
 #
-# Bug real corregido aquí: un <pre> SIN atributos sigue implicando
-# white-space:pre (sin ajuste de línea) en el motor de texto enriquecido
-# de Qt -- el wrapMode:Text.Wrap del Text de QML no lo anula. Las líneas
-# largas se cortaban en seco en el borde del panel en vez de envolver.
-# pre-wrap conserva los saltos de línea reales (lo que se necesitaba)
-# pero SÍ permite ajustar dentro de una línea larga; word-break de
-# refuerzo para una palabra/token suelto más ancho que el panel.
+# Real bug fixed here: a <pre> WITHOUT attributes still implies
+# white-space:pre (no line wrap) in Qt's rich-text
+# engine -- the QML Text's wrapMode:Text.Wrap doesn't override it. Long
+# lines were cut off flat at the panel edge instead of wrapping.
+# pre-wrap keeps the real line breaks (what was needed)
+# but DOES allow wrapping within a long line; word-break as a
+# fallback for a single word/token wider than the panel.
 printf '%s' "$html" | sed -e 's#^<div[^>]*>##' -e 's#<pre[^>]*>#<pre style="white-space:pre-wrap; word-break:break-word">#' -e 's#</pre></div>$#</pre>#'

@@ -1,416 +1,416 @@
-# PERF_AUDIT_RC1 — Auditoría de rendimiento y estabilidad (Fase 27)
+# PERF_AUDIT_RC1 — Performance and stability audit (Phase 27)
 
-Objetivo: preparar Omafiles para `v1.0.0-rc1`. A partir de aquí **no se
-añaden características**; solo se mide, se busca la causa raíz y se optimiza
-con datos. Este documento recoge benchmarks antes/después, las
-optimizaciones aplicadas, lo medido frente a lo analizado, los riesgos y la
-lista de bloqueantes para RC1.
+Goal: prepare Omafiles for `v1.0.0-rc1`. From here on **no features are
+added**; only measuring, root-cause hunting and optimizing
+with data. This document collects before/after benchmarks, the
+optimizations applied, what was measured vs. what was analyzed, the risks and the
+list of blockers for RC1.
 
-Complementa `ARCHITECTURE.md` y `BACKEND_DESIGN.md`. No los contradice.
+It complements `ARCHITECTURE.md` and `BACKEND_DESIGN.md`. It doesn't contradict them.
 
 ---
 
-## 0. Honestidad metodológica (leer primero)
+## 0. Methodological honesty (read first)
 
-Esta auditoría separa con rigor **lo medido** de **lo analizado**, porque el
-encargo lo exige ("no aceptes optimizaciones sin datos").
+This audit rigorously separates **what was measured** from **what was analyzed**, because the
+brief requires it ("don't accept optimizations without data").
 
-- **Medido** con instrumentación real y reproducible: apertura de
-  directorios, el coste en hilo de UI de la guarda "¿cambió la carpeta?",
-  las tres modalidades de búsqueda, el arranque en frío y la memoria bajo
-  carga. Todas las optimizaciones aplicadas tienen número antes/después.
-- **Analizado** (revisión de código con causa raíz, sin captura de frames):
-  FPS de scroll, cambio de pestaña frame a frame, Quick Look, operaciones de
-  archivo y dispositivos. Motivo: medir FPS/jank exige una sesión gráfica
-  interactiva con QML Profiler capturando frames; en este entorno la app se
-  condujo **offscreen** (`QT_QPA_PLATFORM=offscreen`), lo que permite medir
-  tiempos de CPU y memoria de verdad pero **no** el tiempo de composición en
-  pantalla. Donde no hay frames medidos, se dice explícitamente y no se
-  inventa un número.
+- **Measured** with real, reproducible instrumentation: directory
+  opening, the UI-thread cost of the "did the folder change?" guard,
+  the three search modalities, cold startup and memory under
+  load. Every applied optimization has a before/after number.
+- **Analyzed** (code review with root cause, no frame capture):
+  scroll FPS, tab switch frame by frame, Quick Look, file and
+  device operations. Reason: measuring FPS/jank requires an interactive
+  graphical session with QML Profiler capturing frames; in this environment the app was
+  driven **offscreen** (`QT_QPA_PLATFORM=offscreen`), which allows measuring
+  real CPU and memory times but **not** on-screen composition
+  time. Where there are no measured frames, it's said explicitly and no
+  number is invented.
 
-### Entorno de medición
+### Measurement environment
 
 | | |
 |---|---|
-| SO / kernel | CachyOS + Omarchy, Linux 7.1.6-1-cachyos-bore |
+| OS / kernel | CachyOS + Omarchy, Linux 7.1.6-1-cachyos-bore |
 | Qt | 6.11.1 (repos) |
-| CPU / RAM | (equipo de josema) · 32 GiB |
-| Disco de los datasets | nvme0n1p2, **btrfs** (fs real, no tmpfs) |
-| Caché | **caliente** — representa navegar carpetas ya visitadas, el caso común. El coste en frío añade la lectura de inodos del disco, no medido aquí. |
-| Frontend | Qt6 standalone, conducido offscreen vía single-instance |
+| CPU / RAM | (josema's machine) · 32 GiB |
+| Datasets disk | nvme0n1p2, **btrfs** (real fs, not tmpfs) |
+| Cache | **warm** — represents navigating already-visited folders, the common case. The cold cost adds reading inodes from disk, not measured here. |
+| Frontend | Qt6 standalone, driven offscreen via single-instance |
 
-### Herramientas construidas (viven en `build/`, git-ignored)
+### Tools built (they live in `build/`, git-ignored)
 
-1. **Micro-benchmark C++** (`bench/perfbench.cpp`): mide el camino real y
-   público de `DirectoryModel` (`list()` async → señal `listed()` →
-   `entries()`), separando *tiempo de listado* (scan+dispatch+apply) de
-   *tiempo de conversión* (`entries()`). Mediana de 9 pasadas, caché caliente.
-2. **Arnés QML offscreen** (`bench/measure-*.qml`, ejecutado con `qml6`):
-   mide el coste **en hilo de UI** que el bench C++ no ve (marshaling
-   `QVariantList → array JS`, guarda de cambio, latencia de búsqueda).
-   Gotcha: `console.log` de `qml6` se traga si stderr no es un tty; hay que
-   exportar `QT_ASSUME_STDERR_HAS_CONSOLE=1 QT_FORCE_STDERR_LOGGING=1`.
-3. **Muestreo de `/proc/PID/status`** para RSS/hilos, conduciendo la app real
-   por su socket single-instance con un `XDG_RUNTIME_DIR` privado (para no
-   secuestrar la instancia real del usuario) y un guardarraíl que la mata si
-   el RSS supera un techo.
+1. **C++ micro-benchmark** (`bench/perfbench.cpp`): measures the real,
+   public path of `DirectoryModel` (`list()` async → `listed()` signal →
+   `entries()`), separating *listing time* (scan+dispatch+apply) from
+   *conversion time* (`entries()`). Median of 9 runs, warm cache.
+2. **Offscreen QML harness** (`bench/measure-*.qml`, run with `qml6`):
+   measures the **UI-thread** cost that the C++ bench doesn't see (marshaling
+   `QVariantList → JS array`, change guard, search latency).
+   Gotcha: `qml6`'s `console.log` is swallowed if stderr isn't a tty; you have to
+   export `QT_ASSUME_STDERR_HAS_CONSOLE=1 QT_FORCE_STDERR_LOGGING=1`.
+3. **Sampling of `/proc/PID/status`** for RSS/threads, driving the real app
+   through its single-instance socket with a private `XDG_RUNTIME_DIR` (so as not to
+   hijack the user's real instance) and a guardrail that kills it if
+   the RSS exceeds a ceiling.
 
 ### Datasets
 
-Generados por `bench/gen-datasets.py` en `~/.cache/omafiles-perfbench/{1k,10k,50k,100k}`:
-nombres con dígitos (ejercitan `naturalCompare`), MixedCase (ejercitan
-`toLower`/collation), subcarpetas (1 de cada 50) y dos symlinks (uno válido,
-uno roto). Borrados al cerrar la auditoría; regenerables con el script.
+Generated by `bench/gen-datasets.py` in `~/.cache/omafiles-perfbench/{1k,10k,50k,100k}`:
+names with digits (exercise `naturalCompare`), MixedCase (exercise
+`toLower`/collation), subfolders (1 in every 50) and two symlinks (one valid,
+one broken). Deleted when the audit closes; regenerable with the script.
 
 ---
 
-## 1. Resumen ejecutivo
+## 1. Executive summary
 
-Cuatro optimizaciones reales, todas con número antes/después, todas con
-`--selfcheck` 77/77 verde y `qmllint` limpio:
+Four real optimizations, all with a before/after number, all with
+`--selfcheck` 77/77 green and `qmllint` clean:
 
-| Commit | Qué | Ganancia medida |
+| Commit | What | Measured gain |
 |---|---|---|
-| `b6f7ff3` | Escaneo de directorio: clave de orden precomputada + una sola `stat` en el caso común | Listado **−69 %** a 100k (968 → 302 ms) |
-| `923cbc7` | Guarda "¿cambió la carpeta?" por firma de contenido (C++, hilo worker) en vez de `entriesEqual` O(n) | **342 → ~0 ms** por refresco a 100k |
-| `7460482` | Búsqueda de nombre case-insensitive sin `toLower` por entrada | Query pesada **341 → 74 ms** a 100k |
+| `b6f7ff3` | Directory scan: precomputed sort key + a single `stat` in the common case | Listing **−69 %** at 100k (968 → 302 ms) |
+| `923cbc7` | "Did the folder change?" guard by content signature (C++, worker thread) instead of O(n) `entriesEqual` | **342 → ~0 ms** per refresh at 100k |
+| `7460482` | Case-insensitive name search without per-entry `toLower` | Heavy query **341 → 74 ms** at 100k |
 
-**Veredicto de estabilidad:** sin bloqueantes conocidos. Memoria estable en
-uso realista (10 pestañas → RSS estable, el GC reclama). El único
-comportamiento alarmante encontrado (RSS disparado a varios GB) resultó ser
-un **artefacto del test** —abrir 60+ pestañas sobre carpetas de 100k, cada
-`omafiles <ruta>` abre pestaña nueva por diseño—, no una fuga en uso normal.
+**Stability verdict:** no known blockers. Memory stable in
+realistic use (10 tabs → stable RSS, the GC reclaims). The only
+alarming behavior found (RSS shooting up to several GB) turned out to be
+a **test artifact** —opening 60+ tabs over 100k folders, each
+`omafiles <path>` opens a new tab by design—, not a leak in normal use.
 
 ---
 
-## 2. Área 1 — Apertura de directorios  ✅ medido + optimizado
+## 2. Area 1 — Directory opening  ✅ measured + optimized
 
-### Baseline (antes de tocar nada)
+### Baseline (before touching anything)
 
-Listado = `scan()` (readdir + stat/lstat + orden) en hilo worker, hasta la
-señal `listed()`. `entries()` = construcción del `QVariantList` que consume
-la UI. Mediana de 9, caché caliente.
+Listing = `scan()` (readdir + stat/lstat + sort) on a worker thread, up to the
+`listed()` signal. `entries()` = building the `QVariantList` that the
+UI consumes. Median of 9, warm cache.
 
-| dir | listado | entries() |
+| dir | listing | entries() |
 |---|---|---|
-| 1k | 6,01 ms | 0,33 ms |
-| 10k | 74,25 ms | 2,88 ms |
-| 50k | 426,48 ms | 13,65 ms |
-| 100k | 968,04 ms | 45,06 ms |
+| 1k | 6.01 ms | 0.33 ms |
+| 10k | 74.25 ms | 2.88 ms |
+| 50k | 426.48 ms | 13.65 ms |
+| 100k | 968.04 ms | 45.06 ms |
 
-### Causa raíz (dos cuellos, ambos en `backend/DirectoryModel.cpp`)
+### Root cause (two bottlenecks, both in `backend/DirectoryModel.cpp`)
 
-1. **Tormenta de asignaciones en el orden.** `naturalCompare` hacía
-   `a.toLower()` y `b.toLower()` **dentro** del comparador. `std::sort`
-   invoca el comparador O(n log n) veces → a 100k eran ~1,7 M comparaciones
-   × 2 `toLower`, cada una asignando una `QString`. El orden era el ~55-60 %
-   del listado.
-2. **Doble syscall por entrada.** `gatherOne` hacía **siempre** `lstat` +
-   `stat` (2 syscalls/entrada → 200k a 100k ficheros). Para un no-symlink
-   `stat == lstat`, así que el segundo era redundante.
+1. **Allocation storm in the sort.** `naturalCompare` did
+   `a.toLower()` and `b.toLower()` **inside** the comparator. `std::sort`
+   invokes the comparator O(n log n) times → at 100k that was ~1.7 M comparisons
+   × 2 `toLower`, each allocating a `QString`. The sort was ~55-60 %
+   of the listing.
+2. **Double syscall per entry.** `gatherOne` **always** did `lstat` +
+   `stat` (2 syscalls/entry → 200k at 100k files). For a non-symlink
+   `stat == lstat`, so the second was redundant.
 
-### Optimización (`b6f7ff3`)
+### Optimization (`b6f7ff3`)
 
-1. **Transformada de Schwartz:** bajar cada nombre a minúsculas **una vez**
-   por entrada, ordenar índices sobre esas claves precomputadas
-   (`sortGroup`), reordenar con un único barrido de moves. El comparador
-   (`naturalCompareLowered`) ya no asigna.
-2. **`lstat` primero, `stat` solo si es symlink de verdad.** El caso común
-   pasa de 2 syscalls/entrada a 1. Comportamiento idéntico (un path que
-   `stat` resuelve pero `lstat` no es imposible).
+1. **Schwartzian transform:** lowercase each name **once**
+   per entry, sort indices over those precomputed keys
+   (`sortGroup`), reorder with a single sweep of moves. The comparator
+   (`naturalCompareLowered`) no longer allocates.
+2. **`lstat` first, `stat` only if it's really a symlink.** The common case
+   goes from 2 syscalls/entry to 1. Identical behavior (a path that
+   `stat` resolves but `lstat` doesn't is impossible).
 
-### Después (atribución por optimización)
+### After (attribution per optimization)
 
-| dir | baseline | +clave-orden | +una-stat (final) | total |
+| dir | baseline | +sort-key | +one-stat (final) | total |
 |---|---|---|---|---|
-| 1k | 6,01 | 3,25 | **2,37** | −61 % |
-| 10k | 74,25 | 36,24 | **26,35** | **−64 %** |
-| 50k | 426,48 | 183,84 | **136,87** | −68 % |
-| 100k | 968,04 | 399,78 | **303,40** | **−69 %** |
+| 1k | 6.01 | 3.25 | **2.37** | −61 % |
+| 10k | 74.25 | 36.24 | **26.35** | **−64 %** |
+| 50k | 426.48 | 183.84 | **136.87** | −68 % |
+| 100k | 968.04 | 399.78 | **303.40** | **−69 %** |
 
-**Objetivo "apertura 10k < 150 ms": cumplido con holgura.** El backend tarda
-~26 ms de listado + ~3 ms de conversión; el primer render solo instancia los
-delegados **visibles** (ListView virtualizado), no las 10k filas.
+**Goal "10k open < 150 ms": met with room to spare.** The backend takes
+~26 ms of listing + ~3 ms of conversion; the first render only instantiates the
+**visible** delegates (virtualized ListView), not the 10k rows.
 
-`entries()` sin cambios (0,28 / 2,89 / 13,36 / 45,16 ms): la construcción del
-`QVariantList` es un coste secundario frente al scan. A 100k son 45 ms en
-hilo de UI **solo cuando el contenido cambió de verdad** (ver Área 3). Se
-documenta como techo, no se toca: la representación de array-de-mapas es la
-forma canónica de `NavState.entries` (cuatro fuentes heterogéneas, decisión
-del AUDIT-V2, ver `BACKEND_DESIGN.md` §5.3).
+`entries()` unchanged (0.28 / 2.89 / 13.36 / 45.16 ms): building the
+`QVariantList` is a secondary cost next to the scan. At 100k it's 45 ms on the
+UI thread **only when the content actually changed** (see Area 3). It's
+documented as a ceiling, not touched: the array-of-maps representation is the
+canonical form of `NavState.entries` (four heterogeneous sources, AUDIT-V2
+decision, see `BACKEND_DESIGN.md` §5.3).
 
 ---
 
-## 3. Área 3 — Cambio de panel / coste en hilo de UI  ✅ medido + optimizado
+## 3. Area 3 — Panel switch / UI-thread cost  ✅ measured + optimized
 
-Objetivo del encargo: cambio de panel < 16 ms, sin reconstrucción visible.
+Goal of the brief: panel switch < 16 ms, no visible reconstruction.
 
-### Hallazgo (medido con el arnés QML offscreen)
+### Finding (measured with the offscreen QML harness)
 
-`DirLister._apply` decidía "¿cambió la carpeta?" con `Utils.entriesEqual`,
-O(n) sobre el array `entries` en el **hilo de UI**. Como el array es un
-`QVariantList` marshalado **perezosamente**, recorrerlo **forzaba la
-materialización de las 100k entradas**. Medido:
+`DirLister._apply` decided "did the folder change?" with `Utils.entriesEqual`,
+O(n) over the `entries` array on the **UI thread**. Since the array is a
+**lazily** marshaled `QVariantList`, traversing it **forced the
+materialization of the 100k entries**. Measured:
 
-| dir | `entriesEqual` (hilo de UI, por listado Y por refresco del watcher) |
+| dir | `entriesEqual` (UI thread, per listing AND per watcher refresh) |
 |---|---|
 | 1k | 4 ms |
 | 10k | 36 ms |
 | 50k | 173 ms |
 | 100k | **342 ms** |
 
-El scan ya iba fuera del hilo de UI, pero **esta guarda no**: cada refresco
-del watcher sobre una carpeta grande bloqueaba la UI cientos de ms.
+The scan already ran off the UI thread, but **this guard didn't**: each watcher
+refresh over a large folder blocked the UI for hundreds of ms.
 
-### Optimización (`923cbc7`)
+### Optimization (`923cbc7`)
 
-`DirectoryModel` calcula una **firma de contenido** (hash FNV-1a de 64 bits
-sobre name/size/mtime/type/link de todas las filas, en orden) **en el hilo
-worker**, durante el scan que ya corría allí. `DirLister` compara esa cadena
-hex O(1) y **solo lee/materializa `dirModel.entries` cuando la firma cambió
-de verdad**.
+`DirectoryModel` computes a **content signature** (64-bit FNV-1a hash
+over name/size/mtime/type/link of all the rows, in order) **on the worker
+thread**, during the scan that already ran there. `DirLister` compares that
+hex string O(1) and **only reads/materializes `dirModel.entries` when the signature
+actually changed**.
 
-| dir | antes (`entriesEqual`) | después (guarda por firma) |
+| dir | before (`entriesEqual`) | after (signature guard) |
 |---|---|---|
 | 10k | 36 ms | **~0 ms** |
-| 50k | 173 ms | **~0,001 ms** |
-| 100k | 342 ms | **~0 ms** (1000 iteraciones ≈ 0-1 ms) |
+| 50k | 173 ms | **~0.001 ms** |
+| 100k | 342 ms | **~0 ms** (1000 iterations ≈ 0-1 ms) |
 
-Coste añadido al scan por calcular la firma: **despreciable** (100k: 301,9 →
-303,4 ms, dentro del ruido; el hash es barato al lado de readdir+stat+orden).
+Cost added to the scan for computing the signature: **negligible** (100k: 301.9 →
+303.4 ms, within the noise; the hash is cheap next to readdir+stat+sort).
 
-Los refrescos del watcher sobre carpetas sin cambios pasan a costar una
-comparación de string. La firma cubre exactamente los campos que
-`entriesEqual` comparaba → paridad. `--selfcheck` verde, incluido el test
+The watcher refreshes over unchanged folders now cost a
+string comparison. The signature covers exactly the fields that
+`entriesEqual` compared → parity. `--selfcheck` green, including the test
 "Background panel refreshes on content change".
 
-**Nota sobre el objetivo < 16 ms de cambio de panel:** la guarda O(n) que a
-escala reventaba ese presupuesto queda eliminada. El coste restante del
-cambio en sí (activar/desactivar paneles, virtualización del ListView) es
-acotado y no se capturó frame a frame (ver §9, analizado).
+**Note on the < 16 ms panel-switch goal:** the O(n) guard that at
+scale blew that budget is eliminated. The remaining cost of the
+switch itself (activating/deactivating panels, ListView virtualization) is
+bounded and wasn't captured frame by frame (see §9, analyzed).
 
 ---
 
-## 4. Área 5 — Búsqueda  ✅ medido (+ una optimización)
+## 4. Area 5 — Search  ✅ measured (+ one optimization)
 
-### 5.1 Recursiva por nombre (`SearchWorker`, fallback sin índice)
+### 5.1 Recursive by name (`SearchWorker`, fallback without index)
 
-100k, árbol de la fixture. Corte a 201 resultados.
+100k, fixture tree. Cut at 201 results.
 
-| query | resultados | antes | después (`7460482`) |
+| query | results | before | after (`7460482`) |
 |---|---|---|---|
-| común ('Report', 'img') | 200 (corte temprano) | 2 ms | 2 ms |
-| pesada ('999') | 200 | 341 ms | **74 ms** |
-| exhaustiva ('Folder_0000') | 2 (escanea todo) | ~76 ms | ~76 ms |
+| common ('Report', 'img') | 200 (early cutoff) | 2 ms | 2 ms |
+| heavy ('999') | 200 | 341 ms | **74 ms** |
+| exhaustive ('Folder_0000') | 2 (scans everything) | ~76 ms | ~76 ms |
 
-**Causa raíz + fix:** hacía `fileName().toLower().contains(q)`, asignando una
-`QString` en minúsculas por cada uno de los 100k ficheros. Cambiado a
-`contains(q, Qt::CaseInsensitive)` (case-folding sin materializar el nombre).
-El caso pesado cae de 341 a 74 ms; el conjunto de coincidencias es idéntico
-(paridad `--selfcheck` verde).
+**Root cause + fix:** it did `fileName().toLower().contains(q)`, allocating a
+lowercase `QString` for each of the 100k files. Changed to
+`contains(q, Qt::CaseInsensitive)` (case-folding without materializing the name).
+The heavy case drops from 341 to 74 ms; the match set is identical
+(`--selfcheck` parity green).
 
-Nota de diseño (no bloqueante): `SearchWorker` **no** es incremental — junta
-hasta 201 y emite una vez. Para queries raras que escanean todo el árbol, el
-usuario espera ~75 ms sin feedback. El streaming mejoraría la latencia
-percibida pero es una característica nueva (prohibida en esta fase).
+Design note (non-blocking): `SearchWorker` is **not** incremental — it collects
+up to 201 and emits once. For unusual queries that scan the whole tree, the
+user waits ~75 ms without feedback. Streaming would improve perceived
+latency but is a new feature (forbidden in this phase).
 
-### 5.2 Indexada (`search-index.sh` → tracker3/plocate)
+### 5.2 Indexed (`search-index.sh` → tracker3/plocate)
 
-| query | backend | resultados | tiempo |
+| query | backend | results | time |
 |---|---|---|---|
 | 'omafiles' | plocate | 0 | 8 ms |
 | 'Documents' | plocate | 192 | 33 ms |
 | 'bash' | plocate | 795 | 98 ms |
 
-**Objetivo < 30 ms: cumplido para queries típicas.** La latencia escala con
-el nº de resultados porque el script **sobre-pide ×4** al índice (hasta 1200
-rutas) para dar al lado QML un pool amplio del que ordenar por relevancia, y
-clasifica cada una con `[[ -d ]]`/`[[ -e ]]` (builtin, sin fork). Una query
-muy amplia ('bash') supera los 30 ms por el volumen del over-fetch, no por un
-defecto. El `fetch=limit*4` (tope 1200) es el knob si se quisiera priorizar
-latencia sobre calidad de ranking. Diseño razonable; **no se cambia**.
+**Goal < 30 ms: met for typical queries.** The latency scales with
+the number of results because the script **over-fetches ×4** from the index (up to 1200
+paths) to give the QML side a wide pool to sort by relevance, and
+classifies each with `[[ -d ]]`/`[[ -e ]]` (builtin, no fork). A very
+broad query ('bash') exceeds 30 ms due to the over-fetch volume, not a
+defect. The `fetch=limit*4` (cap 1200) is the knob if one wanted to prioritize
+latency over ranking quality. Reasonable design; **not changed**.
 
-### 5.3 Contenido (`content-search.sh` → ripgrep)
+### 5.3 Content (`content-search.sh` → ripgrep)
 
-'function' en el propio repo: **~19 ms** para 201 coincidencias (mediana de
-5). **Objetivo "primeros resultados < 100 ms": cumplido** (los 201 completos
-en 19 ms). `rg --json` parseado con python; ripgrep respeta `.gitignore`.
+'function' in the repo itself: **~19 ms** for 201 matches (median of
+5). **Goal "first results < 100 ms": met** (the full 201
+in 19 ms). `rg --json` parsed with python; ripgrep respects `.gitignore`.
 
 ---
 
-## 5. Área 9 — Memoria y arranque  ✅ medido
+## 5. Area 9 — Memory and startup  ✅ measured
 
-### 5.1 Arranque en frío
+### 5.1 Cold startup
 
-5 lanzamientos, offscreen, abriendo `$HOME`, midiendo hasta que la CPU del
-proceso se aquieta (listado inicial hecho, app interactiva):
+5 launches, offscreen, opening `$HOME`, measuring until the process's CPU
+settles (initial listing done, app interactive):
 
-| | mediana |
+| | median |
 |---|---|
-| tiempo a interactivo | ~344 ms (real ~250-290 ms; la detección añade una ventana de 3×30 ms) |
-| CPU consumida | ~175 ms |
+| time to interactive | ~344 ms (real ~250-290 ms; the detection adds a 3×30 ms window) |
+| CPU consumed | ~175 ms |
 | RSS | **~98 MB** |
 
-RSS de arranque estable ~98 MB para una app QtQuick — razonable. Offscreen no
-crea ventana/GPU, así que el arranque en pantalla real añade la composición
-inicial (no medido).
+Startup RSS stable ~98 MB for a QtQuick app — reasonable. Offscreen doesn't
+create a window/GPU, so startup on a real screen adds the initial
+composition (not measured).
 
-### 5.2 Memoria bajo carga — el hallazgo importante
+### 5.2 Memory under load — the important finding
 
-**Primer test (abusivo, mala metodología):** conduje 60+ navegaciones
-rotando por dirs grandes. RSS: 99 MB → 331 → 566 → 779 MB… y en reposo
-siguió trepando hasta **7,7 GB**. Lo maté por seguridad (guardarraíl).
+**First test (abusive, bad methodology):** I drove 60+ navigations
+rotating through large dirs. RSS: 99 MB → 331 → 566 → 779 MB… and at rest
+it kept climbing to **7.7 GB**. I killed it for safety (guardrail).
 
-**Causa raíz (no es una fuga):** `OmafilesContent.open()` (línea 305-308)
-abre **pestaña nueva** cuando ya hay algo cargado. Cada `omafiles <ruta>`
-desde fuera = una pestaña más. El test abrió 60+ pestañas, varias sobre
-carpetas de 100k, cada una con su `BackgroundPanel` + `DirLister` reteniendo
-su array de entradas (~50-100 MB por pestaña a 100k). El crecimiento en
-reposo venía de watchers sobre dirs que cambian (`/var/log`) re-listando en
-paneles de fondo. **Escenario de abuso, no uso normal.**
+**Root cause (not a leak):** `OmafilesContent.open()` (lines 305-308)
+opens a **new tab** when something is already loaded. Each `omafiles <path>`
+from outside = one more tab. The test opened 60+ tabs, several over
+100k folders, each with its `BackgroundPanel` + `DirLister` retaining
+its entries array (~50-100 MB per tab at 100k). The at-rest growth
+came from watchers over changing dirs (`/var/log`) re-listing in
+background panels. **An abuse scenario, not normal use.**
 
-**Segundo test (realista, con guardarraíl a 2,5 GB):** 10 pestañas sobre dirs
-moderados (máx. 10k), luego 20 s de reposo muestreando:
+**Second test (realistic, with a guardrail at 2.5 GB):** 10 tabs over
+moderate dirs (max 10k), then 20 s of rest sampling:
 
-| momento | RSS |
+| moment | RSS |
 |---|---|
-| 1 pestaña (home) | 98 MB |
-| 10 pestañas | 408 MB |
-| reposo +5 s | 520 MB |
-| reposo +10 s | 520 MB |
-| reposo +15 s | 520 MB |
-| reposo +20 s | **508 MB** (bajó: el GC reclamó) |
+| 1 tab (home) | 98 MB |
+| 10 tabs | 408 MB |
+| rest +5 s | 520 MB |
+| rest +10 s | 520 MB |
+| rest +15 s | 520 MB |
+| rest +20 s | **508 MB** (dropped: the GC reclaimed) |
 
-**Conclusión: memoria estable en uso realista, sin fuga en reposo.** El GC de
-V8 reclama. Cumple "memoria estable tras uso intenso" para conteos de
-pestañas normales.
+**Conclusion: memory stable in realistic use, no at-rest leak.** V8's
+GC reclaims. It meets "stable memory after heavy use" for normal tab
+counts.
 
-**Techo de escalado documentado (no bloqueante):** el coste por pestaña lo
-domina el array de entradas retenido y escala con el tamaño de la carpeta:
-~30-50 MB por pestaña de dirs moderados (≤10k), pero **una sola pestaña sobre
-una carpeta de 100k mide ~580 MB** (RSS 98 → 677 MB, smoke test del app real
-en frío) — ~5,8 KB/entrada entre el array JS, el `QVariantList` y la
-contabilidad del ListView. **Sin tope en nº de pestañas**, así que varias
-pestañas sobre carpetas enormes llevan el RSS a los GB. Mitigación futura
-posible (post-RC1, sería característica nueva): evacuar/comprimir el array de
-las pestañas de fondo no visibles, o degradar a un modelo perezoso las
-carpetas >50k. Se registra como techo conocido.
-
----
-
-## 6. Área 10 — CPU en segundo plano  ✅ analizado (limpio)
-
-Barrido de timers y animaciones que pudieran consumir CPU en reposo:
-
-- **Timers:** los dos con `repeat: true` están gated —
-  `ActiveFileList` (auto-scroll del lazo): `running:
-  SelectionState.marqueeActive && …` (solo durante un arrastre de lazo pegado
-  al borde); `DialogLayer` (puntos de "ocupado"): `running:
-  ActionState.actionBusy` (solo durante una operación). Los demás timers
-  (`SearchBar`, etc.) también tienen `running:` condicionado.
-- **Animaciones infinitas:** tres spinners (`SearchBar`, `Sidebar` eject,
-  `qs.Ui/Button`), **todos** con `running:` ligado a su visibilidad
-  (`spinner.visible` / `ejectSpinner.visible` / `iconSpinning`). Ninguno gira
-  oculto.
-
-**Resultado: ningún timer ni animación corre en reposo.** Sin gasto de CPU de
-fondo.
+**Documented scaling ceiling (non-blocking):** the per-tab cost is
+dominated by the retained entries array and scales with the folder size:
+~30-50 MB per tab of moderate dirs (≤10k), but **a single tab over
+a 100k folder measures ~580 MB** (RSS 98 → 677 MB, smoke test of the real app
+cold) — ~5.8 KB/entry between the JS array, the `QVariantList` and the
+ListView bookkeeping. **No cap on the number of tabs**, so several
+tabs over huge folders take the RSS to the GB range. Possible future mitigation
+(post-RC1, it would be a new feature): evacuate/compress the array of
+the non-visible background tabs, or degrade folders >50k to a lazy
+model. Recorded as a known ceiling.
 
 ---
 
-## 7. Áreas analizadas (revisión de código, sin captura de frames)
+## 6. Area 10 — Background CPU  ✅ analyzed (clean)
 
-Se es explícito: aquí **no** hay número de FPS/frame porque no se capturó una
-sesión gráfica. Son valoraciones de causa/estructura.
+Sweep of timers and animations that could consume CPU at rest:
 
-- **Área 2 — Scroll (FPS/jank):** *analizado.* El ListView es virtualizado
-  (solo delegados visibles). Las miniaturas son asíncronas con caché en disco
-  por hash de contenido y dedup in-flight (`ThumbnailProvider`), así que no
-  bloquean el scroll. La firma de contenido (Área 3) elimina el relayout
-  completo por refresco, que era la causa estructural de salto durante el
-  scroll con watcher activo. **Pendiente de verificar con QML Profiler en
-  sesión gráfica** (ver §10).
-- **Área 4 — Cambio de pestaña:** *analizado.* Misma familia que Área 3; la
-  guarda O(n) eliminada era el riesgo principal a escala. No medido frame a
-  frame.
-- **Área 6 — Quick Look:** *analizado.* El camino de cache-hit de
-  `ThumbnailProvider.request()` es `QFileInfo::exists` (2 stats, µs) → devuelve
-  la ruta cacheada sin trabajo. Muy por debajo de 50 ms para elementos
-  cacheables. La generación (cache-miss) es asíncrona en el pool. `PreviewLoader`
-  usa contador de generación (`previewRequestId`) para descartar resultados
-  viejos. No cronometrado end-to-end.
-- **Área 7 — Operaciones de archivo:** *analizado + cobertura de `--selfcheck`.*
-  `FileOperations` es nativo (sin fork por fichero), con progreso byte-exacto,
-  cancelación que no deja parciales, undo/redo LIFO, y manejo de ARG_MAX para
-  selecciones enormes (2000 rutas), symlinks rotos, y nombres con `-` inicial
-  — todo verificado por el selfcheck (77 tests). No se observaron bloqueos,
-  zombis ni fugas en esos caminos.
-- **Área 8 — Dispositivos:** *analizado.* `UDisksWatcher` es reactivo (D-Bus);
-  el listado de montajes (`list-mounts.sh` sobre lsblk/findmnt) es un "system
-  adapter" estable. El selfcheck cubre el listado de montajes de red nativo.
-  Montaje/desmontaje repetido y cierre durante montaje: no estresados
-  automáticamente (requiere hardware/sesión).
+- **Timers:** the two with `repeat: true` are gated —
+  `ActiveFileList` (lasso auto-scroll): `running:
+  SelectionState.marqueeActive && …` (only during a lasso drag stuck
+  to the edge); `DialogLayer` ("busy" dots): `running:
+  ActionState.actionBusy` (only during an operation). The other timers
+  (`SearchBar`, etc.) also have a conditioned `running:`.
+- **Infinite animations:** three spinners (`SearchBar`, `Sidebar` eject,
+  `qs.Ui/Button`), **all** with `running:` tied to their visibility
+  (`spinner.visible` / `ejectSpinner.visible` / `iconSpinning`). None spins
+  hidden.
+
+**Result: no timer nor animation runs at rest.** No background CPU
+spend.
 
 ---
 
-## 8. Objetivos cuantitativos — cumplimiento
+## 7. Analyzed areas (code review, no frame capture)
 
-| Objetivo | Estado | Dato |
+Being explicit: here there are **no** FPS/frame numbers because no graphical
+session was captured. They are cause/structure assessments.
+
+- **Area 2 — Scroll (FPS/jank):** *analyzed.* The ListView is virtualized
+  (only visible delegates). The thumbnails are async with an on-disk cache
+  keyed by content hash and in-flight dedup (`ThumbnailProvider`), so they don't
+  block the scroll. The content signature (Area 3) eliminates the full
+  relayout per refresh, which was the structural cause of jump during
+  scroll with an active watcher. **Pending verification with QML Profiler in a
+  graphical session** (see §10).
+- **Area 4 — Tab switch:** *analyzed.* Same family as Area 3; the
+  eliminated O(n) guard was the main risk at scale. Not measured frame
+  by frame.
+- **Area 6 — Quick Look:** *analyzed.* The cache-hit path of
+  `ThumbnailProvider.request()` is `QFileInfo::exists` (2 stats, µs) → returns
+  the cached path with no work. Well under 50 ms for cacheable
+  elements. Generation (cache-miss) is async in the pool. `PreviewLoader`
+  uses a generation counter (`previewRequestId`) to discard old
+  results. Not timed end-to-end.
+- **Area 7 — File operations:** *analyzed + `--selfcheck` coverage.*
+  `FileOperations` is native (no fork per file), with byte-exact progress,
+  cancellation that leaves no partials, LIFO undo/redo, and ARG_MAX handling for
+  huge selections (2000 paths), broken symlinks, and names with a leading `-`
+  — all verified by the selfcheck (77 tests). No hangs,
+  zombies nor leaks were observed on those paths.
+- **Area 8 — Devices:** *analyzed.* `UDisksWatcher` is reactive (D-Bus);
+  the mount listing (`list-mounts.sh` over lsblk/findmnt) is a stable "system
+  adapter". The selfcheck covers the native network mount listing.
+  Repeated mount/unmount and closing during a mount: not stressed
+  automatically (requires hardware/session).
+
+---
+
+## 8. Quantitative goals — compliance
+
+| Goal | Status | Data |
 |---|---|---|
-| Apertura 10k < 150 ms | ✅ | 26 ms listado + 3 ms conversión (backend) |
-| Cambio de panel < 16 ms | ⚠️ analizado | guarda O(n) (342 ms) eliminada; frame no medido |
-| Cambio de pestaña < 16 ms | ⚠️ analizado | idem; no medido frame a frame |
-| Quick Look < 50 ms cacheable | ⚠️ analizado | cache-hit = 2 stats (µs); no cronometrado |
-| Búsqueda indexada < 30 ms | ✅ (típica) | 8-33 ms típica; broad ~98 ms por over-fetch ×4 |
-| Contenido: primeros < 100 ms | ✅ | 19 ms/201 (ripgrep) |
-| Scroll fluido sin jank | ⚠️ analizado | causa estructural de salto eliminada; FPS no medido |
-| Memoria estable 30 min | ✅ (realista) | 10 pestañas → estable, GC reclama |
+| 10k open < 150 ms | ✅ | 26 ms listing + 3 ms conversion (backend) |
+| Panel switch < 16 ms | ⚠️ analyzed | O(n) guard (342 ms) eliminated; frame not measured |
+| Tab switch < 16 ms | ⚠️ analyzed | idem; not measured frame by frame |
+| Quick Look < 50 ms cacheable | ⚠️ analyzed | cache-hit = 2 stats (µs); not timed |
+| Indexed search < 30 ms | ✅ (typical) | 8-33 ms typical; broad ~98 ms due to ×4 over-fetch |
+| Content: first < 100 ms | ✅ | 19 ms/201 (ripgrep) |
+| Smooth scroll without jank | ⚠️ analyzed | structural cause of jump eliminated; FPS not measured |
+| Stable memory 30 min | ✅ (realistic) | 10 tabs → stable, GC reclaims |
 
 ---
 
-## 9. Riesgos introducidos por las optimizaciones
+## 9. Risks introduced by the optimizations
 
-| Riesgo | Impacto | Mitigación / valoración |
+| Risk | Impact | Mitigation / assessment |
 |---|---|---|
-| Colisión de la firma de 64 bits | Refresco visual perdido hasta el siguiente evento (nunca corrupción) | 64 bits lo hace prácticamente imposible para este uso; consecuencia benigna |
-| `lstat`-primero asume "stat resuelve ⇒ lstat resuelve" | Metadatos erróneos si se rompiera | El invariante se cumple: `lstat` no deja de resolver el path, solo no deref-a el último componente. Paridad de symlinks verificada por selfcheck |
-| `entries()` a 100k = 45 ms en hilo de UI **al cambiar** | Micro-pausa al abrir/refrescar una carpeta de 100k con cambios reales | Techo documentado; solo en carpetas raras >50k y solo cuando el contenido cambió. No se rediseña la representación (contrato de `NavState.entries`) |
+| 64-bit signature collision | Lost visual refresh until the next event (never corruption) | 64 bits make it practically impossible for this use; benign consequence |
+| `lstat`-first assumes "stat resolves ⇒ lstat resolves" | Wrong metadata if it broke | The invariant holds: `lstat` doesn't stop resolving the path, it just doesn't deref the last component. Symlink parity verified by selfcheck |
+| `entries()` at 100k = 45 ms on UI thread **on change** | Micro-pause when opening/refreshing a 100k folder with real changes | Documented ceiling; only in unusual folders >50k and only when the content changed. The representation is not redesigned (`NavState.entries` contract) |
 
 ---
 
-## 10. Bloqueantes para RC1
+## 10. Blockers for RC1
 
-**Ninguno crítico surge de esta auditoría.** Estabilidad sin bloqueantes
-conocidos, memoria estable en uso realista, sin CPU de fondo, cada
-interacción principal medida responde por debajo de su objetivo.
+**No critical one arises from this audit.** Stability with no known
+blockers, memory stable in realistic use, no background CPU, each
+main measured interaction responds below its goal.
 
-### Pendiente antes de declarar RC1 (verificación, no desarrollo)
+### Pending before declaring RC1 (verification, not development)
 
-1. **Confirmar con QML Profiler en sesión gráfica real** los objetivos que
-   aquí quedaron *analizados* y no *medidos*: FPS de scroll (Área 2), cambio
-   de panel/pestaña frame a frame (Áreas 3/4), Quick Look end-to-end (Área 6).
-   La instrumentación offscreen no captura tiempo de composición. Es el único
-   hueco de datos real de esta auditoría.
-2. **Prueba manual de dispositivos** (Área 8): montar/desmontar USB, ISO, SMB
-   repetidamente y cerrar la app durante un montaje. Requiere hardware.
+1. **Confirm with QML Profiler in a real graphical session** the goals that
+   here were left *analyzed* and not *measured*: scroll FPS (Area 2), panel/tab
+   switch frame by frame (Areas 3/4), Quick Look end-to-end (Area 6).
+   The offscreen instrumentation doesn't capture composition time. It's the only
+   real data gap of this audit.
+2. **Manual device test** (Area 8): mount/unmount USB, ISO, SMB
+   repeatedly and close the app during a mount. Requires hardware.
 
-### Techos conocidos (no bloqueantes, se aceptan para RC1)
+### Known ceilings (non-blocking, accepted for RC1)
 
-- Memoria por pestaña dominada por el array retenido: ~30-50 MB (dirs ≤10k),
-  ~580 MB (una pestaña de 100k, medido), sin tope de pestañas → varias
-  pestañas sobre dirs enormes llegan a los GB. Uso de abuso.
-- `entries()` 45 ms a 100k en hilo de UI al cambiar de contenido.
-- Latencia de búsqueda indexada en queries muy amplias (~100 ms) por el
-  over-fetch ×4.
+- Per-tab memory dominated by the retained array: ~30-50 MB (dirs ≤10k),
+  ~580 MB (a 100k tab, measured), no tab cap → several
+  tabs over huge dirs reach the GB range. Abuse use.
+- `entries()` 45 ms at 100k on UI thread when content changes.
+- Indexed search latency on very broad queries (~100 ms) due to the
+  ×4 over-fetch.
 
 ---
 
-## 11. Reproducir
+## 11. Reproducing
 
-Ver `bench/README.md`. En resumen:
+See `bench/README.md`. In short:
 
 ```sh
-python3 bench/gen-datasets.py            # datasets en ~/.cache/omafiles-perfbench/
+python3 bench/gen-datasets.py            # datasets in ~/.cache/omafiles-perfbench/
 cd build && g++ -std=c++17 -O2 -fPIC -I../backend -I. \
   $(pkg-config --cflags Qt6Core Qt6Qml) ../bench/perfbench.cpp \
   ../backend/DirectoryModel.cpp $(find . -name moc_DirectoryModel.cpp) \
@@ -418,13 +418,13 @@ cd build && g++ -std=c++17 -O2 -fPIC -I../backend -I. \
 QT_ASSUME_STDERR_HAS_CONSOLE=1 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen \
   qml6 -I ~/.local/lib/qt6/qml bench/measure-ui-guard.qml
 
-# invariantes que deben seguir verdes tras cualquier cambio
+# invariants that must stay green after any change
 ~/.local/bin/omafiles --selfcheck        # 77/77
 qmllint -I . -I ~/.local/lib/qt6/qml logic/DirLister.qml
-rm -rf ~/.cache/omafiles-perfbench       # limpiar los ~161k ficheros de prueba
+rm -rf ~/.cache/omafiles-perfbench       # clean up the ~161k test files
 ```
 
 ---
 
-*Fin de la Fase 27. Detente aquí y espera confirmación antes de iniciar el
+*End of Phase 27. Stop here and wait for confirmation before starting the
 RC1 Freeze.*

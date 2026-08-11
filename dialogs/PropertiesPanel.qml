@@ -3,14 +3,14 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo de "Propiedades" de la selección. Tercer componente extraído
-// de Omafiles.qml -- de solo lectura (nada de TextField ni Process
-// propio, el padre ya resuelve tamaño/permisos/dueño/fecha por su
-// cuenta con la guardia de carrera propertiesRequestId), así que solo
-// necesita una señal de cierre, igual de simple que ShortcutsHelp.qml.
+// "Properties" dialog of the selection. Third component extracted
+// from Omafiles.qml -- read-only (no TextField nor own Process,
+// the parent already resolves size/permissions/owner/date on its
+// own with the propertiesRequestId race guard), so it only
+// needs a close signal, just as simple as ShortcutsHelp.qml.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 
@@ -65,9 +65,9 @@ Item {
         spacing: Style.spacing.sm
 
         Text {
-          // Mismo ajuste que la tabla de metadatos de audio: 84 no
-          // le llegaba a "Permissions" (mide igual de ancho que
-          // "Sample rate", medido con la fuente real).
+          // Same adjustment as the audio metadata table: 84 did not
+          // reach "Permissions" (it measures as wide as
+          // "Sample rate", measured with the real font).
           width: 120
           text: parent.modelData.label
           font.pixelSize: Style.font.subtitle

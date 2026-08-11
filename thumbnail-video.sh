@@ -1,9 +1,9 @@
 #!/bin/bash
-# Genera (si no existe ya) una miniatura JPEG de un vídeo con
-# ffmpegthumbnailer. $1 = vídeo origen, $2 = ruta destino del .jpg. El
-# nombre de destino ya incluye el mtime del origen (lo decide quien llama),
-# así que si el fichero cambia se pide una miniatura nueva sin necesidad de
-# invalidar nada aquí.
+# Generates (if it doesn't already exist) a JPEG thumbnail of a video with
+# ffmpegthumbnailer. $1 = source video, $2 = destination path of the .jpg. The
+# destination name already includes the source's mtime (decided by the caller),
+# so if the file changes a new thumbnail is requested without needing to
+# invalidate anything here.
 
 src="$1"
 dest="$2"

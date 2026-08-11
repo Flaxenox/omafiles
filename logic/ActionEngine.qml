@@ -2,30 +2,30 @@ import QtQuick
 import "../state"
 import "../services"
 
-// El motor central de acciones de fichero (renombrar/borrar/copiar/mover/
-// comprimir/extraer/chmod/enlace, todo pasa por aquí) + deshacer/rehacer +
-// la barra de progreso de copias/movimientos -- decimotercer componente
-// extraído de Omafiles.qml, y el de más impacto: docenas de funciones en
+// The central file action engine (rename/delete/copy/move/
+// compress/extract/chmod/link, everything goes through here) + undo/redo +
+// the copy/move progress bar -- thirteenth component
+// extracted from Omafiles.qml, and the most impactful: dozens of functions in
 // Omafiles.qml (commitNewFolder, requestDelete, runPaste, runDrop,
-// commitChmod, makeLinkFor, restoreFromTrash...) llaman a runAction()/
-// pushUndo() como si fueran suyas. Cambiar los 50+ sitios de llamada
-// habría sido mucho más riesgo que el beneficio -- en vez de eso, root
-// conserva funciones-envoltorio de una línea (`function runAction(...) {
-// return actionEngine.runAction(...) }`, ver junto a cada una en
-// Omafiles.qml) que delegan aquí. Ningún sitio de llamada existente
-// cambió.
+// commitChmod, makeLinkFor, restoreFromTrash...) call runAction()/
+// pushUndo() as if they were their own. Changing the 50+ call sites
+// would have been far more risk than the benefit -- instead, root
+// keeps one-line wrapper functions (`function runAction(...) {
+// return actionEngine.runAction(...) }`, see next to each one in
+// Omafiles.qml) that delegate here. No existing call site
+// changed.
 Item {
   property Item root: null
   property Item navController: null
 
 
-  // Pila simple de acciones reversibles: renombrar, nueva carpeta/fichero,
-  // borrar (a la papelera), mover (cortar+pegar/arrastrar), renombrado en
-  // lote, chmod y enlace. Copiar/comprimir se quedan fuera a propósito --
-  // deshacerlos es más ambiguo (¿borrar la copia? ¿y si ya se movió/editó?)
-  // que perder por error algo renombrado/movido/borrado/con permisos
-  // cambiados. undoStack/redoStack en sí viven en state/UndoState.qml
-  // (singleton) -- solo estas tres funciones que las manipulan viven aquí.
+  // Simple stack of reversible actions: rename, new folder/file,
+  // delete (to trash), move (cut+paste/drag), bulk
+  // rename, chmod and link. Copy/compress are left out on purpose --
+  // undoing them is more ambiguous (delete the copy? what if it was already moved/edited?)
+  // than losing by mistake something renamed/moved/deleted/with permissions
+  // changed. undoStack/redoStack themselves live in state/UndoState.qml
+  // (singleton) -- only these three functions that manipulate them live here.
   function pushUndo(label, undoFn, redoFn) {
     UndoState.undoStack = UndoState.undoStack.concat([{ label: label, undo: undoFn, redo: redoFn }]).slice(-20)
     UndoState.redoStack = []
@@ -35,20 +35,20 @@ Item {
     if (UndoState.undoStack.length === 0) return
     var entry = UndoState.undoStack[UndoState.undoStack.length - 1]
     UndoState.undoStack = UndoState.undoStack.slice(0, -1)
-    // entry.undo() devuelve lo que runAction() devuelve: false si se
-    // descartó por haber otra acción en curso. Antes esto decía "Undone"
-    // pase lo que pase, incluso cuando el undo ni siquiera llegó a
-    // lanzarse, Y la entrada se perdía de la pila igual. Ahora, si no
-    // llegó a lanzarse, se devuelve a la pila para poder reintentarlo.
+    // entry.undo() returns what runAction() returns: false if it was
+    // discarded because another action was in progress. Before, this said "Undone"
+    // no matter what, even when the undo didn't even get
+    // launched, AND the entry was lost from the stack anyway. Now, if it
+    // didn't get launched, it is returned to the stack so it can be retried.
     var started = entry.undo()
     if (started === false) {
       UndoState.undoStack = UndoState.undoStack.concat([entry])
       Notifier.notify("Couldn't undo \"" + entry.label + "\": still busy with another action")
       return
     }
-    // Solo pasa a la pila de redo si de verdad lleva forma de rehacerse
-    // -- no todas las entradas del undoStack tienen redoFn (ver el
-    // comentario junto a pushUndo).
+    // It only goes to the redo stack if it really has a way to be redone
+    // -- not every undoStack entry has a redoFn (see the
+    // comment next to pushUndo).
     if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
     Notifier.notify("Undoing: " + entry.label)
   }
@@ -63,20 +63,20 @@ Item {
       Notifier.notify("Couldn't redo \"" + entry.label + "\": still busy with another action")
       return
     }
-    // De vuelta a undoStack SIN pasar por pushUndo() -- eso vaciaría
-    // redoStack, que es justo lo que no queremos en pleno ciclo
-    // deshacer/rehacer/deshacer.
+    // Back to undoStack WITHOUT going through pushUndo() -- that would empty
+    // redoStack, which is exactly what we don't want in the middle of an
+    // undo/redo/undo cycle.
     UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
     Notifier.notify("Redoing: " + entry.label)
   }
 
   function runAction(cmd, busyLabel, onSuccess) {
-    // actionProc es un único proceso compartido por todas las acciones de
-    // fichero (renombrar, borrar, copiar/mover, comprimir...). Sin esta
-    // guardia, una segunda llamada mientras la primera sigue en marcha
-    // (doble clic, o una tecla de más durante una operación larga) le
-    // cambiaba el comando y lo reiniciaba, cortando la operación en curso
-    // a media copia sin ningún aviso.
+    // actionProc is a single process shared by all file
+    // actions (rename, delete, copy/move, compress...). Without this
+    // guard, a second call while the first is still running
+    // (double click, or an extra keypress during a long operation)
+    // changed its command and restarted it, cutting off the ongoing operation
+    // mid-copy without any notice.
     if (actionProc.busy || nativeBusy) {
       Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
@@ -84,43 +84,43 @@ Item {
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     ActionState._actionOnSuccess = onSuccess || null
-    // group:true -- el comando corre en su propio grupo de procesos en vez
-    // de compartir el de Quickshell. Sin esto, cancelAction() solo podría
-    // matar el "bash -c" en sí -- cualquier cp/mv/zip que ese bash hubiera
-    // lanzado como hijo se quedaba huérfano y seguía corriendo de fondo
-    // como si nada, aunque la UI ya diera la acción por cancelada.
+    // group:true -- the command runs in its own process group instead
+    // of sharing Quickshell's. Without this, cancelAction() could only
+    // kill the "bash -c" itself -- any cp/mv/zip that bash had
+    // launched as a child was left orphaned and kept running in the background
+    // as if nothing, even though the UI had already given the action for cancelled.
     actionProc.start(["bash", "-c", cmd], true)
     return true
   }
 
-  // Une comandos de una operación por lotes (pegar/soltar/borrar N archivos,
-  // renombrado masivo...) para que el fallo de uno no se coma los demás.
-  // Antes se unían con "&&": en cuanto el ítem 2 de 5 fallaba (ya no
-  // existía, permiso denegado...) los ítems 3-5 no se llegaban a intentar
-  // y encima no había ningún aviso. Con esto se intentan todos, y si alguno
-  // falla el proceso sale con estado != 0 para que actionProc lo reporte
-  // (ver runAction/actionProc más arriba) -- sin decir cuál en concreto,
-  // pero ya no se pierden en silencio.
+  // Joins commands of a batch operation (paste/drop/delete N files,
+  // bulk rename...) so that one's failure doesn't eat the others.
+  // Before they were joined with "&&": as soon as item 2 of 5 failed (no longer
+  // existed, permission denied...) items 3-5 weren't even attempted
+  // and on top of that there was no notice. With this, all are attempted, and if any
+  // fails the process exits with status != 0 so actionProc reports it
+  // (see runAction/actionProc above) -- without saying which one specifically,
+  // but they are no longer lost silently.
   function chainCmds(cmds) {
     if (cmds.length <= 1) return cmds[0] || "true"
     return "st=0; " + cmds.map(function (c) { return "{ " + c + "; } || st=1" }).join("; ") + "; exit $st"
   }
 
   function cancelAction() {
-    // Copia/movimiento nativo en curso (Fase 13.A/G): cancelación cooperativa
-    // en C++. El worker aborta entre trozos, LIMPIA ÉL MISMO la copia parcial
-    // del destino (forceRemove en backend/FileOperations) y emite error
-    // "cancelled" -> bad() -> _nativeDone limpia el estado y refresca. Ya no
-    // hay `rm -rf` de shell: el backend es autosuficiente para limpiar.
+    // Native copy/move in progress (Phase 13.A/G): cooperative cancellation
+    // in C++. The worker aborts between chunks, CLEANS UP ITSELF the partial
+    // copy of the destination (forceRemove in backend/FileOperations) and emits error
+    // "cancelled" -> bad() -> _nativeDone cleans up the state and refreshes. There is no longer
+    // a shell `rm -rf`: the backend is self-sufficient to clean up.
     if (nativeBusy) {
       _cancelling = true
       FileOperations.cancel()
       return
     }
-    // Acciones aún en shell (comprimir/extraer/renombrar/crear): actionProc.
-    // cancel() mata todo el grupo de procesos. No tienen progreso ni un
-    // destino parcial que limpiar aquí (su overwrite es atómico o lo gestiona
-    // su propio comando).
+    // Actions still in shell (compress/extract/rename/create): actionProc.
+    // cancel() kills the whole process group. They have no progress nor a
+    // partial destination to clean up here (their overwrite is atomic or handled
+    // by their own command).
     actionProc.cancel()
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
@@ -129,21 +129,21 @@ Item {
     NavState.refreshTick += 1
   }
 
-  // ---------- Progreso nativo por bytes (Fase 13.G) ----------
-  // Sustituye el sondeo `du` por el tamaño total (FileOperations.totalSize,
-  // una vez) + la señal progress(op,path,done,total) del backend, agregada
-  // sobre el lote. Mismo comportamiento observable: actionProgressPct 0..100
-  // (barra) para copy/move; -1 (puntos) si no hay tamaño medible.
-  property real _progTotal: 0   // bytes totales del lote (todos los orígenes)
-  property real _progBase: 0    // bytes ya completados de ítems anteriores
-  property real _lastItemTotal: 0 // total del ítem en curso (último progress)
+  // ---------- Native byte progress (Phase 13.G) ----------
+  // Replaces the `du` polling with the total size (FileOperations.totalSize,
+  // once) + the backend's progress(op,path,done,total) signal, aggregated
+  // over the batch. Same observable behavior: actionProgressPct 0..100
+  // (bar) for copy/move; -1 (dots) if there is no measurable size.
+  property real _progTotal: 0   // total bytes of the batch (all sources)
+  property real _progBase: 0    // bytes already completed from previous items
+  property real _lastItemTotal: 0 // total of the current item (last progress)
 
   function startCopyProgress(sourcePaths, destPaths) {
     _progTotal = FileOperations.totalSize(sourcePaths)
     _progBase = 0
     _lastItemTotal = 0
-    // Barra desde 0% si hay algo que medir; puntos si el total es 0 (ítems
-    // vacíos: no hay progreso que mostrar).
+    // Bar from 0% if there is something to measure; dots if the total is 0 (empty
+    // items: no progress to show).
     ActionState.actionProgressPct = _progTotal > 0 ? 0 : -1
   }
 
@@ -156,17 +156,17 @@ Item {
     }
   }
 
-  // ---------- Copiar/mover nativo (Fase 13.A copy, 13.B move) ----------
-  // Reemplaza el `cp -r`/`mv` de shell (runPaste/runDrop) por
-  // FileOperations.copy/move (C++: recursivo, symlinks como symlinks,
-  // preserva permisos, progreso por bytes, rename atómico + fallback cross-fs
-  // en move). MANTIENE exactamente el mismo comportamiento observable que la
-  // ruta shell: mismo estado de ocupado (actionBusy/actionLabel), misma barra
-  // de progreso (startCopyProgress, sondeo `du` sobre destinos), misma
-  // cancelación (cancelAction), mismo refresco. Secuencial (uno a la vez)
-  // para conservar la semántica del chainCmds anterior: si uno falla se avisa
-  // (una sola vez, en services/FileOperations) y se para. `overwrite` = el
-  // diálogo eligió sobrescribir (antes `-f`; sin él, `-n`).
+  // ---------- Native copy/move (Phase 13.A copy, 13.B move) ----------
+  // Replaces the shell `cp -r`/`mv` (runPaste/runDrop) with
+  // FileOperations.copy/move (C++: recursive, symlinks as symlinks,
+  // preserves permissions, byte progress, atomic rename + cross-fs fallback
+  // in move). KEEPS exactly the same observable behavior as the
+  // shell path: same busy state (actionBusy/actionLabel), same progress
+  // bar (startCopyProgress, `du` polling over destinations), same
+  // cancellation (cancelAction), same refresh. Sequential (one at a time)
+  // to preserve the semantics of the previous chainCmds: if one fails it is notified
+  // (only once, in services/FileOperations) and it stops. `overwrite` = the
+  // dialog chose to overwrite (before `-f`; without it, `-n`).
   property bool nativeBusy: false
   property string _nativeKind: "copy"
   property var _batchQueue: []
@@ -183,26 +183,26 @@ Item {
     return _runNative("move", pairs, busyLabel, overwrite, onDone)
   }
 
-  // Borrado permanente nativo (Fase 13.C): `paths` es una lista de rutas
-  // (no pares). ignoreMissing = semántica `rm -f` (no es error que falte).
-  // El único llamador (borrado permanente desde la Papelera) pasa
-  // busyLabel="" -> sin barra de progreso, como el `rm -rf` anterior.
+  // Native permanent delete (Phase 13.C): `paths` is a list of paths
+  // (not pairs). ignoreMissing = `rm -f` semantics (a missing one is not an error).
+  // The only caller (permanent delete from the Trash) passes
+  // busyLabel="" -> no progress bar, like the previous `rm -rf`.
   function runNativeRemove(paths, busyLabel, ignoreMissing, onDone) {
     var pairs = paths.map(function (p) { return { src: p } })
     return _runNative("remove", pairs, busyLabel, ignoreMissing, onDone)
   }
 
-  // Enviar a papelera nativo (Fase 13.D): `paths` = rutas a enviar. XDG Trash
-  // (QFile::moveToTrash: crea el .trashinfo, resuelve colisiones, respeta el
-  // disco de origen). El llamador (borrado a papelera desde DeleteOps)
-  // registra el undo en onDone (restaurar por ruta original).
+  // Native send-to-trash (Phase 13.D): `paths` = paths to send. XDG Trash
+  // (QFile::moveToTrash: creates the .trashinfo, resolves collisions, respects the
+  // origin disk). The caller (delete to trash from DeleteOps)
+  // registers the undo in onDone (restore by original path).
   function runNativeTrash(paths, busyLabel, onDone) {
     var pairs = paths.map(function (p) { return { src: p } })
     return _runNative("trash", pairs, busyLabel, false, onDone)
   }
 
-  // Restaurar nativo (Fase 13.E): `origPaths` = rutas ORIGINALES a restaurar.
-  // Cada una se localiza por su .trashinfo en cualquier papelera activa.
+  // Native restore (Phase 13.E): `origPaths` = ORIGINAL paths to restore.
+  // Each one is located by its .trashinfo in any active trash.
   function runNativeRestore(origPaths, busyLabel, onDone) {
     var pairs = origPaths.map(function (p) { return { src: p } })
     return _runNative("restore", pairs, busyLabel, false, onDone)
@@ -222,11 +222,11 @@ Item {
     _batchOnDone = onDone || null
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
-    // Barra de progreso (sondeo `du`) SOLO para copy/move con etiqueta:
-    // son las únicas con "tamaño total" que crece en el destino. trash/
-    // restore/remove no tienen progreso medible así (restore mvería a rutas
-    // que aún no existen -> du fallaría y dejaría un 0% fijo en vez de los
-    // puntos animados). Sin etiqueta (undo/redo) tampoco, como la ruta shell.
+    // Progress bar (`du` polling) ONLY for copy/move with a label:
+    // they are the only ones with a "total size" that grows in the destination. trash/
+    // restore/remove have no measurable progress like that (restore would move to paths
+    // that don't exist yet -> du would fail and leave a fixed 0% instead of the
+    // animated dots). Without a label (undo/redo) neither, like the shell path.
     if (busyLabel && (kind === "copy" || kind === "move"))
       startCopyProgress(pairs.map(function (p) { return p.src }),
                         pairs.map(function (p) { return p.dest }))
@@ -240,14 +240,14 @@ Item {
     var p = _batchQueue[_batchIdx]
     function ok(op, src) {
       cleanup()
-      // Progreso agregado: el ítem terminado suma su total a la base.
+      // Aggregated progress: the finished item adds its total to the base.
       _progBase += _lastItemTotal
       _lastItemTotal = 0
       _batchIdx += 1
       _batchNext()
     }
-    // El error ya lo avisó services/FileOperations (salvo "cancelled"); aquí
-    // solo se para la secuencia y se limpia el estado.
+    // The error was already notified by services/FileOperations (except "cancelled"); here
+    // it only stops the sequence and cleans up the state.
     function bad(op, src, msg) { cleanup(); _nativeDone(false) }
     function cleanup() {
       FileOperations.finished.disconnect(ok)
@@ -286,25 +286,25 @@ Item {
       ActionState.actionLabel = ""
       ActionState.actionProgressPct = -1
       navController.refresh()
-      // Una acción (borrar, mover, pegar...) puede afectar a cualquier
-      // panel, no solo al activo -- refreshTick es la señal para que los
-      // paneles no activos (cada uno con su propio Process de listado, ver
-      // el Repeater de paneles) se refresquen también.
+      // An action (delete, move, paste...) can affect any
+      // panel, not just the active one -- refreshTick is the signal for the
+      // non-active panels (each with its own listing Process, see
+      // the panel Repeater) to refresh too.
       NavState.refreshTick += 1
       var cb = ActionState._actionOnSuccess
       ActionState._actionOnSuccess = null
       if (result.exitCode === 0) {
         if (cb) cb()
       } else if (!result.cancelled) {
-        // Antes esto se tragaba en silencio -- un mv/cp/chmod/zip/unzip que
-        // fallara (permisos, disco lleno, archivo corrupto...) se veía
-        // exactamente igual que uno que había ido bien.
+        // Before, this was swallowed silently -- a mv/cp/chmod/zip/unzip that
+        // failed (permissions, disk full, corrupt file...) looked
+        // exactly like one that had gone well.
         Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
       }
     }
   }
 
-  // (Fase 13.G) Eliminados actionProgressTotalProc / actionProgressPollProc /
-  // actionProgressPollTimer: el progreso ya no se sondea con `du`, viene por
-  // bytes de la señal FileOperations.progress (ver la Connections de arriba).
+  // (Phase 13.G) Removed actionProgressTotalProc / actionProgressPollProc /
+  // actionProgressPollTimer: progress is no longer polled with `du`, it comes by
+  // bytes from the FileOperations.progress signal (see the Connections above).
 }

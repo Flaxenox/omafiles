@@ -2,19 +2,19 @@ import "../Utils.js" as Utils
 import QtQuick
 import "../state"
 
-// CommandFacade -- fachada OPERATIVA de Omafiles (Fase 11.C, josema:
-// completar el desacoplamiento del frontend). Contiene los constructores de
-// menús/comandos de alto nivel que antes vivían en OmafilesContent: la
-// paleta de comandos, el menú contextual de ítems/hueco vacío, las acciones
-// de marcadores/puntos de montaje, abrir marcador/reciente y las migas de
-// pan. Reciben los controladores que USAN por propiedad (no god object, no
-// registry entero) y `root` para el estado + los wrappers de bajo nivel
+// CommandFacade -- OPERATIONAL facade of Omafiles (Phase 11.C, josema:
+// complete the frontend decoupling). It contains the builders of
+// high-level menus/commands that used to live in OmafilesContent: the
+// command palette, the context menu of items/empty area, the
+// bookmark/mount-point actions, open bookmark/recent and the breadcrumbs.
+// They receive the controllers they USE by property (no god object, no
+// whole registry) and `root` for the state + the low-level wrappers
 // (navigateTo/enter/refresh/runAction/joinPath/emptyTrash/openTerminalHere)
-// que siguen en OmafilesContent porque logic/ los llama por `root`.
+// that stay in OmafilesContent because logic/ calls them via `root`.
 //
-// OmafilesContent mantiene delegados finos (function X(){ return
-// commandFacade.X() }) para no tocar los ~decenas de sitios que llaman
-// root.X()/hostRoot.X() desde paneles, diálogos y KeyboardShortcuts.
+// OmafilesContent keeps thin delegates (function X(){ return
+// commandFacade.X() }) to avoid touching the ~dozens of sites that call
+// root.X()/hostRoot.X() from panels, dialogs and KeyboardShortcuts.
 Item {
   id: commandFacade
 
@@ -96,24 +96,24 @@ Item {
         cmds.push({ label: "Open in new tab", run: function () { tabOps.openInNewTab(fullPath) } })
       }
     }
-    // Bug real corregido aquí: a diferencia de itemActions() (menú
-    // contextual), esta lista no tenía NINGÚN filtro para ArchiveState.inArchive
-    // -- "Add to bookmarks"/"Open in new tab" no tienen guard propio (a
-    // diferencia de rename/copy/paste/etc., que sí se auto-protegen
-    // dentro de su función) y mezclaban la carpeta real con el nombre de
-    // un elemento DENTRO del archivo, escribiendo una ruta rota a
-    // bookmarks.json sin avisar. El resto de la lista se filtra aquí
-    // también, no porque fuera a romper nada (esas funciones ya son
-    // no-op dentro de un archivo) sino para no enseñar entradas muertas.
+    // Real bug fixed here: unlike itemActions() (context
+    // menu), this list had NO filter for ArchiveState.inArchive
+    // -- "Add to bookmarks"/"Open in new tab" have no guard of their own (unlike
+    // rename/copy/paste/etc., which do self-protect
+    // inside their function) and mixed the real folder with the name of
+    // an element INSIDE the archive, writing a broken path to
+    // bookmarks.json without warning. The rest of the list is filtered here
+    // too, not because it would break anything (those functions are already
+    // no-ops inside an archive) but so as not to show dead entries.
     if (ArchiveState.inArchive) {
       var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
         "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
-    // Acciones del usuario (actions.toml). Al final de la lista y nunca dentro
-    // de un comprimido (sus rutas no existen en disco de verdad). Reciben la
-    // selección actual para casar su `context` y sustituir placeholders.
+    // User actions (actions.toml). At the end of the list and never inside
+    // an archive (their paths don't really exist on disk). They receive the
+    // current selection to match their `context` and substitute placeholders.
     if (!ArchiveState.inArchive && customActions) {
       cmds = cmds.concat(customActions.paletteEntries(selectionOps.selectedEntries()))
     }
@@ -128,7 +128,7 @@ Item {
   }
 
   function openPalette() {
-    if (customActions) customActions.reload() // recoge cambios del actions.toml sin reiniciar
+    if (customActions) customActions.reload() // picks up changes to actions.toml without restarting
     PaletteState.paletteQuery = ""
     PaletteState.paletteIndex = 0
     PaletteState.paletteOpen = true
@@ -155,12 +155,12 @@ Item {
   }
 
   function itemActions() {
-    if (customActions) customActions.reload() // recoge cambios del actions.toml sin reiniciar
+    if (customActions) customActions.reload() // picks up changes to actions.toml without restarting
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return []
-    // Dentro de un comprimido solo se navega/abre -- nada de lo demás
-    // (renombrar/borrar/chmod/comprimir/copiar/enlazar/marcador) tiene
-    // sentido sobre una ruta que no existe de verdad en disco.
+    // Inside an archive only navigate/open is available -- nothing else
+    // (rename/delete/chmod/compress/copy/link/bookmark) makes
+    // sense over a path that doesn't really exist on disk.
     if (ArchiveState.inArchive) {
       if (entries.length !== 1) return []
       return [{ label: entries[0].type === "dir" ? "Open" : "Open (extracts a temp copy)", action: function () { root.enter(entries[0]) } }]
@@ -176,24 +176,24 @@ Item {
       return actions
     }
 
-    // Orden por grupos (antes era una lista plana en el orden en que se
-    // habían ido añadiendo funciones a lo largo de varias sesiones, sin
-    // criterio): 1) abrir, 2) portapapeles, 3) organizar (renombrar/
-    // enlace/marcador/comprimir/extraer/montar), 4) permisos/borrar/
-    // propiedades, 5) vista. Mismo grupo en single y multi-selección para
-    // que el menú no "salte" de sitio al seleccionar un segundo ítem.
+    // Ordered by groups (before it was a flat list in the order the
+    // functions had been added across several sessions, with no
+    // criterion): 1) open, 2) clipboard, 3) organize (rename/
+    // link/bookmark/compress/extract/mount), 4) permissions/delete/
+    // properties, 5) view. Same group in single and multi-selection so
+    // that the menu doesn't "jump" around when selecting a second item.
     if (!multi) {
       actions.push({ label: "Open", action: function () { root.enter(entries[0]) } })
       if (entries[0].type === "dir") {
-        // Bug real: usar NavState.currentPath dentro del closure (en vez de
-        // capturarlo aquí) leía la ruta en el momento del CLIC del menú,
-        // no en el momento de abrirlo -- si el ratón pasaba por otro
-        // panel de fondo mientras el menú seguía abierto (el
-        // HoverHandler de cambio de pestaña no se desactiva solo por
-        // haber un menú encima), la pestaña activa ya había cambiado y
-        // "Open in new tab" abría la carpeta dentro de la carpeta
-        // EQUIVOCADA. Capturado como variable local, coherente con como
-        // ya lo hace paletteCommands() para el mismo caso.
+        // Real bug: using NavState.currentPath inside the closure (instead of
+        // capturing it here) read the path at the moment of the menu CLICK,
+        // not at the moment of opening it -- if the mouse passed over another
+        // background panel while the menu stayed open (the
+        // tab-switch HoverHandler doesn't disable itself just for
+        // having a menu on top), the active tab had already changed and
+        // "Open in new tab" opened the folder inside the WRONG
+        // folder. Captured as a local variable, consistent with how
+        // paletteCommands() already does it for the same case.
         var dirFullPath = Utils.joinPath(NavState.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
           tabOps.openInNewTab(dirFullPath)
@@ -231,8 +231,8 @@ Item {
     actions.push({ label: "Delete" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
     actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
-    // Acciones del usuario (actions.toml) que casan con esta selección -- al
-    // final del menú, tras las nativas. inTrash/inArchive ya han salido antes.
+    // User actions (actions.toml) that match this selection -- at the
+    // end of the menu, after the native ones. inTrash/inArchive already exited earlier.
     if (customActions) {
       actions = actions.concat(customActions.menuActions(entries))
     }
@@ -244,9 +244,9 @@ Item {
     if (NavState.currentPath === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else if (!ArchiveState.inArchive) {
-      // Dentro de un archivo estas ya son no-op (cada función se
-      // protege sola), pero se quitan de aquí para no enseñar entradas
-      // muertas en el menú de hueco vacío.
+      // Inside an archive these are already no-ops (each function
+      // protects itself), but they are removed from here so as not to show
+      // dead entries in the empty-area menu.
       actions.push({ label: "New folder", action: function () { renameOps.startNewFolder() } })
       actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
       actions.push({ label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
@@ -256,10 +256,10 @@ Item {
     return actions
   }
 
-  // Marcador de fichero: navega a la carpeta que lo contiene y lo deja
-  // seleccionado -- reutiliza pendingSelectNames, el mismo mecanismo que
-  // ya usa "Mostrar en el gestor de archivos" (dbus-filemanager1.py) para
-  // resaltar un fichero concreto al aterrizar en una carpeta.
+  // File bookmark: navigates to the folder that contains it and leaves it
+  // selected -- it reuses pendingSelectNames, the same mechanism that
+  // "Show in file manager" (dbus-filemanager1.py) already uses to
+  // highlight a specific file on landing in a folder.
   function openBookmark(bookmark) {
     if (bookmark.type === "file") {
       var slash = bookmark.path.lastIndexOf("/")
@@ -270,18 +270,18 @@ Item {
     }
   }
 
-  // Mismo mecanismo que openBookmark() para uno de tipo "file" -- todos
-  // los recientes son ficheros (nunca carpetas, ver addRecent()).
+  // Same mechanism as openBookmark() for a "file" type one -- all
+  // recents are files (never folders, see addRecent()).
   function openRecent(item) {
     var slash = item.path.lastIndexOf("/")
     NavState.pendingSelectNames = [item.name]
     root.navigateTo(slash > 0 ? item.path.substring(0, slash) : "/")
   }
 
-  // Doble clic en un reciente -- a diferencia de openRecent() (navega y
-  // selecciona), esto lo abre de verdad con la app por defecto, igual que
-  // hace enter() con una fila normal. addRecent() lo vuelve a subir al
-  // principio de la lista, igual que si se acabara de abrir ahora mismo.
+  // Double click on a recent -- unlike openRecent() (navigates and
+  // selects), this actually opens it with the default app, just like
+  // enter() does with a normal row. addRecent() bumps it back to the
+  // top of the list, as if it had just been opened right now.
   function launchRecent(item) {
     root.openWithDefault(item.path)
     bookmarkOps.addRecent(item.path, item.name)
@@ -297,10 +297,10 @@ Item {
     if (bookmark.path === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { root.emptyTrash() } })
     } else {
-      // Trash es fija -- josema la quitó por error una vez y no hay
-      // forma de recuperarla salvo pidiéndomelo a mano (defaultBookmarks
-      // solo se usa la primera vez que se abre la app, nunca más). Sin
-      // "Remove bookmark" para ella, no se puede volver a perder igual.
+      // Trash is fixed -- josema removed it by mistake once and there is no
+      // way to recover it except asking me by hand (defaultBookmarks
+      // is only used the first time the app is opened, never again). Without
+      // "Remove bookmark" for it, it can't be lost the same way again.
       actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
     }
     return actions
@@ -323,13 +323,13 @@ Item {
     return actions
   }
 
-  // Dentro de un comprimido, la ruta real (NavState.currentPath) no cambia --
-  // solo se navega en archiveSubPath (ver enter()/goUp()/inArchive) -- así
-  // que el breadcrumb tiene que construirse aparte para reflejarlo. Nadie
-  // hace clic en un segmento individual (ver el Repeater real más abajo,
-  // sin MouseArea propio a propósito), así que basta con que el ÚLTIMO
-  // segmento tenga path === NavState.currentPath -- es lo único que usa la
-  // plantilla compartida para decidir cuál pintar en negrita.
+  // Inside an archive, the real path (NavState.currentPath) does not change --
+  // only archiveSubPath is navigated (see enter()/goUp()/inArchive) -- so
+  // the breadcrumb has to be built separately to reflect it. Nobody
+  // clicks an individual segment (see the real Repeater below,
+  // without its own MouseArea on purpose), so it's enough for the LAST
+  // segment to have path === NavState.currentPath -- it's the only thing the
+  // shared template uses to decide which one to paint in bold.
   function pathSegments() {
     if (!ArchiveState.inArchive) return root.pathSegmentsFor(NavState.currentPath)
     var segs = root.pathSegmentsFor(NavState.currentPath)

@@ -1,11 +1,11 @@
 pragma Singleton
 import QtQuick
 
-// Estado del panel de Propiedades (tamaño/permisos/dueño/fecha) --
-// noveno singleton de la capa state/. dialogs/PropertiesPanel.qml es
-// puramente presentacional (propio `id: root` local, alimentado por
-// binding desde Omafiles.qml), así que no necesita importar esto
-// directamente. La carga en sí (stat/du) sigue en logic/PropertiesLoader.qml.
+// State of the Properties panel (size/permissions/owner/date) --
+// ninth singleton of the state/ layer. dialogs/PropertiesPanel.qml is
+// purely presentational (its own local `id: root`, fed by
+// binding from Omafiles.qml), so it does not need to import this
+// directly. The loading itself (stat/du) stays in logic/PropertiesLoader.qml.
 QtObject {
   property bool propertiesOpen: false
   property var propertiesEntry: null
@@ -14,18 +14,18 @@ QtObject {
   property string propertiesPerms: ""
   property string propertiesOwner: ""
   property string propertiesMtime: ""
-  // Guard de carrera: showProperties()/showPropertiesForSelection() suben
-  // este contador cada vez que se abre el panel para un ítem nuevo, y
-  // anotan ese número como "dueño" del stat/du que lanzan. Si el usuario
-  // cambia de selección antes de que un "du" lento de una carpeta grande
-  // termine, la respuesta tardía ya no coincide con propertiesRequestId
-  // (que para entonces ya subió) y se descarta en vez de sobreescribir el
-  // tamaño del ítem que se está mirando ahora con el de otro distinto.
+  // Race guard: showProperties()/showPropertiesForSelection() bump
+  // this counter each time the panel is opened for a new item, and
+  // record that number as the "owner" of the stat/du they launch. If the user
+  // changes selection before a slow "du" of a large folder
+  // finishes, the late response no longer matches propertiesRequestId
+  // (which by then has already bumped) and is discarded instead of overwriting the
+  // size of the item being looked at now with that of a different one.
   property int propertiesRequestId: 0
   property int _propertiesStatOwner: -1
   property int _propertiesDuOwner: -1
-  // Selección múltiple: sin permisos/dueño/fecha (no tiene sentido combinar
-  // varios), solo cuenta de items y tamaño total.
+  // Multiple selection: no permissions/owner/date (it makes no sense to combine
+  // several), only item count and total size.
   property bool propertiesMulti: false
   property int propertiesCount: 0
 }

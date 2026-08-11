@@ -1,19 +1,19 @@
 import QtQuick
 import "../state"
 
-// Detección de tipo de fichero por extensión (icono + is Image/Video/
-// Audio/Pdf) -- lógica de negocio pura que vivía en Omafiles.qml pese a
-// no depender de ningún Process ni de otro subsistema, solo de las listas
-// de extensiones (imageExt/videoExt/audioExt/archiveExt/codeExt, que se
-// quedan en root por ser configuración, no lógica). Encontrado en la
-// misma auditoría que logic/SortOps.qml.
+// File type detection by extension (icon + is Image/Video/
+// Audio/Pdf) -- pure business logic that lived in Omafiles.qml despite
+// not depending on any Process nor another subsystem, only on the extension
+// lists (imageExt/videoExt/audioExt/archiveExt/codeExt, which stay
+// in root as they are configuration, not logic). Found in the
+// same audit as logic/SortOps.qml.
 //
-// root conserva envoltorios de una línea (`function iconFor(entry) {
-// return fileTypeUtils.iconFor(entry) }`, ver junto a cada una en
-// Omafiles.qml) porque estas 6 funciones tienen 38 sitios de llamada
-// externos repartidos en ~10 ficheros -- tocarlos todos habría sido mucho
-// más riesgo que el beneficio, mismo criterio que ActionEngine. Ningún
-// sitio de llamada existente cambió.
+// root keeps one-line wrappers (`function iconFor(entry) {
+// return fileTypeUtils.iconFor(entry) }`, see next to each one in
+// Omafiles.qml) because these 6 functions have 38 external
+// call sites spread across ~10 files -- touching them all would have been much
+// more risk than benefit, same criterion as ActionEngine. No existing
+// call site changed.
 Item {
   property Item root: null
 

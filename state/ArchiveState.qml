@@ -1,11 +1,11 @@
 pragma Singleton
 import QtQuick
 
-// Modo "dentro de un archivo" (.zip/.7z/.rar/.tar navegado sin extraer)
-// -- vigésimo singleton de la capa state/, completa
-// logic/ArchiveActions.qml. Leído como guarda ("if (inArchive) return")
-// por casi todas las operaciones de fichero -- no tiene sentido
-// renombrar/borrar/copiar/etc. dentro de un archivo sin extraer primero.
+// "Inside an archive" mode (.zip/.7z/.rar/.tar browsed without extracting)
+// -- twentieth singleton of the state/ layer, completes
+// logic/ArchiveActions.qml. Read as a guard ("if (inArchive) return")
+// by almost all file operations -- it makes no sense to
+// rename/delete/copy/etc. inside an archive without extracting first.
 QtObject {
   property bool inArchive: false
   property string archivePath: ""

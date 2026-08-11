@@ -6,9 +6,9 @@
 Notifier::Notifier(QObject *parent) : QObject(parent) {}
 
 void Notifier::notify(const QString &text) {
-  // notify-send desatendido: mismo comando que montaba la version
-  // Quickshell, con "Omafiles" como titulo centralizado aqui (antes se
-  // repetia en cada uno de los 16+ sitios de llamada).
+  // Detached notify-send: same command the Quickshell version built, with
+  // "Omafiles" as the title centralized here (previously it was repeated in
+  // each of the 16+ call sites).
   QProcess::startDetached(QStringLiteral("notify-send"),
                           QStringList{QStringLiteral("Omafiles"), text});
 }

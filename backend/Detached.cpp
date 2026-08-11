@@ -16,7 +16,7 @@ void Detached::run(const QVariantList &args) {
     command << a.toString();
 
   const QString program = command.takeFirst();
-  // startDetached: el proceso sobrevive a Omafiles y no deja zombie que
-  // recoger -- exactamente la semantica de Quickshell.execDetached().
+  // startDetached: the process outlives Omafiles and leaves no zombie to
+  // reap -- exactly the semantics of Quickshell.execDetached().
   QProcess::startDetached(program, command);
 }

@@ -3,18 +3,18 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo de permisos (chmod). Quinto componente extraído de
-// Omafiles.qml. root.chmodBitSet()/toggleChmodBit() leían y escribían
-// root.chmodMode directamente -- como un componente aparte no ve ese
-// "root" (es el suyo propio), el cálculo de qué casilla está marcada se
-// reproduce aquí en local a partir de la propiedad `mode` recibida
-// (misma lógica exacta que chmodDigit()/chmodBitSet(), solo
-// parametrizada), y cambiar una casilla se pide hacia fuera con una
-// señal en vez de escribir el modo directamente -- Omafiles.qml sigue
-// siendo el único dueño real de root.chmodMode.
+// Permissions (chmod) dialog. Fifth component extracted from
+// Omafiles.qml. root.chmodBitSet()/toggleChmodBit() read and wrote
+// root.chmodMode directly -- since a separate component does not see that
+// "root" (it is its own), the computation of which cell is checked is
+// reproduced here locally from the received `mode` property
+// (same exact logic as chmodDigit()/chmodBitSet(), only
+// parameterized), and changing a cell is requested outward with a
+// signal instead of writing the mode directly -- Omafiles.qml is still
+// the only real owner of root.chmodMode.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 
@@ -63,11 +63,11 @@ Item {
       text: "Mixed permissions — choose a mode to apply to all"
       font.pixelSize: Style.font.bodySmall
       font.family: Style.font.family
-      // Qt.darker se usa en este fichero para texto DESHABILITADO
-      // (botones/filas sin acción posible) -- este texto no está
-      // deshabilitado, es solo un aviso secundario, así que le
-      // toca la misma convención (Style.emphasis.secondary) que el
-      // resto del texto secundario del fichero.
+      // Qt.darker is used in this file for DISABLED text
+      // (buttons/rows with no possible action) -- this text is not
+      // disabled, it is just a secondary notice, so it
+      // gets the same convention (Style.emphasis.secondary) as the
+      // rest of the file's secondary text.
       color: Color.menu.text
       opacity: Style.emphasis.secondary
       wrapMode: Text.WordWrap
@@ -75,8 +75,8 @@ Item {
 
     PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
-    // Cabecera de columnas -- hueco a la izquierda del ancho de la
-    // etiqueta de fila (Owner/Group/Other), luego Read/Write/Exec.
+    // Column header -- empty space to the left of the width of the
+    // row label (Owner/Group/Other), then Read/Write/Exec.
     Row {
       width: parent.width
       spacing: Style.spacing.sm
@@ -99,11 +99,11 @@ Item {
       }
     }
 
-    // Owner (tú) / Group / Other -- cada fila con sus 3 casillas rwx,
-    // en vez de escribir el octal a mano. root.mode sigue siendo la
-    // fuente de verdad (un string de 3 dígitos, dueño real en
-    // Omafiles.qml); cada casilla consulta un bit suyo directamente y
-    // pide cambiarlo con bitToggled().
+    // Owner (you) / Group / Other -- each row with its 3 rwx cells,
+    // instead of writing the octal by hand. root.mode is still the
+    // source of truth (a 3-digit string, real owner in
+    // Omafiles.qml); each cell queries a bit of it directly and
+    // requests changing it with bitToggled().
     Repeater {
       model: [
         { label: "Owner", idx: 0 },
@@ -129,11 +129,11 @@ Item {
         Repeater {
           model: [4, 2, 1]
 
-          // CursorSurface en vez de un Rectangle+MouseArea a mano --
-          // mismo componente que usa cualquier otra fila/pestaña
-          // clicable de la app, así que la casilla tiene el mismo
-          // hover y el mismo tratamiento de "seleccionado" (current)
-          // que el resto, en vez de un estilo inventado aparte.
+          // CursorSurface instead of a hand-made Rectangle+MouseArea --
+          // same component that any other clickable row/tab
+          // of the app uses, so the cell has the same
+          // hover and the same "selected" (current) treatment
+          // as the rest, instead of a separately invented style.
           CursorSurface {
             id: chmodCell
             required property int modelData

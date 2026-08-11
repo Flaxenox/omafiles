@@ -4,17 +4,17 @@
 #include <QVariantList>
 #include <qqmlregistration.h>
 
-// Enumeración de ubicaciones de red montadas vía GVfs (SFTP/SMB/WebDAV/FTP)
-// para la barra lateral (Fase 16, josema). Sustituto de
-// list-network-mounts.sh: cada mount activo aparece como un subdirectorio
-// real y navegable bajo $XDG_RUNTIME_DIR/gvfs/ (gvfsd-fuse lo expone ahí, y
-// DirectoryModel ya lo sabe listar sin cambios). Lo único que hace falta es
-// descubrir cuáles hay activos y sacar una etiqueta legible del nombre
-// interno del mount ("esquema:clave=valor,clave=valor,...").
+// Enumeration of network locations mounted via GVfs (SFTP/SMB/WebDAV/FTP)
+// for the sidebar (Phase 16, josema). Replacement for
+// list-network-mounts.sh: each active mount appears as a real, navigable
+// subdirectory under $XDG_RUNTIME_DIR/gvfs/ (gvfsd-fuse exposes it there, and
+// DirectoryModel already knows how to list it unchanged). The only thing
+// needed is to discover which ones are active and get a readable label from the
+// internal mount name ("scheme:key=value,key=value,...").
 //
-// Síncrono (solo un readdir + stats sobre el dir de gvfs, barato): devuelve
-// una lista de objetos {label, path, scheme}, la misma forma que producía
-// Utils.parseNetworkMounts. Singleton QML. Sin dependencia de Quickshell.
+// Synchronous (just a readdir + stats over the gvfs dir, cheap): returns
+// a list of {label, path, scheme} objects, the same shape that
+// Utils.parseNetworkMounts produced. QML singleton. No dependency on Quickshell.
 class NetworkMounts : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -23,7 +23,7 @@ class NetworkMounts : public QObject {
 public:
   explicit NetworkMounts(QObject *parent = nullptr);
 
-  // Ubicaciones de red montadas ahora mismo. Vacía si no hay ninguna (o no
-  // existe el directorio de gvfs).
+  // Network locations mounted right now. Empty if there are none (or the
+  // gvfs directory does not exist).
   Q_INVOKABLE QVariantList list() const;
 };

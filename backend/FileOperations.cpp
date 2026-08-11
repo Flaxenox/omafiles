@@ -20,20 +20,20 @@ namespace {
 
 constexpr qint64 kChunk = 1 << 20; // 1 MiB
 
-// ¿Existe una ENTRADA de directorio en `path`? (lstat, no stat.) A diferencia
-// de QFileInfo::exists() -- que sigue los symlinks y por tanto es ciega a un
-// symlink roto -- esto cuenta como existente cualquier cosa que ocupe el
-// nombre, incluido un symlink cuyo destino no existe. Es el criterio ÚNICO de
-// "conflicto de destino" que comparten existingPaths() (la comprobación de la
-// UI) y los guards sin-overwrite de copy()/move(): antes divergían del `test
-// -e` del shell justo en el caso del symlink roto (BUG-01, Hardening-1). Mismo
-// idioma que ya usaban removeTree/trash/restore más abajo.
+// Does a directory ENTRY exist at `path`? (lstat, not stat.) Unlike
+// QFileInfo::exists() -- which follows symlinks and is therefore blind to a
+// broken symlink -- this counts as existing anything that occupies the
+// name, including a symlink whose target does not exist. It is the SINGLE
+// "destination conflict" criterion shared by existingPaths() (the UI
+// check) and the no-overwrite guards of copy()/move(): they previously diverged
+// from the shell's `test -e` precisely in the broken-symlink case (BUG-01,
+// Hardening-1). Same idiom that removeTree/trash/restore already used below.
 inline bool entryExists(const QString &path) {
   const QFileInfo fi(path);
   return fi.exists() || fi.isSymLink();
 }
 
-// Tamano total (recursivo) de una ruta, para el porcentaje de progreso.
+// Total size (recursive) of a path, for the progress percentage.
 qint64 treeSize(const QString &path) {
   QFileInfo fi(path);
   if (fi.isSymLink())
@@ -54,8 +54,8 @@ qint64 treeSize(const QString &path) {
   return fi.size();
 }
 
-// Copia un fichero por trozos, informando de bytes copiados via cb.
-// `cancelled` se comprueba entre trozos: si se activa, aborta con err.
+// Copies a file in chunks, reporting bytes copied via cb.
+// `cancelled` is checked between chunks: if it is set, it aborts with err.
 bool copyFile(const QString &src, const QString &dst, qint64 &copied,
               const std::function<void(qint64)> &cb,
               const std::atomic<bool> &cancelled, QString &err) {
@@ -86,11 +86,11 @@ bool copyFile(const QString &src, const QString &dst, qint64 &copied,
   }
   out.close();
   in.close();
-  out.setPermissions(in.permissions()); // preservar modo
+  out.setPermissions(in.permissions()); // preserve mode
   return true;
 }
 
-// Copia recursiva (ficheros, carpetas y symlinks como symlinks).
+// Recursive copy (files, folders and symlinks as symlinks).
 bool copyTree(const QString &src, const QString &dst, qint64 &copied,
               const std::function<void(qint64)> &cb,
               const std::atomic<bool> &cancelled, QString &err) {
@@ -100,7 +100,7 @@ bool copyTree(const QString &src, const QString &dst, qint64 &copied,
   }
   QFileInfo si(src);
   if (si.isSymLink()) {
-    // Recrear el enlace, no seguirlo.
+    // Recreate the link, do not follow it.
     return QFile::link(si.symLinkTarget(), dst);
   }
   if (si.isDir()) {
@@ -121,9 +121,9 @@ bool copyTree(const QString &src, const QString &dst, qint64 &copied,
   return copyFile(src, dst, copied, cb, cancelled, err);
 }
 
-// Borrado recursivo, cancelable. Recursión manual (en vez de
-// QDir::removeRecursively) para poder comprobar `cancelled` entre entradas.
-// Un symlink a carpeta se borra como enlace (QFile::remove), no se entra.
+// Recursive delete, cancelable. Manual recursion (instead of
+// QDir::removeRecursively) to be able to check `cancelled` between entries.
+// A symlink to a folder is deleted as a link (QFile::remove), it is not entered.
 bool removeTree(const QString &path, const std::atomic<bool> &cancelled,
                 QString &err) {
   if (cancelled.load()) {
@@ -152,9 +152,9 @@ bool removeTree(const QString &path, const std::atomic<bool> &cancelled,
   return true;
 }
 
-// Borrado "a la fuerza" para la limpieza de cancelación: NO comprueba el flag
-// de cancelación (que está activo justo cuando lo llamamos) y no reporta
-// errores -- es best-effort para quitar una copia parcial. Fase 13.G.
+// "Forced" delete for the cancellation cleanup: it does NOT check the
+// cancellation flag (which is set precisely when we call it) and does not report
+// errors -- it is best-effort to remove a partial copy. Phase 13.G.
 void forceRemove(const QString &path) {
   QFileInfo fi(path);
   if (!fi.exists() && !fi.isSymLink())
@@ -165,10 +165,10 @@ void forceRemove(const QString &path) {
     QFile::remove(path);
 }
 
-// Raíces de papelera XDG activas: la de casa ($XDG_DATA_HOME/Trash o
-// ~/.local/share/Trash) primero, más la .Trash-$uid de cada punto de montaje
-// que no sea el de $HOME (spec XDG Trash: borrar desde otro disco va a la
-// papelera de ESE disco). Réplica de trash-roots.sh sin shell.
+// Active XDG trash roots: the home one ($XDG_DATA_HOME/Trash or
+// ~/.local/share/Trash) first, plus the .Trash-$uid of each mount point
+// that is not $HOME's (XDG Trash spec: deleting from another disk goes to
+// THAT disk's trash). Replica of trash-roots.sh without shell.
 QStringList discoverTrashRoots() {
   QStringList roots;
   const QString home = QDir::homePath();
@@ -183,7 +183,7 @@ QStringList discoverTrashRoots() {
     const QString mp = v.rootPath();
     if (mp.isEmpty() || mp == QLatin1String("/"))
       continue;
-    if (home.startsWith(mp)) // mismo disco que casa, ya cubierto arriba
+    if (home.startsWith(mp)) // same disk as home, already covered above
       continue;
     const QString cand = mp + QStringLiteral("/.Trash-") + uid;
     if (QFileInfo(cand).isDir())
@@ -192,10 +192,10 @@ QStringList discoverTrashRoots() {
   return roots;
 }
 
-// Parsea un fichero .trashinfo: rellena name/origPath/epoch. `root` es la
-// raíz física de la papelera (para resolver Path= relativo en papeleras de
-// disco). Mismo decode que restoreByOrigPath (percent-decoding correcto).
-// Devuelve false si el fichero no tiene Path= (corrupto/incompleto).
+// Parses a .trashinfo file: fills name/origPath/epoch. `root` is the
+// physical root of the trash (to resolve a relative Path= in disk
+// trashes). Same decode as restoreByOrigPath (correct percent-decoding).
+// Returns false if the file has no Path= (corrupt/incomplete).
 bool parseTrashInfo(const QFileInfo &infoFile, const QString &root,
                     QString &name, QString &origPath, qint64 &epoch) {
   QFile f(infoFile.absoluteFilePath());
@@ -217,7 +217,7 @@ bool parseTrashInfo(const QFileInfo &infoFile, const QString &root,
   if (!decoded.startsWith(QLatin1Char('/')))
     decoded = QFileInfo(root).absolutePath() + QLatin1Char('/') + decoded;
 
-  // name = stem del .trashinfo (mismo que el fichero en files/).
+  // name = stem of the .trashinfo (same as the file in files/).
   name = infoFile.fileName();
   name.chop(QStringLiteral(".trashinfo").size());
   origPath = decoded;
@@ -231,15 +231,15 @@ bool parseTrashInfo(const QFileInfo &infoFile, const QString &root,
 FileOperations::FileOperations(QObject *parent) : QObject(parent) {}
 
 FileOperations::~FileOperations() {
-  // Marca el objeto como muerto bajo el lock: un worker que aún no haya
-  // entregado verá alive=false y no tocará este objeto ya destruido.
+  // Marks the object as dead under the lock: a worker that has not yet
+  // delivered will see alive=false and will not touch this already-destroyed object.
   std::lock_guard<std::mutex> lk(m_life->mtx);
   m_life->alive = false;
 }
 
 void FileOperations::emitProgress(const QString &op, const QString &path,
                                   qint64 done, qint64 total) {
-  // Llamado desde el worker: entrega segura solo si el singleton sigue vivo.
+  // Called from the worker: safe delivery only if the singleton is still alive.
   auto life = m_life;
   std::lock_guard<std::mutex> lk(life->mtx);
   if (!life->alive)
@@ -252,13 +252,13 @@ void FileOperations::emitProgress(const QString &op, const QString &path,
 
 void FileOperations::run(const QString &op, const QString &path,
                          std::function<Result()> job) {
-  auto life = m_life; // copia del control block, sobrevive al singleton
+  auto life = m_life; // copy of the control block, outlives the singleton
   QThreadPool::globalInstance()->start(QRunnable::create(
       [this, life, op, path, job = std::move(job)]() {
         Result r = job();
-        // Entrega segura: el destructor toma este mismo lock, así que o
-        // vemos alive=false (y no tocamos el objeto muerto) o lo tenemos
-        // cogido y el destructor espera a que soltemos.
+        // Safe delivery: the destructor takes this same lock, so either we
+        // see alive=false (and do not touch the dead object) or we hold
+        // it and the destructor waits for us to release.
         std::lock_guard<std::mutex> lk(life->mtx);
         if (!life->alive)
           return;
@@ -284,9 +284,9 @@ void FileOperations::copy(const QString &source, const QString &destination,
         if (entryExists(destination)) {
           if (!overwrite)
             return {false, QStringLiteral("destination already exists")};
-          // Semántica de "overwrite": reemplazo total (borra el destino y
-          // copia encima), coherente con lo que promete el diálogo de
-          // conflicto. Antes lo hacía `cp -f`.
+          // "overwrite" semantics: total replacement (deletes the destination and
+          // copies over), consistent with what the conflict dialog
+          // promises. It used to be done by `cp -f`.
           QString rmErr;
           if (!removeTree(destination, m_cancelled, rmErr))
             return {false, rmErr};
@@ -297,7 +297,7 @@ void FileOperations::copy(const QString &source, const QString &destination,
         double lastPct = -1;
         const auto cb = [&](qint64 done) {
           const double pct = qMin(100.0, done * 100.0 / pctTotal);
-          if (pct - lastPct >= 1.0) { // no inundar de senales (~cada 1%)
+          if (pct - lastPct >= 1.0) { // do not flood with signals (~every 1%)
             lastPct = pct;
             emitProgress(QStringLiteral("copy"), source, done, realTotal);
           }
@@ -305,7 +305,7 @@ void FileOperations::copy(const QString &source, const QString &destination,
         QString err;
         if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
           if (err == QLatin1String("cancelled"))
-            forceRemove(destination); // limpia la copia parcial (13.G)
+            forceRemove(destination); // clean up the partial copy (13.G)
           return {false, err};
         }
         emitProgress(QStringLiteral("copy"), source, realTotal, realTotal);
@@ -318,8 +318,8 @@ void FileOperations::cancel() { m_cancelled.store(true); }
 QStringList FileOperations::existingPaths(const QStringList &paths) const {
   QStringList out;
   for (const QString &p : paths) {
-    // Criterio lstat compartido con copy()/move(): un symlink cuenta como
-    // conflicto tenga o no destino válido (ver entryExists / BUG-01).
+    // lstat criterion shared with copy()/move(): a symlink counts as a
+    // conflict whether or not it has a valid target (see entryExists / BUG-01).
     if (entryExists(p))
       out << p;
   }
@@ -338,8 +338,8 @@ QStringList FileOperations::octalModes(const QStringList &paths) const {
   out.reserve(paths.size());
   for (const QString &p : paths) {
     struct stat st;
-    // stat() (sigue symlinks), igual que `stat -c%a` -- %a es mode & 07777 en
-    // octal sin cero a la izquierda (p.ej. "755", "4755"). "" si no se pudo.
+    // stat() (follows symlinks), like `stat -c%a` -- %a is mode & 07777 in
+    // octal without a leading zero (e.g. "755", "4755"). "" if it could not.
     if (::stat(QFile::encodeName(p).constData(), &st) == 0)
       out << QString::number(st.st_mode & 07777, 8);
     else
@@ -358,20 +358,20 @@ void FileOperations::move(const QString &source, const QString &destination,
     if (entryExists(destination)) {
       if (!overwrite)
         return {false, QStringLiteral("destination already exists")};
-      // "overwrite" (= mv -f): borra el destino y sigue. Así el rename
-      // atómico de abajo no falla por ENOTEMPTY (carpeta) ni deja mezcla.
+      // "overwrite" (= mv -f): deletes the destination and continues. This way the
+      // atomic rename below does not fail with ENOTEMPTY (folder) nor leave a mix.
       QString rmErr;
       if (!removeTree(destination, m_cancelled, rmErr))
         return {false, rmErr};
     }
-    // Intento atomico (mismo sistema de ficheros): un solo rename(2), vale
-    // tanto para ficheros como para carpetas.
+    // Atomic attempt (same filesystem): a single rename(2), works
+    // for both files and folders.
     if (::rename(QFile::encodeName(source).constData(),
                  QFile::encodeName(destination).constData()) == 0)
       return {true, QString()};
     if (errno != EXDEV)
       return {false, QString::fromLocal8Bit(strerror(errno))};
-    // Cruza de disco: copiar + borrar el origen, con progreso.
+    // Crosses disks: copy + delete the source, with progress.
     const qint64 realTotal = treeSize(source);
     const qint64 pctTotal = qMax<qint64>(1, realTotal);
     qint64 copied = 0;
@@ -385,8 +385,8 @@ void FileOperations::move(const QString &source, const QString &destination,
     };
     QString err;
     if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
-      // Cancelado a mitad del copiado cross-fs: limpia la copia parcial del
-      // destino. El origen queda intacto (removeTree solo corre tras copiar).
+      // Cancelled mid cross-fs copy: clean up the partial copy at the
+      // destination. The source stays intact (removeTree only runs after copying).
       if (err == QLatin1String("cancelled"))
         forceRemove(destination);
       return {false, err};
@@ -416,7 +416,7 @@ void FileOperations::remove(const QString &path, bool ignoreMissing) {
   m_cancelled.store(false);
   run(QStringLiteral("remove"), path, [this, path, ignoreMissing]() -> Result {
     if (!QFileInfo(path).exists() && !QFileInfo(path).isSymLink()) {
-      // ignoreMissing (= `rm -f`): que no exista no es error.
+      // ignoreMissing (= `rm -f`): it not existing is not an error.
       if (ignoreMissing)
         return {true, QString()};
       return {false, QStringLiteral("path does not exist")};
@@ -451,8 +451,8 @@ void FileOperations::restore(const QString &path) {
   run(QStringLiteral("restore"), path, [path]() -> Result {
     const QFileInfo fi(path);
     const QString name = fi.fileName();
-    const QString filesDir = fi.absolutePath();       // <raiz>/files
-    const QString root = QFileInfo(filesDir).absolutePath(); // <raiz>
+    const QString filesDir = fi.absolutePath();       // <root>/files
+    const QString root = QFileInfo(filesDir).absolutePath(); // <root>
     const QString infoPath =
         root + QStringLiteral("/info/") + name + QStringLiteral(".trashinfo");
 
@@ -472,8 +472,8 @@ void FileOperations::restore(const QString &path) {
       return {false, QStringLiteral("no Path= in .trashinfo")};
 
     QString orig = QUrl::fromPercentEncoding(encoded.toUtf8());
-    // En papeleras de disco (.Trash-$uid) Path puede ser relativo al punto
-    // de montaje (= el padre de <raiz>); en la de casa es absoluto.
+    // In disk trashes (.Trash-$uid) Path may be relative to the mount
+    // point (= the parent of <root>); in the home one it is absolute.
     if (!orig.startsWith(QLatin1Char('/')))
       orig = QFileInfo(root).absolutePath() + QLatin1Char('/') + orig;
 
@@ -491,8 +491,8 @@ void FileOperations::restore(const QString &path) {
 void FileOperations::restoreByOrigPath(const QString &origPath) {
   m_cancelled.store(false);
   run(QStringLiteral("restore"), origPath, [this, origPath]() -> Result {
-    // Buscar en TODAS las raíces XDG el .trashinfo cuyo Path= == origPath,
-    // quedándose con el más reciente (mismo fichero borrado varias veces).
+    // Search in ALL the XDG roots for the .trashinfo whose Path= == origPath,
+    // keeping the most recent one (same file deleted several times).
     QString bestInfo;
     qint64 bestMtime = -1;
     QString bestRoot;
@@ -517,8 +517,8 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
         f.close();
         if (enc.isEmpty())
           continue;
-        // Decodificación XDG correcta (percent-decoding; sin el `+`->espacio
-        // que hacía el script, que corrompía nombres con `+` literal).
+        // Correct XDG decoding (percent-decoding; without the `+`->space
+        // that the script did, which corrupted names with a literal `+`).
         QString decoded = QUrl::fromPercentEncoding(enc.toUtf8());
         if (!decoded.startsWith(QLatin1Char('/')))
           decoded = QFileInfo(root).absolutePath() + QLatin1Char('/') + decoded;
@@ -536,7 +536,7 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
       return {false,
               QStringLiteral("no matching trashed item for %1").arg(origPath)};
 
-    // <root>/files/<name> (name = basename del .trashinfo sin la extensión).
+    // <root>/files/<name> (name = basename of the .trashinfo without the extension).
     QString name = QFileInfo(bestInfo).fileName();
     name.chop(QStringLiteral(".trashinfo").size());
     const QString src = bestRoot + QStringLiteral("/files/") + name;
@@ -551,8 +551,8 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
                  QFile::encodeName(origPath).constData()) != 0) {
       if (errno != EXDEV)
         return {false, QString::fromLocal8Bit(strerror(errno))};
-      // Cruza de disco (raro en XDG: la papelera está en el mismo disco que
-      // el original): copiar + borrar, como haría `mv`.
+      // Crosses disks (rare in XDG: the trash is on the same disk as
+      // the original): copy + delete, as `mv` would.
       qint64 copied = 0;
       QString e;
       const auto noop = [](qint64) {};

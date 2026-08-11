@@ -1,14 +1,14 @@
 import QtQuick
 import "../state"
 
-// Atajos de teclado del panel activo (Keys.onPressed de la ListView) --
-// primer corte de panels/ActiveFileList.qml (761 líneas, por encima del
-// límite 300-500), sacando la parte más "lógica" (un if/else largo que
-// decide qué hacer según event.key/modifiers) y dejando dentro la parte
-// más visual (delegate de fila, marquee, drag&drop). handlePress() recibe
-// el mismo `event` que llegaba a Keys.onPressed -- accepted se sigue
-// marcando aquí igual que antes, ActiveFileList solo delega la llamada
-// entera.
+// Keyboard shortcuts of the active panel (Keys.onPressed of the ListView) --
+// first cut of panels/ActiveFileList.qml (761 lines, over the
+// 300-500 limit), pulling out the more "logical" part (a long if/else that
+// decides what to do based on event.key/modifiers) and leaving inside the more
+// visual part (row delegate, marquee, drag&drop). handlePress() receives
+// the same `event` that arrived at Keys.onPressed -- accepted is still
+// marked here just like before, ActiveFileList only delegates the whole
+// call.
 Item {
   property Item hostRoot: null
   property Item hostActionEngine: null
@@ -94,16 +94,16 @@ Item {
       if (event.key === Qt.Key_Escape || event.key === Qt.Key_Question) { DialogsState.shortcutsHelpOpen = false; event.accepted = true }
       return
     }
-    // Red de seguridad -- bulkRenameField normalmente tiene el
-    // foco y gestiona Escape/Enter él solo, pero si alguna vez
-    // no lo tiene, esto evita que j/k/Supr caigan en la lista de
-    // detrás con el diálogo todavía abierto encima.
+    // Safety net -- bulkRenameField normally has the
+    // focus and handles Escape/Enter on its own, but if it ever
+    // doesn't, this prevents j/k/Del from falling into the list
+    // behind with the dialog still open on top.
     if (DialogsState.bulkRenameOpen) {
       if (event.key === Qt.Key_Escape) { DialogsState.bulkRenameOpen = false; event.accepted = true }
       return
     }
-    // Misma red de seguridad que bulkRenameOpen -- connectServerField
-    // gestiona Escape/Enter él solo mientras tiene el foco.
+    // Same safety net as bulkRenameOpen -- connectServerField
+    // handles Escape/Enter on its own while it has the focus.
     if (DialogsState.connectServerOpen) {
       if (event.key === Qt.Key_Escape) {
         if (DialogsState.networkConnecting) hostMountOps.cancelNetworkConnect()
@@ -112,11 +112,11 @@ Item {
       }
       return
     }
-    // NavState.searching NO va aquí (Fase 19): mientras la lupa está abierta,
-    // el campo de búsqueda vive en la barra superior y tiene su propio foco;
-    // si el usuario hace clic en un resultado y la lista recupera el foco,
-    // los atajos (navegar, copiar, borrar...) deben funcionar sobre los
-    // resultados igual que sobre cualquier listado (req 7).
+    // NavState.searching does NOT go here (Phase 19): while the search is open,
+    // the search field lives in the top bar and has its own focus;
+    // if the user clicks a result and the list regains focus,
+    // the shortcuts (navigate, copy, delete...) must work over the
+    // results just like over any listing (req 7).
     if (EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.renamingIndex >= 0 || EditModeState.editingPath) return
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
@@ -125,13 +125,13 @@ Item {
       hostRoot.openTerminalHere()
       event.accepted = true
     } else if (event.key === Qt.Key_Escape) {
-      // Escape cierra, por este orden, lo que esté "abierto": la búsqueda,
-      // la vista previa, o -- con 2+ pestañas -- el panel activo (el que
-      // tiene el cursor encima, gracias al HoverHandler de cada panel;
-      // sustituye a la × que había antes en cada cabecera). Con UNA sola
-      // pestaña y nada abierto, Escape NO hace nada: NO cierra la app
-      // (josema) -- antes closeTab() caía en requestClose() y cerraba la
-      // ventana entera, comportamiento que ya no queremos.
+      // Escape closes, in this order, whatever is "open": the search,
+      // the preview, or -- with 2+ tabs -- the active panel (the one
+      // the cursor is over, thanks to each panel's HoverHandler;
+      // it replaces the × that used to be in each header). With ONE
+      // tab and nothing open, Escape does NOTHING: it does NOT close the app
+      // (josema) -- before, closeTab() fell into requestClose() and closed the
+      // whole window, behavior we no longer want.
       if (NavState.searching) hostSearchOps.exitSearch()
       else if (PreviewState.previewOpen) PreviewState.previewOpen = false
       else if (TabsState.tabs.length > 1) hostTabOps.closeTab()
@@ -146,7 +146,7 @@ Item {
       hostPreviewLoader.togglePreview()
       event.accepted = true
     } else if (event.key === Qt.Key_Slash || (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier))) {
-      // Ctrl+F (o /) abre la lupa expandible de la barra superior (Fase 19).
+      // Ctrl+F (or /) opens the expandable search of the top bar (Phase 19).
       hostSearchOps.startSearch()
       event.accepted = true
     } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
@@ -203,15 +203,15 @@ Item {
       hostRenameOps.startNewFolder()
       event.accepted = true
     } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-      // "New file" no tenía atajo propio, a diferencia de
-      // "New folder" (Ctrl+Shift+N, arriba) -- solo estaba en
-      // paleta/menú contextual.
+      // "New file" had no shortcut of its own, unlike
+      // "New folder" (Ctrl+Shift+N, above) -- it was only in
+      // palette/context menu.
       hostRenameOps.startNewFile()
       event.accepted = true
     } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
-      // Antes alternaba la vista dividida; ahora cada pestaña ES
-      // ya un panel visible, así que este atajo simplemente abre
-      // uno nuevo (igual que Ctrl+T).
+      // Before, it toggled the split view; now each tab already IS
+      // a visible panel, so this shortcut simply opens
+      // a new one (just like Ctrl+T).
       hostTabOps.newTab()
       event.accepted = true
     } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {

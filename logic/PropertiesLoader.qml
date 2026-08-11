@@ -3,19 +3,19 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Carga de metadatos de fichero (permisos y propiedades) -- decimoctavo
-// componente extraído de Omafiles.qml. Junta startChmod()/showProperties()/
-// showPropertiesForSelection() con los tres Process que alimentan (stat de
-// permisos, stat de propiedades, du), que antes vivían a más de mil líneas
-// de distancia de la función que los lanzaba. ChmodPanel.qml/
-// PropertiesPanel.qml (ya extraídos antes) solo pintan ChmodState.chmodMode/
-// PropertiesState.propertiesSize/etc. -- este componente es quien los rellena.
+// File metadata loading (permissions and properties) -- eighteenth
+// component extracted from Omafiles.qml. Bundles startChmod()/showProperties()/
+// showPropertiesForSelection() with the three Process that feed them (stat of
+// permissions, stat of properties, du), which used to live over a thousand
+// lines away from the function that launched them. ChmodPanel.qml/
+// PropertiesPanel.qml (already extracted earlier) only paint ChmodState.chmodMode/
+// PropertiesState.propertiesSize/etc. -- this component is the one that fills them.
 //
-// Deliberadamente NO incluye commitChmod/chmodDigit/chmodBitSet/
-// toggleChmodBit (se quedan en Omafiles.qml) -- esas no tocan ningún
-// Process, solo leen/escriben ChmodState.chmodMode y pasan por runAction() (el
-// sistema central de acciones/undo), así que moverlas aquí no habría
-// eliminado ninguna duplicación ni acercado nada a lo que sí lanza.
+// Deliberately does NOT include commitChmod/chmodDigit/chmodBitSet/
+// toggleChmodBit (they stay in Omafiles.qml) -- those don't touch any
+// Process, they only read/write ChmodState.chmodMode and go through runAction() (the
+// central action/undo system), so moving them here wouldn't have
+// eliminated any duplication nor brought anything closer to what does launch.
 Item {
   property Item root: null
   property Item selectionOps: null
@@ -26,10 +26,10 @@ Item {
     ChmodState.chmodNames = entries.map(function (e) { return e.name })
     ChmodState.chmodHasDir = entries.some(function (e) { return e.type === "dir" })
     ChmodState.chmodRecursive = false
-    // Modo octal NATIVO (BUG-03): octalModes en vez de un `stat -c%a -- <todas
-    // las rutas>` en una sola línea bash, que reventaba ARG_MAX con selección
-    // enorme. Devuelve el modo en el MISMO orden que las rutas ("" si falla),
-    // así el mapeo con chmodNames (para deshacer) se mantiene alineado.
+    // NATIVE octal mode (BUG-03): octalModes instead of a `stat -c%a -- <all
+    // the paths>` on a single bash line, which blew ARG_MAX with a huge
+    // selection. It returns the mode in the SAME order as the paths ("" if it
+    // fails), so the mapping with chmodNames (for undo) stays aligned.
     var modes = FileOperations.octalModes(entries.map(function (e) {
       return Utils.joinPath(NavState.currentPath, e.name)
     }))
@@ -45,12 +45,12 @@ Item {
   }
 
   function showPropertiesForSelection() {
-    // NavState.currentPath sigue siendo la carpeta real que contiene el
-    // archivo mientras se navega dentro de él -- sin este guard,
-    // Properties intentaría hacer stat/du de "carpeta-real/nombre-dentro-
-    // del-zip", que no existe (o, peor, podría coincidir por casualidad
-    // con un fichero real de ese nombre en la carpeta contenedora y
-    // enseñar datos de OTRO fichero sin que se note el error).
+    // NavState.currentPath is still the real folder containing the
+    // file while browsing inside it -- without this guard,
+    // Properties would try to stat/du "real-folder/name-inside-
+    // the-zip", which does not exist (or, worse, could coincide by chance
+    // with a real file of that name in the containing folder and
+    // show data of ANOTHER file without the error being noticed).
     if (ArchiveState.inArchive) return
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
@@ -65,10 +65,10 @@ Item {
     PropertiesState.propertiesOwner = ""
     PropertiesState.propertiesMtime = ""
     PropertiesState.propertiesOpen = true
-    // Tamaño NATIVO (BUG-03): totalSize en vez de un `du -shc -- <todas las
-    // rutas>` en una sola línea bash (ARG_MAX con selección enorme). Suma de
-    // bytes aparentes del árbol, formateada igual; síncrono, sin proceso ni
-    // carrera (por eso ya no hace falta el guard _propertiesDuOwner aquí).
+    // NATIVE size (BUG-03): totalSize instead of a `du -shc -- <all the
+    // paths>` on a single bash line (ARG_MAX with a huge selection). Sum of
+    // apparent bytes of the tree, formatted the same; synchronous, no process nor
+    // race (that's why the _propertiesDuOwner guard is no longer needed here).
     var bytes = FileOperations.totalSize(entries.map(function (e) {
       return Utils.joinPath(NavState.currentPath, e.name)
     }))
@@ -90,11 +90,11 @@ Item {
     PropertiesState.propertiesOpen = true
     PropertiesState._propertiesStatOwner = PropertiesState.propertiesRequestId
     propertiesStatProc.start(["stat", "-c", "%A %a\t%U:%G\t%y", "--", path])
-    // Deliberadamente NO se toca propertiesDuProc si entry no es carpeta
-    // (el tamaño ya se conoce sin proceso). Un "du" anterior de una
-    // carpeta puede seguir corriendo en ese caso -- por eso el guard de
-    // _propertiesDuOwner de más abajo es imprescindible, no solo para
-    // cuando SÍ se relanza.
+    // Deliberately does NOT touch propertiesDuProc if entry is not a folder
+    // (the size is already known without a process). A previous "du" of a
+    // folder may keep running in that case -- that's why the
+    // _propertiesDuOwner guard below is essential, not only for
+    // when it IS re-launched.
     if (entry.type === "dir") {
       PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
       propertiesDuProc.start(["du", "-sh", "--", path])
@@ -104,8 +104,8 @@ Item {
   ProcessRunner {
     id: propertiesStatProc
     onFinished: function (result) {
-      // Descarta la respuesta si el usuario ya cambió a otro ítem
-      // mientras este "stat" estaba en vuelo (ver propertiesRequestId).
+      // Discards the response if the user already switched to another item
+      // while this "stat" was in flight (see propertiesRequestId).
       if (PropertiesState._propertiesStatOwner !== PropertiesState.propertiesRequestId) return
       var parts = String(result.stdout || "").trim().split("\t")
       PropertiesState.propertiesPerms = parts[0] || ""
@@ -117,11 +117,11 @@ Item {
   ProcessRunner {
     id: propertiesDuProc
     onFinished: function (result) {
-      // Mismo guard que propertiesStatProc -- este es el que de verdad
-      // importa: un "du" de una carpeta grande puede tardar segundos, y
-      // sin esto su resultado tardío pisaba el tamaño del ítem que el
-      // usuario esté mirando ahora, aunque ya no tenga nada que ver con
-      // la carpeta que se estaba midiendo.
+      // Same guard as propertiesStatProc -- this is the one that really
+      // matters: a "du" of a large folder can take seconds, and
+      // without this its late result would overwrite the size of the item the
+      // user is looking at now, even though it no longer has anything to do with
+      // the folder that was being measured.
       if (PropertiesState._propertiesDuOwner !== PropertiesState.propertiesRequestId) return
       PropertiesState.propertiesSize = String(result.stdout || "").split("\t")[0] || ""
       PropertiesState.propertiesSizeLoading = false

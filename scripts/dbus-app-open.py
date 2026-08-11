@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# Implementa org.freedesktop.Application para Omafiles, de modo que sea un
-# gestor de archivos ACTIVABLE POR D-BUS.
+# Implements org.freedesktop.Application for Omafiles, so that it's a
+# D-BUS-ACTIVATABLE file manager.
 #
-# Por qué hace falta: Firefox/Zen "abrir carpeta contenedora" no usa xdg-mime
-# ni org.freedesktop.FileManager1 -- activa el .desktop por defecto de
-# inode/directory vía org.freedesktop.Application.Open, y solo funciona si ese
-# gestor expone esta interfaz (Nautilus la tiene por ser GApplication; omafiles
-# no). Sin ella, Zen resuelve el default (omafiles) pero, al no poder activarlo
-# por D-Bus, cae al primer gestor DBusActivatable que encuentra (Nautilus).
+# Why it's needed: Firefox/Zen "open containing folder" doesn't use xdg-mime
+# nor org.freedesktop.FileManager1 -- it activates the default .desktop of
+# inode/directory via org.freedesktop.Application.Open, and it only works if that
+# manager exposes this interface (Nautilus has it by being a GApplication; omafiles
+# doesn't). Without it, Zen resolves the default (omafiles) but, being unable to activate it
+# over D-Bus, falls back to the first DBusActivatable manager it finds (Nautilus).
 #
-# El nombre de bus (io.github.percius04.omafiles) DEBE coincidir con el basename
-# del .desktop DBusActivatable (io.github.percius04.omafiles.desktop) y el
-# object path con su forma en /. Reenvía a `omafiles <payload>` (instancia
-# única), con el mismo formato de payload que core/OmafilesContent.open():
-# "carpeta" o "carpeta\nnombre1\x1fnombre2" (revelar/seleccionar).
+# The bus name (io.github.percius04.omafiles) MUST match the basename
+# of the DBusActivatable .desktop (io.github.percius04.omafiles.desktop) and the
+# object path its form in /. It forwards to `omafiles <payload>` (single
+# instance), with the same payload format as core/OmafilesContent.open():
+# "folder" or "folder\nname1\x1fname2" (reveal/select).
 
 import sys
 import urllib.parse
@@ -60,12 +60,12 @@ def launch(payload):
     try:
         Gio.Subprocess.new([OMAFILES_BIN, payload], Gio.SubprocessFlags.NONE)
     except GLib.Error as e:
-        print("omafiles Application.Open: fallo al lanzar omafiles:", e, file=sys.stderr)
+        print("omafiles Application.Open: failed to launch omafiles:", e, file=sys.stderr)
 
 
 def open_uris(uris):
-    # Agrupa por carpeta contenedora: un fichero -> abre su carpeta y lo
-    # selecciona (revelar); una carpeta -> la abre. Un único launch por carpeta.
+    # Groups by containing folder: a file -> opens its folder and
+    # selects it (reveal); a folder -> opens it. A single launch per folder.
     groups = {}
     order = []
     for uri in uris:
@@ -94,8 +94,8 @@ def on_method_call(connection, sender, object_path, interface_name,
         uris, _platform_data = parameters.unpack()
         open_uris(uris)
     elif method_name == "Activate":
-        launch("")  # sin ruta -> arranque normal (restaura la sesión anterior)
-    # ActivateAction: Omafiles no expone acciones de .desktop -> no-op.
+        launch("")  # no path -> normal startup (restores the previous session)
+    # ActivateAction: Omafiles exposes no .desktop actions -> no-op.
     invocation.return_value(None)
 
 

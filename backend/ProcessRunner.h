@@ -7,22 +7,22 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Backend C++ de services/ProcessRunner.qml (Fase 5, josema). Respalda
-// con QProcess real la MISMA API que la implementacion Quickshell sobre
-// Quickshell.Io.Process -- ver services/ProcessRunner.qml para el
-// contrato y el porque de cada metodo. Se registra como tipo QML
-// Omafiles.Backend.ProcessRunner y lo consume el adaptador
-// services/ProcessRunner.qml; el nucleo (logic/) sigue
-// escribiendo `ProcessRunner { onFinished: ... }` sin enterarse.
+// C++ backend for services/ProcessRunner.qml (Phase 5, josema). Backs with a
+// real QProcess the SAME API as the Quickshell implementation over
+// Quickshell.Io.Process -- see services/ProcessRunner.qml for the contract
+// and the reason for each method. It is registered as the QML type
+// Omafiles.Backend.ProcessRunner and consumed by the adapter
+// services/ProcessRunner.qml; the core (logic/) keeps
+// writing `ProcessRunner { onFinished: ... }` without noticing.
 //
-// No es visual (QObject, no Item) a proposito: ProcessRunner nunca fue
-// un elemento de UI, solo se instanciaba dentro de un Item.
+// Not visual (QObject, not Item) on purpose: ProcessRunner was never a
+// UI element, it was only instantiated inside an Item.
 class ProcessRunner : public QObject {
   Q_OBJECT
   QML_ELEMENT
 
-  // true mientras hay una ejecucion en marcha -- para el patron
-  // "si ya esta ocupado, avisar y salir" repetido por todo el proyecto.
+  // true while a run is in progress -- for the pattern
+  // "if already busy, warn and bail" repeated throughout the project.
   Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 
 public:
@@ -30,21 +30,21 @@ public:
 
   bool busy() const { return m_running; }
 
-  // Lanza `args` (programa + argumentos). group=true envuelve el comando
-  // en su propio grupo de procesos (via setsid) para que cancel() mate
-  // tambien a los hijos reales (cp/mv/zip bajo "bash -c"). Devuelve false
-  // sin hacer nada si ya hay algo en marcha.
+  // Launches `args` (program + arguments). group=true wraps the command
+  // in its own process group (via setsid) so that cancel() also kills
+  // the real children (cp/mv/zip under "bash -c"). Returns false
+  // without doing anything if something is already running.
   Q_INVOKABLE bool start(const QVariantList &args, bool group = false);
 
-  // Mata la ejecucion en marcha (todo su grupo si se lanzo con group).
-  // No-op si no hay nada corriendo. finished se sigue disparando (con
-  // cancelled:true) cuando el proceso realmente termine.
+  // Kills the running execution (its whole group if launched with group).
+  // No-op if nothing is running. finished still fires (with
+  // cancelled:true) when the process actually ends.
   Q_INVOKABLE void cancel();
 
 signals:
   void busyChanged();
-  // Se dispara siempre al terminar (exito, fallo o cancelada) con el
-  // resultado completo: { exitCode, stdout, stderr, cancelled }.
+  // Always fires on completion (success, failure or cancelled) with the
+  // full result: { exitCode, stdout, stderr, cancelled }.
   void finished(const QVariant &result);
 
 private:

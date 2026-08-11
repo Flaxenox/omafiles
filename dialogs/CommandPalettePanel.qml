@@ -2,14 +2,14 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Paleta de comandos (":" o Ctrl+P). Noveno componente extraído de
-// Omafiles.qml -- el más interactivo de todos (campo de texto en vivo +
-// navegación con flechas + selección con el ratón), así que expone más
-// señales que los anteriores, pero el patrón es el mismo: Omafiles.qml
-// sigue siendo el dueño real de paletteQuery/paletteIndex, y
-// `commands` ya llega filtrado desde fuera (root.filteredPaletteCommands()
-// se sigue evaluando en el padre, donde "root" es de verdad el root real
-// -- aquí solo se muestra el resultado).
+// Command palette (":" or Ctrl+P). Ninth component extracted from
+// Omafiles.qml -- the most interactive of all (live text field +
+// arrow navigation + mouse selection), so it exposes more
+// signals than the previous ones, but the pattern is the same: Omafiles.qml
+// is still the real owner of paletteQuery/paletteIndex, and
+// `commands` already arrives filtered from outside (root.filteredPaletteCommands()
+// is still evaluated in the parent, where "root" really is the real root
+// -- here only the result is shown).
 Item {
   id: root
 
@@ -42,8 +42,8 @@ Item {
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    // Mismo padding de popup que el menú contextual (popupPadding, 14): los
-    // dos menús comparten el espaciado del sistema en vez del sm (4) apretado.
+    // Same popup padding as the context menu (popupPadding, 14): the
+    // two menus share the system spacing instead of the tight sm (4).
     padding: Style.spacing.popupPadding
     z: 30
 

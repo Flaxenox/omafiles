@@ -4,50 +4,50 @@ import "../Utils.js" as Utils
 import "../state"
 import "../services"
 
-// Acciones definidas por el usuario (Fase 26 / Beta 3): comandos propios que
-// se leen de ~/.config/omarchy/omafiles/actions.toml y aparecen tanto en la
-// paleta de comandos como en el menú contextual de ítems. Es la vía de escape
-// para todo lo que el gestor no trae de serie (abrir en tu editor, optimizar
-// una imagen, convertir, subir a algún sitio...) sin tener que tocar el código.
+// User-defined actions (Phase 26 / Beta 3): custom commands that
+// are read from ~/.config/omarchy/omafiles/actions.toml and appear both in the
+// command palette and in the item context menu. It is the escape hatch
+// for everything the manager does not ship out of the box (open in your editor, optimize
+// an image, convert, upload somewhere...) without having to touch the code.
 //
-// Formato del fichero (subconjunto estricto de TOML, una tabla por acción):
+// File format (strict subset of TOML, one table per action):
 //
 //   [[action]]
-//   label   = "Abrir en VS Code"
+//   label   = "Open in VS Code"
 //   command = "code {path}"
-//   context = "any"           # opcional: any | file | dir  (por defecto any)
+//   context = "any"           # optional: any | file | dir  (default any)
 //
-// Placeholders sustituidos en `command` (cada uno se entrecomilla para bash,
-// así que rutas con espacios/comillas no rompen nada):
-//   {path}   ruta absoluta del PRIMER ítem seleccionado
-//   {name}   basename del primer ítem
-//   {ext}    extensión del primer ítem (sin punto)
-//   {dir}    carpeta que contiene al primer ítem
-//   {paths}  todas las rutas seleccionadas, separadas por espacio
+// Placeholders substituted in `command` (each one is quoted for bash,
+// so paths with spaces/quotes do not break anything):
+//   {path}   absolute path of the FIRST selected item
+//   {name}   basename of the first item
+//   {ext}    extension of the first item (without the dot)
+//   {dir}    folder that contains the first item
+//   {paths}  all the selected paths, space-separated
 //
-// El comando resultante se lanza con `bash -lc` en modo dispara-y-olvida
-// (Detached): las acciones suelen abrir apps GUI o herramientas CLI que
-// producen ficheros; no seguimos su salida. Se recargan solas al abrir la
-// paleta o el menú (CommandFacade llama a reload()), así que editar el .toml
-// no requiere reiniciar la app.
+// The resulting command is launched with `bash -lc` in fire-and-forget mode
+// (Detached): the actions usually open GUI apps or CLI tools that
+// produce files; we do not follow their output. They reload on their own on opening
+// the palette or the menu (CommandFacade calls reload()), so editing the .toml
+// does not require restarting the app.
 Item {
   property Item root: null
 
-  // Lista parseada: [{label, command, context}]. La rellena reload().
+  // Parsed list: [{label, command, context}]. reload() fills it.
   property var actions: []
 
   Component.onCompleted: reload()
 
-  // Relee y reparsea el fichero. Barato (fichero diminuto, lectura síncrona) y
-  // solo se llama al abrir la paleta/menú, no por cada tecla.
+  // Re-reads and re-parses the file. Cheap (tiny file, synchronous read) and
+  // only called on opening the palette/menu, not per keystroke.
   function reload() {
     var text = _readFile(Paths.actionsFile)
     actions = _parse(text)
   }
 
-  // Lectura file:// síncrona (mismo patrón que qs.Commons/ThemeSource, con
-  // QML_XHR_ALLOW_FILE_READ activado en main.cpp). "" si no existe -> sin
-  // acciones, sin ruido: el fichero es opcional.
+  // Synchronous file:// read (same pattern as qs.Commons/ThemeSource, with
+  // QML_XHR_ALLOW_FILE_READ enabled in main.cpp). "" if it does not exist -> no
+  // actions, no noise: the file is optional.
   function _readFile(path) {
     try {
       var xhr = new XMLHttpRequest()
@@ -59,10 +59,10 @@ Item {
     }
   }
 
-  // Parser TOML mínimo: solo `[[action]]` (array de tablas) y claves de
-  // valor-cadena (label/command/context) entre comillas dobles o simples.
-  // Ignora comentarios (#) y líneas en blanco. No es un TOML general -- es
-  // deliberadamente estricto para el único esquema que soportamos.
+  // Minimal TOML parser: only `[[action]]` (array of tables) and
+  // string-value keys (label/command/context) in double or single quotes.
+  // Ignores comments (#) and blank lines. It is not a general TOML -- it is
+  // deliberately strict for the only schema we support.
   function _parse(text) {
     var out = []
     var cur = null
@@ -83,19 +83,19 @@ Item {
         continue
       var key = line.substring(0, eq).trim()
       var raw = line.substring(eq + 1).trim()
-      // quita comentario final solo si va fuera de comillas (caso simple:
-      // el valor SIEMPRE va entrecomillado, así que un # tras la comilla de
-      // cierre es comentario).
+      // strips the trailing comment only if it is outside quotes (simple case:
+      // the value is ALWAYS quoted, so a # after the closing
+      // quote is a comment).
       var val = _unquote(raw)
       if (key === "label" || key === "command" || key === "context")
         cur[key] = val
     }
-    // Descarta entradas incompletas (sin label o sin command no sirven).
+    // Discards incomplete entries (without label or without command are useless).
     return out.filter(function (a) { return a.label !== "" && a.command !== "" })
   }
 
-  // Extrae el contenido de un valor "..." o '...'; si no está entrecomillado,
-  // devuelve el token tal cual hasta el primer espacio/# (tolerante).
+  // Extracts the content of a "..." or '...' value; if it is not quoted,
+  // returns the token as is up to the first space/# (tolerant).
   function _unquote(raw) {
     if (raw.length >= 2) {
       var q = raw.charAt(0)
@@ -109,8 +109,8 @@ Item {
     return (hash >= 0 ? raw.substring(0, hash) : raw).trim()
   }
 
-  // ¿Aplica esta acción a la selección actual? "any" siempre; "file"/"dir"
-  // solo si TODOS los seleccionados son de ese tipo (y hay al menos uno).
+  // Does this action apply to the current selection? "any" always; "file"/"dir"
+  // only if ALL the selected are of that type (and there is at least one).
   function _matches(context, entries) {
     if (!context || context === "any")
       return true
@@ -123,8 +123,8 @@ Item {
     return true
   }
 
-  // Sustituye los placeholders y lanza el comando. `entries` es la selección
-  // (puede estar vacía para acciones "any" que solo usan {dir}).
+  // Substitutes the placeholders and launches the command. `entries` is the selection
+  // (may be empty for "any" actions that only use {dir}).
   function run(action, entries) {
     var first = entries.length > 0 ? entries[0] : null
     var firstPath = first ? Utils.entryPath(NavState.currentPath, first) : NavState.currentPath
@@ -141,14 +141,14 @@ Item {
       .split("{ext}").join(Util.shellQuote(ext))
       .split("{dir}").join(Util.shellQuote(first ? firstDir : NavState.currentPath))
 
-    // cd a la carpeta del ítem (o a la actual) para que la salida relativa del
-    // comando aterrice donde el usuario espera, igual que "Terminal here".
+    // cd to the item's folder (or the current one) so the command's relative
+    // output lands where the user expects, like "Terminal here".
     var cwd = first ? firstDir : NavState.currentPath
     Detached.run(["bash", "-lc", "cd -- " + Util.shellQuote(cwd) + " && " + cmd])
     Notifier.notify("Running: " + action.label)
   }
 
-  // Entradas para la PALETA (forma {label, run}). entries = selección actual.
+  // Entries for the PALETTE (form {label, run}). entries = current selection.
   function paletteEntries(entries) {
     return actions.filter(function (a) { return _matches(a.context, entries) })
       .map(function (a) {
@@ -156,7 +156,7 @@ Item {
       })
   }
 
-  // Acciones para el MENÚ CONTEXTUAL de ítems (forma {label, action}).
+  // Actions for the item CONTEXT MENU (form {label, action}).
   function menuActions(entries) {
     return actions.filter(function (a) { return _matches(a.context, entries) })
       .map(function (a) {

@@ -1,8 +1,8 @@
 #!/bin/bash
-# Abre Omafiles en una ruta concreta. Lo invoca el .desktop (MimeType=
-# inode/directory, %u) cuando otra app o xdg-open piden abrir una carpeta.
-# $1 = ruta absoluta o URI file:// (lo que mande el manejador de mimetype);
-# vacío para el lanzamiento normal desde el menú de aplicaciones.
+# Opens Omafiles at a specific path. It's invoked by the .desktop (MimeType=
+# inode/directory, %u) when another app or xdg-open ask to open a folder.
+# $1 = absolute path or file:// URI (whatever the mimetype handler sends);
+# empty for the normal launch from the applications menu.
 
 arg="$1"
 path=""
@@ -10,21 +10,21 @@ path=""
 if [[ -n "$arg" ]]; then
   if [[ "$arg" == file://* ]]; then
     encoded="${arg#file://}"
-    # Descarta un posible componente de host (file://host/path) -- mismo
-    # criterio que urlparse() en dbus-filemanager1.py. No se ha visto
-    # ningún caso real que lo genere en este sistema, pero es gratis
-    # cubrirlo ya que estamos aquí.
+    # Discards a possible host component (file://host/path) -- same
+    # criterion as urlparse() in dbus-filemanager1.py. No real
+    # case that generates it has been seen on this system, but it's free
+    # to cover it while we're here.
     if [[ "$encoded" != /* ]]; then
       encoded="/${encoded#*/}"
     fi
-    # Solo percent-decoding -- bug real: la sustitución "+"->espacio que
-    # había aquí antes es el convenio de application/x-www-form-urlencoded,
-    # NO el de un URI file:// (RFC 3986), donde un "+" literal en un
-    # nombre real ("C++", "backup+2024") nunca se codifica como espacio.
-    # Convertía "C++ notes.txt" en "C   notes.txt" (que no existe), así
-    # que abrir cualquier fichero/carpeta con "+" en el nombre desde otra
-    # app (xdg-open, "Open with Omafiles"...) aterrizaba en ningún sitio,
-    # en silencio.
+    # Percent-decoding only -- real bug: the "+"->space substitution that
+    # was here before is the application/x-www-form-urlencoded convention,
+    # NOT that of a file:// URI (RFC 3986), where a literal "+" in a
+    # real name ("C++", "backup+2024") is never encoded as a space.
+    # It turned "C++ notes.txt" into "C   notes.txt" (which doesn't exist), so
+    # opening any file/folder with "+" in the name from another
+    # app (xdg-open, "Open with Omafiles"...) landed nowhere,
+    # silently.
     path="$(printf '%b' "${encoded//%/\\x}")"
   else
     path="$arg"
@@ -34,8 +34,8 @@ if [[ -n "$arg" ]]; then
   [[ -d "$path" ]] || path=""
 fi
 
-# Lanza el binario Qt6 standalone (Fase 25). Si Omafiles ya está abierto, su
-# instancia única recibe la ruta y navega a ella en una pestaña nueva
-# trayéndose la ventana al frente; si no, la abre. Ruta vacía = arranque
-# normal (restaura la sesión anterior).
+# Launches the standalone Qt6 binary (Phase 25). If Omafiles is already open, its
+# single instance receives the path and navigates to it in a new tab
+# bringing the window to the front; if not, it opens it. Empty path = normal
+# startup (restores the previous session).
 exec "$HOME/.local/bin/omafiles" "$path"

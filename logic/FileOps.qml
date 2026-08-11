@@ -3,12 +3,12 @@ import QtQuick
 import qs.Commons
 import "../state"
 
-// Operaciones de fichero sueltas con undo propio: renombrado en lote,
-// chmod, crear enlace simbólico, restaurar de la papelera --
-// decimoquinto componente extraído de Omafiles.qml. Todas comparten el
-// mismo patrón (montar el/los comando(s), runAction(), pushUndo() con el
-// comando inverso) sin tener ningún Process propio -- usan el motor
-// central de ActionEngine a través de los wrappers de root
+// Loose file operations with their own undo: bulk rename,
+// chmod, create symbolic link, restore from trash --
+// fifteenth component extracted from Omafiles.qml. They all share the
+// same pattern (assemble the command(s), runAction(), pushUndo() with the
+// inverse command) without having any Process of their own -- they use the
+// central ActionEngine engine through the root wrappers
 // (actionEngine.runAction/actionEngine.pushUndo/actionEngine.chainCmds).
 Item {
   property Item root: null
@@ -27,9 +27,9 @@ Item {
     ConflictState.pendingBulkRename = null
     ConflictState.bulkRenameConflictOpen = false
     if (!pairs) return
-    // Antes bulk rename era la única operación de riesgo (junto a chmod)
-    // sin ningún undo -- un patrón {n}/{name}/{ext} mal escrito podía
-    // renombrar decenas de ficheros de golpe sin red de seguridad.
+    // Before, bulk rename was the only risky operation (along with chmod)
+    // without any undo -- a badly written {n}/{name}/{ext} pattern could
+    // rename dozens of files at once with no safety net.
     var toRename = pairs.filter(function (p) { return p.newName !== p.oldName })
     var cmds = toRename.map(function (p) {
       return "mv -n -- " + Util.shellQuote(p.oldPath) + " " + Util.shellQuote(p.newPath)
@@ -58,9 +58,9 @@ Item {
     ChmodState.chmodOpen = false
     mode = mode.trim()
     if (!/^[0-7]{3,4}$/.test(mode) || ChmodState.chmodNames.length === 0) return
-    // -R es inofensivo sobre un fichero suelto (no baja a ningún sitio),
-    // así que se puede aplicar al comando entero sin separar ficheros de
-    // carpetas -- más simple que dos ramas de chainCmds distintas.
+    // -R is harmless over a loose file (it doesn't descend anywhere),
+    // so it can be applied to the whole command without separating files from
+    // folders -- simpler than two different chainCmds branches.
     var flag = ChmodState.chmodRecursive ? "-R " : ""
     var cmds = ChmodState.chmodNames.map(function (n) {
       return "chmod " + flag + mode + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
@@ -68,10 +68,10 @@ Item {
     var label = ChmodState.chmodNames.length === 1
       ? "Setting permissions for \"" + ChmodState.chmodNames[0] + "\"…"
       : "Setting permissions for " + ChmodState.chmodNames.length + " items…"
-    // chmod era, junto a bulk rename, la única acción de riesgo real
-    // (más aún con -R) sin ningún undo. Restaura el modo original de
-    // cada ítem seleccionado -- NO el de su contenido si se aplicó
-    // recursivo, ver el comentario de chmodOriginalModes.
+    // chmod was, along with bulk rename, the only real risky action
+    // (even more so with -R) without any undo. It restores the original mode of
+    // each selected item -- NOT that of its content if it was applied
+    // recursively, see the chmodOriginalModes comment.
     var names = ChmodState.chmodNames
     var originalModes = ChmodState.chmodOriginalModes
     var chmodCmd = actionEngine.chainCmds(cmds)
@@ -89,7 +89,7 @@ Item {
     })
   }
 
-  // ownerIdx: 0=owner (tú) 1=group 2=other. bit: 4=read 2=write 1=execute.
+  // ownerIdx: 0=owner (you) 1=group 2=other. bit: 4=read 2=write 1=execute.
   function toggleChmodBit(ownerIdx, bit) {
     var mode = String(ChmodState.chmodMode || "0")
     while (mode.length < 3) mode = "0" + mode
@@ -105,11 +105,11 @@ Item {
     var target = Utils.joinPath(NavState.currentPath, entry.name)
     var linkName = "Link to " + entry.name
     var linkPath = Utils.joinPath(NavState.currentPath, linkName)
-    // El undo solo se registra si "ln -s" confirmó éxito -- antes se
-    // registraba a ciegas, así que si ya existía un archivo con el nombre
-    // "Link to X" (ln sin -f falla en silencio en ese caso), un Ctrl+Z
-    // posterior lo borraba igualmente aunque no tuviera nada que ver con
-    // el enlace que se intentó crear.
+    // The undo is only registered if "ln -s" confirmed success -- before it was
+    // registered blindly, so if a file with the name
+    // "Link to X" already existed (ln without -f fails silently in that case), a later
+    // Ctrl+Z deleted it anyway even though it had nothing to do with
+    // the link that was attempted.
     var makeLinkCmd = "ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath)
     actionEngine.runAction(makeLinkCmd, undefined, function () {
       actionEngine.pushUndo("make link \"" + linkName + "\"", function () {
@@ -123,12 +123,12 @@ Item {
   function restoreFromTrash() {
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    // Restaurar NATIVO (Fase 13.E): FileOperations.restoreByOrigPath en vez
-    // de restore-by-origpath.sh. TrashState.trashInfo (ver trash-info.sh) ya
-    // sabe la ruta original absoluta de cada ítem, resuelta incluso para la
-    // papelera de otro disco (donde Path= es relativo al punto de montaje);
-    // restoreByOrigPath la usa para localizar el .trashinfo correcto en
-    // cualquier papelera activa, sin asumir una única.
+    // NATIVE restore (Phase 13.E): FileOperations.restoreByOrigPath instead
+    // of restore-by-origpath.sh. TrashState.trashInfo (see trash-info.sh) already
+    // knows the absolute original path of each item, resolved even for the
+    // trash of another disk (where Path= is relative to the mount point);
+    // restoreByOrigPath uses it to locate the correct .trashinfo in
+    // any active trash, without assuming a single one.
     var origPaths = entries
       .filter(function (e) { return !!TrashState.trashInfo[e.name] })
       .map(function (e) { return TrashState.trashInfo[e.name].origPath })

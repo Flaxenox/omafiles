@@ -6,25 +6,26 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Backend C++ de miniaturas (Fase 8, josema). Genera thumbnails de imágenes
-// (PNG/JPEG/WebP/GIF/SVG) y PDF (primera página) con QImageReader, los
-// cachea en disco y los sirve por RUTA de fichero -- igual que el proyecto
-// ya hacía con las miniaturas de PDF/vídeo (Image { source: <ruta> }), lo
-// que evita registrar un QQuickImageProvider en el engine de Quickshell
-// (que no controlamos). Ver BACKEND_DESIGN.md 5.3.
+// C++ backend for thumbnails (Phase 8, josema). Generates thumbnails of images
+// (PNG/JPEG/WebP/GIF/SVG) and PDF (first page) with QImageReader, caches
+// them on disk and serves them by file PATH -- just as the project
+// already did with the PDF/video thumbnails (Image { source: <path> }), which
+// avoids registering a QQuickImageProvider in the Quickshell engine
+// (which we do not control). See BACKEND_DESIGN.md 5.3.
 //
-// Caché persistente en ~/.cache/omafiles/thumbnails/. La clave es un hash
-// (SHA-1) de ruta+tamaño-máximo+tamaño-de-fichero+mtime: si la imagen
-// cambia (mtime/tamaño distintos) la clave cambia y se regenera sola
-// (invalidación por ruta+tamaño+mtime, como pide el requisito).
+// Persistent cache in ~/.cache/omafiles/thumbnails/. The key is a hash
+// (SHA-1) of path+max-size+file-size+mtime: if the image
+// changes (different mtime/size) the key changes and it regenerates on its
+// own (invalidation by path+size+mtime, as the requirement asks).
 //
-// Asíncrono: request() vuelve al instante. Si el thumbnail ya está en
-// caché devuelve su ruta; si no, devuelve "" y lo genera en un hilo del
-// QThreadPool, emitiendo ready(path, thumbPath) al terminar. Para tipos no
-// soportados devuelve "" y no genera (la UI deja su glyph de icono).
+// Asynchronous: request() returns immediately. If the thumbnail is already in
+// the cache it returns its path; if not, it returns "" and generates it on a
+// thread of the QThreadPool, emitting ready(path, thumbPath) on completion. For
+// unsupported types it returns "" and does not generate (the UI keeps its icon
+// glyph).
 //
-// Singleton QML (Omafiles.Backend.ThumbnailProvider). Sin dependencia de
-// Quickshell: solo Qt público.
+// QML singleton (Omafiles.Backend.ThumbnailProvider). No dependency on
+// Quickshell: only public Qt.
 class ThumbnailProvider : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -33,33 +34,33 @@ class ThumbnailProvider : public QObject {
 public:
   explicit ThumbnailProvider(QObject *parent = nullptr);
 
-  // Ruta del thumbnail de `path` (lado máximo `size` px) si ya está en
-  // caché; si no, "" y lo genera async -> ready(path, thumbPath). Devuelve
-  // "" sin generar si el tipo no se soporta.
+  // Path of the thumbnail of `path` (max side `size` px) if it is already in
+  // the cache; if not, "" and it generates it async -> ready(path, thumbPath).
+  // Returns "" without generating if the type is not supported.
   Q_INVOKABLE QString request(const QString &path, int size = 256);
 
-  // Hash canónico de clave de caché en disco (SHA-1 hex de `input`). ES EL
-  // ÚNICO esquema de hash de caché de Omafiles (Fase B1): lo usa internamente
-  // request() para las miniaturas de imagen/PDF y lo consumen desde QML las
-  // rutas que antes usaban Utils.simpleHash (miniaturas de vídeo en
-  // logic/VideoThumbnails.qml, caché de extracción en logic/ArchiveActions.
-  // qml). Determinista y estable: mismo `input` -> mismo nombre de fichero.
+  // Canonical on-disk cache-key hash (SHA-1 hex of `input`). IT IS THE
+  // ONLY cache hash scheme of Omafiles (Phase B1): it is used internally by
+  // request() for the image/PDF thumbnails and consumed from QML by the
+  // paths that previously used Utils.simpleHash (video thumbnails in
+  // logic/VideoThumbnails.qml, extraction cache in logic/ArchiveActions.
+  // qml). Deterministic and stable: same `input` -> same file name.
   Q_INVOKABLE QString cacheKey(const QString &input) const;
 
-  // Poda de mantenimiento de la caché en disco (Fase O1). ÚNICO punto de
-  // entrada de producción: borra (1) los huérfanos del esquema base36 antiguo
-  // -sin consumidor tras B1-, (2) las miniaturas más antiguas que la política
-  // de edad y (3), si el total supera la política de tamaño, las más antiguas
-  // hasta volver por debajo. Se dispara sola una vez al construir el singleton
-  // en un hilo del QThreadPool (sin bloquear el arranque); saltada bajo
-  // --selfcheck. Segura: no es recursiva y solo actúa sobre ficheros con el
-  // patrón de nombre de Omafiles dentro del directorio de caché.
+  // Maintenance prune of the on-disk cache (Phase O1). The ONLY production
+  // entry point: it deletes (1) the orphans of the old base36 scheme
+  // -without a consumer after B1-, (2) the thumbnails older than the age
+  // policy and (3), if the total exceeds the size policy, the oldest ones
+  // until it drops below. It fires on its own once when the singleton is built
+  // on a thread of the QThreadPool (without blocking startup); skipped under
+  // --selfcheck. Safe: it is not recursive and only acts on files with
+  // Omafiles' name pattern inside the cache directory.
   Q_INVOKABLE void pruneCache();
 
-  // Primitiva SÍNCRONA de poda sobre `dir` con umbrales explícitos; devuelve
-  // el nº de ficheros borrados. La usa pruneCache() (con las políticas por
-  // defecto) y el arnés --selfcheck (con umbrales de prueba sobre un directorio
-  // temporal, sin tocar la caché real). Misma garantía de seguridad.
+  // SYNCHRONOUS prune primitive over `dir` with explicit thresholds; returns
+  // the number of deleted files. Used by pruneCache() (with the default
+  // policies) and the --selfcheck harness (with test thresholds over a temporary
+  // directory, without touching the real cache). Same safety guarantee.
   Q_INVOKABLE int pruneCacheDir(const QString &dir, qint64 maxAgeSecs,
                                 qint64 maxBytes) const;
 
@@ -67,17 +68,18 @@ signals:
   void ready(const QString &path, const QString &thumbPath);
 
 private:
-  // Implementación del hash canónico (ver cacheKey()). Estático para poder
-  // usarlo desde el worker de generación sin tocar el objeto.
+  // Implementation of the canonical hash (see cacheKey()). Static so it can
+  // be used from the generation worker without touching the object.
   static QString hashKey(const QString &input);
-  // ¿La extensión es de un tipo que sabemos miniaturizar? (barato, evita
-  // abrir ficheros de texto/binarios). QImageReader hace la comprobación
-  // real al generar.
+  // Is the extension of a type we know how to thumbnail? (cheap, avoids
+  // opening text/binary files). QImageReader does the real check
+  // on generating.
   static bool supported(const QString &path);
-  // Corre en el worker: genera el thumbnail de `path` a `outPath`. Estático
-  // (no toca el objeto), seguro aunque el singleton muera durante el hilo.
+  // Runs on the worker: generates the thumbnail of `path` to `outPath`. Static
+  // (does not touch the object), safe even if the singleton dies during the
+  // thread.
   static bool generate(const QString &path, int size, const QString &outPath);
 
   QString m_cacheDir;
-  QSet<QString> m_inflight; // claves generándose ahora mismo (dedup)
+  QSet<QString> m_inflight; // keys being generated right now (dedup)
 };

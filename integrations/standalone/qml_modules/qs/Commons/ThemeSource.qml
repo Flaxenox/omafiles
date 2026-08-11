@@ -2,19 +2,19 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Fuente de tema del frontend Qt6 (Fase 17, josema). PARIDAD DE SISTEMA, no
-// de un tema concreto: en lugar de colores fijos, lee EXACTAMENTE las mismas
-// fuentes que el qs.Commons real de Omarchy —
-//   ~/.local/state/omarchy/current/theme/colors.toml  (paleta fundacional)
-//   ~/.local/state/omarchy/current/theme/shell.toml    (superficies/tipografía)
-//   ~/.config/omarchy/shell.toml                        (override de máquina)
-// — replicando su parseo (loadColors/parseShell de Color.qml). Un Timer
-// sondea los ficheros y, si cambian, recarga: al cambiar de tema en Omarchy,
-// el standalone Qt6 lo sigue EN VIVO igual que Quickshell (que usa FileView).
-// Quickshell.Io no existe aquí; XMLHttpRequest síncrono lee los ficheros
-// locales (son ~KB, sondeo cada 1,5 s: coste despreciable).
+// Theme source of the Qt6 frontend (Phase 17, josema). SYSTEM PARITY, not
+// of a specific theme: instead of fixed colors, it reads EXACTLY the same
+// sources as the real Omarchy qs.Commons —
+//   ~/.local/state/omarchy/current/theme/colors.toml  (foundational palette)
+//   ~/.local/state/omarchy/current/theme/shell.toml    (surfaces/typography)
+//   ~/.config/omarchy/shell.toml                        (machine override)
+// — replicating its parsing (loadColors/parseShell of Color.qml). A Timer
+// polls the files and, if they change, reloads: on switching theme in Omarchy,
+// the standalone Qt6 follows it LIVE just like Quickshell (which uses FileView).
+// Quickshell.Io doesn't exist here; a synchronous XMLHttpRequest reads the
+// local files (they're ~KB, polled every 1.5 s: negligible cost).
 //
-// Color.qml y Style.qml (los stubs) DERIVAN de este singleton; no fijan nada.
+// Color.qml and Style.qml (the stubs) DERIVE from this singleton; they fix nothing.
 QtObject {
   id: src
 
@@ -24,19 +24,19 @@ QtObject {
   readonly property string shellPath: themeDir + "/shell.toml"
   readonly property string userShellPath: home + "/.config/omarchy/shell.toml"
 
-  // Paleta fundacional (colors.toml). Fallbacks = los del Color.qml real.
+  // Foundational palette (colors.toml). Fallbacks = those of the real Color.qml.
   property color foreground: "#cacccc"
   property color background: "#101315"
   property color accent: "#cacccc"
   property color urgent: "#a55555"
   property color muted: "#707880"
 
-  // Dict "seccion.clave" -> string crudo (shell.toml de tema + override de
-  // usuario fusionados). Reasignarlo entero es lo que hace re-evaluar los
-  // bindings de Color/Style, igual que en el real.
+  // Dict "section.key" -> raw string (theme shell.toml + user override
+  // merged). Reassigning it whole is what makes the Color/Style
+  // bindings re-evaluate, same as in the real one.
   property var shellValues: ({})
 
-  // Lectura síncrona de un fichero local; "" si no existe.
+  // Synchronous reading of a local file; "" if it doesn't exist.
   function _read(path) {
     try {
       var xhr = new XMLHttpRequest()
@@ -48,7 +48,7 @@ QtObject {
     }
   }
 
-  // --- paridad de parseo con Color.qml real -------------------------------
+  // --- parsing parity with the real Color.qml -------------------------------
   function _loadColors(raw) {
     var lines = String(raw || "").split("\n")
     var fg = "", bg = "", acc = "", mut = "", urg = ""
@@ -108,11 +108,11 @@ QtObject {
     var userDict = _parseShell(userRaw)
     for (var tk in themeDict) merged[tk] = themeDict[tk]
     for (var uk in userDict) merged[uk] = userDict[uk]
-    shellValues = merged // reasignación entera -> re-evalúa bindings
+    shellValues = merged // whole reassignment -> re-evaluates bindings
   }
 
-  // Sondeo del tema activo: al cambiar de tema en Omarchy (o ejecutar
-  // `omarchy display text size`), el standalone lo recoge en <=1,5 s.
+  // Polling of the active theme: on switching theme in Omarchy (or running
+  // `omarchy display text size`), the standalone picks it up in <=1.5 s.
   property Timer _poll: Timer {
     interval: 1500
     running: true

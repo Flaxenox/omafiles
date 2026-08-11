@@ -6,21 +6,21 @@
 #include <QVariant>
 #include <qqmlregistration.h>
 
-// Backend C++ de la persistencia JSON de Omafiles (Fase 6.A, josema).
-// Sustituye al patron de leer con "cat" (un fork por fichero) y escribir
-// con "bash -c 'mkdir -p ... && printf > ...'" (otro fork) que tenia
-// logic/Persistence.qml. Ver BACKEND_DESIGN.md 5.2.
+// C++ backend for Omafiles' JSON persistence (Phase 6.A, josema).
+// Replaces the pattern of reading with "cat" (one fork per file) and writing
+// with "bash -c 'mkdir -p ... && printf > ...'" (another fork) that
+// logic/Persistence.qml used. See BACKEND_DESIGN.md 5.2.
 //
-// Gana tres cosas sobre el enfoque shell:
-//   - sin forks: QFile/QJsonDocument hacen la syscall directa;
-//   - parseo en C++ (QJsonDocument), no JSON.parse en el hilo de UI;
-//   - escritura ATOMICA (QSaveFile: fichero temporal + rename), que el
-//     printf por redireccion no garantizaba -- un corte a mitad de
-//     saveSession() podia dejar session.json truncado.
+// Three gains over the shell approach:
+//   - no forks: QFile/QJsonDocument do the syscall directly;
+//   - parsing in C++ (QJsonDocument), not JSON.parse on the UI thread;
+//   - ATOMIC write (QSaveFile: temporary file + rename), which
+//     printf-by-redirection did not guarantee -- a cut in the middle of
+//     saveSession() could leave session.json truncated.
 //
-// Singleton QML (Omafiles.Backend.JsonStore): sin estado por fichero, una
-// instancia enruta todas las lecturas/escrituras. Lo consume el adaptador
-// services/JsonStore.qml; logic/ no lo importa directamente (regla 8).
+// QML singleton (Omafiles.Backend.JsonStore): no per-file state, one
+// instance routes all reads/writes. It is consumed by the adapter
+// services/JsonStore.qml; logic/ does not import it directly (rule 8).
 class JsonStore : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -29,30 +29,30 @@ class JsonStore : public QObject {
 public:
   explicit JsonStore(QObject *parent = nullptr);
 
-  // Lee y parsea `path` de forma ASINCRONA: vuelve al instante y entrega
-  // el resultado por la senal loaded() en el siguiente ciclo del event
-  // loop. La asincronia es un contrato: logic/ cuenta con que loadSession
-  // dispara refresh()/startDirWatch DESPUES de volver de la llamada (ver
-  // core/OmafilesContent.qml open()). Fichero inexistente o JSON invalido
-  // -> loaded(path, undefined, false), igual que antes un `cat` fallido +
-  // JSON.parse que lanzaba daban parsed=null.
+  // Reads and parses `path` ASYNCHRONOUSLY: returns immediately and delivers
+  // the result via the loaded() signal on the next event loop cycle. The
+  // asynchrony is a contract: logic/ relies on loadSession firing
+  // refresh()/startDirWatch AFTER the call returns (see
+  // core/OmafilesContent.qml open()). Nonexistent file or invalid JSON
+  // -> loaded(path, undefined, false), just as before a failed `cat` +
+  // a throwing JSON.parse gave parsed=null.
   Q_INVOKABLE void read(const QString &path);
 
-  // Escribe `data` como JSON en `path` de forma ATOMICA (QSaveFile),
-  // creando los directorios intermedios si hacen falta. Sincrona: es una
-  // escritura pequena y los llamadores actuales son fire-and-forget (no
-  // esperaban al fork Detached). Devuelve si se pudo guardar y ademas
-  // emite saved() para quien quiera enterarse.
+  // Writes `data` as JSON to `path` ATOMICALLY (QSaveFile),
+  // creating the intermediate directories if needed. Synchronous: it is a
+  // small write and the current callers are fire-and-forget (they did not
+  // wait for the Detached fork). Returns whether it could be saved and also
+  // emits saved() for whoever wants to be notified.
   Q_INVOKABLE bool write(const QString &path, const QVariant &data);
 
 signals:
-  // Resultado de read(). `data` es el JSON parseado como valor JS NATIVO
-  // (QJSValue construido en el motor), o undefined si ok es false. Se usa
-  // QJSValue en vez de QVariant a proposito: un QVariant(QVariantList)
-  // expuesto a QML llega como wrapper de secuencia, sobre el que
-  // Array.isArray() da false; QJSValue entrega un Array nativo, que es lo
-  // que daba el JSON.parse original y lo que Array.isArray espera.
+  // Result of read(). `data` is the parsed JSON as a NATIVE JS value
+  // (QJSValue built in the engine), or undefined if ok is false. QJSValue is
+  // used instead of QVariant on purpose: a QVariant(QVariantList)
+  // exposed to QML arrives as a sequence wrapper, on which
+  // Array.isArray() returns false; QJSValue delivers a native Array, which is
+  // what the original JSON.parse gave and what Array.isArray expects.
   void loaded(const QString &path, const QJSValue &data, bool ok);
-  // Resultado de write().
+  // Result of write().
   void saved(const QString &path, bool ok);
 };

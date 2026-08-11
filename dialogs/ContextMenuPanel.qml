@@ -2,12 +2,12 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Menú contextual (clic derecho). Octavo componente extraído de
-// Omafiles.qml. Las acciones ya llegan como una lista de objetos
-// { label, action, enabled, destructive } construida por
-// root.itemActions()/emptyAreaActions()/etc. -- cada `action` es ya una
-// función lista para llamar, así que este componente no necesita
-// señales por acción, solo ejecutarla y pedir cerrarse.
+// Context menu (right-click). Eighth component extracted from
+// Omafiles.qml. The actions already arrive as a list of objects
+// { label, action, enabled, destructive } built by
+// root.itemActions()/emptyAreaActions()/etc. -- each `action` is already a
+// function ready to call, so this component does not need
+// per-action signals, only to execute it and request closing.
 Item {
   id: root
 
@@ -18,11 +18,11 @@ Item {
 
   signal closeRequested()
 
-  // Mide las etiquetas SIN instanciar ningún Text visible -- evita el
-  // problema de depender de children reales para calcular el ancho
-  // (circular: el ancho de cada fila dependería del ancho del menú, que
-  // a su vez debería depender del ancho de cada fila). Misma fuente que
-  // usa el Text real de cada fila (ver más abajo).
+  // Measures the labels WITHOUT instantiating any visible Text -- avoids the
+  // problem of depending on real children to compute the width
+  // (circular: the width of each row would depend on the menu width, which
+  // in turn should depend on the width of each row). Same font that
+  // each row's real Text uses (see below).
   FontMetrics {
     id: menuFontMetrics
     font.pixelSize: Style.font.title
@@ -51,19 +51,19 @@ Item {
     visible: root.open
     x: root.menuX
     y: root.menuY
-    // Ancho mínimo 200 (igual que antes) para que un menú con pocas
-    // acciones cortas ("Open"/"Delete"...) no se vea escuálido, pero
-    // crece con el contenido real -- antes era un 200 fijo, y una
-    // etiqueta larga ("Open (extracts a temp copy)", el "Open" de un
-    // fichero dentro de un archivo) se salía del recuadro.
+    // Minimum width 200 (like before) so a menu with few short
+    // actions ("Open"/"Delete"...) does not look scrawny, but
+    // it grows with the real content -- previously it was a fixed 200, and a
+    // long label ("Open (extracts a temp copy)", the "Open" of a
+    // file inside an archive) overflowed the box.
     width: Math.max(200, root.maxLabelWidth + Style.spacing.sm * 2 + contentLeftInset + contentRightInset)
     height: contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    // popupPadding (14): el token dedicado a popups, como el resto de
-    // superficies del sistema, en vez del sm (4) que pegaba los items al
-    // borde y hacía que el menú se viera más apretado que los demás.
+    // popupPadding (14): the token dedicated to popups, like the rest of the
+    // system surfaces, instead of the sm (4) that stuck the items to the
+    // edge and made the menu look tighter than the others.
     padding: Style.spacing.popupPadding
     z: 20
 

@@ -2,74 +2,74 @@ pragma Singleton
 import QtQuick
 import "../services"
 
-// Estado de navegación caliente (Fase 11.A, josema): la ruta actual, su
-// listado y el filtro de búsqueda visible. Era el acoplamiento principal
-// entre logic/ y root -- currentPath (59 lecturas), visibleEntries (24) y
-// entries (13) eran las properties más leídas de todo el plugin desde la
-// capa de lógica, siempre vía `property Item root`. Moverlas a un singleton
-// deja que logic/ lea/escriba NavState.* directamente y que root conserve
-// solo bindings finos de compatibilidad para el árbol visual (aún sin
-// dividir). Ver ARCHITECTURE.md (capa state/) y la auditoría 2026-08-09.
+// Hot navigation state (Phase 11.A, josema): the current path, its
+// listing and the visible search filter. It was the main coupling
+// between logic/ and root -- currentPath (59 reads), visibleEntries (24) and
+// entries (13) were the most-read properties of the whole plugin from the
+// logic layer, always via `property Item root`. Moving them to a singleton
+// lets logic/ read/write NavState.* directly and lets root keep
+// only thin compatibility bindings for the visual tree (still not
+// split). See ARCHITECTURE.md (state/ layer) and the 2026-08-09 audit.
 //
-// El valor inicial de currentPath es solo un placeholder: open() lo
-// reescribe siempre antes de que el usuario vea nada (payload real o
-// restauración de sesión vía Persistence), igual que TabsState.
+// The initial value of currentPath is just a placeholder: open() always
+// rewrites it before the user sees anything (real payload or session
+// restoration via Persistence), like TabsState.
 QtObject {
   property string currentPath: Env.get("HOME")
 
-  // Listado de la carpeta actual, ya ordenado (DirectoryModel en C++ lo
-  // devuelve por naturalCompare; logic/ solo re-ordena si el usuario pidió
-  // otro criterio -- ver SortOps.isDefaultOrder). Fuente de verdad; root.
-  // entries es un binding a esto.
+  // Listing of the current folder, already sorted (DirectoryModel in C++
+  // returns it by naturalCompare; logic/ only re-sorts if the user requested
+  // another criterion -- see SortOps.isDefaultOrder). Source of truth; root.
+  // entries is a binding to this.
   property var entries: []
 
   property bool showHidden: false
 
-  // Texto del buscador rápido del panel activo (filtro por subcadena sobre
-  // la carpeta actual, no búsqueda recursiva). Vacío = sin filtro.
+  // Text of the active panel's quick search (substring filter over
+  // the current folder, not a recursive search). Empty = no filter.
   property string searchQuery: ""
 
-  // Subconjunto visible de `entries` tras aplicar el filtro rápido. Derivada
-  // (readonly): antes se calculaba en root.visibleEntries y la leían 24
-  // sitios de logic/. Misma expresión, ahora junto a su fuente de datos.
-  // La búsqueda por NOMBRE filtra el listado por el término (coincidencia en el
-  // basename). La búsqueda por CONTENIDO (`content:`) NO se filtra: sus
-  // resultados son coincidencias dentro de ficheros y su nombre no contiene el
-  // prefijo, así que filtrar los ocultaría todos.
+  // Visible subset of `entries` after applying the quick filter. Derived
+  // (readonly): previously it was computed in root.visibleEntries and read by 24
+  // sites of logic/. Same expression, now next to its data source.
+  // The NAME search filters the listing by the term (match in the
+  // basename). The CONTENT search (`content:`) is NOT filtered: its
+  // results are matches inside files and their name does not contain the
+  // prefix, so filtering would hide them all.
   readonly property var visibleEntries: (searchQuery && searchQuery.indexOf("content:") !== 0)
     ? entries.filter(function (e) { return e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0 })
     : entries
 
-  // ---------- Estado runtime de navegación/búsqueda (Fase 14.C) ----------
-  // Eran properties mutables de OmafilesContent que no pertenecían al
-  // composition root: todas son estado caliente del mismo dominio (nav +
-  // búsqueda) que ya gobierna este singleton. logic/ y la capa visual las
-  // leen/escriben directamente vía NavState.*, sin `property Item root`.
+  // ---------- Runtime navigation/search state (Phase 14.C) ----------
+  // They were mutable properties of OmafilesContent that did not belong to the
+  // composition root: they are all hot state of the same domain (nav +
+  // search) that this singleton already governs. logic/ and the visual layer
+  // read/write them directly via NavState.*, without `property Item root`.
 
-  // Modo búsqueda abierto (Fase 19: la lupa de la barra superior está
-  // expandida; el campo de búsqueda es visible). Reutilizado como flag de
-  // "expandido" para no duplicar estado -- no hay un searchExpanded aparte.
+  // Search mode open (Phase 19: the top bar's magnifier is
+  // expanded; the search field is visible). Reused as an
+  // "expanded" flag to not duplicate state -- there is no separate searchExpanded.
   property bool searching: false
-  // Una búsqueda recursiva (SearchWorker) está en vuelo -- dispara el spinner
-  // de la lupa. Se pone en runDeepSearch() y se limpia en onResults/restore.
+  // A recursive search (SearchWorker) is in flight -- triggers the magnifier's
+  // spinner. It is set in runDeepSearch() and cleared in onResults/restore.
   property bool searchBusy: false
-  // La búsqueda recursiva se cortó a los 200 primeros resultados (aviso al
-  // usuario de que faltan ítems; ver SearchOps/search-recursive.sh).
+  // The recursive search was cut to the first 200 results (a warning to the
+  // user that items are missing; see SearchOps/search-recursive.sh).
   property bool searchTruncated: false
-  // Suprime la animación de expandir/colapsar de la lupa durante un cambio de
-  // pestaña (TabOps la pone mientras cambia): al pasar el cursor a otra tab,
-  // `searching` cambia porque adopta el estado de ESA tab, no porque el usuario
-  // abriera/cerrara la búsqueda -- sin esto, la tab a la que llegas reproduce la
-  // animación de minimizar/expandir la barra, que se ve mal (mismo motivo que
-  // suppressListFade para el fade de la lista).
+  // Suppresses the magnifier's expand/collapse animation during a tab
+  // change (TabOps sets it while changing): on moving the cursor to another tab,
+  // `searching` changes because it adopts THAT tab's state, not because the user
+  // opened/closed the search -- without this, the tab you arrive at replays the
+  // minimize/expand animation of the bar, which looks bad (same reason as
+  // suppressListFade for the list fade).
   property bool suppressSearchAnim: false
-  // Mensaje si el listado de currentPath falló (permisos, carpeta borrada
-  // entre navegar y listar...). Vacío = sin error o listado en curso.
+  // Message if the listing of currentPath failed (permissions, folder deleted
+  // between navigating and listing...). Empty = no error or listing in progress.
   property string currentPathError: ""
-  // Nombres a resaltar en cuanto termine el próximo listado (caso ShowItems
-  // de org.freedesktop.FileManager1: varios URIs de una carpeta de golpe).
+  // Names to highlight as soon as the next listing finishes (ShowItems case
+  // of org.freedesktop.FileManager1: several URIs of a folder at once).
   property var pendingSelectNames: []
-  // Contador que fuerza refresco de los paneles de fondo (señal, no dato):
-  // ActionEngine/RenameOps/SearchOps lo incrementan tras mutar disco.
+  // Counter that forces a refresh of the background panels (signal, not data):
+  // ActionEngine/RenameOps/SearchOps increment it after mutating disk.
   property int refreshTick: 0
 }

@@ -3,16 +3,16 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo "Conectar a servidor" (SFTP/SMB/WebDAV/FTP). Segundo
-// componente extraído de Omafiles.qml -- algo más acoplado que
-// ShortcutsHelp.qml (tiene texto editable + un estado "conectando"
-// intermedio con dos cancelaciones distintas: cerrar el diálogo vs.
-// abortar solo el intento en curso), así que expone señales en vez de
-// llamar directamente a funciones de root. Omafiles.qml sigue siendo el
-// dueño real de connectServerUri/networkConnecting/connectServerError.
+// "Connect to server" dialog (SFTP/SMB/WebDAV/FTP). Second
+// component extracted from Omafiles.qml -- a bit more coupled than
+// ShortcutsHelp.qml (it has editable text + an intermediate "connecting"
+// state with two different cancellations: close the dialog vs.
+// abort only the current attempt), so it exposes signals instead of
+// calling root functions directly. Omafiles.qml is still the
+// real owner of connectServerUri/networkConnecting/connectServerError.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 
@@ -21,25 +21,25 @@ Item {
   property string uri: ""
   property string errorText: ""
 
-  // "Conectar" pulsado (Enter o botón) -- el padre decide qué hacer con
-  // la URI (guardarla + commitConnectToServer()).
+  // "Connect" pressed (Enter or button) -- the parent decides what to do with
+  // the URI (save it + commitConnectToServer()).
   signal connectRequested(string uri)
-  // Escape mientras hay un intento en curso: abortar SOLO el intento,
-  // el diálogo se queda abierto (igual que el botón "Cancel").
+  // Escape while there is an attempt in progress: abort ONLY the attempt,
+  // the dialog stays open (like the "Cancel" button).
   signal cancelConnectingRequested()
-  // Escape o clic fuera cuando NO hay un intento en curso: cerrar el
-  // diálogo entero.
+  // Escape or click outside when there is NO attempt in progress: close the
+  // whole dialog.
   signal closeRequested()
-  // El campo de texto deja de estar visible (diálogo cerrado) -- el
-  // padre es quien sabe a qué Item devolver el foco (la lista).
+  // The text field stops being visible (dialog closed) -- the
+  // parent is the one that knows which Item to return focus to (the list).
   signal focusReturnRequested()
 
   ModalSurface {
     open: root.open
     maxWidth: Style.space(420)
-    // Clic fuera cierra el diálogo, pero NO mientras hay un intento de
-    // conexión en curso (igual que antes: el backdrop solo cerraba si
-    // !connecting) -- para eso está el botón "Cancel" del intento.
+    // Click outside closes the dialog, but NOT while there is a connection
+    // attempt in progress (like before: the backdrop only closed if
+    // !connecting) -- the attempt's "Cancel" button is for that.
     dismissable: !root.connecting
     onDismissed: root.closeRequested()
 

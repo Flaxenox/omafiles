@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Búsqueda por CONTENIDO para la lupa de Omafiles (Fase 26 / Beta 3): busca un
-# texto DENTRO de los ficheros del árbol indicado con ripgrep, en vez de por
-# nombre. Es el cuarto backend de SearchBackend (content:), el que elimina el
-# motivo #1 para abrir la terminal a hacer `rg`.
+# CONTENT search for the Omafiles magnifier (Phase 26 / Beta 3): searches a
+# text INSIDE the files of the given tree with ripgrep, instead of by
+# name. It's the fourth SearchBackend backend (content:), the one that removes the
+# #1 reason to open the terminal to run `rg`.
 #
-# Uso:  content-search.sh <term> <root> [limit]
-#   <root>  = carpeta desde la que buscar (recursivo, como `rg` en un cwd).
-#   <limit> = tope de resultados (por defecto 201).
+# Usage:  content-search.sh <term> <root> [limit]
+#   <root>  = folder to search from (recursive, like `rg` in a cwd).
+#   <limit> = result cap (default 201).
 #
-# Salida (stdout): una línea por coincidencia, "RUTA\tLINEA\tSNIPPET".
-#   RUTA absoluta, LINEA número, SNIPPET el texto de la línea recortado.
-# Se usa `rg --json` (robusto ante rutas/textos con ':' o caracteres raros) y se
-# parsea con python3. ripgrep ya respeta .gitignore y salta .git/ocultos, así
-# que node_modules y demás ruido quedan fuera sin filtrado extra.
+# Output (stdout): one line per match, "PATH\tLINE\tSNIPPET".
+#   PATH absolute, LINE number, SNIPPET the line's text trimmed.
+# `rg --json` is used (robust against paths/texts with ':' or odd characters) and
+# parsed with python3. ripgrep already respects .gitignore and skips .git/hidden, so
+# node_modules and other noise are left out without extra filtering.
 #
-# Códigos de salida: 0 = ok (con o sin resultados) · 2 = ripgrep no instalado
-# (sentinel: el lado QML avisa; NO hay fallback nativo para contenido).
+# Exit codes: 0 = ok (with or without results) · 2 = ripgrep not installed
+# (sentinel: the QML side warns; there is NO native fallback for content).
 
 set -uo pipefail
 
@@ -27,9 +27,9 @@ limit=${3:-201}
 command -v rg >/dev/null 2>&1 || { echo "backend=none" >&2; exit 2; }
 echo "backend=ripgrep" >&2
 
-# -F  fixed-string (literal, no regex: `content:main.cpp` busca ese texto tal
-#     cual, no "main<cualquier>cpp"). -S smart-case. --max-columns evita volcar
-#     líneas gigantes (minificados). Sin --hidden: respetar el default de rg.
+# -F  fixed-string (literal, no regex: `content:main.cpp` searches that text as
+#     is, not "main<anything>cpp"). -S smart-case. --max-columns avoids dumping
+#     giant lines (minified). No --hidden: respect rg's default.
 rg --json -F -S --max-columns 300 -- "$term" "$root" 2>/dev/null | python3 -c '
 import json, sys
 limit = int(sys.argv[1])
@@ -46,10 +46,10 @@ for line in sys.stdin:
     d = o["data"]
     path = d.get("path", {}).get("text")
     if not path:
-        continue  # rutas no-UTF8 (bytes) se ignoran
+        continue  # non-UTF8 (bytes) paths are ignored
     ln = d.get("line_number", 0)
     snippet = d.get("lines", {}).get("text", "")
-    # una sola línea, sin tabs (rompen el TSV) ni saltos, recortada
+    # a single line, without tabs (they break the TSV) nor newlines, trimmed
     snippet = snippet.replace("\t", " ").replace("\n", " ").replace("\r", " ").strip()
     if len(snippet) > 200:
         snippet = snippet[:200]

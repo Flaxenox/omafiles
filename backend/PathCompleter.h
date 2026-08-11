@@ -5,12 +5,13 @@
 #include <QStringList>
 #include <qqmlregistration.h>
 
-// Autocompletado NATIVO de rutas para la barra de dirección (Ctrl+L, Fase 26).
-// Sin procesos externos (nada de `ls`/`compgen`): resuelve en C++ con QDir, que
-// es instantáneo y no forkea. Es el backend de services/PathCompleter.qml.
+// NATIVE path autocompletion for the address bar (Ctrl+L, Phase 26).
+// No external processes (no `ls`/`compgen`): it resolves in C++ with QDir, which
+// is instantaneous and does not fork. It is the backend of
+// services/PathCompleter.qml.
 //
-// Singleton QML (Omafiles.Backend.PathCompleter): sin estado, una instancia
-// basta. Se consume como PathCompleter.complete(text, base).
+// QML singleton (Omafiles.Backend.PathCompleter): stateless, one instance is
+// enough. It is consumed as PathCompleter.complete(text, base).
 class PathCompleter : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -19,22 +20,23 @@ class PathCompleter : public QObject {
 public:
   explicit PathCompleter(QObject *parent = nullptr);
 
-  // Devuelve hasta `limit` rutas de DIRECTORIO que completan `input`. La barra
-  // de dirección navega a carpetas, así que solo se completan directorios (con
-  // "/" final, listo para seguir escribiendo el siguiente tramo).
+  // Returns up to `limit` DIRECTORY paths that complete `input`. The address
+  // bar navigates to folders, so only directories are completed (with a
+  // trailing "/", ready to keep typing the next segment).
   //
-  // `input` puede ser:
-  //   - absoluto            (/home/jose/Doc)
-  //   - con tilde           (~/Doc, ~)
-  //   - relativo a `base`   (Doc, ../Vídeos)  -> se resuelve contra `base`
+  // `input` can be:
+  //   - absolute            (/home/jose/Doc)
+  //   - with a tilde        (~/Doc, ~)
+  //   - relative to `base`  (Doc, ../Videos)  -> resolved against `base`
   //
-  // El emparejamiento del último tramo es smart-case (sensible a mayúsculas
-  // solo si el prefijo trae alguna). Orden alfabético natural, ocultos fuera
-  // salvo que el prefijo empiece por ".".
+  // The last-segment matching is smart-case (case-sensitive only if the prefix
+  // has any uppercase). Natural alphabetical order, hidden files excluded
+  // unless the prefix starts with ".".
   Q_INVOKABLE QStringList complete(const QString &input, const QString &base,
                                    int limit = 50) const;
 
-  // Expande ~ / ~/... a la home. Devuelve `input` tal cual si no empieza por ~.
-  // Lo usa el lado QML al navegar (Enter) para aceptar ~ escrito a mano.
+  // Expands ~ / ~/... to the home. Returns `input` as is if it does not start
+  // with ~. It is used by the QML side when navigating (Enter) to accept a ~
+  // typed by hand.
   Q_INVOKABLE QString expandTilde(const QString &input) const;
 };

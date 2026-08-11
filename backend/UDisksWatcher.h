@@ -4,20 +4,20 @@
 #include <QTimer>
 #include <qqmlregistration.h>
 
-// Watcher reactivo de UDisks2 (Fase 20, josema). Sustituye el polling de 7 s
-// de la barra lateral por una suscripción D-Bus a las señales del bus de
-// SISTEMA de org.freedesktop.UDisks2. Cuando UDisks2 notifica CUALQUIER
-// cambio de dispositivo de bloque -- conectar/expulsar un USB, montar/
-// desmontar una ISO, conectar/desmontar un disco externo, cambio de label o
-// de estado de montaje -- emite devicesChanged(), COALESCIDA con un QTimer
-// para que una ráfaga de señales dispare un único refresco.
+// Reactive UDisks2 watcher (Phase 20, josema). Replaces the sidebar's 7 s
+// polling with a D-Bus subscription to the signals of the SYSTEM bus of
+// org.freedesktop.UDisks2. When UDisks2 notifies ANY block-device
+// change -- plugging/ejecting a USB, mounting/unmounting an ISO,
+// connecting/unmounting an external disk, a label or mount-state change --
+// it emits devicesChanged(), COALESCED with a QTimer
+// so a burst of signals triggers a single refresh.
 //
-// Deliberadamente NO enumera dispositivos ni construye objetos de montaje:
-// la única fuente de verdad sigue siendo list-mounts.sh (findmnt+lsblk, un
-// "system adapter" que BACKEND_DESIGN.md mantiene a propósito). Este watcher
-// solo avisa de "algo cambió, vuelve a listar", así que no hay una segunda
-// fuente que pueda desincronizarse. Sin polling. Sin dependencia de
-// Quickshell (singleton QML, igual que el resto de backend/).
+// It deliberately does NOT enumerate devices or build mount objects:
+// the single source of truth remains list-mounts.sh (findmnt+lsblk, a
+// "system adapter" that BACKEND_DESIGN.md keeps on purpose). This watcher
+// only signals "something changed, list again", so there is no second
+// source that could desynchronize. No polling. No dependency on
+// Quickshell (QML singleton, like the rest of backend/).
 class UDisksWatcher : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -26,18 +26,18 @@ class UDisksWatcher : public QObject {
 public:
   explicit UDisksWatcher(QObject *parent = nullptr);
 
-  // true si se pudo conectar al bus de sistema y registrar las suscripciones.
-  // Si no (p.ej. CI headless sin bus de sistema), el watcher queda inerte sin
-  // fallar: la app sigue refrescando por eventos internos y al abrir.
+  // true if it could connect to the system bus and register the subscriptions.
+  // If not (e.g. headless CI without a system bus), the watcher stays inert
+  // without failing: the app keeps refreshing on internal events and on open.
   Q_INVOKABLE bool available() const;
 
 signals:
-  // Emitida (coalescida) ante cualquier cambio de dispositivo de bloque en
-  // UDisks2. El frontend responde volviendo a listar (refreshMounts()).
+  // Emitted (coalesced) on any block-device change in
+  // UDisks2. The frontend responds by listing again (refreshMounts()).
   void devicesChanged();
 
 private slots:
-  // Un único punto para las tres señales D-Bus: (re)arranca el coalescedor.
+  // A single entry point for the three D-Bus signals: (re)starts the coalescer.
   void schedule();
 
 private:

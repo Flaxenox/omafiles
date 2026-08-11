@@ -1,14 +1,14 @@
 import QtQuick
 import qs.Commons
 
-// Fila de migas de pan (segmentos de la ruta) -- decimoquinto componente
-// extraído de Omafiles.qml, compartido entre panel activo y de fondo.
-// Antes eran dos Repeater casi idénticos (breadcrumbRow y bgBreadcrumbRow)
-// que comparaban cada segmento contra una ruta "actual" distinta según el
-// panel -- aquí ese "actual" es un solo parámetro (activePath) que quien
-// llama ya resuelve (root.currentPath o bgPanel.modelData.path). El panel
-// activo sigue teniendo, fuera de este componente, el MouseArea y el
-// TextField para editar la ruta a mano -- el de fondo no los necesita.
+// Breadcrumb row (path segments) -- fifteenth component
+// extracted from Omafiles.qml, shared between the active and background panels.
+// Previously they were two nearly identical Repeaters (breadcrumbRow and bgBreadcrumbRow)
+// that compared each segment against a different "current" path depending on the
+// panel -- here that "current" is a single parameter (activePath) that the caller
+// already resolves (root.currentPath or bgPanel.modelData.path). The active
+// panel still has, outside this component, the MouseArea and the
+// TextField to edit the path by hand -- the background one does not need them.
 Row {
   id: root
 
@@ -26,10 +26,10 @@ Row {
       anchors.verticalCenter: parent.verticalCenter
       spacing: Style.spacing.xs
 
-      // Sin MouseArea propio a propósito -- josema no quería navegación
-      // por segmento (ya están los botones de atrás/subir para eso),
-      // solo texto que deje pasar el clic al MouseArea de detrás (editar
-      // ruta a mano, solo en el panel activo).
+      // No own MouseArea on purpose -- josema did not want per-segment
+      // navigation (the back/up buttons are already there for that),
+      // just text that lets the click pass through to the MouseArea behind (edit
+      // the path by hand, only in the active panel).
       Text {
         text: modelData.label
         font.pixelSize: Style.font.title

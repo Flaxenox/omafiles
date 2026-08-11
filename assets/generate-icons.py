@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-# Genera las variantes técnicas del icono oficial (Fase 29) a partir de la
-# ÚNICA fuente de verdad: assets/omafiles.svg (el icono oficial, un PNG de alta
-# resolución embebido en un envoltorio SVG). NO redibuja nada: la silueta del
-# simbólico se EXTRAE de los propios píxeles del icono oficial.
+# Generates the technical variants of the official icon (Phase 29) from the
+# SINGLE source of truth: assets/omafiles.svg (the official icon, a high-
+# resolution PNG embedded in an SVG wrapper). It does NOT redraw anything: the
+# symbolic's silhouette is EXTRACTED from the official icon's own pixels.
 #
-# Produce, junto a este script:
-#   - omafiles-symbolic.svg : misma geometría, recoloreable con currentColor
-#     (sin fondo). La carpeta se aísla por componentes conexas — la región
-#     oscura que NO toca el borde es la carpeta; la que lo toca son las esquinas
-#     exteriores —, se usa como máscara de luminancia y se pinta currentColor.
-#     Las barras/puntos (claros) quedan como huecos, igual que en el principal.
-#   - omafiles-{32,48,64,128,256}.png : rasterizaciones (LANCZOS) para hicolor.
+# It produces, next to this script:
+#   - omafiles-symbolic.svg : same geometry, recolorable with currentColor
+#     (no background). The folder is isolated by connected components — the dark
+#     region that does NOT touch the border is the folder; the one that touches it are the
+#     outer corners —, it's used as a luminance mask and painted currentColor.
+#     The bars/dots (light) become holes, same as in the main one.
+#   - omafiles-{32,48,64,128,256}.png : rasterizations (LANCZOS) for hicolor.
 #
-# Requiere numpy y Pillow. Reejecutar solo si cambia omafiles.svg.
+# Requires numpy and Pillow. Re-run only if omafiles.svg changes.
 import base64
 import re
 from collections import deque
@@ -28,15 +28,15 @@ SRC_SVG = HERE / "omafiles.svg"
 def embedded_png(svg_path: Path) -> bytes:
     m = re.search(r"data:image/png;base64,([A-Za-z0-9+/=]+)", svg_path.read_text())
     if not m:
-        raise SystemExit("omafiles.svg no contiene un PNG embebido")
+        raise SystemExit("omafiles.svg does not contain an embedded PNG")
     return base64.b64decode(m.group(1))
 
 
 def folder_silhouette(im: Image.Image) -> np.ndarray:
-    """True donde está la carpeta (oscuro y NO conectado al borde)."""
+    """True where the folder is (dark and NOT connected to the border)."""
     rgb = np.asarray(im.convert("RGB")).astype(np.int32)
     lum = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
-    dark = lum < 128  # carpeta + esquinas exteriores negras
+    dark = lum < 128  # folder + black outer corners
     h, w = dark.shape
     outer = np.zeros_like(dark)
     dq = deque()
@@ -98,7 +98,7 @@ def main():
 
     src_png.unlink()
     sil_png.unlink()
-    print("generado: omafiles-symbolic.svg + omafiles-{32,48,64,128,256}.png")
+    print("generated: omafiles-symbolic.svg + omafiles-{32,48,64,128,256}.png")
 
 
 if __name__ == "__main__":

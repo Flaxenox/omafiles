@@ -7,14 +7,14 @@ import "../services"
 import "../logic"
 import "../Utils.js" as Utils
 
-// Delegado de los paneles "de fondo" (todas las pestañas salvo la activa),
-// decimonoveno componente extraído de Omafiles.qml. Cada uno tiene su
-// propio listado (su propio Process), sin lazo de selección ni menú
-// contextual propio -- solo navegar con doble clic y arrastrar, el panel
-// activo (que se queda en Omafiles.qml) ya tiene todo lo demás.
-// hostPanelsRow se pasa como propiedad aparte de hostRoot -- es quien calcula
-// x/width/height de este panel (slotX/slotWidth), y sin pasarlo explícito
-// no es visible desde este fichero.
+// Delegate of the "background" panels (all tabs except the active one),
+// nineteenth component extracted from Omafiles.qml. Each one has its
+// own listing (its own Process), without a selection lasso nor its own context
+// menu -- only navigate with double click and drag, the active
+// panel (which stays in Omafiles.qml) already has everything else.
+// hostPanelsRow is passed as a property separate from hostRoot -- it's the one that computes
+// x/width/height of this panel (slotX/slotWidth), and without passing it explicitly
+// it isn't visible from this file.
 Item {
   id: bgPanel
   property Item hostRoot: null
@@ -26,12 +26,12 @@ Item {
   property Item hostSortOps: null
   required property var modelData
   required property int index
-  // SIEMPRE renderizado (no `visible:false`): una ListView invisible no hace su
-  // layout (contentHeight=0), así que al pasar a fondo positionViewAtIndex no
-  // acertaba hasta un par de frames después -> el salto de scroll. Con opacity:0
-  // (en el slot activo) la ListView SIGUE con layout real (ch>0), tapada por el
-  // activePanel que va encima en el mismo slot; al pasar a fondo se posiciona al
-  // instante, congelada. Los slots de fondo van al 0.72 de atenuado de siempre.
+  // ALWAYS rendered (not `visible:false`): an invisible ListView doesn't do its
+  // layout (contentHeight=0), so on moving to the background positionViewAtIndex
+  // didn't hit the mark until a couple of frames later -> the scroll jump. With opacity:0
+  // (in the active slot) the ListView STILL has a real layout (ch>0), covered by the
+  // activePanel that goes on top in the same slot; on moving to the background it positions
+  // instantly, frozen. The background slots go to the usual 0.72 dim.
   visible: true
   opacity: index === TabsState.activeTabIndex ? 0 : 0.72
   x: hostPanelsRow.slotX(index)
@@ -39,47 +39,47 @@ Item {
   width: hostPanelsRow.slotWidth
   height: hostPanelsRow.height
 
-  // Búsqueda POR PANEL (Fase 26, josema): si esta pestaña quedó en modo
-  // búsqueda GLOBAL (2+ chars) al pasar a segundo plano, el panel de fondo la
-  // mantiene abierta -- barra + resultados -- hasta que se cierre con la X. El
-  // estado (searching/searchQuery/searchEntries/searchTruncated) lo guarda
-  // TabOps.saveActiveTab en el propio objeto de pestaña (modelData), así cada
-  // panel tiene su búsqueda independiente en vez de una global compartida.
+  // PER-PANEL search (Phase 26, josema): if this tab was left in GLOBAL
+  // search mode (2+ chars) when moving to the background, the background panel
+  // keeps it open -- bar + results -- until it's closed with the X. The
+  // state (searching/searchQuery/searchEntries/searchTruncated) is saved by
+  // TabOps.saveActiveTab in the tab object itself (modelData), so each
+  // panel has its independent search instead of a shared global one.
   readonly property bool bgSearching: modelData.searching === true
     && (modelData.searchQuery || "").length >= 2
-  // Resultados EN CRUDO guardados por TabOps (para el "of N" del footer).
+  // RAW results saved by TabOps (for the footer's "of N").
   readonly property var bgSearchEntries: modelData.searchEntries || []
-  // Mismo filtro por NOMBRE que aplica el panel activo (NavState.visibleEntries):
-  // la búsqueda global trae también coincidencias por RUTA (p.ej. carpetas
-  // DENTRO de Steam/ como bin/ o logs/, cuyo nombre no contiene el término). El
-  // panel activo las oculta; sin esto, el panel de fondo mostraba MÁS resultados
-  // que el activo para la misma búsqueda. Ahora los dos enseñan lo mismo.
+  // Same NAME filter that the active panel applies (NavState.visibleEntries):
+  // the global search also brings PATH matches (e.g. folders
+  // INSIDE Steam/ like bin/ or logs/, whose name doesn't contain the term). The
+  // active panel hides them; without this, the background panel showed MORE results
+  // than the active one for the same search. Now the two show the same.
   readonly property var bgVisibleSearchEntries: {
     var q = (modelData.searchQuery || "").toLowerCase()
     return bgSearchEntries.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0 })
   }
 
-  // El listado en sí vive en DirLister (Fase 1.6, josema) -- mismo
-  // mecanismo que usa el panel activo (NavigationController), pero con
-  // su propia instancia: varias pestañas de fondo pueden estar listando
-  // rutas distintas a la vez, así que no pueden compartir un único
-  // Process. entries/pathError/loaded ya no son propiedades propias de
-  // bgPanel -- se leen directo de dirLister en todo el fichero.
+  // The listing itself lives in DirLister (Phase 1.6, josema) -- same
+  // mechanism the active panel uses (NavigationController), but with
+  // its own instance: several background tabs can be listing
+  // different paths at the same time, so they can't share a single
+  // Process. entries/pathError/loaded are no longer bgPanel's own
+  // properties -- they're read directly from dirLister throughout the file.
   DirLister {
     id: dirLister
     trashDir: Paths.trashDir
     showHidden: NavState.showHidden
     sortOps: hostSortOps
-    // hostRoot.tabEntriesCache es lo que _goToPath() consulta al entrar
-    // en una ruta que un panel de fondo ya tenía lista -- solo lo
-    // rellenan los paneles de fondo (ver NavigationController, que NO
-    // escribe aquí).
+    // hostRoot.tabEntriesCache is what _goToPath() consults when entering
+    // a path that a background panel already had listed -- only the
+    // background panels fill it (see NavigationController, which does NOT
+    // write here).
     onListed: {
       bgPanel._cachePut(bgPanel.effectivePath, dirLister.entries)
-      // Refresca el contenido pintado SOLO si de verdad cambió (Utils
-      // .entriesEqual): así, al pasar a fondo con la carpeta sin cambios, NO se
-      // reasigna el modelo -> la ListView no resetea el scroll -> sin salto. Si
-      // cambió (ficheros nuevos), se reasigna y se re-posiciona.
+      // Refreshes the painted content ONLY if it really changed (Utils
+      // .entriesEqual): so, on moving to the background with the folder unchanged, the
+      // model is NOT reassigned -> the ListView doesn't reset the scroll -> no jump. If
+      // it changed (new files), it's reassigned and re-positioned.
       if (!Utils.entriesEqual(dirLister.entries, bgPanel._content)) {
         bgPanel._content = dirLister.entries
         bgPanel._restoreScroll()
@@ -87,12 +87,12 @@ Item {
     }
   }
 
-  // LRU de la caché de entradas por ruta (Fase 10.A): antes crecía sin
-  // límite (una entrada por cada carpeta visitada en CUALQUIER pestaña de
-  // fondo, reteniendo miles de objetos en sesiones largas con keepLoaded).
-  // Se acota a las 8 rutas más recientes usando el orden de inserción de las
-  // claves del objeto (borrar+reinsertar mueve al final = más reciente;
-  // se evict las del principio = más antiguas).
+  // LRU of the per-path entries cache (Phase 10.A): before it grew without
+  // limit (one entry per folder visited in ANY background
+  // tab, retaining thousands of objects in long sessions with keepLoaded).
+  // It's bounded to the 8 most recent paths using the insertion order of the
+  // object's keys (delete+reinsert moves to the end = most recent;
+  // the ones at the start are evicted = oldest).
   readonly property int _cacheMax: 8
   function _cachePut(path, entries) {
     var c = hostRoot.tabEntriesCache
@@ -102,49 +102,49 @@ Item {
     while (keys.length > _cacheMax) { delete c[keys[0]]; keys.shift() }
   }
 
-  // Pasar el ratón por encima hace que este panel se vuelva el activo (el
-  // que tiene lazo de selección, menú contextual, y responde a los atajos
-  // de teclado j/k/F2/Supr/etc.) -- sin esto solo se podía "activar" un
-  // panel haciendo clic dentro, y josema quería que baste con colocar el
-  // cursor encima. HoverHandler en vez de MouseArea: no roba el evento a
-  // los MouseArea de las filas/botones de debajo, solo observa.
+  // Hovering makes this panel become the active one (the
+  // one with the selection lasso, context menu, and that responds to the
+  // j/k/F2/Del/etc. keyboard shortcuts) -- without this you could only "activate" a
+  // panel by clicking inside, and josema wanted it to be enough to place the
+  // cursor over it. HoverHandler instead of MouseArea: it doesn't steal the event from
+  // the MouseArea of the rows/buttons below, it only observes.
   HoverHandler {
-    // No cambiar de panel activo mientras el usuario tiene un nombre a
-    // medio escribir (rename/nueva carpeta/nuevo fichero/ruta editable) --
-    // switchToTab -> _goToPath resetea esos campos, y con hover-to-activate
-    // bastaba con cruzar el ratón por el divisor para perder el texto sin
-    // ningún clic de por medio. Tampoco con el menú contextual abierto --
-    // bug real: el menú se abre sobre el panel activo de ESE momento, pero
-    // si el cursor pasaba por otro panel de fondo de camino a una entrada
-    // del menú (nada bloqueaba el hover solo por haber un menú encima), la
-    // pestaña activa cambiaba a mitad de acción y "Open in new tab"/Copy/
-    // etc. acababan actuando sobre la carpeta equivocada.
-    // El guard real vive ahora en switchToTab() (hasBlockingOverlay), así
-    // cubre TODOS los diálogos, no solo estos dos.
+    // Don't switch the active panel while the user has a name half-
+    // written (rename/new folder/new file/editable path) --
+    // switchToTab -> _goToPath resets those fields, and with hover-to-activate
+    // just crossing the mouse over the divider was enough to lose the text without
+    // any click involved. Nor with the context menu open --
+    // real bug: the menu opens over the active panel of THAT moment, but
+    // if the cursor passed over another background panel on the way to a menu
+    // entry (nothing blocked the hover just for having a menu on top), the
+    // active tab changed mid-action and "Open in new tab"/Copy/
+    // etc. ended up acting on the wrong folder.
+    // The real guard now lives in switchToTab() (hasBlockingOverlay), so
+    // it covers ALL the dialogs, not just these two.
     onHoveredChanged: if (hovered) hostTabOps.switchToTab(bgPanel.index)
   }
 
-  // Última ruta para la que este panel concreto ha lanzado una recarga --
-  // ver onModelDataChanged más abajo.
+  // Last path for which this specific panel launched a reload --
+  // see onModelDataChanged below.
   property string _lastRefreshedPath: ""
 
-  // Ruta que este panel debe listar. Para la pestaña ACTIVA es NavState
-  // .currentPath (el objeto de pestaña NO se actualiza hasta el cambio, así que
-  // usar modelData.path dejaba el panel del slot activo con la carpeta ANTERIOR
-  // y su lista VACÍA/desfasada -> al pasar a fondo se poblaba async y saltaba).
-  // Para las pestañas de fondo es su propia ruta guardada. Así el panel del slot
-  // activo (opacity:0, tapado por el panel activo) va PRECARGANDO la carpeta
-  // actual, y al pasar a fondo ya tiene el contenido y el layout -> el
-  // reposicionamiento es instantáneo, congelado, sin salto.
+  // Path that this panel must list. For the ACTIVE tab it's NavState
+  // .currentPath (the tab object is NOT updated until the switch, so
+  // using modelData.path left the active-slot panel with the PREVIOUS folder
+  // and its EMPTY/stale list -> on moving to the background it populated async and jumped).
+  // For the background tabs it's their own saved path. So the active-slot
+  // panel (opacity:0, covered by the active panel) PRELOADS the current
+  // folder, and on moving to the background it already has the content and the layout -> the
+  // repositioning is instant, frozen, without a jump.
   readonly property string effectivePath: index === TabsState.activeTabIndex
     ? NavState.currentPath : (modelData.path || "")
   onEffectivePathChanged: bgPanel.refreshMe()
 
-  // Contenido que pinta la ListView de fondo. Se adopta SÍNCRONO desde el objeto
-  // de pestaña (modelData.entries, que TabOps guardó = lo que veía el panel
-  // activo) al pasar a segundo plano, para que la lista NO esté vacía en ese
-  // instante (si se poblara async, el scroll saltaría de 0 a su sitio). El
-  // dirLister lo refresca por detrás sin resetear si el contenido no cambió.
+  // Content that the background ListView paints. It's adopted SYNCHRONOUSLY from the tab
+  // object (modelData.entries, which TabOps saved = what the active panel
+  // saw) on moving to the background, so the list is NOT empty at that
+  // instant (if it were populated async, the scroll would jump from 0 to its place). The
+  // dirLister refreshes it behind the scenes without resetting if the content didn't change.
   property var _content: []
 
   function refreshMe() {
@@ -153,48 +153,48 @@ Item {
     dirLister.list(bgPanel.effectivePath)
   }
 
-  // Al pasar a segundo plano (ya no es la pestaña activa): restaurar el scroll.
-  // El contenido ya está precargado (el slot activo listaba effectivePath en
-  // vivo) y con layout (opacity:0 mantiene la ListView en el scene graph), así
-  // que positionViewAtIndex acierta al instante. NO se re-lista aquí: la ruta no
-  // ha cambiado, y re-listar reseteaba la lista -> el salto.
+  // On moving to the background (no longer the active tab): restore the scroll.
+  // The content is already preloaded (the active slot listed effectivePath
+  // live) and with layout (opacity:0 keeps the ListView in the scene graph), so
+  // positionViewAtIndex hits the mark instantly. It does NOT re-list here: the path hasn't
+  // changed, and re-listing reset the list -> the jump.
   readonly property bool isBackground: index !== TabsState.activeTabIndex
   onIsBackgroundChanged: if (isBackground) {
-    // Adopta el contenido guardado en la pestaña (síncrono, no vacío) ANTES de
-    // posicionar, y refresca por detrás.
+    // Adopts the content saved in the tab (synchronous, not empty) BEFORE
+    // positioning, and refreshes behind the scenes.
     bgPanel._content = bgPanel.modelData.entries || []
     bgPanel._restoreScroll()
     bgPanel.refreshMe()
   }
-  // refreshTick es la señal para que los paneles NO activos se refresquen
-  // tras una acción (borrar/mover/pegar/renombrar), que puede afectar a
-  // cualquier panel y no solo al activo. Vive en NavState desde la Fase 14.C
-  // -- antes estaba en OmafilesContent (hostRoot) y este Connections quedó
-  // escuchando un target sin esa señal (regresión silenciosa detectada en la
-  // auditoría 14.E: qmllint no la ve porque hostRoot es Item sin tipar).
+  // refreshTick is the signal for the NON-active panels to refresh
+  // after an action (delete/move/paste/rename), which may affect
+  // any panel and not only the active one. It lives in NavState since Phase 14.C
+  // -- before it was in OmafilesContent (hostRoot) and this Connections was left
+  // listening to a target without that signal (silent regression detected in the
+  // 14.E audit: qmllint doesn't see it because hostRoot is an untyped Item).
   Connections {
     target: NavState
     function onRefreshTickChanged() { bgPanel.refreshMe() }
   }
   Component.onCompleted: bgPanel.refreshMe()
 
-  // Scroll compartido con el panel activo (tab.scrollY = list.contentY). Al
-  // pasar ESTE panel a segundo plano hay que reflejar en su bgList el scroll que
-  // tenía como panel activo; si no, saltaba al principio. Se llama desde
-  // dirLister.onListed (cuando el relistado async ya está puesto, si no ese
-  // relistado resetearía el contentY justo después).
+  // Scroll shared with the active panel (tab.scrollY = list.contentY). On
+  // moving THIS panel to the background we have to reflect in its bgList the scroll it
+  // had as the active panel; otherwise, it jumped to the beginning. It's called from
+  // dirLister.onListed (when the async re-listing is already set, otherwise that
+  // re-listing would reset the contentY right after).
   function _restoreScroll() {
-    // Por ÍNDICE (positionViewAtIndex), no por píxel: inmune a que el
-    // contentHeight se estime perezosamente. Fallback a contentY si no hay
-    // índice guardado (pestañas antiguas / raíz sin scroll).
+    // By INDEX (positionViewAtIndex), not by pixel: immune to the
+    // contentHeight being estimated lazily. Fallback to contentY if there is no
+    // saved index (old tabs / root with no scroll).
     var idx = modelData.scrollIndex
     if (idx !== undefined && idx >= 0) {
-      // Una ListView recién hecha visible aún no ha hecho su layout (contentHeight
-      // = 0), así que positionViewAtIndex daría 0 y el scroll saltaría al medirse
-      // async. forceLayout() completa el layout SÍNCRONO -> geometría real ->
-      // positionViewAtIndex acierta a la primera, sin salto.
-      // Anclado en la y REAL de la fila (misma geometría que firstVisibleOffset
-      // al guardar), no en el contentY que deja positionViewAtIndex -> sin drift.
+      // A ListView just made visible hasn't done its layout yet (contentHeight
+      // = 0), so positionViewAtIndex would give 0 and the scroll would jump when measured
+      // async. forceLayout() completes the SYNCHRONOUS layout -> real geometry ->
+      // positionViewAtIndex hits the mark on the first try, without a jump.
+      // Anchored on the row's REAL y (same geometry as firstVisibleOffset
+      // when saving), not on the contentY that positionViewAtIndex leaves -> no drift.
       bgList.forceLayout()
       bgList.positionViewAtIndex(idx, ListView.Beginning)
       var it = bgList.itemAtIndex(idx)
@@ -203,10 +203,10 @@ Item {
       bgList.contentY = modelData.scrollY || bgList.originY
     }
   }
-  // Y al revés: si desplazas este panel de fondo, se guarda en su objeto de
-  // pestaña para que al activarlo (list.contentY = tab.scrollY) quede igual.
-  // Solo al soltar (onMovementEnded), no por píxel, para no reasignar
-  // TabsState.tabs constantemente.
+  // And the other way around: if you scroll this background panel, it's saved in its tab
+  // object so that on activating it (list.contentY = tab.scrollY) it stays the same.
+  // Only on release (onMovementEnded), not by pixel, so as not to reassign
+  // TabsState.tabs constantly.
   function _saveScroll() {
     if (index < 0 || index >= TabsState.tabs.length) return
     var t = TabsState.tabs[index]
@@ -233,9 +233,9 @@ Item {
     height: Style.spacing.controlHeight
     spacing: Style.spacing.controlGap
 
-    // Misma cabecera que el panel activo (atrás/adelante/casa/subir) --
-    // josema pidió que las dos se vean iguales, no solo el panel activo
-    // con navegación completa.
+    // Same header as the active panel (back/forward/home/up) --
+    // josema asked that the two look the same, not just the active panel
+    // with full navigation.
     PanelNavButtons {
       id: bgNavButtons
       canGoBack: (bgPanel.modelData.historyIndex || 0) > 0
@@ -250,51 +250,51 @@ Item {
       }
     }
 
-    // Migas de pan completas, igual que en el panel activo -- antes solo
-    // se veía el nombre de la carpeta actual, sin el resto de la ruta.
+    // Full breadcrumbs, same as in the active panel -- before only
+    // the current folder's name was shown, without the rest of the path.
     BreadcrumbSegments {
       id: bgBreadcrumbRow
-      // Misma anchura que el breadcrumb del panel activo (pathArea en
-      // MainLayout): reserva el hueco de la lupa colapsada (collapsedW =
-      // controlHeight) + su separación, aunque aquí NO haya lupa (la búsqueda
-      // es solo del panel activo). Así el breadcrumb no cambia de anchura al
-      // pasar el panel a activo -- sin desplazamiento horizontal al alternar
-      // de panel (Sprint Visual 3, B-06).
+      // Same width as the active panel's breadcrumb (pathArea in
+      // MainLayout): reserves the gap of the collapsed magnifier (collapsedW =
+      // controlHeight) + its separation, even though there is NO magnifier here (the search
+      // belongs only to the active panel). So the breadcrumb doesn't change width when
+      // the panel becomes active -- no horizontal shift when switching
+      // panels (Visual Sprint 3, B-06).
       width: parent.width - bgNavButtons.width - bgSearchPlaceholder.width - 2 * Style.spacing.controlGap
       height: parent.height
       segments: hostRoot.pathSegmentsFor(bgPanel.modelData.path)
       activePath: bgPanel.modelData.path
     }
 
-    // Hueco de la lupa. En reposo va vacío (solo reserva el ancho de la lupa
-    // colapsada del panel activo, para que la cabecera tenga la misma geometría
-    // en ambos estados). Si ESTE panel de fondo tiene una búsqueda abierta,
-    // crece a una barra de solo lectura: consulta + X para cerrarla. Es de solo
-    // lectura porque para EDITAR se activa el panel (pasando el ratón), que ya
-    // trae la lupa interactiva completa.
+    // Magnifier slot. At rest it's empty (it only reserves the width of the collapsed
+    // magnifier of the active panel, so the header has the same geometry
+    // in both states). If THIS background panel has a search open,
+    // it grows into a read-only bar: query + X to close it. It's read-
+    // only because to EDIT you activate the panel (by hovering), which already
+    // brings the full interactive magnifier.
     Item {
       id: bgSearchPlaceholder
-      // Mismo ancho expandido que la SearchBar activa (core/MainLayout): 300 px
-      // literales (NO Style.space, que lo escalaría y lo hacía más ancho que la
-      // original), recortado por lo que quede tras reservar 120 px de breadcrumb
-      // (pathArea.minPathW). En reposo, solo el ancho de la lupa colapsada.
+      // Same expanded width as the active SearchBar (core/MainLayout): 300 px
+      // literal (NOT Style.space, which would scale it and made it wider than the
+      // original), clamped by what's left after reserving 120 px of breadcrumb
+      // (pathArea.minPathW). At rest, only the width of the collapsed magnifier.
       width: bgPanel.bgSearching
         ? Math.max(Style.spacing.controlHeight, Math.min(300, bgHeaderRow.width - bgNavButtons.width - 120 - 2 * Style.spacing.controlGap))
         : Style.spacing.controlHeight
       height: parent.height
 
-      // Indicador de SOLO LECTURA de la búsqueda abierta en este panel de
-      // fondo (lupa + consulta). No lleva controles propios: con "activar al
-      // pasar el ratón", cualquier botón aquí se volvería inalcanzable (el
-      // hover activaría el panel y sustituiría esta barra por la lupa
-      // interactiva antes de poder pulsarlo). Para editar o CERRAR la búsqueda
-      // se activa el panel (pasando el ratón) y se usa la lupa interactiva de
-      // siempre (Escape, o clic en la propia lupa).
-      // Misma geometría y tokens que la SearchBar activa expandida (fondo
-      // selectedBackground + borde menu.border, lupa CENTRADA en un slot de
-      // controlHeight, texto arrancando en iconSlot.right + xs) para que las dos
-      // barras se vean idénticas -- antes la lupa quedaba pegada al texto y
-      // desalineada respecto al original.
+      // READ-ONLY indicator of the search open in this background
+      // panel (magnifier + query). It carries no controls of its own: with "activate on
+      // hover", any button here would become unreachable (the
+      // hover would activate the panel and replace this bar with the interactive
+      // magnifier before you could press it). To edit or CLOSE the search
+      // you activate the panel (by hovering) and use the usual interactive
+      // magnifier (Escape, or click on the magnifier itself).
+      // Same geometry and tokens as the active SearchBar expanded (background
+      // selectedBackground + border menu.border, magnifier CENTERED in a slot of
+      // controlHeight, text starting at iconSlot.right + xs) so the two
+      // bars look identical -- before the magnifier was stuck to the text and
+      // misaligned relative to the original.
       Rectangle {
         anchors.fill: parent
         visible: bgPanel.bgSearching
@@ -321,10 +321,10 @@ Item {
 
         Text {
           anchors.left: bgSearchIconSlot.right
-          // El TextField activo empieza el texto en xs + su leftPadding interno
-          // (Style.spacing.controlPaddingX). Un Text plano no tiene ese padding,
-          // así que se replica aquí para que "steam" arranque a la MISMA x que en
-          // la barra activa (si no, queda más a la izquierda).
+          // The active TextField starts the text at xs + its internal leftPadding
+          // (Style.spacing.controlPaddingX). A plain Text has no such padding,
+          // so it's replicated here so "steam" starts at the SAME x as in
+          // the active bar (otherwise, it's more to the left).
           anchors.leftMargin: Style.spacing.xs + Style.spacing.controlPaddingX
           anchors.right: parent.right
           anchors.rightMargin: Style.spacing.sm
@@ -342,10 +342,10 @@ Item {
   PanelSeparator {
     id: bgHeaderSep
     anchors.top: bgHeaderRow.bottom
-    // Mismo hueco que separa navRow de listContainer en el panel activo
-    // (Style.spacing.rowGap, el mismo spacing de mainColumn -- no
-    // Style.spacing.sm) -- con sm quedaba visiblemente más alto que la
-    // línea del panel activo.
+    // Same gap that separates navRow from listContainer in the active panel
+    // (Style.spacing.rowGap, the same mainColumn spacing -- not
+    // Style.spacing.sm) -- with sm it was visibly taller than the
+    // active panel's line.
     anchors.topMargin: Style.spacing.rowGap
     width: parent.width
     foreground: Color.menu.text
@@ -354,17 +354,17 @@ Item {
 
   Text {
     id: bgErrorText
-    // Mismo ancla y margen que el aviso de error del panel activo
-    // (ActiveFileList): justo bajo el separador de la cabecera, a
-    // Style.spacing.md -- así el mismo error sale en la MISMA posición en los
-    // dos paneles (Sprint Visual 3, C-05). Antes era sm y no coincidía con el
-    // del panel activo.
+    // Same anchor and margin as the active panel's error notice
+    // (ActiveFileList): right under the header separator, at
+    // Style.spacing.md -- so the same error appears in the SAME position in the
+    // two panels (Visual Sprint 3, C-05). Before it was sm and didn't match
+    // the active panel's.
     visible: dirLister.pathError !== "" && !bgPanel.bgSearching
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.md
-    // Mismo alineado que el aviso del panel activo (ActiveFileList): columna
-    // del icono (sin leftMargin) y centrado en el alto de una fila, para
-    // quedar a la altura del glyph con el mismo espaciado superior que el resto.
+    // Same alignment as the active panel's notice (ActiveFileList): icon
+    // column (no leftMargin) and centered in a row's height, to
+    // stay at the height of the glyph with the same top spacing as the rest.
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.rightMargin: Style.spacing.rowPaddingX
@@ -385,8 +385,8 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     clip: true
-    // Resultados de la búsqueda de ESTE panel si la tiene abierta; si no, su
-    // listado normal de carpeta.
+    // Results of THIS panel's search if it has one open; otherwise, its
+    // normal folder listing.
     model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
     boundsBehavior: Flickable.StopAtBounds
     onMovementEnded: bgPanel._saveScroll()
@@ -400,13 +400,13 @@ Item {
       foreground: Color.menu.text
       accent: Color.accent
       hasCursor: bgRowMouse.containsMouse
-      // El fill/borde de hover ya es semitransparente de por sí
-      // (Style.hoverFillFor) -- bgPanel entero va a opacity:0.72 para
-      // marcarse como "no es el panel activo", y sin esto esa opacidad se
-      // multiplica TAMBIÉN sobre el hover, quedando doblemente débil/
-      // desvaído en vez del mismo aspecto que tiene en el panel activo.
-      // 1/0.72 cancela justo la opacidad del padre solo mientras esta
-      // fila concreta tiene el cursor encima.
+      // The hover fill/border is already semi-transparent on its own
+      // (Style.hoverFillFor) -- the whole bgPanel goes to opacity:0.72 to
+      // mark itself as "not the active panel", and without this that opacity is
+      // multiplied ALSO over the hover, ending up doubly weak/
+      // faded instead of the same look it has in the active panel.
+      // 1/0.72 cancels exactly the parent's opacity only while this
+      // specific row has the cursor over it.
       opacity: hasCursor ? 1 / 0.72 : 1
 
       DropArea {
@@ -432,9 +432,9 @@ Item {
         readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
         readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
-        // Miniatura nativa (imágenes/SVG/PDF) vía ThumbnailProvider -- Fase
-        // 10.A: antes se cargaba el fichero de imagen COMPLETO para pintarlo
-        // a 32 px. Mismo patrón que FileListRow, con la ruta de ESTE panel.
+        // Native thumbnail (images/SVG/PDF) via ThumbnailProvider -- Phase
+        // 10.A: before, the WHOLE image file was loaded to paint it
+        // at 32 px. Same pattern as FileListRow, with THIS panel's path.
         readonly property string myPath: Utils.entryPath(bgPanel.modelData.path, modelData)
         readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
           || modelData.name.toLowerCase().slice(-4) === ".svg"
@@ -450,8 +450,8 @@ Item {
           _requestCount(false)
         }
 
-        // Contador de items (Fase 23): igual que FileListRow, con la ruta de
-        // ESTE panel de fondo. La caché FolderCountState es global (por ruta).
+        // Item counter (Phase 23): same as FileListRow, with THIS background
+        // panel's path. The FolderCountState cache is global (per path).
         readonly property bool _isDir: modelData.type === "dir"
         function _requestCount(force) {
           if (!_isDir) return
@@ -479,10 +479,10 @@ Item {
           isDir: modelData.type === "dir"
           isBroken: modelData.link === "broken"
           fileIconGlyph: hostRoot.iconFor(modelData)
-          // La ruta es la de ESTE panel (bgPanel.modelData.path), no
-          // hostRoot.currentPath -- ese es del panel activo, y era justo lo
-          // que hacía fallar la miniatura aquí cuando este panel no era
-          // el activo.
+          // The path is THIS panel's (bgPanel.modelData.path), not
+          // hostRoot.currentPath -- that one belongs to the active panel, and it was exactly
+          // what made the thumbnail fail here when this panel wasn't
+          // the active one.
           thumbSource: bgRowContent.imgThumb ? Util.fileUrl(bgRowContent.imgThumb)
             : (bgRowContent.vidThumb ? Util.fileUrl(bgRowContent.vidThumb) : "")
           metaText: hostFileMeta.metaFor(modelData, bgPanel.modelData.path)
@@ -499,10 +499,10 @@ Item {
         drag.axis: Drag.XAndYAxis
         onDoubleClicked: {
           if (bgPanel.bgSearching) {
-            // Resultado de búsqueda global: REVELAR en este panel -- carpeta ->
-            // entrar en ella; fichero -> ir a su carpeta. navigateTabTo ya deja
-            // el objeto de pestaña sin campos de búsqueda, así que la búsqueda
-            // se cierra sola al navegar.
+            // Global search result: REVEAL in this panel -- folder ->
+            // enter it; file -> go to its folder. navigateTabTo already leaves
+            // the tab object without search fields, so the search
+            // closes itself on navigating.
             hostTabOps.navigateTabTo(bgPanel.index, modelData.type === "dir" ? modelData.path : modelData.parent)
           } else if (modelData.type === "dir") {
             hostTabOps.navigateTabTo(bgPanel.index, Utils.joinPath(bgPanel.modelData.path, modelData.name))
@@ -530,16 +530,16 @@ Item {
   }
 
   EmptyState {
-    // `dirLister.loaded` (no solo entries.length === 0): el logo de carpeta
-    // vacía SOLO cuando el listado está confirmado. Un panel de fondo que
-    // acaba de hacerse visible (al cambiar de pestaña o al pasar el cursor)
-    // arranca con entries=[] y loaded=false hasta que refreshMe() termina de
-    // listar de forma asíncrona -- sin este guard, EmptyState cumplía
-    // entries.length===0 && pathError==="" y parpadeaba un frame aunque la
-    // carpeta no estuviera vacía. loaded se pone a true en el primer _apply
-    // (incluido el de una carpeta realmente vacía) y no vuelve a false, y
-    // list() nunca vacía entries en un refresh, así que esto no oculta nunca
-    // un vacío real ni parpadea al refrescar.
+    // `dirLister.loaded` (not just entries.length === 0): the empty-folder
+    // logo ONLY when the listing is confirmed. A background panel that
+    // just became visible (on switching tabs or on hovering)
+    // starts with entries=[] and loaded=false until refreshMe() finishes
+    // listing asynchronously -- without this guard, EmptyState met
+    // entries.length===0 && pathError==="" and flickered a frame even though the
+    // folder wasn't empty. loaded is set to true on the first _apply
+    // (including that of a truly empty folder) and doesn't go back to false, and
+    // list() never empties entries on a refresh, so this never hides
+    // a real empty nor flickers on refreshing.
     visible: dirLister.loaded && dirLister.pathError === "" && dirLister.entries.length === 0
     centerOn: bgList
     message: bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Nothing here yet"
@@ -550,16 +550,16 @@ Item {
     anchors.bottom: parent.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    // Mismo formato que el footer del panel activo (statusText en
-    // MainLayout): "N items · sort: <criterio>". El criterio de orden es
-    // global (SortState, vía hostSortOps.sortLabel()), así que el panel de
-    // fondo lista con el MISMO orden -- omitirlo hacía que las dos vistas se
-    // vieran distintas al mover el cursor. Los extras del panel activo
-    // (selección/portapapeles/búsqueda) son estados que solo existen ahí, no
-    // en un panel de fondo, así que no se replican.
-    // Con búsqueda abierta, el footer refleja los RESULTADOS de este panel
-    // (recuento + aviso de lista recortada), igual que el footer del panel
-    // activo al buscar; si no, el listado normal de la carpeta.
+    // Same format as the active panel's footer (statusText in
+    // MainLayout): "N items · sort: <criterion>". The sort criterion is
+    // global (SortState, via hostSortOps.sortLabel()), so the background
+    // panel lists with the SAME order -- omitting it made the two views
+    // look different when moving the cursor. The active panel's extras
+    // (selection/clipboard/search) are states that only exist there, not
+    // in a background panel, so they're not replicated.
+    // With a search open, the footer reflects THIS panel's RESULTS
+    // (count + trimmed-list notice), same as the active panel's footer
+    // when searching; otherwise, the normal folder listing.
     text: bgPanel.bgSearching
       ? (bgPanel.bgVisibleSearchEntries.length + (bgPanel.bgVisibleSearchEntries.length === 1 ? " item" : " items")
          + " of " + bgPanel.bgSearchEntries.length

@@ -1,10 +1,10 @@
 pragma Singleton
 import QtQuick
 
-// Estado de la paleta de comandos (":" o Ctrl+P) -- sexto singleton de la
-// capa state/. dialogs/CommandPalettePanel.qml es puramente presentacional
-// (sus propias `open`/`query`/`index` locales, alimentadas por binding
-// desde Omafiles.qml), así que no necesita importar esto directamente.
+// State of the command palette (":" or Ctrl+P) -- sixth singleton of the
+// state/ layer. dialogs/CommandPalettePanel.qml is purely presentational
+// (its own local `open`/`query`/`index`, fed by binding
+// from Omafiles.qml), so it does not need to import this directly.
 QtObject {
   property bool paletteOpen: false
   property string paletteQuery: ""

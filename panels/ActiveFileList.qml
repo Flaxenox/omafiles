@@ -6,28 +6,28 @@ import "../logic"
 import "../state"
 import "../Utils.js" as Utils
 
-// La ListView principal del panel activo (selección con lazo, arrastrar y
-// soltar, atajos de teclado, renombrado inline, menú contextual por fila) +
-// todo lo que la rodea dentro de listContainer (separador, rueda del ratón,
-// gutters del lazo, estado vacío, rectángulo visual del lazo, vista
-// previa) -- vigésimo primer componente extraído de Omafiles.qml, y el más
-// grande hasta ahora. listContainer se queda en Omafiles.qml con su cálculo
-// de altura (afinado a pixel, ver sus propios comentarios) intacto; este
-// componente solo pinta su contenido con anchors.fill: parent.
+// The main ListView of the active panel (lasso selection, drag and
+// drop, keyboard shortcuts, inline rename, per-row context menu) +
+// everything around it within listContainer (separator, mouse wheel,
+// lasso gutters, empty state, visual lasso rectangle, preview)
+// -- twenty-first component extracted from Omafiles.qml, and the
+// largest so far. listContainer stays in Omafiles.qml with its height
+// calculation (pixel-tuned, see its own comments) intact; this
+// component only paints its content with anchors.fill: parent.
 //
-// La ListView interna se renombró de "list" a "listView" (con id: list ya
-// no habría manera de darle el MISMO id "list" a la instancia de este
-// componente sin colisionar) -- pero decenas de sitios en Omafiles.qml
-// (funciones de root, otros diálogos con onFocusReturnRequested, el
-// MouseArea del hueco lateral entre sidebar y mainColumn) siguen
-// escribiendo `list.contentY`/`list.forceActiveFocus()`/etc. por id
-// directo, y cambiar todos esos call sites habría sido mucho más
-// arriesgado que resolverlo aquí: la instancia de este componente se sigue
-// llamando "list" en Omafiles.qml (mismo id de siempre), y estos alias +
-// funciones-sombra reexponen justo el subconjunto de API de ListView que
-// se usa desde fuera (contentY/originY/contentHeight/contentItem,
-// forceActiveFocus()/positionViewAtBeginning()) -- nada más, no es un
-// wrapper genérico de ListView.
+// The inner ListView was renamed from "list" to "listView" (with id: list
+// there would be no way to give the SAME id "list" to the instance of this
+// component without colliding) -- but dozens of sites in Omafiles.qml
+// (root functions, other dialogs with onFocusReturnRequested, the
+// MouseArea of the side gap between sidebar and mainColumn) still
+// write `list.contentY`/`list.forceActiveFocus()`/etc. by direct
+// id, and changing all those call sites would have been much more
+// risky than resolving it here: the instance of this component is still
+// called "list" in Omafiles.qml (same id as always), and these aliases +
+// shadow functions re-expose exactly the subset of the ListView API that
+// is used from outside (contentY/originY/contentHeight/contentItem,
+// forceActiveFocus()/positionViewAtBeginning()) -- nothing more, it's not a
+// generic ListView wrapper.
 Item {
   property Item root: null
   property Item card: null
@@ -63,25 +63,25 @@ Item {
   function forceActiveFocus() { listView.forceActiveFocus() }
   function positionViewAtBeginning() { listView.positionViewAtBeginning() }
   function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
-  // Índice de la primera fila visible (para guardar/restaurar el scroll por
-  // índice al cambiar de pestaña). Encapsula el listView interno: usa su propio
-  // ancho/contentY, no los del wrapper (que difieren con la preview abierta).
+  // Index of the first visible row (to save/restore scroll by
+  // index when switching tabs). Encapsulates the inner listView: uses its own
+  // width/contentY, not the wrapper's (which differ with the preview open).
   function firstVisibleIndex() { return listView.indexAt(listView.width / 2, listView.contentY + 4) }
-  // Offset SUB-FILA: cuántos píxeles está desplazada hacia arriba la fila de
-  // arriba respecto al borde del viewport. Sin esto, restaurar por índice
-  // alinea la fila al borde (Beginning) y, si estabas a media fila, saltaba
-  // para cuajar. Se guarda junto al índice y se suma al restaurar.
+  // SUB-ROW offset: how many pixels the top row is shifted up
+  // relative to the viewport edge. Without this, restoring by index
+  // aligns the row to the edge (Beginning) and, if you were at half a row, it jumped
+  // to snap. It's saved along with the index and added when restoring.
   function firstVisibleOffset() {
     var idx = firstVisibleIndex()
     if (idx < 0) return 0
     var it = listView.itemAtIndex(idx)
     return it ? (listView.contentY - it.y) : 0
   }
-  // Posiciona la fila `idx` reproduciendo el offset sub-fila EXACTO. Se ancla en
-  // la y real de la fila (itemAtIndex(idx).y), la MISMA geometría que usó
-  // firstVisibleOffset al guardar -- si en su lugar se usara el contentY que
-  // deja positionViewAtIndex, ambas geometrías difieren (~un puñado de px) y el
-  // scroll iba derivando cada vez. positionViewAtIndex primero instancia la fila.
+  // Positions row `idx` reproducing the EXACT sub-row offset. It anchors on
+  // the row's real y (itemAtIndex(idx).y), the SAME geometry that
+  // firstVisibleOffset used when saving -- if instead the contentY that
+  // positionViewAtIndex leaves were used, the two geometries differ (~a handful of px) and the
+  // scroll kept drifting each time. positionViewAtIndex instantiates the row first.
   function positionAtIndexWithOffset(idx, offset) {
     listView.forceLayout()
     listView.positionViewAtIndex(idx, ListView.Beginning)
@@ -117,11 +117,11 @@ Item {
     hostNewFolderConflictConfirm: newFolderConflictConfirm
   }
 
-            // Misma línea que separa cabecera y lista en los paneles de
-            // fondo (bgHeaderSep) -- va aquí dentro, no como hermana en la
-            // Column, para que el hueco entre separador y lista sea el
-            // mismo Style.spacing.sm de allí y no el mainColumn.spacing
-            // (más ancho) que la Column mete entre CUALQUIER par de hijos.
+            // Same line that separates header and list in the background
+            // panels (bgHeaderSep) -- it goes in here, not as a sibling in the
+            // Column, so the gap between separator and list is the
+            // same Style.spacing.sm as there and not the mainColumn.spacing
+            // (wider) that the Column puts between ANY pair of children.
             PanelSeparator {
               id: listSep
               anchors.top: parent.top
@@ -130,7 +130,7 @@ Item {
             }
 
             MouseArea {
-              // Detrás de la lista: clic derecho en hueco vacío -> menú contextual general.
+              // Behind the list: right click on empty space -> general context menu.
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
@@ -142,12 +142,12 @@ Item {
               }
             }
 
-            // Detrás de la lista: soltar aquí (desde otra app, o un arrastre
-            // interno sobre hueco vacío en vez de encima de una fila) mete
-            // los ficheros en la carpeta abierta ahora mismo. Al ir ANTES
-            // que la ListView en el fichero, queda por debajo en el orden de
-            // pintado -- el DropArea de cada fila de carpeta, por encima,
-            // gana cuando el cursor está sobre ella.
+            // Behind the list: dropping here (from another app, or an internal
+            // drag onto empty space instead of over a row) puts
+            // the files in the folder open right now. Being BEFORE
+            // the ListView in the file, it stays below in the paint
+            // order -- the DropArea of each folder row, on top,
+            // wins when the cursor is over it.
             DropArea {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
@@ -160,14 +160,14 @@ Item {
               }
             }
 
-            // Rueda del ratón: con `listView.interactive` a false (para que
-            // arrastrar nunca haga scroll, solo dibuje el lazo), Flickable
-            // deja de procesar también la rueda -- se reimplementa aquí a
-            // mano. Sin onPressed/onClicked, así que un MouseArea sin
-            // control de wheel (ninguno de filas/footer/marqueeArea lo
-            // implementa) deja pasar el evento hasta este, detrás de todo;
-            // por eso uno solo, cubriendo toda la zona, basta para filas y
-            // huecos vacíos por igual.
+            // Mouse wheel: with `listView.interactive` false (so that
+            // dragging never scrolls, only draws the lasso), Flickable
+            // stops processing the wheel too -- it's reimplemented here by
+            // hand. Without onPressed/onClicked, so a MouseArea without
+            // wheel handling (none of rows/footer/marqueeArea implements
+            // it) lets the event pass through to this one, behind everything;
+            // that's why a single one, covering the whole area, suffices for rows and
+            // empty gaps alike.
             MouseArea {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
@@ -178,23 +178,23 @@ Item {
                 var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
                 wheelAccumulator = step.remainder
                 if (step.steps === 0) return
-                // El suelo es listView.originY, NO 0 -- ListView puede desplazar
-                // su origen con el reciclado de delegados (visto en vivo:
-                // originY llegó a valer cientos de píxeles tras scrollear
-                // mucho), y forzar contentY a 0 en ese caso deja justo el
-                // hueco vacío arriba del todo que reportaba el usuario.
+                // The floor is listView.originY, NOT 0 -- ListView can shift
+                // its origin with delegate recycling (seen live:
+                // originY reached hundreds of pixels after scrolling
+                // a lot), and forcing contentY to 0 in that case leaves exactly the
+                // empty gap at the very top that the user reported.
                 var minY = listView.originY
                 var maxY = minY + Math.max(0, listView.contentHeight - listView.height)
                 listView.contentY = Math.max(minY, Math.min(maxY, listView.contentY - step.steps * 60))
               }
             }
 
-            // Detrás de la ListView, solo el hueco de arriba (fuera de sus
-            // bounds, por el topMargin de `listView` -- lo de abajo lo cubre el
-            // footer, dentro de la propia ListView, ver más abajo). Pulsar y
-            // arrastrar aquí dibuja un lazo de selección (como Nautilus/
-            // cualquier gestor de iconos) -- Ctrl mantenido pulsado suma a
-            // la selección previa en vez de reemplazarla.
+            // Behind the ListView, only the top gap (outside its
+            // bounds, because of `listView`'s topMargin -- the bottom is covered by the
+            // footer, inside the ListView itself, see further down). Pressing and
+            // dragging here draws a selection lasso (like Nautilus/
+            // any icon manager) -- Ctrl held down adds to
+            // the previous selection instead of replacing it.
             MarqueeCatcher {
               id: marqueeArea
               anchors.top: parent.top
@@ -208,49 +208,49 @@ Item {
             ListView {
               id: listView
               anchors.top: listSep.bottom
-              // Hueco reservado encima de la primera fila -- sin esto no hay
-              // ningún píxel "vacío" por encima donde arrancar el lazo, la
-              // fila 0 empezaría justo en el borde. Solo desplaza la
-              // ListView, marqueeArea/DropArea de detrás siguen llegando
-              // hasta el borde real, así que ese hueco cae en ellos. Subido
-              // de sm a md (josema: poco aire entre la cabecera y la
-              // lista) -- mismo valor en bgList para que las dos alturas
-              // seguán coincidiendo exactas (ver el bug del -1px anterior).
+              // Reserved gap above the first row -- without this there is no
+              // "empty" pixel above where to start the lasso, the
+              // row 0 would start right at the edge. It only shifts the
+              // ListView, marqueeArea/DropArea behind still reach
+              // the real edge, so that gap falls on them. Raised
+              // from sm to md (josema: little air between the header and the
+              // list) -- same value in bgList so the two heights
+              // keep matching exactly (see the earlier -1px bug).
               anchors.topMargin: Style.spacing.md
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               clip: true
               model: NavState.visibleEntries
-              // No reclamar el foco mientras la lupa está activa: si la lista lo
-              // toma, al cambiar el modelo (filtro en vivo con cada letra) se lo
-              // quita al campo de búsqueda y solo deja escribir una letra. Con la
-              // lupa abierta el teclado lo lleva SearchBar (Up/Down/Enter/Escape),
-              // así que la lista no necesita el foco -- lo recupera al cerrar la
-              // búsqueda. (Diagnóstico empírico por traza: field focus=false justo
-              // tras el primer textChanged.)
+              // Don't reclaim focus while the magnifier is active: if the list
+              // takes it, when the model changes (live filter with each letter) it takes it
+              // away from the search field and only lets you type one letter. With the
+              // magnifier open the keyboard belongs to SearchBar (Up/Down/Enter/Escape),
+              // so the list doesn't need focus -- it recovers it on closing the
+              // search. (Empirical trace diagnosis: field focus=false right
+              // after the first textChanged.)
               focus: root.opened && !NavState.searching
-              // Micro-transición estilo Turbo Frame (Fase 22, DHH/Hotwire): al
-              // (re)poblar la lista -- navegar a otra carpeta, o tras una
-              // operación que cambia el listado -- la lista aparece con un fade
-              // muy corto. NO retrasa la interacción: la lista es
-              // navegable/clicable al instante (la opacidad no bloquea input).
-              // Sin rebotes ni resortes, solo un OutCubic de 140 ms.
+              // Turbo Frame-style micro-transition (Phase 22, DHH/Hotwire): on
+              // (re)populating the list -- navigating to another folder, or after an
+              // operation that changes the listing -- the list appears with a very
+              // short fade. It does NOT delay interaction: the list is
+              // navigable/clickable instantly (the opacity doesn't block input).
+              // No bounces or springs, just a 140 ms OutCubic.
               //
-              // Se funde la opacidad del CONTENEDOR entero, no cada delegado vía
-              // `populate: Transition`. Con populate, la ListView fija las
-              // posiciones de los delegados con su altura del PRIMER frame (una
-              // línea, ~40px) y no las recalcula cuando la fila crece a dos
-              // líneas al llegar el subtítulo async (contador de carpeta) --
-              // dejaba las filas del panel activo solapadas ~9px y con distinta
-              // densidad que un panel de fondo (que, sin populate, sí recoloca).
-              // Fundir el contenedor da el mismo efecto sin capturar geometría,
-              // así los dos paneles quedan idénticos. Verificado en vivo con dos
-              // paneles sobre la misma carpeta: pitch de fila idéntico (49px).
-              // Fade de repintado (Fase 22) SOLO en navegación/operación real.
-              // En cambio de pestaña, root.suppressListFade está puesto: el
-              // listado ya estaba a la vista como panel de fondo y fundirlo al
-              // activarlo era el parpadeo redundante al pasar el cursor.
+              // The opacity of the WHOLE CONTAINER is faded, not each delegate via
+              // `populate: Transition`. With populate, the ListView fixes the
+              // positions of the delegates with their FIRST frame's height (a
+              // line, ~40px) and doesn't recalculate them when the row grows to two
+              // lines when the async subtitle arrives (folder counter) --
+              // it left the active panel's rows overlapping ~9px and with different
+              // density than a background panel (which, without populate, does relocate).
+              // Fading the container gives the same effect without capturing geometry,
+              // so the two panels are identical. Verified live with two
+              // panels over the same folder: identical row pitch (49px).
+              // Repaint fade (Phase 22) ONLY on real navigation/operation.
+              // On a tab switch, root.suppressListFade is set: the
+              // listing was already in view as a background panel and fading it on
+              // activating it was the redundant flicker on hover.
               onModelChanged: {
                 if (root && root.suppressListFade) return
                 listRepopulateFade.restart()
@@ -264,50 +264,50 @@ Item {
                 duration: 140
                 easing.type: Easing.OutCubic
               }
-              // Sin esto, arrastrar con el click (botón izquierdo pulsado)
-              // hace scroll de la lista -- el mismo gesto que queremos
-              // libre por completo para el lazo de selección. Solo debe
-              // poder hacer scroll la rueda, nunca el arrastre. Como
-              // Flickable ata la rueda a esta misma propiedad, hay que
-              // reimplementarla a mano (ver wheelArea más abajo).
+              // Without this, dragging with the click (left button held down)
+              // scrolls the list -- the same gesture we want
+              // entirely free for the selection lasso. Only the
+              // wheel should be able to scroll, never the drag. Since
+              // Flickable ties the wheel to this same property, it has to be
+              // reimplemented by hand (see wheelArea further down).
               interactive: false
-              // Sin esto (default DragAndOvershootBounds), cualquier cambio
-              // en contentHeight mientras contentY está en el borde (el
-              // footer se recalcula constantemente a partir de
-              // measuredRowHeight) dispara una animación de rebote propia de
-              // Flickable que puede pasar a negativo antes de asentarse. Si
-              // el siguiente evento de rueda llega a mitad de esa animación,
-              // el contentY que se lee ya no es el real y el rebote se
-              // reinicia sobre un punto erróneo -- eso es lo que hacía crecer
-              // el hueco de arriba en cada ciclo de scroll. Con esto, el
-              // límite es duro e inmediato, sin animación que interrumpir.
+              // Without this (default DragAndOvershootBounds), any change
+              // in contentHeight while contentY is at the edge (the
+              // footer is constantly recalculated from
+              // measuredRowHeight) triggers a Flickable bounce
+              // animation that can go negative before settling. If
+              // the next wheel event arrives mid-animation,
+              // the contentY read is no longer the real one and the bounce
+              // restarts on a wrong point -- that's what made
+              // the top gap grow on each scroll cycle. With this, the
+              // limit is hard and immediate, with no animation to interrupt.
               boundsBehavior: Flickable.StopAtBounds
 
-              // Hueco de abajo para el lazo. Un MouseArea suelto detrás de
-              // la ListView (como el de arriba) NO sirve aquí: al ser
-              // Flickable, ListView se queda con cualquier press+arrastre en
-              // TODO su rectángulo -- incluido el hueco bajo la última fila,
-              // aunque ahí no haya ningún delegado -- antes de que le llegue
-              // a nada por detrás (y si se desactiva `interactive` para
-              // evitarlo, se pierde también el scroll con la rueda, que
-              // depende de la misma propiedad). La solución real es un
-              // footer: al ser contenido propio de la ListView (como las
-              // filas), gana el press igual que ellas.
+              // Bottom gap for the lasso. A loose MouseArea behind
+              // the ListView (like the top one) does NOT work here: being
+              // Flickable, ListView keeps any press+drag in
+              // ALL its rectangle -- including the gap under the last row,
+              // even if there is no delegate there -- before it reaches
+              // anything behind (and if `interactive` is disabled to
+              // avoid it, wheel scroll is also lost, which
+              // depends on the same property). The real solution is a
+              // footer: being the ListView's own content (like the
+              // rows), it wins the press just like them.
               footer: Item {
                 id: listFooter
                 width: listView.width
-                // Altura FIJA a propósito -- nada que dependa de
-                // measuredRowHeight/contentHeight/visibleEntries.length, ni
-                // de ninguna otra propiedad que cambie durante el scroll. El
-                // footer es contenido propio de la ListView (participa en su
-                // recolocación/reciclado de delegados); atarlo a algo que se
-                // recalcula mientras se hace scroll es lo que dejaba
-                // `listView.originY` desincronizado de 0 -- confirmado con un
-                // lector de depuración (originY llegó a valer 210 tras
-                // scrollear arriba/abajo varias veces), y eso es exactamente
-                // el hueco que aparecía arriba del todo. Con un número fijo
-                // el footer nunca se recalcula, así que no hay nada que
-                // pueda perturbar el origen.
+                // FIXED height on purpose -- nothing that depends on
+                // measuredRowHeight/contentHeight/visibleEntries.length, nor
+                // on any other property that changes during scroll. The
+                // footer is the ListView's own content (participates in its
+                // delegate relocation/recycling); tying it to something that
+                // recalculates during scroll is what left
+                // `listView.originY` desynchronized from 0 -- confirmed with a
+                // debug reader (originY reached 210 after
+                // scrolling up/down several times), and that is exactly
+                // the gap that appeared at the very top. With a fixed number
+                // the footer is never recalculated, so there is nothing that
+                // can perturb the origin.
                 height: 400
 
                 MarqueeCatcher {
@@ -317,14 +317,14 @@ Item {
                 }
               }
 
-              // Auto-scroll del lazo: si el cursor se queda pegado a un
-              // borde de la lista mientras se arrastra y hay más filas de
-              // las que caben en el viewport, hace scroll solo para poder
-              // seguir seleccionando más allá de lo visible -- como
-              // Nautilus/cualquier gestor con lazo. marqueeViewportY llega
-              // ya actualizado (vía mapToItem(listView, ...)) desde cualquier
-              // catcher del lazo, así que esto no depende de dónde arrancó
-              // el arrastre.
+              // Lasso auto-scroll: if the cursor stays stuck to an
+              // edge of the list while dragging and there are more rows than
+              // fit in the viewport, it scrolls on its own to be able to
+              // keep selecting beyond what's visible -- like
+              // Nautilus/any manager with a lasso. marqueeViewportY arrives
+              // already updated (via mapToItem(listView, ...)) from any
+              // lasso catcher, so this doesn't depend on where
+              // the drag started.
               Timer {
                 interval: 16
                 repeat: true
@@ -359,29 +359,29 @@ Item {
               }
             }
 
-            // Aviso cuando list-dir.sh no ha podido listar currentPath --
-            // antes esto se veía igual que una carpeta vacía de verdad, sin
-            // ningún indicio de que el problema era de permisos.
+            // Notice when list-dir.sh could not list currentPath --
+            // before this looked just like a truly empty folder, without
+            // any hint that the problem was permissions.
             Text {
-              // Mismo ancla y margen que el aviso de error del panel de fondo
-              // (bgErrorText): justo bajo el separador de la cabecera, a
-              // Style.spacing.md -- donde arrancaría la primera fila. Antes
-              // este iba a parent.top + lg y el de fondo a separador + sm, así
-              // que el mismo error salía en dos sitios distintos según el panel
-              // (Sprint Visual 3, C-05).
+              // Same anchor and margin as the background panel's error notice
+              // (bgErrorText): right under the header separator, at
+              // Style.spacing.md -- where the first row would start. Before
+              // this one went to parent.top + lg and the background one to separator + sm, so
+              // the same error appeared in two different places depending on the panel
+              // (Visual Sprint 3, C-05).
               visible: NavState.currentPathError !== ""
               anchors.top: listSep.bottom
               anchors.topMargin: Style.spacing.md
-              // Sin leftMargin: se alinea con la COLUMNA DEL ICONO (el glyph
-              // arranca en el borde del contenido), no con la de nombres -- el
-              // aviso no tiene glyph, así que ocupa su sitio.
+              // No leftMargin: it aligns with the ICON COLUMN (the glyph
+              // starts at the content edge), not with the names one -- the
+              // notice has no glyph, so it takes its place.
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.rightMargin: Style.spacing.rowPaddingX
-              // Ocupa el alto del icono (controlHeight) y centra el texto en
-              // vertical, para quedar a la ALTURA del glyph (que es
-              // controlHeight y va centrado en la fila) en vez de pegado al
-              // top, con el mismo espaciado superior que el resto.
+              // It occupies the icon's height (controlHeight) and centers the text
+              // vertically, to stay at the HEIGHT of the glyph (which is
+              // controlHeight and is centered in the row) instead of stuck to the
+              // top, with the same top spacing as the rest.
               height: Style.spacing.controlHeight
               verticalAlignment: Text.AlignVCenter
               text: NavState.currentPathError
@@ -391,13 +391,13 @@ Item {
             }
 
             EmptyState {
-              // `root.loaded` (listado confirmado al menos una vez) antepuesto
-              // por el mismo motivo que en BackgroundPanel: en el arranque, y
-              // en cualquier instante en que entries esté vacío pero AÚN sin
-              // confirmar, no debe aparecer el logo de carpeta vacía como frame
-              // transitorio. loaded no vuelve a false y sigue true durante la
-              // búsqueda, así que el "No results"/"Nothing here yet" real se
-              // sigue mostrando en cuanto visibleEntries queda a 0 de verdad.
+              // `root.loaded` (listing confirmed at least once) prepended
+              // for the same reason as in BackgroundPanel: on startup, and
+              // at any instant when entries is empty but STILL not
+              // confirmed, the empty-folder logo must not appear as a
+              // transient frame. loaded doesn't go back to false and stays true during the
+              // search, so the real "No results"/"Nothing here yet" is
+              // still shown as soon as visibleEntries is truly at 0.
               visible: root.loaded && NavState.currentPathError === "" && NavState.visibleEntries.length === 0
               centerOn: listView
               message: NavState.searchQuery
@@ -405,9 +405,9 @@ Item {
                 : (NavState.currentPath === Paths.trashDir ? "Trash is empty" : "Nothing here yet")
             }
 
-            // Rectángulo visual del lazo -- después de la ListView en el
-            // fichero para quedar por encima al pintar (visible incluso
-            // cuando el lazo crece sobre filas ya dibujadas).
+            // Visual lasso rectangle -- after the ListView in the
+            // file to stay on top when painting (visible even
+            // when the lasso grows over already-drawn rows).
             Rectangle {
               visible: SelectionState.marqueeActive
               x: Math.min(SelectionState.marqueeStartX, SelectionState.marqueeCurrentX)
@@ -420,7 +420,7 @@ Item {
               z: 5
             }
 
-            // ---------- Vista previa (Espacio) ----------
+            // ---------- Preview (Space) ----------
             PreviewPanel {
               anchors.fill: parent
               open: PreviewState.previewOpen

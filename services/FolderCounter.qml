@@ -2,15 +2,15 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Contador de items por carpeta -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.FolderCounter (QDirIterator async, ver
-// backend/FolderCounter.cpp). Como el contrato es async (señal counted),
-// reemite la señal para que logic/panels no importen Omafiles.Backend
-// (regla 8), igual que JsonStore con loaded/saved.
+// Item counter per folder -- thin adapter over the C++ singleton
+// Omafiles.Backend.FolderCounter (async QDirIterator, see
+// backend/FolderCounter.cpp). Since the contract is async (counted signal),
+// it re-emits the signal so logic/panels do not import Omafiles.Backend
+// (rule 8), like JsonStore with loaded/saved.
 QtObject {
   id: root
 
-  // n = nº de entradas directas de `path` (-1 si no se pudo abrir).
+  // n = number of direct entries of `path` (-1 if it could not be opened).
   signal counted(string path, int n)
 
   function request(path, includeHidden) { Backend.FolderCounter.request(path, includeHidden) }

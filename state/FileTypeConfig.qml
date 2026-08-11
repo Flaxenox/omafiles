@@ -1,15 +1,15 @@
 pragma Singleton
 import QtQuick
 
-// Listas de extensiones por tipo de fichero (Fase 14.B, josema): eran
-// properties readonly de OmafilesContent leídas por logic/FileTypeUtils
-// (icono/isImage/isVideo/isAudio), PreviewLoader (texto/código),
-// ArchiveActions y ConflictActions (tar). Configuración estática pura, no
-// estado del composition root -- aquí quedan como única fuente.
+// Extension lists per file type (Phase 14.B, josema): they were
+// readonly properties of OmafilesContent read by logic/FileTypeUtils
+// (icon/isImage/isVideo/isAudio), PreviewLoader (text/code),
+// ArchiveActions and ConflictActions (tar). Pure static configuration, not
+// composition-root state -- here they stay as the single source.
 //
-// O2 (BACKEND_DESIGN.md 6.B) prevé un MimeDb en C++ que decida el tipo por
-// contenido/mime en vez de por extensión; hasta entonces esta es la tabla
-// canónica y el único sitio donde tocar para añadir un tipo.
+// O2 (BACKEND_DESIGN.md 6.B) foresees a MimeDb in C++ that decides the type by
+// content/mime instead of by extension; until then this is the canonical
+// table and the only place to touch to add a type.
 QtObject {
   readonly property var imageExt: ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
   readonly property var videoExt: ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]

@@ -16,9 +16,9 @@ void FolderCounter::request(const QString &path, bool includeHidden) {
     int n = -1;
     const QFileInfo fi(p);
     if (!p.isEmpty() && fi.isDir()) {
-      // AllEntries + NoDotAndDotDot = ficheros + carpetas + enlaces, sin
-      // "."/".." -- lo mismo que se vería al entrar. Hidden solo si el usuario
-      // muestra ocultos, para que el número cuadre.
+      // AllEntries + NoDotAndDotDot = files + folders + links, without
+      // "."/".." -- the same that would be seen on entering. Hidden only if the
+      // user shows hidden files, so the number matches.
       QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot;
       if (includeHidden)
         filters |= QDir::Hidden;
@@ -29,7 +29,7 @@ void FolderCounter::request(const QString &path, bool includeHidden) {
         ++n;
       }
     }
-    // Emitir en el hilo del objeto (cola) para tocar QML de forma segura.
+    // Emit on the object's thread (queued) to touch QML safely.
     if (self)
       QMetaObject::invokeMethod(self, "counted", Qt::QueuedConnection,
                                 Q_ARG(QString, p), Q_ARG(int, n));

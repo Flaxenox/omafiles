@@ -3,13 +3,13 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo "Bulk rename...". Sexto componente extraído de Omafiles.qml.
-// El patrón elegido se pide hacia fuera con una señal parametrizada
-// (igual que ConnectServer.qml/ChmodPanel.qml) -- Omafiles.qml sigue
-// siendo el dueño real de root.bulkRenamePattern.
+// "Bulk rename..." dialog. Sixth component extracted from Omafiles.qml.
+// The chosen pattern is requested outward with a parameterized signal
+// (like ConnectServer.qml/ChmodPanel.qml) -- Omafiles.qml is still
+// the real owner of root.bulkRenamePattern.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 
@@ -64,10 +64,10 @@ Item {
       }
     }
 
-    // Patrones usados antes, más reciente primero -- clic rellena
-    // el campo (no renombra directo), para que se pueda revisar/
-    // ajustar antes de aplicar. Solo si hay historial: la primera
-    // vez que se usa Bulk rename no hay nada que ofrecer aquí.
+    // Previously used patterns, most recent first -- a click fills
+    // the field (does not rename directly), so it can be reviewed/
+    // adjusted before applying. Only if there is history: the first
+    // time Bulk rename is used there is nothing to offer here.
     Flow {
       width: parent.width
       visible: root.history.length > 0
@@ -83,10 +83,10 @@ Item {
           height: Style.spacing.controlHeight * 0.8
           foreground: Color.menu.text
           accent: Color.accent
-          // Sin esto se confundía con texto suelto en reposo -- el
-          // mismo componente ya lleva borde permanente en la rejilla
-          // de permisos de chmod (chmodCell) por este motivo
-          // exacto, aquí se le había olvidado.
+          // Without this it was confused with loose text at rest -- the
+          // same component already carries a permanent border in the chmod
+          // permissions grid (chmodCell) for this exact
+          // reason, here it had been forgotten.
           bordered: true
           hasCursor: chipMouse.containsMouse
           Accessible.role: Accessible.Button

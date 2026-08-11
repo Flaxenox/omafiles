@@ -38,10 +38,10 @@ Item {
     return false
   }
 
-  // Sigue visible durante el fundido de salida (opacity animándose a 0), no
-  // solo mientras opened -- misma técnica que shared/ModalSurface para que los
-  // diálogos de confirmación entren/salgan igual que el resto (fade+scale
-  // 120 ms OutCubic, scrim sincronizado) en vez de aparecer/desaparecer de golpe.
+  // Stays visible during the fade-out (opacity animating to 0), not
+  // only while opened -- same technique as shared/ModalSurface so that the
+  // confirmation dialogs enter/exit like the rest (fade+scale
+  // 120 ms OutCubic, synchronized scrim) instead of appearing/disappearing all at once.
   visible: opened || backdrop.opacity > 0
 
   Rectangle {
@@ -51,8 +51,8 @@ Item {
     opacity: root.opened ? 1 : 0
     Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-    // enabled solo mientras está abierto: durante el fundido de salida el clic
-    // no debe volver a disparar canceled() ni bloquear lo de debajo.
+    // enabled only while it's open: during the fade-out the click
+    // must not trigger canceled() again nor block what's below.
     MouseArea { anchors.fill: parent; enabled: root.opened; onClicked: root.canceled() }
 
     BorderSurface {

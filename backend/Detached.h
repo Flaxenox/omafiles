@@ -4,14 +4,13 @@
 #include <QVariantList>
 #include <qqmlregistration.h>
 
-// Backend C++ de services/Detached.qml (Fase 5.C, josema). Ejecucion
-// "dispara y olvida" de un proceso externo -- sin seguimiento de
-// resultado, sin busy/cancel (para eso, Omafiles.Backend.ProcessRunner).
-// Respalda con QProcess::startDetached la MISMA API que la implementacion
-// Quickshell sobre Quickshell.execDetached() -- ver services/Detached.qml
-// para el contrato.
+// C++ backend for services/Detached.qml (Phase 5.C, josema). "Fire and
+// forget" execution of an external process -- no result tracking, no
+// busy/cancel (for that, Omafiles.Backend.ProcessRunner). Backs with
+// QProcess::startDetached the SAME API as the Quickshell implementation over
+// Quickshell.execDetached() -- see services/Detached.qml for the contract.
 //
-// Singleton QML (Omafiles.Backend.Detached): sin estado, se consume como
+// QML singleton (Omafiles.Backend.Detached): stateless, consumed as
 // Detached.run([...]).
 class Detached : public QObject {
   Q_OBJECT
@@ -21,8 +20,8 @@ class Detached : public QObject {
 public:
   explicit Detached(QObject *parent = nullptr);
 
-  // Lanza `args` (programa + argumentos) desatendido y vuelve al
-  // instante. No-op si la lista viene vacia (mismo contrato benigno que
-  // Quickshell.execDetached ante una lista sin programa).
+  // Launches `args` (program + arguments) detached and returns
+  // immediately. No-op if the list is empty (same benign contract as
+  // Quickshell.execDetached with a program-less list).
   Q_INVOKABLE void run(const QVariantList &args);
 };

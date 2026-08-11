@@ -2,19 +2,19 @@ import QtQuick
 import "../state"
 import "../Utils.js" as Utils
 
-// Orden de la lista (nombre/tamaño/fecha/tipo, asc/desc) -- lógica de
-// negocio pura que vivía suelta en Omafiles.qml pese a no tocar ningún
-// Process ni necesitar ver otros subsistemas, solo SortState.sortKey/sortDesc/
-// entries. Encontrado al auditar Omafiles.qml contra la regla 3
-// ("toda lógica de negocio fuera de la UI") del prompt de arquitectura.
+// List sorting (name/size/date/type, asc/desc) -- pure business
+// logic that lived loose in Omafiles.qml despite not touching any
+// Process nor needing to see other subsystems, only SortState.sortKey/sortDesc/
+// entries. Found auditing Omafiles.qml against rule 3
+// ("all business logic outside the UI") of the architecture prompt.
 Item {
   property Item root: null
   property Item fileTypeUtils: null
 
 
-  // true cuando el orden pedido es el que ya devuelve C++ (DirectoryModel):
-  // nombre ascendente. En ese caso DirLister NO re-ordena (ver _sorted).
-  // Fase 10.A.
+  // true when the requested order is the one C++ already returns (DirectoryModel):
+  // name ascending. In that case DirLister does NOT re-sort (see _sorted).
+  // Phase 10.A.
   readonly property bool isDefaultOrder: SortState.sortKey === "name" && !SortState.sortDesc
 
   function compareEntries(a, b) {
@@ -33,8 +33,8 @@ Item {
     return SortState.sortDesc ? -result : result
   }
 
-  // Las carpetas siempre van antes que los ficheros -- el criterio de orden
-  // elegido solo decide cómo se ordena cada grupo entre sí.
+  // Folders always go before files -- the chosen sort criterion
+  // only decides how each group is sorted among itself.
   function sortEntries(list) {
     var dirs = list.filter(function (e) { return e.type === "dir" })
     var files = list.filter(function (e) { return e.type !== "dir" })

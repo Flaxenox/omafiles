@@ -2,16 +2,16 @@ import QtQuick
 import "../state"
 import "../services"
 
-// Búsqueda (filtro en vivo + búsqueda profunda en subcarpetas), ocultos,
-// editar ruta a mano, ir arriba/abajo del todo -- vigésimo componente
-// extraído de Omafiles.qml.
+// Search (live filter + deep search in subfolders), hidden files,
+// edit path by hand, go all the way up/down -- twentieth component
+// extracted from Omafiles.qml.
 Item {
   property Item root: null
   property Item navController: null
 
-  // La ListView principal (id "list" en Omafiles.qml) -- estas acciones
-  // resetean su scroll igual que refresh()/navigateTo() con una carpeta
-  // normal.
+  // The main ListView (id "list" in Omafiles.qml) -- these actions
+  // reset its scroll just like refresh()/navigateTo() with a normal
+  // folder.
   property Item list: null
   property Item selectionOps: null
   property Item sortOps: null
@@ -48,21 +48,21 @@ Item {
   }
 
   function runDeepSearch() {
-    // Fase 19: la búsqueda incremental solo arranca con 2+ caracteres; con
-    // 0-1 el buscador muestra el listado normal (ver restoreListing, llamado
-    // por el debounce de SearchBar).
+    // Phase 19: incremental search only starts with 2+ characters; with
+    // 0-1 the searcher shows the normal listing (see restoreListing, called
+    // by the SearchBar debounce).
     if (NavState.searchQuery.length < 2) return
     NavState.searchBusy = true
     list.contentY = list.originY
-    // Búsqueda GLOBAL indexada (Fase 26): SearchBackend consulta el índice del
-    // sistema (tracker3/plocate) y, si no hay ninguno, cae al SearchWorker
-    // recursivo desde currentPath. Cancelable; una nueva búsqueda invalida la
-    // anterior. La UI no sabe qué backend respondió.
+    // Indexed GLOBAL search (Phase 26): SearchBackend queries the system
+    // index (tracker3/plocate) and, if there is none, falls back to the
+    // recursive SearchWorker from currentPath. Cancelable; a new search
+    // invalidates the previous one. The UI doesn't know which backend responded.
     searchBackend.search(NavState.searchQuery, NavState.showHidden, NavState.currentPath)
   }
 
-  // Vuelve al listado normal de currentPath sin cerrar el buscador (Fase 19):
-  // lo llama el debounce de SearchBar cuando la consulta baja de 2 caracteres.
+  // Returns to the normal listing of currentPath without closing the searcher (Phase 19):
+  // called by the SearchBar debounce when the query drops below 2 characters.
   function restoreListing() {
     searchBackend.cancel()
     NavState.searchBusy = false
@@ -84,10 +84,10 @@ Item {
     list.positionViewAtIndex(last, ListView.Contain)
   }
 
-  // SearchBackend recorta a 200 y marca truncated=true si hubo más -- mismo
-  // contrato que daba SearchWorker/el script; el aviso de lista incompleta lo
-  // pinta la barra de estado. Las entradas YA vienen ordenadas por relevancia
-  // (no se pasan por sortOps: eso rompería ese orden).
+  // SearchBackend trims to 200 and marks truncated=true if there were more --
+  // same contract SearchWorker/the script gave; the incomplete-list notice is
+  // painted by the status bar. The entries ALREADY come sorted by relevance
+  // (they are not passed through sortOps: that would break that order).
   SearchBackend {
     id: searchBackend
     indexScript: Paths.resourceDir + "/search-index.sh"

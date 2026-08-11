@@ -4,7 +4,7 @@ ProcessWatcher::ProcessWatcher(QObject *parent)
     : QObject(parent), m_proc(new QProcess(this)) {
   connect(m_proc, &QProcess::readyReadStandardOutput, this,
           [this]() { drainLines(); });
-  // active depende del estado del QProcess -- avisar en cada transicion.
+  // active depends on the QProcess state -- notify on each transition.
   connect(m_proc, &QProcess::started, this,
           [this]() { emit activeChanged(); });
   connect(m_proc, &QProcess::finished, this,
@@ -19,9 +19,9 @@ void ProcessWatcher::start(const QVariantList &args) {
   if (args.isEmpty())
     return;
 
-  // Reinicio: si habia un vigilante vivo, matarlo y esperar a que muera
-  // antes de relanzar (QProcess::start se quejaria si sigue corriendo).
-  // inotifywait -m responde a SIGTERM enseguida.
+  // Restart: if there was a live watcher, kill it and wait for it to die
+  // before relaunching (QProcess::start would complain if it is still
+  // running). inotifywait -m responds to SIGTERM promptly.
   if (m_proc->state() != QProcess::NotRunning) {
     m_proc->terminate();
     if (!m_proc->waitForFinished(500))
@@ -42,7 +42,7 @@ void ProcessWatcher::start(const QVariantList &args) {
 void ProcessWatcher::stop() {
   if (m_proc->state() == QProcess::NotRunning)
     return;
-  m_proc->terminate(); // finished() emitira activeChanged
+  m_proc->terminate(); // finished() will emit activeChanged
 }
 
 void ProcessWatcher::drainLines() {

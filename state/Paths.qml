@@ -2,30 +2,30 @@ pragma Singleton
 import QtQuick
 import "../services"
 
-// Rutas y ubicaciones de ficheros de Omafiles (Fase 14.B, josema): antes
-// vivían como properties de OmafilesContent (homeDir/pluginDir/trashDir,
-// los cuatro *.json de estado, la caché de miniaturas y los marcadores por
-// defecto), leídas vía `property Item root` desde media docena de
-// controladores. Son configuración/rutas derivadas de $HOME, no estado del
-// composition root: aquí quedan como única fuente, sin god object.
+// File paths and locations of Omafiles (Phase 14.B, josema): before they
+// lived as properties of OmafilesContent (homeDir/pluginDir/trashDir,
+// the four state *.json, the thumbnail cache and the default
+// bookmarks), read via `property Item root` from half a dozen
+// controllers. They are configuration/paths derived from $HOME, not
+// composition-root state: here they stay as the single source, without a god object.
 //
-// Fase 29 (josema): Omafiles se desacopla de Omarchy y del repositorio. Las
-// rutas siguen el estándar XDG (honrando XDG_CONFIG_HOME / XDG_STATE_HOME /
-// XDG_CACHE_HOME con fallback a ~/.config, ~/.local/state, ~/.cache), la
-// config de usuario pasa de ~/.config/omarchy/omafiles a ~/.config/omafiles,
-// y `resourceDir` (donde viven los scripts .sh y el árbol QML) ya NO es el
-// directorio del plugin: lo resuelve main.cpp (dev-tree vs instalado) y lo
-// entrega por la variable de entorno OMAFILES_RESOURCE_DIR.
+// Phase 29 (josema): Omafiles is decoupled from Omarchy and the repository. The
+// paths follow the XDG standard (honoring XDG_CONFIG_HOME / XDG_STATE_HOME /
+// XDG_CACHE_HOME with fallback to ~/.config, ~/.local/state, ~/.cache), the
+// user config moves from ~/.config/omarchy/omafiles to ~/.config/omafiles,
+// and `resourceDir` (where the .sh scripts and the QML tree live) is NO longer the
+// plugin directory: main.cpp resolves it (dev-tree vs installed) and
+// delivers it via the OMAFILES_RESOURCE_DIR environment variable.
 //
-// Importa services/ (Env) igual que NavState/TabsState -- patrón ya
-// documentado para la capa state/. Env.get resuelve el backend C++
-// (services/Env.qml -> Omafiles.Backend.Env), no una env var de QML.
+// It imports services/ (Env) like NavState/TabsState -- a pattern already
+// documented for the state/ layer. Env.get resolves the C++ backend
+// (services/Env.qml -> Omafiles.Backend.Env), not a QML env var.
 QtObject {
   id: paths
 
   readonly property string homeDir: Env.get("HOME")
 
-  // --- Base XDG (con fallback a los valores por defecto de la spec) ---------
+  // --- XDG base (with fallback to the spec's default values) ---------
   function _xdg(varName, fallbackSubdir) {
     var v = Env.get(varName)
     return (v && v.charAt(0) === "/") ? v : homeDir + fallbackSubdir
@@ -35,15 +35,15 @@ QtObject {
   readonly property string xdgCacheHome: _xdg("XDG_CACHE_HOME", "/.cache")
   readonly property string xdgDataHome: _xdg("XDG_DATA_HOME", "/.local/share")
 
-  // --- Directorios propios de Omafiles (XDG) --------------------------------
+  // --- Omafiles' own directories (XDG) --------------------------------
   readonly property string configDir: xdgConfigHome + "/omafiles"
   readonly property string stateDir: xdgStateHome + "/omafiles"
   readonly property string cacheDir: xdgCacheHome + "/omafiles"
 
-  // Raíz de RECURSOS (scripts .sh, árbol QML): la fija main.cpp por env, según
-  // corra desde el árbol de desarrollo o desde la instalación en
-  // $XDG_DATA_HOME/omafiles. Fallback defensivo a la ruta instalada estándar
-  // por si la env no llegara (no debería).
+  // RESOURCE root (.sh scripts, QML tree): main.cpp sets it via env, depending
+  // on whether it runs from the development tree or from the installation in
+  // $XDG_DATA_HOME/omafiles. Defensive fallback to the standard installed path
+  // in case the env didn't arrive (it shouldn't).
   readonly property string resourceDir: {
     var r = Env.get("OMAFILES_RESOURCE_DIR")
     return (r && r.charAt(0) === "/") ? r : xdgDataHome + "/omafiles"
@@ -52,19 +52,19 @@ QtObject {
   readonly property string trashDir: xdgDataHome + "/Trash/files"
   readonly property string thumbCacheDir: cacheDir + "/thumbnails"
 
-  // Acciones definidas por el usuario (Fase 26): TOML opcional en la config XDG
-  // de Omafiles (Fase 29: antes vivía bajo ~/.config/omarchy/omafiles). No lo
-  // escribe la app -- lo edita el usuario a mano; la migración de la ubicación
-  // antigua la hace logic/LegacyMigration.qml en el primer arranque.
+  // User-defined actions (Phase 26): optional TOML in Omafiles' XDG
+  // config (Phase 29: before it lived under ~/.config/omarchy/omafiles). The app
+  // doesn't write it -- the user edits it by hand; the migration from the old
+  // location is done by logic/LegacyMigration.qml on the first startup.
   readonly property string actionsFile: configDir + "/actions.toml"
 
-  // Estado persistente (JsonStore los lee/escribe vía Persistence).
+  // Persistent state (JsonStore reads/writes them via Persistence).
   readonly property string bookmarksFile: stateDir + "/bookmarks.json"
   readonly property string recentFile: stateDir + "/recent.json"
   readonly property string sessionFile: stateDir + "/session.json"
   readonly property string bulkRenameHistoryFile: stateDir + "/bulk-rename-history.json"
 
-  // Marcadores de fábrica (se usan cuando bookmarks.json no existe todavía).
+  // Factory bookmarks (used when bookmarks.json doesn't exist yet).
   readonly property var defaultBookmarks: [
     { label: "Home", path: homeDir },
     { label: "Documents", path: homeDir + "/Documents" },

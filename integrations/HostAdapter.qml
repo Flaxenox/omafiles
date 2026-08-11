@@ -2,69 +2,69 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import "../services"
 
-// Contrato de host de Omafiles (Fase 18, josema) -- el ÚNICO artefacto que
-// formaliza lo que un frontend anfitrión debe aportar al núcleo. Hay dos
-// implementaciones que lo cumplen: integrations/quickshell/HostBridge.qml
-// (sobre FloatingWindow) e integrations/standalone/Main.qml (sobre
-// ApplicationWindow). El núcleo (core/OmafilesContent.qml) NO conoce ninguna
-// de las dos: expone open()/close()/opened + la señal closeRequested() y nada
-// más.
+// Omafiles host contract (Phase 18, josema) -- the ONLY artifact that
+// formalizes what a host frontend must provide to the core. There are two
+// implementations that fulfill it: integrations/quickshell/HostBridge.qml
+// (over FloatingWindow) and integrations/standalone/Main.qml (over
+// ApplicationWindow). The core (core/OmafilesContent.qml) knows neither
+// of the two: it exposes open()/close()/opened + the closeRequested() signal and nothing
+// else.
 //
-// El contrato se divide en:
+// The contract is divided into:
 //
-//   1. Ventana/ciclo de vida  -- ESPECÍFICO del host, lo implementa cada
-//      ventana anfitriona sobre su propio tipo (FloatingWindow /
-//      ApplicationWindow). Cada host DEBE exponer:
-//        · show()               mostrar la ventana
-//        · hide()               ocultarla (sin destruir estado)
-//        · close()              cerrarla
-//        · signal closedExternally()  la ventana se fue por un mecanismo que
-//                               el host no inició (botón de cerrar del WM)
+//   1. Window/lifecycle  -- host-SPECIFIC, implemented by each
+//      host window over its own type (FloatingWindow /
+//      ApplicationWindow). Each host MUST expose:
+//        · show()               show the window
+//        · hide()               hide it (without destroying state)
+//        · close()              close it
+//        · signal closedExternally()  the window went away by a mechanism that
+//                               the host did not initiate (the WM's close button)
 //
-//   2. Geometría              -- HOST-AGNÓSTICO, vive aquí y lo comparten los
-//      dos hosts. Se limita al TAMAÑO: en Wayland el cliente no controla su
-//      posición (la fija el compositor), así que "recordar posición" y
-//      "centrar" no son capacidades del cliente -- center() es un no-op
-//      documentado y solo persiste width/height.
+//   2. Geometry              -- HOST-AGNOSTIC, lives here and is shared by the
+//      two hosts. It's limited to SIZE: on Wayland the client doesn't control its
+//      position (the compositor fixes it), so "remember position" and
+//      "center" are not client capabilities -- center() is a documented
+//      no-op and it only persists width/height.
 //
-// Las demás capacidades que a veces se piensan como "de host" (tema,
-// notificaciones, abrir-externo, entorno, I/O de procesos) NO pasan por aquí:
-// ya están abstraídas capa a capa en qs.Commons (tema) y services/ (Notifier,
-// Detached, Env, ProcessRunner...), con la misma API en ambos frontends. Ver
-// ARCHITECTURE.md ("Host contract") y el informe de la Fase 18.
+// The other capabilities sometimes thought of as "host" ones (theme,
+// notifications, open-external, environment, process I/O) do NOT go through here:
+// they are already abstracted layer by layer in qs.Commons (theme) and services/ (Notifier,
+// Detached, Env, ProcessRunner...), with the same API in both frontends. See
+// ARCHITECTURE.md ("Host contract") and the Phase 18 report.
 QtObject {
   id: adapter
 
-  // La ventana anfitriona (FloatingWindow o ApplicationWindow). Ambas
-  // exponen width/height; cada host aplica el tamaño restaurado a su propia
-  // propiedad de tamaño (implicitWidth/Height en Quickshell, width/height en
-  // Qt6) desde el manejador de sizeRestored.
+  // The host window (FloatingWindow or ApplicationWindow). Both
+  // expose width/height; each host applies the restored size to its own
+  // size property (implicitWidth/Height in Quickshell, width/height in
+  // Qt6) from the sizeRestored handler.
   property var window: null
 
-  // Fichero de estado de ventana, compartido por los dos frontends (el tamaño
-  // es preferencia "de la ventana de Omafiles", no del host). Mismo directorio
-  // ~/.local/state/omafiles/ que el resto de la persistencia.
+  // Window state file, shared by the two frontends (the size
+  // is an "Omafiles window" preference, not a host one). Same directory
+  // ~/.local/state/omafiles/ as the rest of the persistence.
   readonly property string _file: Env.get("HOME") + "/.local/state/omafiles/window.json"
 
-  // Emitida por restore() cuando hay un tamaño guardado válido -- el host lo
-  // aplica a su propiedad de tamaño concreta.
+  // Emitted by restore() when there is a valid saved size -- the host applies it
+  // to its concrete size property.
   signal sizeRestored(int w, int h)
 
-  // Lee el tamaño guardado (async: llega por onLoaded). El host llama a esto
-  // en Component.onCompleted.
+  // Reads the saved size (async: arrives via onLoaded). The host calls this
+  // in Component.onCompleted.
   function restore() {
     JsonStore.read(adapter._file)
   }
 
-  // Persiste el tamaño actual (con rebote, para no escribir en cada píxel de
-  // un arrastre de redimensionado).
+  // Persists the current size (debounced, so as not to write on every pixel of
+  // a resize drag).
   function remember() {
     _debounce.restart()
   }
 
-  // No-op documentado: en Wayland el compositor coloca las ventanas; el
-  // cliente no puede centrarse a sí mismo. Existe para completar el contrato
-  // y para que un futuro host X11/otro pueda darle cuerpo sin tocar llamadas.
+  // Documented no-op: on Wayland the compositor places the windows; the
+  // client can't center itself. It exists to complete the contract
+  // and so that a future X11/other host can give it a body without touching call sites.
   function center() {}
 
   function _write() {

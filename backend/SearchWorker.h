@@ -8,22 +8,22 @@
 #include <mutex>
 #include <qqmlregistration.h>
 
-// Búsqueda recursiva nativa (Fase 16, josema). Sustituto de
-// search-recursive.sh: recorre `root` en profundidad, filtra por subcadena
-// (insensible a mayúsculas) sobre el NOMBRE de fichero/carpeta, salta los
-// ocultos salvo showHidden, y devuelve hasta 201 entradas con la misma forma
-// que DirectoryModel ({type,name,size,mtime,link}) -- `name` es la ruta
-// RELATIVA a root, para que el resto del código (unir con currentPath,
-// renombrar, borrar, abrir...) funcione igual que con el script.
+// Native recursive search (Phase 16, josema). Replacement for
+// search-recursive.sh: walks `root` in depth, filters by substring
+// (case-insensitive) over the file/folder NAME, skips
+// hidden ones unless showHidden, and returns up to 201 entries with the same
+// shape as DirectoryModel ({type,name,size,mtime,link}) -- `name` is the path
+// RELATIVE to root, so the rest of the code (join with currentPath,
+// rename, delete, open...) works the same as with the script.
 //
-// Async (QThreadPool) y cancelable: cada search() abre una "generación"; una
-// nueva búsqueda o cancel() invalida la anterior (ni recorre de más ni emite
-// resultados obsoletos). Se piden 201 a propósito -- results() marca
-// truncated=true si hubo más de 200 y recorta a 200, igual que el contrato
-// del script (el lado QML avisa de lista incompleta).
+// Async (QThreadPool) and cancelable: each search() opens a "generation"; a
+// new search or cancel() invalidates the previous one (neither walks too much
+// nor emits obsolete results). 201 are requested on purpose -- results() marks
+// truncated=true if there were more than 200 and trims to 200, just like the
+// script's contract (the QML side warns of an incomplete list).
 //
-// Instanciable (QML_ELEMENT, como DirectoryModel/ProcessRunner): SearchOps
-// tiene su propia instancia. Sin dependencia de Quickshell.
+// Instantiable (QML_ELEMENT, like DirectoryModel/ProcessRunner): SearchOps
+// has its own instance. No dependency on Quickshell.
 class SearchWorker : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -32,28 +32,29 @@ public:
   explicit SearchWorker(QObject *parent = nullptr);
   ~SearchWorker() override;
 
-  // Lanza una búsqueda recursiva bajo `root`. Vuelve al instante; el
-  // resultado llega por results() en el hilo de UI. Query vacía no busca.
+  // Launches a recursive search under `root`. Returns immediately; the
+  // result arrives via results() on the UI thread. An empty query does not
+  // search.
   Q_INVOKABLE void search(const QString &root, const QString &query,
                           bool showHidden);
-  // Cancela la búsqueda en curso (invalida su generación): no se emite
-  // resultado. Idempotente.
+  // Cancels the search in progress (invalidates its generation): no result
+  // is emitted. Idempotent.
   Q_INVOKABLE void cancel();
 
 signals:
-  // Resultados de la última búsqueda vigente. `entries` son objetos
-  // {type,name,size,mtime,link}; `truncated` = había más de 200 coincidencias.
+  // Results of the last active search. `entries` are objects
+  // {type,name,size,mtime,link}; `truncated` = there were more than 200 matches.
   void results(const QVariantList &entries, bool truncated);
 
 private:
-  // Generación de la búsqueda vigente. search() la incrementa y la captura;
-  // el worker descarta (no emite) si dejó de ser la vigente -- cubre tanto
-  // cancel() como una búsqueda que supera a otra.
+  // Generation of the active search. search() increments and captures it;
+  // the worker discards (does not emit) if it stopped being the active one --
+  // covers both cancel() and a search that supersedes another.
   std::atomic<quint64> m_gen{0};
 
-  // Guardia de vida contra el `this` colgante (mismo patrón que
-  // DirectoryModel/FileOperations): un worker que termine tras destruirse el
-  // objeto comprobaría `alive` bajo el mutex antes de entregar.
+  // Life guard against the dangling `this` (same pattern as
+  // DirectoryModel/FileOperations): a worker that finishes after the object is
+  // destroyed would check `alive` under the mutex before delivering.
   struct Life {
     std::mutex mtx;
     bool alive = true;

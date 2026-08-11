@@ -2,18 +2,18 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Barra lateral (marcadores/recientes/unidades/red). Décimo componente
-// extraído de Omafiles.qml, y el primero que no es un diálogo modal --
-// está siempre visible, así que no hace falta forzar ninguna propiedad
-// a mano para probarlo en vivo, basta con reiniciar el shell y mirar.
+// Sidebar (bookmarks/recents/drives/network). Tenth component
+// extracted from Omafiles.qml, and the first that is not a modal dialog --
+// it's always visible, so no property needs to be forced by
+// hand to test it live, just restart the shell and look.
 //
-// Más superficie de interfaz que los anteriores: los constructores de
-// icono/acciones de menú contextual (iconForBookmark, bookmarkActions,
-// etc.) se pasan como referencias a función -- QML permite tratar una
-// function de nivel raíz como un valor normal -- en vez de intentar
-// replicar su lógica aquí (a diferencia de ChmodPanel.qml, donde SÍ
-// mereció la pena reproducir un cálculo pequeño en local, aquí son
-// demasiadas funciones y algunas leen Paths.homeDir/trashDir).
+// More interface surface than the previous ones: the icon/context-menu-action
+// builders (iconForBookmark, bookmarkActions,
+// etc.) are passed as function references -- QML allows treating a
+// root-level function as a normal value -- instead of trying to
+// replicate their logic here (unlike ChmodPanel.qml, where it WAS
+// worth reproducing a small calculation locally; here there are
+// too many functions and some read Paths.homeDir/trashDir).
 Item {
   id: root
 
@@ -23,13 +23,13 @@ Item {
   property var networkMounts: []
   property string currentPath: ""
   property string dropHoverPath: ""
-  // Device path cuya expulsión está en curso -> spinner del botón de eject
-  // (Fase 21). Lo alimenta MainLayout desde MountsState.ejectingDevice.
+  // Device path whose ejection is in progress -> eject button spinner
+  // (Phase 21). Fed by MainLayout from MountsState.ejectingDevice.
   property string ejectingDevice: ""
 
-  // Item contra el que mapToItem() calcula la posición del menú
-  // contextual -- en Omafiles.qml es "card" (el BorderSurface raíz del
-  // panel), que un componente aparte no puede ver por su cuenta.
+  // Item against which mapToItem() computes the context menu's
+  // position -- in Omafiles.qml it's "card" (the panel's root BorderSurface),
+  // which a separate component cannot see on its own.
   property Item positionRelativeTo: null
 
   property var iconForBookmark: null
@@ -55,9 +55,9 @@ Item {
 
   Column {
     id: sidebar
-    // Sigue el ancho real del componente (lo fija MainLayout), no un 160 fijo:
-    // así los separadores/cabeceras/filas (todos width: sidebar.width) ocupan
-    // todo el ancho. Antes, al ensanchar la Sidebar, se quedaban cortos.
+    // Follows the component's real width (set by MainLayout), not a fixed 160:
+    // so the separators/headers/rows (all width: sidebar.width) occupy
+    // the full width. Before, on widening the Sidebar, they fell short.
     width: parent.width
     height: parent.height
     spacing: Style.spacing.md
@@ -78,9 +78,9 @@ Item {
       model: root.bookmarks
 
       CursorSurface {
-        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
-        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
-        // rebotes; la opacidad no bloquea el clic.
+        // Phase 22: appears with a short fade (120 ms) when the delegate is created
+        // (plugging in a USB, mounting an ISO, adding a bookmark...). No
+        // bounces; the opacity doesn't block the click.
         OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path
@@ -95,10 +95,10 @@ Item {
         Accessible.selected: isCurrent
 
         DropArea {
-          // Deshabilitado para marcadores de fichero -- soltar
-          // algo "sobre un fichero" no tiene destino real (a
-          // diferencia de una carpeta), destDir tendría que ser un
-          // directorio.
+          // Disabled for file bookmarks -- dropping
+          // something "onto a file" has no real destination (unlike
+          // a folder), destDir would have to be a
+          // directory.
           anchors.fill: parent
           enabled: modelData.type !== "file"
           keys: ["text/uri-list"]
@@ -193,9 +193,9 @@ Item {
       model: root.recentFiles
 
       CursorSurface {
-        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
-        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
-        // rebotes; la opacidad no bloquea el clic.
+        // Phase 22: appears with a short fade (120 ms) when the delegate is created
+        // (plugging in a USB, mounting an ISO, adding a bookmark...). No
+        // bounces; the opacity doesn't block the click.
         OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         width: sidebar.width
@@ -291,9 +291,9 @@ Item {
       model: root.mounts
 
       CursorSurface {
-        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
-        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
-        // rebotes; la opacidad no bloquea el clic.
+        // Phase 22: appears with a short fade (120 ms) when the delegate is created
+        // (plugging in a USB, mounting an ISO, adding a bookmark...). No
+        // bounces; the opacity doesn't block the click.
         OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path
@@ -308,8 +308,8 @@ Item {
         Accessible.selected: isCurrent
 
         DropArea {
-          // Solo unidades ya montadas -- soltar en una sin montar no
-          // tiene destino real todavía.
+          // Only already-mounted drives -- dropping on an unmounted one has
+          // no real destination yet.
           anchors.fill: parent
           enabled: modelData.mounted
           keys: ["text/uri-list"]
@@ -349,8 +349,8 @@ Item {
           font.weight: Font.Medium
           color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
           elide: Text.ElideRight
-          // Reserva sitio para el botón de eject cuando el dispositivo es
-          // expulsable, para que el nombre no salte al aparecer en hover.
+          // Reserves room for the eject button when the device is
+          // ejectable, so the name doesn't jump when it appears on hover.
           width: sidebar.width - Style.spacing.sm * 2 - mountIcon.width - Style.spacing.xs
             - (parent.modelData.removable ? Style.font.title + Style.spacing.sm : 0)
         }
@@ -376,13 +376,13 @@ Item {
           }
         }
 
-        // Botón de expulsión (Fase 21): solo en dispositivos expulsables.
-        // Oculto en reposo; aparece con fade suave (120 ms) + leve
-        // deslizamiento de 3 px al pasar el ratón por la fila (estética Omarchy
-        // Quattro, sin rebotes). Mientras la expulsión está en curso muestra un
-        // spinner y no acepta más clics; la fila desaparece sola cuando
-        // UDisksWatcher refresca el listado (sin timers). Reutiliza
-        // mountOps.ejectMount vía la señal mountEjectRequested.
+        // Eject button (Phase 21): only on ejectable devices.
+        // Hidden at rest; appears with a smooth fade (120 ms) + slight
+        // 3 px slide on hovering the row (Omarchy Quattro aesthetic,
+        // no bounces). While the ejection is in progress it shows a
+        // spinner and accepts no more clicks; the row disappears on its own when
+        // UDisksWatcher refreshes the listing (no timers). Reuses
+        // mountOps.ejectMount via the mountEjectRequested signal.
         Item {
           id: ejectSlot
           readonly property var mount: parent.modelData
@@ -403,19 +403,19 @@ Item {
             width: Style.font.title
             height: Style.font.title
             visible: !ejectSlot.ejecting
-            text: "\u{F01EA}" // nf-md-eject (verificado en el cmap de la fuente)
+            text: "\u{F01EA}" // nf-md-eject (verified in the font's cmap)
             fontFamily: Style.font.family
             fontSize: Style.font.icon
             color: ejectSlot.isCurrent ? Color.menu.selectedText : Color.menu.text
-            // Siempre visible pero discreto en reposo (Omarchy Quattro), más
-            // brillante al pasar el ratón por la fila -- oculto del todo (0.0)
-            // era imposible de descubrir.
+            // Always visible but discreet at rest (Omarchy Quattro), more
+            // bright on hovering the row -- fully hidden (0.0)
+            // was impossible to discover.
             opacity: ejectSlot.hovered ? 0.95 : Style.emphasis.muted
             Behavior on opacity { NumberAnimation { duration: 120 } }
             Behavior on anchors.rightMargin { NumberAnimation { duration: 120 } }
           }
 
-          // Spinner: punto en órbita (sin glyph ni timers), solo al expulsar.
+          // Spinner: dot in orbit (no glyph or timers), only while ejecting.
           Item {
             id: ejectSpinner
             anchors.centerIn: parent
@@ -462,11 +462,11 @@ Item {
       height: Style.spacing.xs
     }
 
-    // A diferencia de DEVICES/marcadores, esta cabecera y la fila de
-    // "Connect to server..." se ven siempre, con mounts activos o
-    // sin ellos -- si dependieran de root.networkMounts.length > 0
-    // nadie podría descubrir la función la primera vez, cuando por
-    // definición todavía no hay ninguna conexión de red activa.
+    // Unlike DEVICES/bookmarks, this header and the
+    // "Connect to server..." row are always shown, with active mounts or
+    // without them -- if they depended on root.networkMounts.length > 0
+    // no one could discover the feature the first time, when by
+    // definition there is not yet any active network connection.
     PanelSectionHeader {
       text: "NETWORK"
       foreground: Color.menu.text
@@ -483,9 +483,9 @@ Item {
       model: root.networkMounts
 
       CursorSurface {
-        // Fase 22: aparece con un fade corto (120 ms) al crearse el delegado
-        // (conectar un USB, montar una ISO, añadir un marcador...). Sin
-        // rebotes; la opacidad no bloquea el clic.
+        // Phase 22: appears with a short fade (120 ms) when the delegate is created
+        // (plugging in a USB, mounting an ISO, adding a bookmark...). No
+        // bounces; the opacity doesn't block the click.
         OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
         required property var modelData
         readonly property bool isCurrent: root.currentPath === modelData.path

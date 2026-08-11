@@ -1,32 +1,32 @@
 import QtQuick
 
-// Servicio de búsqueda GLOBAL. Abstrae tres backends tras un ÚNICO contrato
-// (search / cancel / señal results), idéntico al de SearchWorker, para que la
-// UI nunca sepa cuál respondió:
+// GLOBAL search service. Abstracts three backends behind a SINGLE contract
+// (search / cancel / results signal), identical to SearchWorker's, so the
+// UI never knows which one responded:
 //
-//   1. Índice del sistema -- scripts/search-index.sh (tracker3 -> plocate ->
-//      locate). Rápido, NO recorre disco, devuelve rutas ABSOLUTAS.
-//   2. SearchWorker recursivo (C++), SOLO si el script sale con código 2
-//      (ningún índice instalado): recorre desde `fallbackRoot`, rutas
-//      RELATIVAS a esa carpeta. Es el modo degradado -- mismo resultado que
-//      antes de esta fase.
+//   1. System index -- scripts/search-index.sh (tracker3 -> plocate ->
+//      locate). Fast, does NOT walk disk, returns ABSOLUTE paths.
+//   2. Recursive SearchWorker (C++), ONLY if the script exits with code 2
+//      (no index installed): walks from `fallbackRoot`, paths
+//      RELATIVE to that folder. It is the degraded mode -- same result as
+//      before this phase.
 //
-// Las entradas indexadas llevan {type,name(basename),path,parent,...} con ruta
-// absoluta; las del fallback conservan {type,name(relativo),...}. Utils
-// .entryPath() unifica ambas para el resto del código (miniaturas, abrir...).
+// The indexed entries carry {type,name(basename),path,parent,...} with an
+// absolute path; the fallback ones keep {type,name(relative),...}. Utils
+// .entryPath() unifies both for the rest of the code (thumbnails, open...).
 //
-// El orden de relevancia lo aplica aquí _rank() (no el script ni sortOps):
-// exacto > prefijo > subcadena > solo-en-ruta; a igualdad, ruta más corta y
-// luego alfabético. Es lo que espera Nautilus/Spotlight: lo más "cercano" al
-// término, arriba.
+// The relevance order is applied here by _rank() (not the script nor sortOps):
+// exact > prefix > substring > path-only; on ties, shorter path and
+// then alphabetical. It is what Nautilus/Spotlight expects: the "closest" to
+// the term, on top.
 Item {
   id: backend
 
-  // Ruta absoluta al script de índice de NOMBRES. La fija el llamador (logic/,
-  // que sí conoce Paths) para no acoplar services/ a state/.
+  // Absolute path to the NAME index script. The caller sets it (logic/,
+  // which does know Paths) so as not to couple services/ to state/.
   property string indexScript: ""
-  // Script de búsqueda por CONTENIDO (ripgrep). Cuarto backend, se dispara con
-  // el prefijo `content:` en la consulta (Fase 26 / Beta 3).
+  // CONTENT search script (ripgrep). Fourth backend, triggered with
+  // the `content:` prefix in the query (Phase 26 / Beta 3).
   property string contentScript: ""
 
   signal results(var entries, bool truncated)
@@ -36,18 +36,18 @@ Item {
   property string _query: ""
   property string _root: ""
   property bool _hidden: false
-  // "name" (índice/recursivo) o "content" (ripgrep) -- fija el parseo y si hay
-  // fallback recursivo (solo en name).
+  // "name" (index/recursive) or "content" (ripgrep) -- fixes the parsing and whether there is
+  // a recursive fallback (only in name).
   property string _mode: "name"
 
-  // Coalescing de la consulta EN VUELO. ProcessRunner.start() se niega si ya hay
-  // un proceso vivo (devuelve false), así que teclear rápido perdería las
-  // búsquedas intermedias mientras el plocate del primer prefijo (cientos de
-  // `stat` en bash, ~200ms) sigue corriendo. En vez de encolar, guardamos SOLO
-  // la consulta más reciente y cancelamos la actual; al morir (onFinished) se
-  // relanza la pendiente. Resultado: "buscar según tecleas" fluido, sin acumular
-  // procesos ni bloquear -- es lo que pedía el encargo ("cancelar búsquedas
-  // anteriores, sin bloquear la UI").
+  // Coalescing of the IN-FLIGHT query. ProcessRunner.start() refuses if there is already
+  // a live process (returns false), so typing fast would lose the
+  // intermediate searches while the plocate of the first prefix (hundreds of
+  // `stat` in bash, ~200ms) keeps running. Instead of queueing, we keep ONLY
+  // the most recent query and cancel the current one; on its death (onFinished) the
+  // pending one is relaunched. Result: fluid "search as you type", without accumulating
+  // processes nor blocking -- it is what the assignment asked for ("cancel previous
+  // searches, without blocking the UI").
   property bool _pending: false
   property string _pendingQuery: ""
   property string _pendingRoot: ""
@@ -59,7 +59,7 @@ Item {
       _pendingQuery = query
       _pendingRoot = fallbackRoot
       _pendingHidden = showHidden
-      indexProc.cancel() // el relanzado ocurre en onFinished(cancelled)
+      indexProc.cancel() // the relaunch happens in onFinished(cancelled)
       recursive.cancel()
       return
     }
@@ -67,28 +67,28 @@ Item {
   }
 
   function _startNow(query, showHidden, fallbackRoot) {
-    recursive.cancel() // corta cualquier fallback recursivo aún en curso
+    recursive.cancel() // cuts any recursive fallback still in progress
     _query = query
     _root = fallbackRoot
     _hidden = showHidden
-    // Modo CONTENIDO: prefijo `content:`. El término va detrás, sin comillas
-    // envolventes (`content:"foo bar"` -> foo bar). Busca DENTRO de los ficheros
-    // del árbol de fallbackRoot (la carpeta actual), como `rg` en su cwd.
+    // CONTENT mode: `content:` prefix. The term goes after, without enclosing
+    // quotes (`content:"foo bar"` -> foo bar). Searches INSIDE the files
+    // of the fallbackRoot tree (the current folder), like `rg` in its cwd.
     if (query.indexOf("content:") === 0) {
       _mode = "content"
       var term = query.substring(8)
       if ((term.charAt(0) === '"' && term.charAt(term.length - 1) === '"')
           || (term.charAt(0) === "'" && term.charAt(term.length - 1) === "'"))
         term = term.substring(1, term.length - 1)
-      if (term.length < 2) { // término muy corto: nada que buscar todavía
+      if (term.length < 2) { // term too short: nothing to search yet
         backend.results([], false)
         return
       }
       indexProc.start([contentScript, term, fallbackRoot, String(maxResults + 1)])
       return
     }
-    // Modo NOMBRE (índice del sistema). Pedimos maxResults+1 para marcar
-    // truncated con exactitud (el script sobre-pide para compensar el filtrado).
+    // NAME mode (system index). We request maxResults+1 to mark
+    // truncated exactly (the script over-requests to compensate for the filtering).
     _mode = "name"
     indexProc.start([indexScript, query, String(maxResults + 1), showHidden ? "1" : "0"])
   }
@@ -103,7 +103,7 @@ Item {
     id: indexProc
     onFinished: function (result) {
       if (backend._pending) {
-        // Se canceló para relanzar con la consulta más reciente (coalescing).
+        // It was cancelled to relaunch with the most recent query (coalescing).
         backend._pending = false
         backend._startNow(backend._pendingQuery, backend._pendingHidden, backend._pendingRoot)
         return
@@ -111,8 +111,8 @@ Item {
       if (result.cancelled)
         return
       if (result.exitCode === 2) {
-        // Sin backend disponible. En NOMBRE: recursivo desde la carpeta actual.
-        // En CONTENIDO: ripgrep no instalado, no hay fallback -> vacío.
+        // No backend available. In NAME: recursive from the current folder.
+        // In CONTENT: ripgrep not installed, no fallback -> empty.
         if (backend._mode === "content")
           backend.results([], false)
         else
@@ -128,16 +128,16 @@ Item {
 
   SearchWorker {
     id: recursive
-    // Modo degradado: se re-emite tal cual (rutas relativas, sin re-ordenar).
+    // Degraded mode: it is re-emitted as is (relative paths, without re-sorting).
     onResults: function (entries, truncated) {
       backend.results(entries, truncated)
     }
   }
 
-  // Parsea el TSV de content-search.sh ("RUTA\tLINEA\tSNIPPET" por línea). El
-  // orden lo da ripgrep (recorrido del árbol); no se re-ordena. Cada línea es un
-  // resultado independiente (un mismo fichero aparece una vez por coincidencia,
-  // con su línea) -> saltar a esa línea concreta. Lleva {line, snippet} extra.
+  // Parses the TSV of content-search.sh ("PATH\tLINE\tSNIPPET" per line). The
+  // order is given by ripgrep (tree walk); it is not re-sorted. Each line is an
+  // independent result (the same file appears once per match,
+  // with its line) -> jump to that specific line. It carries {line, snippet} extra.
   function _parseContent(stdout) {
     var lines = stdout.split("\n")
     var out = []
@@ -171,8 +171,8 @@ Item {
     return { "entries": out, "truncated": truncated }
   }
 
-  // Parsea el TSV del script ("tipo\tRUTA_ABSOLUTA" por línea) y lo ordena por
-  // relevancia. Devuelve {entries, truncated}.
+  // Parses the script's TSV ("type\tABSOLUTE_PATH" per line) and sorts it by
+  // relevance. Returns {entries, truncated}.
   function _rank(stdout, query) {
     var q = query.toLowerCase()
     var lines = stdout.split("\n")

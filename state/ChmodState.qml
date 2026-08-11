@@ -1,31 +1,31 @@
 pragma Singleton
 import QtQuick
 
-// Estado del diálogo de permisos (chmod) -- octavo singleton de la capa
-// state/. dialogs/ChmodPanel.qml es puramente presentacional (propio
-// `id: root` local, alimentado por binding desde Omafiles.qml), así que
-// no necesita importar esto directamente.
+// State of the permissions (chmod) dialog -- eighth singleton of the
+// state/ layer. dialogs/ChmodPanel.qml is purely presentational (its own
+// local `id: root`, fed by binding from Omafiles.qml), so it
+// does not need to import this directly.
 QtObject {
   property bool chmodOpen: false
-  // Lista de nombres en vez de un string suelto -- chmod admite aplicar
-  // el mismo modo a toda la selección, no solo a un fichero.
+  // A list of names instead of a single string -- chmod supports applying
+  // the same mode to the whole selection, not just one file.
   property var chmodNames: []
-  // true si al abrir el diálogo los ítems seleccionados NO tenían todos
-  // el mismo modo octal -- chmodMode se deja en blanco en ese caso (no
-  // tiene sentido precargar el modo de "uno cualquiera" de ellos) y la UI
-  // avisa de que es una selección mixta.
+  // true if on opening the dialog the selected items did NOT all have
+  // the same octal mode -- chmodMode is left blank in that case (it does not
+  // make sense to preload the mode of "any one" of them) and the UI
+  // warns that it is a mixed selection.
   property bool chmodMixed: false
   property string chmodMode: ""
-  // true si al menos uno de los seleccionados es una carpeta -- controla
-  // si se muestra el toggle "Apply to subfolders" (chmod -R no tiene
-  // nada que ofrecer sobre una selección de solo ficheros).
+  // true if at least one of the selected is a folder -- controls
+  // whether the "Apply to subfolders" toggle is shown (chmod -R has
+  // nothing to offer over a files-only selection).
   property bool chmodHasDir: false
   property bool chmodRecursive: false
-  // { "<nombre>": "<modo octal previo>" }, capturado por PropertiesLoader
-  // al abrir el diálogo -- para poder deshacer. Restaura solo el modo del
-  // propio ítem seleccionado, NO el de su contenido si se aplicó con -R --
-  // capturar el árbol entero antes de cambiar nada sería mucho más caro
-  // (find+stat recursivo) para lo que pedía el hueco real (chmod era,
-  // junto a bulk rename, la única acción de riesgo sin ningún undo).
+  // { "<name>": "<previous octal mode>" }, captured by PropertiesLoader
+  // on opening the dialog -- so it can be undone. It restores only the mode of
+  // the selected item itself, NOT that of its content if applied with -R --
+  // capturing the whole tree before changing anything would be much more expensive
+  // (recursive find+stat) for what the real gap asked (chmod was,
+  // together with bulk rename, the only risky action without any undo).
   property var chmodOriginalModes: ({})
 }

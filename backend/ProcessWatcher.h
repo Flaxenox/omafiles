@@ -6,19 +6,19 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Backend C++ de services/ProcessWatcher.qml (Fase 5, josema). Respalda
-// con QProcess la MISMA API que la implementacion Quickshell sobre
-// Quickshell.Io.Process + SplitParser -- ver services/ProcessWatcher.qml
-// para el contrato. A diferencia de ProcessRunner, vigila un proceso que
-// NO termina solo (inotifywait -m): emite lineRead por cada linea de
-// stdout en vez de un resultado final. Se registra como tipo QML
-// Omafiles.Backend.ProcessWatcher y lo consume el adaptador
+// C++ backend for services/ProcessWatcher.qml (Phase 5, josema). Backs with
+// QProcess the SAME API as the Quickshell implementation over
+// Quickshell.Io.Process + SplitParser -- see services/ProcessWatcher.qml
+// for the contract. Unlike ProcessRunner, it watches a process that does
+// NOT end on its own (inotifywait -m): it emits lineRead for each line of
+// stdout instead of a final result. It is registered as the QML type
+// Omafiles.Backend.ProcessWatcher and consumed by the adapter
 // services/ProcessWatcher.qml.
 class ProcessWatcher : public QObject {
   Q_OBJECT
   QML_ELEMENT
 
-  // true mientras el proceso vigilado sigue vivo.
+  // true while the watched process is still alive.
   Q_PROPERTY(bool active READ active NOTIFY activeChanged)
 
 public:
@@ -26,23 +26,24 @@ public:
 
   bool active() const;
 
-  // Lanza `args` (programa + argumentos) en modo monitor. Si ya habia uno
-  // en marcha lo reinicia (mismo comportamiento que la version Quickshell,
-  // que ponia running=false antes de relanzar).
+  // Launches `args` (program + arguments) in monitor mode. If one was
+  // already running it restarts it (same behaviour as the Quickshell version,
+  // which set running=false before relaunching).
   Q_INVOKABLE void start(const QVariantList &args);
 
-  // Para el proceso vigilado. No-op si no hay nada corriendo.
+  // Stops the watched process. No-op if nothing is running.
   Q_INVOKABLE void stop();
 
 signals:
   void activeChanged();
-  // Una linea de salida del proceso vigilado (sin el salto final). El
-  // contenido suele dar igual -- basta con SABER que algo cambio.
+  // A line of output from the watched process (without the trailing
+  // newline). The content usually does not matter -- it is enough to KNOW
+  // that something changed.
   void lineRead(const QString &line);
 
 private:
   void drainLines();
 
   QProcess *m_proc;
-  QString m_buf; // resto sin terminar en salto de linea entre lecturas
+  QString m_buf; // leftover not terminated by a newline between reads
 };

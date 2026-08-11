@@ -20,16 +20,16 @@ QVariantList NetworkMounts::list() const {
 
   const auto dirs = gvfs.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
   for (const QFileInfo &fi : dirs) {
-    // Nombre interno del mount: "esquema:clave=valor,clave=valor,...".
+    // Internal mount name: "scheme:key=value,key=value,...".
     const QString name = fi.fileName();
     const int colon = name.indexOf(QLatin1Char(':'));
     const QString scheme = colon >= 0 ? name.left(colon) : name;
     const QString rest = colon >= 0 ? name.mid(colon + 1) : QString();
 
-    // Los valores del nombre de mount de gvfs vienen percent-encoded (un
-    // recurso "My Share" es share=My%20Share). Se decodifican de forma nativa
-    // con QUrl::fromPercentEncoding (UTF-8-aware) para que la etiqueta de la
-    // barra lateral salga legible (Fase 20, josema).
+    // The values in the gvfs mount name come percent-encoded (a
+    // "My Share" resource is share=My%20Share). They are decoded natively
+    // with QUrl::fromPercentEncoding (UTF-8-aware) so the sidebar label
+    // comes out readable (Phase 20, josema).
     QString host, share, user;
     const auto pairs = rest.split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &pair : pairs) {

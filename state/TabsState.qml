@@ -2,23 +2,23 @@ pragma Singleton
 import QtQuick
 import "../services"
 
-// Pestañas (cada una un panel visible, lado a lado) + historial
-// atrás/adelante de la pestaña ACTIVA -- vigesimoprimer y último
-// singleton de la capa state/. El más central de todos: currentPath/
-// _goToPath/refresh (que sí se quedan en Omafiles.qml, demasiado
-// centrales para mover) leen/escriben esto constantemente. Los valores
-// iniciales son solo un placeholder -- open() los reescribe siempre
-// antes de que el usuario vea nada (con el payload real, o restaurando
-// la sesión anterior vía Persistence.loadSession()).
+// Tabs (each one a visible panel, side by side) + back/forward history
+// of the ACTIVE tab -- twenty-first and last
+// singleton of the state/ layer. The most central of all: currentPath/
+// _goToPath/refresh (which do stay in Omafiles.qml, too
+// central to move) read/write this constantly. The initial values
+// are just a placeholder -- open() always rewrites them
+// before the user sees anything (with the real payload, or restoring
+// the previous session via Persistence.loadSession()).
 QtObject {
   readonly property string _initialHome: Env.get("HOME")
   property var tabs: [{ path: _initialHome, history: [_initialHome], historyIndex: 0 }]
   property int activeTabIndex: 0
-  // Historial atrás/adelante de la pestaña ACTIVA -- cada pestaña guarda
-  // el suyo propio en su objeto (campos history/historyIndex de arriba)
-  // y este par de properties es solo la "vista en curso" de esa
-  // pestaña, que se intercambia al cambiar de pestaña (ver
-  // switchToTab/newTab/etc. en logic/TabOps.qml).
+  // Back/forward history of the ACTIVE tab -- each tab keeps
+  // its own in its object (the history/historyIndex fields above)
+  // and this pair of properties is just the "current view" of that
+  // tab, swapped on changing tab (see
+  // switchToTab/newTab/etc. in logic/TabOps.qml).
   property var navHistory: [_initialHome]
   property int navHistoryIndex: 0
 }

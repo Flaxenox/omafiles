@@ -2,12 +2,12 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Botones de navegación (atrás/adelante/subir) -- decimocuarto componente
-// extraído de Omafiles.qml, compartido entre panel activo y de fondo.
-// Antes cada botón existía dos veces (uno en navRow, otro en bgHeaderRow)
-// con el mismo glyph/tamaño, y solo cambiaba a qué función de root
-// llamaban y de qué propiedad sacaban el "deshabilitado" (gris). Aquí eso
-// son tres señales y tres booleanos que ya resuelve quien llama.
+// Navigation buttons (back/forward/up) -- fourteenth component
+// extracted from Omafiles.qml, shared between the active and background panels.
+// Previously each button existed twice (one in navRow, another in bgHeaderRow)
+// with the same glyph/size, and only what function of root
+// they called and from what property they got the "disabled" (grey) changed. Here that
+// is three signals and three booleans that the caller already resolves.
 Row {
   id: root
 
@@ -31,7 +31,7 @@ Row {
 
     OpticalGlyph {
       anchors.centerIn: parent
-      // md-arrow_left, verificado contra el cmap real de la fuente.
+      // md-arrow_left, verified against the font's real cmap.
       text: "\u{F004D}"
       fontFamily: Style.font.family
       fontSize: Style.font.icon
@@ -50,7 +50,7 @@ Row {
 
     OpticalGlyph {
       anchors.centerIn: parent
-      // md-arrow_right, verificado contra el cmap real de la fuente.
+      // md-arrow_right, verified against the font's real cmap.
       text: "\u{F0054}"
       fontFamily: Style.font.family
       fontSize: Style.font.icon

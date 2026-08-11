@@ -4,21 +4,21 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Modo "dentro de un archivo" (zip/7z/rar/tar, navegación de solo lectura
-// sin extraer nada a disco) + confirmar/cancelar comprimir y extraer tras
-// resolver conflictos -- decimocuarto componente extraído de
-// Omafiles.qml. isArchive/isIso también se usan fuera del modo archivo en
-// sí (para elegir icono, decidir qué hace doble clic, menú contextual...),
-// pero son predicados puros sin Process propio, así que viajan aquí con
-// el resto en vez de quedarse sueltos en root.
+// "Inside an archive" mode (zip/7z/rar/tar, read-only navigation
+// without extracting anything to disk) + confirm/cancel compress and extract after
+// resolving conflicts -- fourteenth component extracted from
+// Omafiles.qml. isArchive/isIso are also used outside the archive mode
+// itself (to choose an icon, decide what double-click does, context menu...),
+// but they are pure predicates without their own Process, so they travel here with
+// the rest instead of staying loose in root.
 Item {
   property Item root: null
   property Item actionEngine: null
   property Item navController: null
   property Item fileTypeUtils: null
 
-  // La ListView principal (id "list" en Omafiles.qml) -- refreshArchiveListing()
-  // resetea su scroll igual que hace refresh() con una carpeta normal.
+  // The main ListView (id "list" in Omafiles.qml) -- refreshArchiveListing()
+  // resets its scroll just like refresh() does with a normal folder.
   property Item list: null
   property Item selectionOps: null
   property Item sortOps: null
@@ -44,11 +44,11 @@ Item {
     archiveListProc.start([Paths.resourceDir + "/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
   }
 
-  // Extrae SOLO ese fichero a una caché temporal (no todo el archivo) y lo
-  // abre con la app por defecto -- "unzip -p"/"tar xO"/etc. vuelcan un
-  // único miembro a stdout sin tocar disco más que ese archivo de salida,
-  // igual de eficiente que abrir un fichero normal aunque el .zip sea
-  // enorme.
+  // Extracts ONLY that file to a temporary cache (not the whole archive) and
+  // opens it with the default app -- "unzip -p"/"tar xO"/etc. dump a
+  // single member to stdout without touching disk beyond that output file,
+  // just as efficient as opening a normal file even if the .zip is
+  // huge.
   function openFileInArchive(entry) {
     var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
     var ext = fileTypeUtils.extOf(ArchiveState.archivePath)
@@ -58,11 +58,11 @@ Item {
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
     else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    // "--" antes del MIEMBRO (no del archivo): un miembro que empiece por "-"
-    // (p.ej. "-foo", "--bar", "-") lo tomaría tar como opciones y fallaría
-    // ("múltiples archivos requieren -M"). zip/7z/rar ya protegen el miembro
-    // por venir tras el "--" del archivo; tar necesita el suyo aquí (BUG-05).
-    // El archivo tras "xf" es siempre una ruta absoluta de Omafiles, nunca "-".
+    // "--" before the MEMBER (not the archive): a member starting with "-"
+    // (e.g. "-foo", "--bar", "-") would be taken by tar as options and would fail
+    // ("multiple archives require -M"). zip/7z/rar already protect the member
+    // by coming after the archive's "--"; tar needs its own here (BUG-05).
+    // The archive after "xf" is always an absolute Omafiles path, never "-".
     else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out

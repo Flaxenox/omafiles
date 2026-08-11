@@ -4,8 +4,8 @@ import qs.Commons
 import "../state"
 import "../services"
 
-// Copiar/cortar/pegar (portapapeles interno + sincronizado con
-// wl-copy/wl-paste del sistema) -- decimoctavo componente extraído de
+// Copy/cut/paste (internal clipboard + synced with the system's
+// wl-copy/wl-paste) -- eighteenth component extracted from
 // Omafiles.qml.
 Item {
   property Item root: null
@@ -31,17 +31,17 @@ Item {
     syncClipboardToSystem()
   }
 
-  // Antes clipboardPaths era solo interno -- copiar en Omafiles y pegar
-  // en otra app (o al revés) no funcionaba. text/uri-list es el tipo MIME
-  // más ampliamente reconocido (gestores de archivos, navegadores, apps
-  // de chat...) -- wl-copy solo puede servir un tipo por invocación, así
-  // que se prioriza compatibilidad amplia sobre poder distinguir cut/copy
-  // de cara a OTRAS apps (Omafiles sí distingue cut/copy para sus propias
-  // acciones vía clipboardMode; esto es solo para interoperar con fuera).
-  // Ruta(s) como texto plano al portapapeles -- para pegar en una
-  // terminal/chat/otra app, no confundir con copySelected() (que copia
-  // los FICHEROS para pegarlos con paste()). Varias seleccionadas ->
-  // una ruta por línea.
+  // Previously clipboardPaths was only internal -- copying in Omafiles and pasting
+  // in another app (or the other way around) did not work. text/uri-list is the MIME type
+  // most widely recognized (file managers, browsers, chat
+  // apps...) -- wl-copy can only serve one type per invocation, so
+  // broad compatibility is prioritized over being able to distinguish cut/copy
+  // for OTHER apps (Omafiles does distinguish cut/copy for its own
+  // actions via clipboardMode; this is only to interoperate with the outside).
+  // Path(s) as plain text to the clipboard -- to paste into a
+  // terminal/chat/another app, not to be confused with copySelected() (which copies
+  // the FILES to paste them with paste()). Several selected ->
+  // one path per line.
   function copyPathFor(entries) {
     if (!entries || entries.length === 0) return
     var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
@@ -53,17 +53,17 @@ Item {
       Detached.run(["wl-copy", "-c"])
       return
     }
-    // \r\n entre URIs (RFC 2483), no \n a secas -- el DnD mimeData de más
-    // abajo (dragMimeDataFor) ya lo hacía bien; esto lo iguala para que
-    // cualquier app externa que lea el portapapeles reciba el mismo
-    // formato spec-correcto sea cual sea el camino (copiar o arrastrar).
+    // \r\n between URIs (RFC 2483), not plain \n -- the DnD mimeData
+    // below (dragMimeDataFor) already did it right; this matches it so
+    // any external app that reads the clipboard receives the same
+    // spec-correct format whichever path (copy or drag).
     var uris = ClipboardState.clipboardPaths.map(function (p) {
       return "file://" + p.split("/").map(encodeURIComponent).join("/")
     }).join("\r\n")
     Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
   }
 
-  // mode: "all" (sin conflictos, tal cual) | "overwrite" | "skip"
+  // mode: "all" (no conflicts, as is) | "overwrite" | "skip"
   function runPaste(mode) {
     var conflictSet = {}
     ConflictState.pasteConflictNames.forEach(function (n) { conflictSet[n] = true })
@@ -85,12 +85,12 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       if (!isCut) {
-        // Copia NATIVA (Fase 13.A): FileOperations.copy en vez de `cp -r`.
-        // Copiar no tiene undo (deshacerlo es ambiguo, ver ActionEngine).
+        // NATIVE copy (Phase 13.A): FileOperations.copy instead of `cp -r`.
+        // Copy has no undo (undoing it is ambiguous, see ActionEngine).
         actionEngine.runNativeCopy(pairs, busyLabel, mode === "overwrite")
       } else {
-        // Mover NATIVO (Fase 13.B): FileOperations.move. Mismo modelo de undo
-        // (mover de vuelta / rehacer), ahora también nativo -- 0 shell.
+        // NATIVE move (Phase 13.B): FileOperations.move. Same undo model
+        // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
         actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {
           var label = pairs.length === 1
@@ -98,9 +98,9 @@ Item {
             : "move " + pairs.length + " items"
           var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
           actionEngine.pushUndo(label, function () {
-            return actionEngine.runNativeMove(reversed, "", false)      // deshacer: no-clobber
+            return actionEngine.runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return actionEngine.runNativeMove(pairs, "", overwrite)     // rehacer: como el original
+            return actionEngine.runNativeMove(pairs, "", overwrite)     // redo: like the original
           })
         })
       }

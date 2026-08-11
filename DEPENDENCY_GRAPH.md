@@ -2,12 +2,12 @@
 
 Generated from `property Item x` wiring between `logic/*.qml` components (UI
 element/dialog references excluded — this is component-to-component only).
-Regenerated 2026-08-09 after **Fase 14.D** (inyección de dependencias
-explícita): los controladores dejaron de usar `OmafilesContent` como fachada
-genérica y ahora reciben `actionEngine` / `navController` / `fileTypeUtils`
-directamente desde `core/ControllerRegistry.qml`. `KeyboardShortcuts` (que se
-instancia en `panels/ActiveFileList.qml`, no en el registry) se incluye por
-sus inyecciones `host*`.
+Regenerated 2026-08-09 after **Phase 14.D** (explicit dependency
+injection): the controllers stopped using `OmafilesContent` as a generic
+facade and now receive `actionEngine` / `navController` / `fileTypeUtils`
+directly from `core/ControllerRegistry.qml`. `KeyboardShortcuts` (which is
+instantiated in `panels/ActiveFileList.qml`, not in the registry) is included by
+its `host*` injections.
 
 ```mermaid
 graph LR
@@ -78,50 +78,50 @@ graph LR
   TabOps --> PreviewLoader
 ```
 
-Hojas (sin dependencias de `logic/`): `FileMeta`, `FileTypeUtils`,
+Leaves (no `logic/` dependencies): `FileMeta`, `FileTypeUtils`,
 `VideoThumbnails`.
 
-## El grafo YA NO es acíclico (a propósito, desde 14.D)
+## The graph is NO LONGER acyclic (on purpose, since 14.D)
 
-La versión previa (`core-v1-ready`, 2026-08-05) era acíclica porque
-`NavigationController` no era referenciado por nadie: solo lo instanciaba
-`OmafilesContent` y los controladores llegaban a la navegación por
-`root.refresh()` / `root.navigateTo()` (la fachada del composition root).
+The previous version (`core-v1-ready`, 2026-08-05) was acyclic because
+`NavigationController` wasn't referenced by anyone: only
+`OmafilesContent` instantiated it and the controllers reached navigation via
+`root.refresh()` / `root.navigateTo()` (the composition root's facade).
 
-Al inyectar `navController` directamente (Fase 14.D, eliminando esos wrappers
-`root.*`) aparecen **ciclos de referencia** reales. El núcleo es:
+Injecting `navController` directly (Phase 14.D, removing those `root.*`
+wrappers) makes real **reference cycles** appear. The core one is:
 
 ```
 NavigationController → { ArchiveActions, BookmarkOps, MountActions }
         ↑______________________________|
 ```
 
-es decir, `NavigationController` inyecta esos tres controladores **y** los tres
-reciben de vuelta `navController`. Hay 18 ciclos distintos derivados de ahí
-(p.ej. `NavigationController → MountActions → TabOps → NavigationController`).
+that is, `NavigationController` injects those three controllers **and** the three
+receive `navController` back. There are 18 distinct cycles derived from that
+(e.g. `NavigationController → MountActions → TabOps → NavigationController`).
 
-**Esto es inocuo en runtime.** Son referencias entre hermanos que el
-`ControllerRegistry` resuelve por `id` (QML no exige orden de declaración);
-no hay recursión de instanciación ni de llamada. Validado: `--selfcheck`
-61/61 y ambos frontends (Quickshell + Qt6) arrancan limpios. La aciclicidad
-dejó de ser una invariante alcanzable en cuanto la lógica de navegación pasó
-a inyectarse en vez de accederse por la fachada del root, y no aporta valor
-perseguirla: rompería el desacoplamiento que buscaba 14.D.
+**This is harmless at runtime.** They are references between siblings that the
+`ControllerRegistry` resolves by `id` (QML doesn't require declaration order);
+there is no instantiation nor call recursion. Validated: `--selfcheck`
+77/77 and both frontends (Quickshell + Qt6) start clean. Acyclicity
+stopped being an achievable invariant as soon as the navigation logic moved
+to being injected instead of accessed via the root's facade, and it adds no value
+to pursue it: it would break the decoupling that 14.D sought.
 
-> **Aviso para el siguiente refactor:** no intentes "romper" estos ciclos
-> reordenando las instanciaciones del registry ni volviendo a un wrapper
-> `root.*`. Los ciclos son de *referencia*, no de *inicialización*, y son la
-> consecuencia esperada de la inyección explícita.
+> **Notice for the next refactor:** don't try to "break" these cycles
+> by reordering the registry's instantiations nor returning to a
+> `root.*` wrapper. The cycles are of *reference*, not of *initialization*, and they are the
+> expected consequence of explicit injection.
 
-## Regenerar este documento
+## Regenerating this document
 
-Derivarlo del cableado real del registry (fuente de verdad del ownership):
+Derive it from the registry's real wiring (source of truth for ownership):
 
 ```
-core/ControllerRegistry.qml   # bloques "Componente { id: x; dep: otroId }"
-panels/ActiveFileList.qml     # inyecciones host* de KeyboardShortcuts
+core/ControllerRegistry.qml   # "Component { id: x; dep: otherId }" blocks
+panels/ActiveFileList.qml     # host* injections of KeyboardShortcuts
 ```
 
-filtrando las auto-referencias de los `readonly property alias X: X` y las
-inyecciones `root`/`list` (que apuntan al composition root y a la ListView,
-no a otro componente de `logic/`).
+filtering out the self-references of the `readonly property alias X: X` and the
+`root`/`list` injections (which point to the composition root and the ListView,
+not to another `logic/` component).

@@ -3,9 +3,9 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Metadatos de fichero: subtítulo de fila (tamaño + fecha, o info de
-// papelera) e info de audio para la vista previa -- vigésimo segundo
-// componente extraído de Omafiles.qml.
+// File metadata: row subtitle (size + date, or trash
+// info) and audio info for the preview -- twenty-second
+// component extracted from Omafiles.qml.
 Item {
   property Item root: null
 
@@ -34,29 +34,29 @@ Item {
     return out
   }
 
-  // Subtítulo de la fila -- tamaño + fecha relativa para ficheros, solo
-  // fecha para carpetas (mismo espíritu que el "Connected" de los ejemplos
-  // reales de fila compuesta de Omarchy: nombre + una línea de contexto).
-  // basePath: la ruta del panel que está pintando esta fila -- por
-  // defecto NavState.currentPath (panel activo), pero un panel de fondo debe
-  // pasar la suya propia (bgPanel.modelData.path) o el aviso de "en la
-  // papelera" saldría según la carpeta del panel ACTIVO, no la de este
-  // panel (mismo tipo de bug ya documentado para thumbKeyFor/etc.).
-  // TrashState.trashInfo es compartida entre el panel activo y todos los de
-  // fondo (ver bgTrashInfoProc en BackgroundPanel.qml) -- quien la
-  // rellene primero (activo o cualquier panel de fondo) sirve para todos,
-  // así que esta función siempre lee la misma copia sin importar quién
-  // pinta la fila.
+  // Row subtitle -- size + relative date for files, only
+  // date for folders (same spirit as the "Connected" of the real
+  // composed-row examples of Omarchy: name + one line of context).
+  // basePath: the path of the panel painting this row -- by
+  // default NavState.currentPath (active panel), but a background panel must
+  // pass its own (bgPanel.modelData.path) or the "in the
+  // trash" notice would come out according to the ACTIVE panel's folder, not this
+  // panel's (same kind of bug already documented for thumbKeyFor/etc.).
+  // TrashState.trashInfo is shared between the active panel and all the background
+  // ones (see bgTrashInfoProc in BackgroundPanel.qml) -- whoever
+  // fills it first (active or any background panel) serves them all,
+  // so this function always reads the same copy regardless of who
+  // paints the row.
   function metaFor(entry, basePath) {
     if (entry.link === "broken") return "Broken link"
-    // Resultado de búsqueda por CONTENIDO (ripgrep, Beta 3): el subtítulo es la
-    // LÍNEA + el snippet de la coincidencia (lo que buscabas), no tamaño/fecha
-    // ni la ruta -- la ruta va en el tooltip (metaTooltipFor). Es lo útil aquí.
+    // CONTENT search result (ripgrep, Beta 3): the subtitle is the
+    // LINE + the snippet of the match (what you searched for), not size/date
+    // nor the path -- the path goes in the tooltip (metaTooltipFor). It is what is useful here.
     if (entry.snippet !== undefined) return "L" + (entry.line || 0) + "  " + entry.snippet
-    // Resultado de búsqueda GLOBAL (SearchBackend): la entrada trae ruta
-    // absoluta de OTRA carpeta cualquiera, así que el subtítulo da el CONTEXTO
-    // (dónde vive), no tamaño/fecha -- como Nautilus/Spotlight. `parent` ya
-    // viene calculado; abreviamos el home a "~" para que quepa y se lea.
+    // GLOBAL search result (SearchBackend): the entry carries an absolute
+    // path of any other folder, so the subtitle gives the CONTEXT
+    // (where it lives), not size/date -- like Nautilus/Spotlight. `parent`
+    // already comes computed; we abbreviate the home to "~" so it fits and reads.
     if (entry.path && entry.parent) {
       var home = Paths.homeDir
       return (entry.parent.indexOf(home) === 0)
@@ -82,10 +82,10 @@ Item {
     if (entry.type !== "dir") {
       parts.push(Utils.formatSize(entry.size))
     } else {
-      // Contador de items (Fase 23): ocupa el "hueco del tamaño" en las
-      // carpetas. Viene de la caché async FolderCountState (lo pide la fila
-      // visible); mientras no ha llegado (o -1 = sin acceso) no se muestra
-      // nada, así que la fila no salta.
+      // Item counter (Phase 23): occupies the "size slot" in the
+      // folders. It comes from the async FolderCountState cache (the visible
+      // row requests it); while it has not arrived (or -1 = no access) nothing
+      // is shown, so the row does not jump.
       var fc = FolderCountState.counts[Utils.joinPath(atPath, entry.name)]
       if (typeof fc === "number" && fc >= 0) parts.push(Utils.formatItemCount(fc))
     }
@@ -94,14 +94,14 @@ Item {
     return parts.join(" · ")
   }
 
-  // Tooltip del subtítulo: valor EXACTO del contador solo cuando se muestra
-  // abreviado (12.3k -> "12,347 items"); "" en el resto (sin tooltip).
+  // Subtitle tooltip: the EXACT value of the counter only when it is shown
+  // abbreviated (12.3k -> "12,347 items"); "" otherwise (no tooltip).
   function metaTooltipFor(entry, basePath) {
-    // Resultado de contenido: el tooltip muestra la RUTA completa del fichero
-    // (el subtítulo la sustituyó por el snippet).
+    // Content result: the tooltip shows the file's full PATH
+    // (the subtitle replaced it with the snippet).
     if (entry.snippet !== undefined) return entry.path || ""
-    // Resultado global: el tooltip muestra la ruta padre COMPLETA (sin abreviar
-    // el home), que en el subtítulo puede ir recortada.
+    // Global result: the tooltip shows the FULL parent path (without abbreviating
+    // the home), which in the subtitle may go trimmed.
     if (entry.path && entry.parent) return entry.parent
     if (entry.type !== "dir") return ""
     var atPath = basePath !== undefined ? basePath : NavState.currentPath
@@ -110,9 +110,9 @@ Item {
     return ""
   }
 
-  // Camino async del contador de carpetas (Fase 23): el backend cuenta en un
-  // hilo y responde por counted(); aquí se vuelca a la caché reactiva, que
-  // re-evalúa los subtítulos. Un único punto (FileMeta se instancia una vez).
+  // Async path of the folder counter (Phase 23): the backend counts on a
+  // thread and responds via counted(); here it is dumped to the reactive cache, which
+  // re-evaluates the subtitles. A single point (FileMeta is instantiated once).
   Connections {
     target: FolderCounter
     function onCounted(path, n) { FolderCountState.set(path, n) }

@@ -2,8 +2,8 @@ import "../Utils.js" as Utils
 import QtQuick
 import "../state"
 
-// Borrar (a la papelera, o permanente si ya se está viendo la papelera) --
-// vigésimo tercer componente extraído de Omafiles.qml.
+// Delete (to trash, or permanent if already viewing the trash) --
+// twenty-third component extracted from Omafiles.qml.
 Item {
   property Item root: null
   property Item actionEngine: null
@@ -22,13 +22,13 @@ Item {
     root.pendingDeleteNames = []
     if (names.length === 0) return
     if (NavState.currentPath === Paths.trashDir) {
-      // Borrado permanente NATIVO (Fase 13.C): FileOperations.remove en vez
-      // de `rm -rf`/`rm -f`. No hay undo posible. TrashState.trashInfo (ver
-      // trash-info.sh) sabe la raíz física real de cada ítem -- puede ser la
-      // papelera de casa o la de cualquier otro disco montado, ya no se puede
-      // asumir Paths.trashDir a secas. Por cada ítem se borra el fichero en
-      // <raíz>/files/<n> (recursivo) y su <raíz>/info/<n>.trashinfo, ambos
-      // con ignoreMissing (= `rm -f`: que falte no es error).
+      // NATIVE permanent delete (Phase 13.C): FileOperations.remove instead
+      // of `rm -rf`/`rm -f`. No undo possible. TrashState.trashInfo (see
+      // trash-info.sh) knows the real physical root of each item -- it can be the
+      // home trash or that of any other mounted disk, Paths.trashDir can no longer
+      // be assumed outright. For each item the file at
+      // <root>/files/<n> (recursive) and its <root>/info/<n>.trashinfo are deleted, both
+      // with ignoreMissing (= `rm -f`: it being missing is not an error).
       var paths = []
       names.forEach(function (n) {
         var info = TrashState.trashInfo[n]
@@ -38,20 +38,20 @@ Item {
       })
       if (paths.length > 0) actionEngine.runNativeRemove(paths, "", true)
     } else {
-      // Enviar a papelera NATIVO (Fase 13.D): FileOperations.trash
-      // (QFile::moveToTrash, XDG Trash) en vez de `gio trash`. Rutas
-      // originales absolutas capturadas AQUÍ (no dentro de los closures de
-      // más abajo) -- NavState.currentPath puede haber cambiado para cuando
-      // el usuario pulse deshacer, mucho más tarde.
+      // NATIVE send to trash (Phase 13.D): FileOperations.trash
+      // (QFile::moveToTrash, XDG Trash) instead of `gio trash`. Original
+      // absolute paths captured HERE (not inside the closures
+      // below) -- NavState.currentPath may have changed by the time
+      // the user presses undo, much later.
       var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
       actionEngine.runNativeTrash(origPaths, "", function () {
-        // El undo solo se registra si el envío confirmó éxito. Deshacer =
-        // restaurar POR RUTA ORIGINAL (Fase 13.E, restoreByOrigPath): busca
-        // en TODAS las papeleras activas el .trashinfo cuya ruta original
-        // coincide, así funciona igual borre desde donde borre -- y sirve
-        // aunque el usuario deshaga mucho después sin haber abierto nunca la
-        // Papelera.
+        // The undo is only registered if the send confirmed success. Undo =
+        // restore BY ORIGINAL PATH (Phase 13.E, restoreByOrigPath): it searches
+        // in ALL the active trashes for the .trashinfo whose original path
+        // matches, so it works the same wherever the delete came from -- and it works
+        // even if the user undoes much later without having ever opened the
+        // Trash.
         actionEngine.pushUndo(label, function () {
           return actionEngine.runNativeRestore(origPaths, "")
         }, function () {

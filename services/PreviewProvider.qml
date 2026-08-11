@@ -2,13 +2,13 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Previsualización -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.PreviewProvider (texto async + metadatos, ver
-// backend/PreviewProvider.cpp). Fase 9 (josema).
+// Preview -- thin adapter over the C++ singleton
+// Omafiles.Backend.PreviewProvider (async text + metadata, see
+// backend/PreviewProvider.cpp). Phase 9 (josema).
 //
-// Reenvía info()/requestText() y re-emite textReady() para que logic/ y la
-// UI no importen Omafiles.Backend (regla 8). La imagen/PDF de la preview la
-// sigue dando ThumbnailProvider (a tamaño de preview), no este adaptador.
+// It forwards info()/requestText() and re-emits textReady() so logic/ and the
+// UI do not import Omafiles.Backend (rule 8). The preview's image/PDF is
+// still provided by ThumbnailProvider (at preview size), not this adapter.
 QtObject {
   id: preview
 

@@ -4,31 +4,31 @@ import "../../services"
 import "../../state"
 import "../../Utils.js" as Utils
 
-// SelfCheck -- arnés de validación funcional reproducible de Omafiles (Fase
-// 12, josema). Se carga desde main.cpp cuando el ejecutable standalone
-// arranca con `--selfcheck`, headless (offscreen) y sin Quickshell. Ejercita
-// los subsistemas principales de backend, frontend e integración sobre
-// fixtures deterministas (montados por main.cpp en un QTemporaryDir que se
-// borra solo) y termina con Qt.exit(nº de fallos): 0 = todo PASS.
+// SelfCheck -- reproducible functional validation harness of Omafiles (Phase
+// 12, josema). It's loaded from main.cpp when the standalone executable
+// starts with `--selfcheck`, headless (offscreen) and without Quickshell. It exercises
+// the main subsystems of backend, frontend and integration over
+// deterministic fixtures (mounted by main.cpp in a QTemporaryDir that
+// removes itself) and ends with Qt.exit(number of failures): 0 = all PASS.
 //
-// Diseño: un runner secuencial y asíncrono. Cada prueba es
-//   add(nombre, function(done){ ... done(pass, mensaje) })
-// y puede resolver de forma síncrona o al llegar una señal; un timeout por
-// prueba evita cuelgues. Extensible: añadir pruebas = añadir add(...) en
-// _register(). No usa QtTest ni toca el comportamiento normal de la app.
+// Design: a sequential, asynchronous runner. Each test is
+//   add(name, function(done){ ... done(pass, message) })
+// and can resolve synchronously or when a signal arrives; a per-test
+// timeout avoids hangs. Extensible: adding tests = adding add(...) in
+// _register(). It doesn't use QtTest nor touch the normal behavior of the app.
 //
-// Base para la Fase 13 (migrar FileOperations del shell al backend C++):
-// estas mismas comprobaciones se ejecutarán antes y después de cada
-// operación para blindar esa migración.
+// Base for Phase 13 (migrate FileOperations from shell to the C++ backend):
+// these same checks will run before and after each
+// operation to shield that migration.
 QtObject {
   id: sc
 
-  // Directorio temporal con fixtures, inyectado por main.cpp. Fallback por
-  // si se carga a mano (no debería).
+  // Temporary directory with fixtures, injected by main.cpp. Fallback in
+  // case it's loaded by hand (it shouldn't be).
   readonly property string dir: (typeof selfCheckTmpDir !== "undefined" && selfCheckTmpDir)
     ? selfCheckTmpDir : "/tmp/omafiles-selfcheck"
 
-  // ---- rutas de fixtures (ver writeSelfCheckFixtures en main.cpp) ----
+  // ---- fixture paths (see writeSelfCheckFixtures in main.cpp) ----
   readonly property string listDir: dir + "/list"
   readonly property string watchDir: dir + "/watch"
   readonly property string opsDir: dir + "/ops"
@@ -37,7 +37,7 @@ QtObject {
   readonly property string pdf: dir + "/doc.pdf"
   readonly property string note: dir + "/note.txt"
 
-  // ---- estado del runner ----
+  // ---- runner state ----
   property var checks: []
   property int idx: -1
   property int passes: 0
@@ -45,25 +45,25 @@ QtObject {
   property real _startedAt: 0
   property bool _settled: false
 
-  // Fábrica de DirectoryModel para las comprobaciones de existencia/listado
-  // (servicio no-singleton envuelto sobre el backend C++).
+  // DirectoryModel factory for the existence/listing checks
+  // (non-singleton service wrapped over the C++ backend).
   property Component _dmFactory: Component { DirectoryModel {} }
 
-  // Fábrica de SearchWorker (backend nativo, no-singleton) para el test de
-  // búsqueda recursiva (Fase 16).
+  // SearchWorker factory (native backend, non-singleton) for the
+  // recursive search test (Phase 16).
   property Component _searchFactory: Component { Backend.SearchWorker {} }
 
-  // Stub de hostPanelsRow para el test de panel de fondo: BackgroundPanel lee
-  // slotX(index)/slotWidth/height para su geometría. slotWidth/height 0 => la
-  // ListView no instancia delegates (sin dependencias visuales nulas).
-  // height/width son propiedades built-in de Item (default 0); solo se añaden
-  // slotX()/slotWidth, que BackgroundPanel espera de hostPanelsRow.
+  // hostPanelsRow stub for the background panel test: BackgroundPanel reads
+  // slotX(index)/slotWidth/height for its geometry. slotWidth/height 0 => the
+  // ListView doesn't instantiate delegates (no null visual dependencies).
+  // height/width are built-in Item properties (default 0); only
+  // slotX()/slotWidth are added, which BackgroundPanel expects from hostPanelsRow.
   property Component _panelsRowStub: Component {
     Item { function slotX(i) { return 0 } property real slotWidth: 0 }
   }
 
-  // Composition root creado en la prueba correspondiente y reutilizado por
-  // las de fachada.
+  // Composition root created in the corresponding test and reused by
+  // the facade ones.
   property var _content: null
 
   property Timer _timeout: Timer {
@@ -82,7 +82,7 @@ QtObject {
     try {
       checks[idx].fn(function (pass, msg) { sc._done(pass, msg) })
     } catch (e) {
-      _done(false, "excepción: " + e)
+      _done(false, "exception: " + e)
     }
   }
 
@@ -104,7 +104,7 @@ QtObject {
     Qt.exit(fails > 0 ? 1 : 0)
   }
 
-  // Lista un directorio una sola vez y devuelve sus entradas por callback.
+  // Lists a directory once and returns its entries via callback.
   function _listOnce(path, cb) {
     var m = _dmFactory.createObject(sc)
     var fired = false
@@ -126,10 +126,10 @@ QtObject {
     return false
   }
 
-  // Ejecuta una lista de operaciones de FileOperations EN SECUENCIA (cada
-  // `start` lanza una op; se espera su finished antes de la siguiente). Si
-  // alguna falla -> done(false, ...). Al terminar todas -> onAllDone(). Para
-  // pruebas multi-paso (trash/restore) sin anidar diez _fileOp.
+  // Runs a list of FileOperations operations IN SEQUENCE (each
+  // `start` launches an op; its finished is awaited before the next). If
+  // any fails -> done(false, ...). When all finish -> onAllDone(). For
+  // multi-step tests (trash/restore) without nesting ten _fileOp.
   function _seqOps(starts, done, onAllDone) {
     var i = 0
     function step() {
@@ -141,9 +141,9 @@ QtObject {
     step()
   }
 
-  // Ejecuta una operación de FileOperations y llama then(path) en su primera
-  // señal finished, o done(false, ...) en error. Como el runner es
-  // secuencial, solo hay una operación en vuelo.
+  // Runs a FileOperations operation and calls then(path) on its first
+  // finished signal, or done(false, ...) on error. Since the runner is
+  // sequential, there is only one operation in flight.
   function _fileOp(done, then) {
     function ok(op, path) { cleanup(); then(op, path) }
     function bad(op, path, msg) { cleanup(); done(false, op + " error: " + msg) }
@@ -157,14 +157,14 @@ QtObject {
 
   property Timer _pollTimer: Timer { interval: 16; repeat: true }
 
-  // Sondea cond() cada 16 ms (wall-clock, no pases de event loop) hasta que
-  // sea true o se agote el presupuesto (~4 s, holgado bajo el timeout de 8 s
-  // por prueba). Para esperar un efecto async que no expone una señal pública
-  // a la que engancharse (p.ej. el re-listado de un panel de fondo, cuyo
-  // DirLister es interno y entrega por invokeMethod desde un hilo del pool).
-  // El intervalo real da tiempo de reloj al worker, evitando la carrera de un
-  // bucle de Qt.callLater que gira más rápido de lo que el hilo puede
-  // responder. El runner es secuencial: solo hay un _poll en vuelo.
+  // Polls cond() every 16 ms (wall-clock, not event loop passes) until it
+  // is true or the budget runs out (~4 s, comfortable under the 8 s per-test
+  // timeout). To wait for an async effect that doesn't expose a public signal
+  // to hook onto (e.g. the re-listing of a background panel, whose
+  // DirLister is internal and delivers via invokeMethod from a pool thread).
+  // The real interval gives clock time to the worker, avoiding the race of a
+  // Qt.callLater loop that spins faster than the thread can
+  // respond. The runner is sequential: there is only one _poll in flight.
   function _poll(cond, cb) {
     if (cond()) { cb(true); return }
     var n = 0
@@ -177,16 +177,16 @@ QtObject {
     _pollTimer.restart()
   }
 
-  // ---- BUG-02: runner de procesos para los smoke-tests de scripts .sh ----
-  // Backend.ProcessRunner (QProcess real) entrega {exitCode,stdout,stderr}.
+  // ---- BUG-02: process runner for the .sh script smoke tests ----
+  // Backend.ProcessRunner (real QProcess) delivers {exitCode,stdout,stderr}.
   property Component _procFactory: Component { Backend.ProcessRunner {} }
-  // Raíz del plugin (donde viven los .sh), derivada de la URL de este fichero:
-  // integrations/standalone/ -> ../../ = raíz.
+  // Plugin root (where the .sh live), derived from this file's URL:
+  // integrations/standalone/ -> ../../ = root.
   readonly property string pluginRoot: Qt.resolvedUrl("../../").toString().replace(/^file:\/\//, "").replace(/\/+$/, "")
-  // Comillas POSIX para incrustar rutas en un `bash -c` de setup.
+  // POSIX quoting to embed paths in a setup `bash -c`.
   function _q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }
-  // Ejecuta argv y entrega el resultado por callback. Runner secuencial: solo
-  // hay un _sh en vuelo (igual que el resto del arnés).
+  // Runs argv and delivers the result via callback. Sequential runner: there is only
+  // one _sh in flight (like the rest of the harness).
   function _sh(argv, cb) {
     var p = _procFactory.createObject(sc)
     function on(result) {
@@ -200,22 +200,22 @@ QtObject {
 
   Component.onCompleted: {
     _register()
-    SelfCheckOut.line("── omafiles --selfcheck · fixtures en " + dir + " ──")
+    SelfCheckOut.line("── omafiles --selfcheck · fixtures in " + dir + " ──")
     _run()
   }
 
   function _register() {
-    // ======================= INTEGRACIÓN =======================
+    // ======================= INTEGRATION =======================
 
     add("Backend module loaded (Omafiles.Backend)", function (done) {
       var home = Backend.Env.get("HOME")
-      done(!!home && home.length > 0, home ? "HOME=" + home : "Env.get(HOME) vacío")
+      done(!!home && home.length > 0, home ? "HOME=" + home : "Env.get(HOME) empty")
     })
 
     add("UDisksWatcher reactive backend (Fase 20, no polling)", function (done) {
-      // El watcher C++ (QtDBus) se registró y expone available()/devicesChanged.
-      // available() es true si conectó al bus de sistema (en CI headless puede
-      // ser false; lo que se valida es que carga y no rompe, no que haya bus).
+      // The C++ watcher (QtDBus) registered and exposes available()/devicesChanged.
+      // available() is true if it connected to the system bus (in headless CI it can
+      // be false; what's validated is that it loads and doesn't break, not that there's a bus).
       var a = UDisksWatcher.available()
       var ok = (a === true || a === false)
         && typeof UDisksWatcher.devicesChanged === "function"
@@ -223,11 +223,11 @@ QtObject {
     })
 
     add("FolderCounter counts a directory (async, Fase 23)", function (done) {
-      // list/ = sub/ + alpha/beta/gamma.txt = 4 entradas.
+      // list/ = sub/ + alpha/beta/gamma.txt = 4 entries.
       function on(path, n) {
         if (path !== sc.listDir) return
         FolderCounter.counted.disconnect(on)
-        done(n === 4, "n=" + n + " (esperado 4)")
+        done(n === 4, "n=" + n + " (expected 4)")
       }
       FolderCounter.counted.connect(on)
       FolderCounter.request(sc.listDir, false)
@@ -250,19 +250,19 @@ QtObject {
       var comp = Qt.createComponent(Qt.resolvedUrl("../../core/OmafilesContent.qml"))
       if (comp.status === Component.Error) { done(false, comp.errorString()); return }
       var obj = comp.createObject(sc)
-      if (!obj) { done(false, "createObject devolvió null"); return }
+      if (!obj) { done(false, "createObject returned null"); return }
       sc._content = obj
-      done(true, "árbol principal instanciado")
+      done(true, "main tree instantiated")
     })
 
     add("Composition root API surface (open/close/facade)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var ok = typeof c.open === "function"
         && typeof c.close === "function"
         && typeof c.paletteCommands === "function"
         && typeof c.itemActions === "function"
-      done(ok, ok ? "" : "faltan funciones del contrato/fachada")
+      done(ok, ok ? "" : "missing contract/facade functions")
     })
 
     // ======================= FRONTEND =======================
@@ -271,7 +271,7 @@ QtObject {
       var prev = NavState.currentPath
       NavState.currentPath = sc.listDir
       var ok = NavState.currentPath === sc.listDir
-      done(ok, ok ? "" : "NavState.currentPath no persiste")
+      done(ok, ok ? "" : "NavState.currentPath doesn't persist")
     })
 
     add("TabsState defaults", function (done) {
@@ -281,11 +281,11 @@ QtObject {
 
     add("ControllerRegistry + CommandFacade wiring", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
-      // Fuerza la evaluación de los builders: si un controlador llegara null
-      // por un fallo de inyección del registro, esto lanzaría (ver Fase 11.C).
+      if (!c) { done(false, "no composition root"); return }
+      // Forces the evaluation of the builders: if a controller came in null
+      // due to a registry injection failure, this would throw (see Phase 11.C).
       var pal = c.paletteCommands().length
-      var items = c.itemActions().length            // 0 sin selección: válido
+      var items = c.itemActions().length            // 0 without selection: valid
       var empty = c.emptyAreaActions().length
       var segs = c.pathSegments().length
       var ok = pal > 0 && empty > 0 && segs > 0 && (items >= 0)
@@ -293,11 +293,11 @@ QtObject {
     })
 
     add("AppBindings loaded (no side effects under selfcheck)", function (done) {
-      // Si OmafilesContent se creó sin errores, AppBindings (su hijo) también.
-      // El autoregistro como gestor de archivos está guardado por
-      // OMAFILES_SELFCHECK, así que esta prueba confirma que no hubo efecto
-      // secundario y que el core arrancó completo.
-      done(sc._content !== null, "AppBindings instanciado sin autoregistro")
+      // If OmafilesContent was created without errors, AppBindings (its child) too.
+      // The self-registration as file manager is guarded by
+      // OMAFILES_SELFCHECK, so this test confirms there was no side
+      // effect and that the core started up complete.
+      done(sc._content !== null, "AppBindings instantiated without self-registration")
     })
 
     // ======================= BACKEND =======================
@@ -306,13 +306,13 @@ QtObject {
       var payload = { a: 1, b: "x", nested: { k: [1, 2, 3] } }
       function onSaved(path, ok) {
         JsonStore.saved.disconnect(onSaved)
-        if (!ok) { done(false, "write falló"); return }
+        if (!ok) { done(false, "write failed"); return }
         function onLoaded(p, data, lok) {
           JsonStore.loaded.disconnect(onLoaded)
-          if (!lok) { done(false, "read falló"); return }
+          if (!lok) { done(false, "read failed"); return }
           var good = data && data.a === 1 && data.b === "x"
             && data.nested && data.nested.k.length === 3
-          done(good, good ? "" : "datos no coinciden: " + JSON.stringify(data))
+          done(good, good ? "" : "data doesn't match: " + JSON.stringify(data))
         }
         JsonStore.loaded.connect(onLoaded)
         JsonStore.read(sc.jsonFile)
@@ -324,20 +324,20 @@ QtObject {
     add("DirectoryModel list + natural order", function (done) {
       sc._listOnce(sc.listDir, function (e) {
         var names = e.map(function (x) { return x.name })
-        // 3 ficheros + 1 subcarpeta; carpetas primero, luego naturalCompare.
+        // 3 files + 1 subfolder; folders first, then naturalCompare.
         var okCount = e.length === 4
         var okOrder = names[0] === "sub" && names[1] === "alpha.txt"
           && names[2] === "beta.txt" && names[3] === "gamma.txt"
-        done(okCount && okOrder, "orden=[" + names.join(", ") + "]")
+        done(okCount && okOrder, "order=[" + names.join(", ") + "]")
       })
     })
 
     add("QFileSystemWatcher create event", function (done) {
       var m = sc._dmFactory.createObject(sc)
       var watched = m.watch(sc.watchDir)
-      if (!watched) { m.destroy(); done(false, "watch() devolvió false"); return }
-      // Espera AMBOS: el directoryChanged del watcher y el finished del mkdir
-      // trigger (consumido para no filtrarlo a pruebas posteriores).
+      if (!watched) { m.destroy(); done(false, "watch() returned false"); return }
+      // Waits for BOTH: the watcher's directoryChanged and the finished of the mkdir
+      // trigger (consumed so as not to leak it to later tests).
       var gotChange = false, gotFinish = false, settled = false
       function finish(ok, msg) {
         if (settled) return
@@ -346,7 +346,7 @@ QtObject {
         m.unwatch(); m.destroy()
         done(ok, msg)
       }
-      function maybe() { if (gotChange && gotFinish) finish(true, "directoryChanged tras crear subcarpeta") }
+      function maybe() { if (gotChange && gotFinish) finish(true, "directoryChanged after creating subfolder") }
       function onChanged() { gotChange = true; maybe() }
       m.directoryChanged.connect(onChanged)
       sc._fileOp(function (ok, msg) { finish(false, "mkdir trigger: " + msg) },
@@ -360,7 +360,7 @@ QtObject {
       function onReady(path, thumbPath) {
         if (path !== sc.png) return
         ThumbnailProvider.ready.disconnect(onReady)
-        done(thumbPath.length > 0, thumbPath ? "" : "thumbPath vacío")
+        done(thumbPath.length > 0, thumbPath ? "" : "thumbPath empty")
       }
       ThumbnailProvider.ready.connect(onReady)
     })
@@ -371,34 +371,34 @@ QtObject {
       function onReady(path, thumbPath) {
         if (path !== sc.pdf) return
         ThumbnailProvider.ready.disconnect(onReady)
-        done(thumbPath.length > 0, thumbPath ? "" : "sin miniatura (¿falta qpdf?)")
+        done(thumbPath.length > 0, thumbPath ? "" : "no thumbnail (is qpdf missing?)")
       }
       ThumbnailProvider.ready.connect(onReady)
     })
 
-    // Hash canónico de caché (Fase B1): ThumbnailProvider.cacheKey es el
-    // ÚNICO esquema (SHA-1 hex), compartido por las miniaturas de imagen/PDF
-    // (interno de request()), las de vídeo (VideoThumbnails) y la caché de
-    // extracción (ArchiveActions). Se ancla contra el SHA-1 conocido de una
-    // entrada fija para que cualquier cambio de esquema (que invalidaría toda
-    // la caché en disco) rompa el arnés en vez de pasar inadvertido.
+    // Canonical cache hash (Phase B1): ThumbnailProvider.cacheKey is the
+    // ONLY scheme (SHA-1 hex), shared by the image/PDF thumbnails
+    // (internal to request()), the video ones (VideoThumbnails) and the
+    // extraction cache (ArchiveActions). It's anchored against the known SHA-1 of a
+    // fixed entry so that any scheme change (which would invalidate the whole
+    // on-disk cache) breaks the harness instead of going unnoticed.
     add("Thumbnail cache key is canonical SHA-1 (B1)", function (done) {
       var k = ThumbnailProvider.cacheKey("omafiles-b1|42")
       var expected = "244adfd729888c0a4499250ebb2e9f41d7243600" // sha1("omafiles-b1|42")
       var hexOk = /^[0-9a-f]{40}$/.test(k)
       var stable = ThumbnailProvider.cacheKey("omafiles-b1|42") === k
       done(hexOk && stable && k === expected,
-           "cacheKey=" + k + (k === expected ? "" : " (esperado " + expected + ")"))
+           "cacheKey=" + k + (k === expected ? "" : " (expected " + expected + ")"))
     })
 
-    // Poda de la caché de miniaturas (Fase O1). Ejercita pruneCacheDir sobre
-    // un dir temporal (la caché real NO se toca: el auto-prune del constructor
-    // se salta bajo --selfcheck) con las cuatro políticas: huérfano legacy,
-    // seguridad (ficheros ajenos intactos), edad y tamaño.
+    // Thumbnail cache pruning (Phase O1). Exercises pruneCacheDir over
+    // a temp dir (the real cache is NOT touched: the constructor's auto-prune
+    // is skipped under --selfcheck) with the four policies: legacy orphan,
+    // safety (foreign files intact), age and size.
     add("Thumbnail cache pruning: orphans, safety, age, size (O1)", function (done) {
       var TP = Backend.ThumbnailProvider
       var pd = sc.dir + "/prunecache-" + Date.now()
-      var h1 = ThumbnailProvider.cacheKey("o1-a")   // nombre 40-hex válido
+      var h1 = ThumbnailProvider.cacheKey("o1-a")   // valid 40-hex name
       var h2 = ThumbnailProvider.cacheKey("o1-b")
       var BIG_AGE = 999999999, BIG_SIZE = 999999999999
       var mk = function (name) { return function () { FileOperations.copy(sc.note, pd + "/" + name) } }
@@ -406,33 +406,33 @@ QtObject {
       FileOperations.mkdir(pd)
       sc._fileOp(done, function () {
         sc._seqOps([
-          mk(h1 + ".png"),      // miniatura actual (.png)
-          mk(h2 + ".jpg"),      // miniatura actual (.jpg)
-          mk("deadbe.jpg"),     // huérfano legacy base36 (.jpg, 6 chars) -> borrar
-          mk("notahash.png"),   // .png no-hex -> ajeno, dejar (seguridad)
-          mk("readme.txt")      // no-imagen -> dejar (seguridad)
+          mk(h1 + ".png"),      // current thumbnail (.png)
+          mk(h2 + ".jpg"),      // current thumbnail (.jpg)
+          mk("deadbe.jpg"),     // legacy base36 orphan (.jpg, 6 chars) -> delete
+          mk("notahash.png"),   // non-hex .png -> foreign, leave (safety)
+          mk("readme.txt")      // non-image -> leave (safety)
         ], done, function () {
-          // (1) umbrales grandes -> solo el huérfano legacy.
+          // (1) large thresholds -> only the legacy orphan.
           var r1 = TP.pruneCacheDir(pd, BIG_AGE, BIG_SIZE)
           sc._listOnce(pd, function (e1) {
             var ok1 = r1 === 1 && !sc._has(e1, "deadbe.jpg")
               && sc._has(e1, h1 + ".png") && sc._has(e1, h2 + ".jpg")
               && sc._has(e1, "notahash.png") && sc._has(e1, "readme.txt")
             if (!ok1) { done(false, "orphan/safety: removed=" + r1 + " entries=" + e1.length); return }
-            // (2) edad: maxAge=0 -> borra las 2 miniaturas actuales; deja ajenas.
+            // (2) age: maxAge=0 -> deletes the 2 current thumbnails; leaves foreign ones.
             var r2 = TP.pruneCacheDir(pd, 0, BIG_SIZE)
             sc._listOnce(pd, function (e2) {
               var ok2 = r2 === 2 && !sc._has(e2, h1 + ".png") && !sc._has(e2, h2 + ".jpg")
                 && sc._has(e2, "notahash.png") && sc._has(e2, "readme.txt")
-              if (!ok2) { done(false, "edad: removed=" + r2 + " entries=" + e2.length); return }
-              // (3) tamaño: recrea 2 actuales y poda con maxBytes=0 -> las borra
-              // por la política de tamaño (orden por antigüedad).
+              if (!ok2) { done(false, "age: removed=" + r2 + " entries=" + e2.length); return }
+              // (3) size: recreates 2 current ones and prunes with maxBytes=0 -> deletes them
+              // by the size policy (ordered by age).
               sc._seqOps([mk(h1 + ".png"), mk(h2 + ".jpg")], done, function () {
                 var r3 = TP.pruneCacheDir(pd, BIG_AGE, 0)
                 sc._listOnce(pd, function (e3) {
                   var ok3 = r3 === 2 && !sc._has(e3, h1 + ".png") && !sc._has(e3, h2 + ".jpg")
-                  done(ok3, ok3 ? "huérfano+seguridad+edad+tamaño OK"
-                                : "tamaño: removed=" + r3 + " entries=" + e3.length)
+                  done(ok3, ok3 ? "orphan+safety+age+size OK"
+                                : "size: removed=" + r3 + " entries=" + e3.length)
                 })
               })
             })
@@ -446,7 +446,7 @@ QtObject {
         if (path !== sc.note) return
         PreviewProvider.textReady.disconnect(onText)
         var ok = content.indexOf("hello selfcheck") >= 0
-        done(ok, ok ? enc + ", " + lines + " líneas" : "contenido inesperado")
+        done(ok, ok ? enc + ", " + lines + " lines" : "unexpected content")
       }
       PreviewProvider.textReady.connect(onText)
       PreviewProvider.requestText(sc.note, 65536)
@@ -455,29 +455,29 @@ QtObject {
     add("PreviewProvider info", function (done) {
       var info = PreviewProvider.info(sc.note)
       var ok = info && typeof info === "object" && Object.keys(info).length > 0
-      done(ok, ok ? "keys=[" + Object.keys(info).join(",") + "]" : "info vacío")
+      done(ok, ok ? "keys=[" + Object.keys(info).join(",") + "]" : "info empty")
     })
 
-    // -------- FileOperations (las 7 operaciones existentes) --------
+    // -------- FileOperations (the 7 existing operations) --------
 
     add("FileOperations mkdir", function (done) {
       sc._fileOp(done, function (op, path) {
         sc._listOnce(sc.opsDir, function (e) {
           var ok = sc._has(e, "newdir")
-          done(ok, ok ? "" : "newdir no aparece")
+          done(ok, ok ? "" : "newdir doesn't appear")
         })
       })
       FileOperations.mkdir(sc.opsDir + "/newdir")
     })
 
     add("FileOperations rename", function (done) {
-      // Prepara un fichero conocido y renómbralo.
+      // Prepares a known file and renames it.
       FileOperations.copy(sc.note, sc.opsDir + "/toRename.txt")
       sc._fileOp(done, function () {
         sc._fileOp(done, function () {
           sc._listOnce(sc.opsDir, function (e) {
             var ok = sc._has(e, "renamed.txt") && !sc._has(e, "toRename.txt")
-            done(ok, ok ? "" : "rename no reflejado")
+            done(ok, ok ? "" : "rename not reflected")
           })
         })
         FileOperations.rename(sc.opsDir + "/toRename.txt", "renamed.txt")
@@ -488,7 +488,7 @@ QtObject {
       sc._fileOp(done, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var ok = sc._has(e, "copy.txt")
-          done(ok, ok ? "" : "copy.txt no aparece")
+          done(ok, ok ? "" : "copy.txt doesn't appear")
         })
       })
       FileOperations.copy(sc.note, sc.opsDir + "/copy.txt")
@@ -496,19 +496,19 @@ QtObject {
 
     add("FileOperations copy overwrite (replace)", function (done) {
       var dst = sc.opsDir + "/ow.txt"
-      sc._fileOp(done, function () {           // 1) crea el destino
-        // 2) copiar encima CON overwrite debe reemplazar (finished, no error)
-        sc._fileOp(done, function () { done(true, "destino reemplazado") })
+      sc._fileOp(done, function () {           // 1) creates the destination
+        // 2) copying over WITH overwrite must replace (finished, not error)
+        sc._fileOp(done, function () { done(true, "destination replaced") })
         FileOperations.copy(sc.note, dst, true)
       })
-      FileOperations.copy(sc.note, dst)        // sin overwrite: destino nuevo
+      FileOperations.copy(sc.note, dst)        // without overwrite: new destination
     })
 
     add("FileOperations copy directory (recursive)", function (done) {
       sc._fileOp(done, function () {
         sc._listOnce(sc.opsDir + "/listcopy", function (e) {
           var ok = e.length === 4 && sc._has(e, "sub") && sc._has(e, "alpha.txt")
-          done(ok, ok ? e.length + " entradas copiadas" : "árbol incompleto")
+          done(ok, ok ? e.length + " entries copied" : "incomplete tree")
         })
       })
       FileOperations.copy(sc.listDir, sc.opsDir + "/listcopy")
@@ -520,7 +520,7 @@ QtObject {
           var ok = false
           for (var i = 0; i < e.length; i++)
             if (e[i].name === "linkcopy" && e[i].link && e[i].link.length > 0) ok = true
-          done(ok, ok ? "copiado como enlace" : "no quedó como symlink")
+          done(ok, ok ? "copied as a link" : "didn't stay a symlink")
         })
       })
       FileOperations.copy(sc.dir + "/link.txt", sc.opsDir + "/linkcopy")
@@ -537,19 +537,19 @@ QtObject {
     })
 
     add("ActionEngine native copy runner (paste/drop path)", function (done) {
-      // Ejercita el cableado REAL que usan runPaste/runDrop (13.A):
+      // Exercises the REAL wiring used by runPaste/runDrop (13.A):
       // content.copyFiles -> ActionEngine.runNativeCopy -> FileOperations.copy
-      // -> onDone. Confirma busy/secuencia/completado sin shell.
+      // -> onDone. Confirms busy/sequence/completion without shell.
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var dst = sc.opsDir + "/enginecopy.txt"
       var started = c.actionEngine.runNativeCopy([{ src: sc.note, dest: dst }], "Copying…", false, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var ok = sc._has(e, "enginecopy.txt")
-          done(ok, ok ? "runNativeCopy OK" : "no copió")
+          done(ok, ok ? "runNativeCopy OK" : "didn't copy")
         })
       })
-      if (!started) done(false, "runNativeCopy devolvió false (¿ocupado?)")
+      if (!started) done(false, "runNativeCopy returned false (busy?)")
     })
 
     // -------- Move (13.B) --------
@@ -557,12 +557,12 @@ QtObject {
     add("FileOperations move overwrite (replace)", function (done) {
       var work = sc.opsDir + "/mvow-src.txt"
       var dst = sc.opsDir + "/mvow-dst.txt"
-      sc._fileOp(done, function () {          // work creado
-        sc._fileOp(done, function () {        // dst creado (provoca conflicto)
-          sc._fileOp(done, function () {      // move con overwrite -> reemplaza
+      sc._fileOp(done, function () {          // work created
+        sc._fileOp(done, function () {        // dst created (causes conflict)
+          sc._fileOp(done, function () {      // move with overwrite -> replaces
             sc._listOnce(sc.opsDir, function (e) {
               var ok = sc._has(e, "mvow-dst.txt") && !sc._has(e, "mvow-src.txt")
-              done(ok, ok ? "reemplazado, origen consumido" : "estado inesperado")
+              done(ok, ok ? "replaced, source consumed" : "unexpected state")
             })
           })
           FileOperations.move(work, dst, true)
@@ -575,13 +575,13 @@ QtObject {
     add("FileOperations move directory (recursive)", function (done) {
       var srcDir = sc.opsDir + "/mvdir-src"
       var dstDir = sc.opsDir + "/mvdir-dst"
-      sc._fileOp(done, function () {          // copia listDir -> srcDir (árbol)
+      sc._fileOp(done, function () {          // copies listDir -> srcDir (tree)
         sc._fileOp(done, function () {        // move srcDir -> dstDir
           sc._listOnce(dstDir, function (e) {
             var okDst = e.length === 4 && sc._has(e, "sub") && sc._has(e, "alpha.txt")
             sc._listOnce(sc.opsDir, function (top) {
               var okGone = !sc._has(top, "mvdir-src")
-              done(okDst && okGone, okDst ? (okGone ? "árbol movido, origen ido" : "origen no se borró") : "árbol destino incompleto")
+              done(okDst && okGone, okDst ? (okGone ? "tree moved, source gone" : "source wasn't deleted") : "destination tree incomplete")
             })
           })
         })
@@ -593,13 +593,13 @@ QtObject {
     add("FileOperations move symlink preserved", function (done) {
       var work = sc.opsDir + "/mvlink-src"
       var dst = sc.opsDir + "/mvlink-dst"
-      sc._fileOp(done, function () {          // copia link.txt -> work (symlink)
+      sc._fileOp(done, function () {          // copies link.txt -> work (symlink)
         sc._fileOp(done, function () {        // move work -> dst
           sc._listOnce(sc.opsDir, function (e) {
             var ok = false
             for (var i = 0; i < e.length; i++)
               if (e[i].name === "mvlink-dst" && e[i].link && e[i].link.length > 0) ok = true
-            done(ok, ok ? "movido como enlace" : "no quedó symlink")
+            done(ok, ok ? "moved as a link" : "didn't stay a symlink")
           })
         })
         FileOperations.move(work, dst)
@@ -608,22 +608,22 @@ QtObject {
     })
 
     add("FileOperations move cross-filesystem (best-effort /tmp)", function (done) {
-      // HOME (.cache) -> /tmp: si son montajes distintos (tmpfs), fuerza el
-      // fallback copia+borrado (EXDEV); si es el mismo, degrada a rename
-      // atómico. En ambos casos el move debe cumplir: destino con el fichero,
-      // origen consumido. Limpia el /tmp al terminar (net-zero).
+      // HOME (.cache) -> /tmp: if they are different mounts (tmpfs), it forces the
+      // copy+delete fallback (EXDEV); if it's the same, it degrades to an atomic
+      // rename. In both cases the move must fulfill: destination with the file,
+      // source consumed. Cleans up /tmp on finishing (net-zero).
       var work = sc.opsDir + "/xfs-src.txt"
       var xfsDst = "/tmp/omafiles-selfcheck-xfs-" + Date.now() + ".txt"
-      sc._fileOp(done, function () {          // work creado en HOME
+      sc._fileOp(done, function () {          // work created in HOME
         sc._fileOp(done, function () {        // move HOME -> /tmp
           var destInfo = PreviewProvider.info(xfsDst)
           var destOk = destInfo && Object.keys(destInfo).length > 0
           sc._listOnce(sc.opsDir, function (e) {
             var srcGone = !sc._has(e, "xfs-src.txt")
-            // limpia /tmp ESPERANDO su finished, para no filtrar la señal a
-            // la prueba siguiente (era la causa de la flakiness).
+            // cleans up /tmp WAITING for its finished, so as not to leak the signal to
+            // the following test (it was the cause of the flakiness).
             sc._fileOp(done, function () {
-              done(destOk && srcGone, (destOk ? "dest ok" : "dest falta") + ", " + (srcGone ? "origen ido" : "origen queda"))
+              done(destOk && srcGone, (destOk ? "dest ok" : "dest missing") + ", " + (srcGone ? "source gone" : "source stays"))
             })
             FileOperations.remove(xfsDst)
           })
@@ -634,25 +634,25 @@ QtObject {
     })
 
     add("Copy/move cancellation (cooperative, source safe)", function (done) {
-      // Cancela una copia grande (32 MiB): cancel() SÍNCRONO justo tras
-      // lanzar la copia activa el flag antes de que el worker (que aún tiene
-      // que arrancar en el pool y luego copia MiBs) pueda terminar, así que
-      // aborta con error "cancelled" de forma determinista, sin borrar el
-      // origen (en move, removeTree del origen solo corre TRAS copiar; la
-      // ruta copyTree es la misma que usa move cross-fs).
+      // Cancels a large copy (32 MiB): a SYNCHRONOUS cancel() right after
+      // launching the copy sets the flag before the worker (which still has
+      // to start in the pool and then copies MiBs) can finish, so it
+      // aborts with a "cancelled" error deterministically, without deleting the
+      // source (in move, removeTree of the source only runs AFTER copying; the
+      // copyTree path is the same one that cross-fs move uses).
       var dst = sc.opsDir + "/big-copy.bin"
       var srcPath = sc.dir + "/big.bin"
       function onErr(op, path, msg) {
-        if (path !== srcPath) return  // ignora señales de otras operaciones
+        if (path !== srcPath) return  // ignores signals from other operations
         cleanup()
-        if (msg !== "cancelled") { done(false, "error inesperado: " + msg); return }
-        // el origen (big.bin) sigue intacto
+        if (msg !== "cancelled") { done(false, "unexpected error: " + msg); return }
+        // the source (big.bin) is still intact
         var srcOk = PreviewProvider.info(srcPath)
-        done(srcOk && Object.keys(srcOk).length > 0, "cancelado, origen intacto")
+        done(srcOk && Object.keys(srcOk).length > 0, "cancelled, source intact")
       }
       function onFin(op, path) {
-        if (path !== srcPath) return  // ignora señales de otras operaciones
-        cleanup(); done(false, "terminó antes de poder cancelar")
+        if (path !== srcPath) return  // ignores signals from other operations
+        cleanup(); done(false, "finished before it could cancel")
       }
       function cleanup() {
         FileOperations.error.disconnect(onErr)
@@ -665,49 +665,49 @@ QtObject {
     })
 
     add("ActionEngine native move runner + undo (paste/drop path)", function (done) {
-      // Ejercita el cableado REAL de mover con undo (13.B):
-      // content.moveFiles -> runNativeMove -> FileOperations.move; luego
-      // content.undoLast -> moveFiles(invertido) revierte.
+      // Exercises the REAL wiring of move with undo (13.B):
+      // content.moveFiles -> runNativeMove -> FileOperations.move; then
+      // content.undoLast -> moveFiles(reversed) reverts.
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var work = sc.opsDir + "/mv-runner-src.txt"
       var dst = sc.opsDir + "/mv-runner-dst.txt"
-      sc._fileOp(done, function () {          // work creado
+      sc._fileOp(done, function () {          // work created
         var pairs = [{ src: work, dest: dst }]
         var started = c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
-          // Registra el undo EXACTAMENTE como hace ClipboardOps/ConflictActions
-          // en su onDone (mover de vuelta / rehacer, ambos nativos).
+          // Registers the undo EXACTLY as ClipboardOps/ConflictActions does
+          // in its onDone (move back / redo, both native).
           var reversed = [{ src: dst, dest: work }]
           c.actionEngine.pushUndo("move test",
             function () { return c.actionEngine.runNativeMove(reversed, "", false) },
             function () { return c.actionEngine.runNativeMove(pairs, "", false) })
           sc._listOnce(sc.opsDir, function (e) {
             if (!(sc._has(e, "mv-runner-dst.txt") && !sc._has(e, "mv-runner-src.txt"))) {
-              done(false, "no movió"); return
+              done(false, "didn't move"); return
             }
-            // undo: mover de vuelta (espera el finished del reverse move)
+            // undo: move back (waits for the finished of the reverse move)
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e2) {
                 var undone = sc._has(e2, "mv-runner-src.txt") && !sc._has(e2, "mv-runner-dst.txt")
-                done(undone, undone ? "movido y deshecho" : "undo no revirtió")
+                done(undone, undone ? "moved and undone" : "undo didn't revert")
               })
             })
             c.undoLast()
           })
         })
-        if (!started) done(false, "runNativeMove devolvió false")
+        if (!started) done(false, "runNativeMove returned false")
       })
       FileOperations.copy(sc.note, work)
     })
 
-    // -------- Delete permanente (13.C) --------
+    // -------- Permanent delete (13.C) --------
 
     add("FileOperations delete directory (recursive)", function (done) {
-      sc._fileOp(done, function () {        // copia listDir -> deldir
-        sc._fileOp(done, function () {      // remove deldir (recursivo)
+      sc._fileOp(done, function () {        // copies listDir -> deldir
+        sc._fileOp(done, function () {      // remove deldir (recursive)
           sc._listOnce(sc.opsDir, function (e) {
             var ok = !sc._has(e, "deldir")
-            done(ok, ok ? "árbol borrado" : "sigue existiendo")
+            done(ok, ok ? "tree deleted" : "still exists")
           })
         })
         FileOperations.remove(sc.opsDir + "/deldir")
@@ -716,13 +716,13 @@ QtObject {
     })
 
     add("FileOperations delete symlink (target preserved)", function (done) {
-      sc._fileOp(done, function () {        // copia link.txt -> dellink
+      sc._fileOp(done, function () {        // copies link.txt -> dellink
         sc._fileOp(done, function () {      // remove dellink
           sc._listOnce(sc.opsDir, function (e) {
             var linkGone = !sc._has(e, "dellink")
-            var target = PreviewProvider.info(sc.note) // note.txt (destino del enlace)
+            var target = PreviewProvider.info(sc.note) // note.txt (link target)
             done(linkGone && Object.keys(target).length > 0,
-                 linkGone ? "enlace borrado, target intacto" : "el enlace sigue")
+                 linkGone ? "link deleted, target intact" : "the link stays")
           })
         })
         FileOperations.remove(sc.opsDir + "/dellink")
@@ -731,11 +731,11 @@ QtObject {
     })
 
     add("FileOperations delete read-only (permission failure)", function (done) {
-      // Borrar un fichero dentro de una carpeta sin permiso de escritura
-      // falla (EACCES). Se comprueba que el error se reporta razonablemente.
+      // Deleting a file inside a folder without write permission
+      // fails (EACCES). It's checked that the error is reported reasonably.
       var target = sc.dir + "/readonly/locked.txt"
-      function onErr(op, path, msg) { if (path !== target) return; cleanup(); done(true, "error reportado: " + msg) }
-      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "no debería poder borrar en carpeta read-only") }
+      function onErr(op, path, msg) { if (path !== target) return; cleanup(); done(true, "error reported: " + msg) }
+      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "should not be able to delete in a read-only folder") }
       function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
       FileOperations.error.connect(onErr)
       FileOperations.finished.connect(onFin)
@@ -748,15 +748,15 @@ QtObject {
       function onErr(op, path, msg) {
         if (path !== gone) return
         cleanup1()
-        // con ignoreMissing=true, que falte debe ser OK (finished)
-        function onFin2(o, p) { if (p !== gone2) return; cleanup2(); done(true, "error si falta, ok con ignoreMissing") }
-        function onErr2(o, p, m) { if (p !== gone2) return; cleanup2(); done(false, "ignoreMissing no debería fallar") }
+        // with ignoreMissing=true, being missing must be OK (finished)
+        function onFin2(o, p) { if (p !== gone2) return; cleanup2(); done(true, "error if missing, ok with ignoreMissing") }
+        function onErr2(o, p, m) { if (p !== gone2) return; cleanup2(); done(false, "ignoreMissing shouldn't fail") }
         function cleanup2() { FileOperations.finished.disconnect(onFin2); FileOperations.error.disconnect(onErr2) }
         FileOperations.finished.connect(onFin2)
         FileOperations.error.connect(onErr2)
         FileOperations.remove(gone2, true)
       }
-      function onFin(op, path) { if (path !== gone) return; cleanup1(); done(false, "debería fallar sin ignoreMissing") }
+      function onFin(op, path) { if (path !== gone) return; cleanup1(); done(false, "should fail without ignoreMissing") }
       function cleanup1() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
       FileOperations.error.connect(onErr)
       FileOperations.finished.connect(onFin)
@@ -764,16 +764,16 @@ QtObject {
     })
 
     add("FileOperations delete cancellation (recursive tree)", function (done) {
-      // Borra un árbol de 500 ficheros con cancel SÍNCRONO: removeTree aborta
-      // (entre entradas / en la comprobación de entrada) con "cancelled",
-      // misma ruta de cancelación que copia/move cross-fs.
+      // Deletes a tree of 500 files with a SYNCHRONOUS cancel: removeTree aborts
+      // (between entries / in the entry check) with "cancelled",
+      // same cancellation path as copy/move cross-fs.
       var target = sc.dir + "/bigdir"
       function onErr(op, path, msg) {
         if (path !== target) return
         cleanup()
         done(msg === "cancelled", "error=" + msg)
       }
-      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "terminó antes de poder cancelar") }
+      function onFin(op, path) { if (path !== target) return; cleanup(); done(false, "finished before it could cancel") }
       function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
       FileOperations.error.connect(onErr)
       FileOperations.finished.connect(onFin)
@@ -782,32 +782,32 @@ QtObject {
     })
 
     add("ActionEngine native remove runner (delete path)", function (done) {
-      // Ejercita el cableado REAL del borrado permanente (13.C):
+      // Exercises the REAL wiring of permanent delete (13.C):
       // content.removeFiles -> runNativeRemove -> FileOperations.remove.
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var a = sc.opsDir + "/del-a.txt"
       var b = sc.opsDir + "/del-b.txt"
-      sc._fileOp(done, function () {        // a creado
-        sc._fileOp(done, function () {      // b creado
+      sc._fileOp(done, function () {        // a created
+        sc._fileOp(done, function () {      // b created
           var started = c.actionEngine.runNativeRemove([a, b], "", true, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var ok = !sc._has(e, "del-a.txt") && !sc._has(e, "del-b.txt")
-              done(ok, ok ? "runNativeRemove OK" : "no borró")
+              done(ok, ok ? "runNativeRemove OK" : "didn't delete")
             })
           })
-          if (!started) done(false, "runNativeRemove devolvió false")
+          if (!started) done(false, "runNativeRemove returned false")
         })
         FileOperations.copy(sc.note, b)
       })
       FileOperations.copy(sc.note, a)
     })
 
-    // -------- XDG Trash: enviar + restaurar (13.D / 13.E) --------
-    // Operan sobre la papelera REAL del usuario (~/.local/share/Trash), pero
-    // son round-trips (trash -> restore) = net-zero: nada queda en la
-    // papelera al terminar. Los fixtures viven en el montaje de HOME, así que
-    // moveToTrash usa la papelera de casa.
+    // -------- XDG Trash: send + restore (13.D / 13.E) --------
+    // They operate on the user's REAL trash (~/.local/share/Trash), but
+    // they are round-trips (trash -> restore) = net-zero: nothing stays in the
+    // trash on finishing. The fixtures live in the HOME mount, so
+    // moveToTrash uses the home trash.
 
     add("Trash removes item from source", function (done) {
       var work = sc.opsDir + "/trash-src.txt"
@@ -817,31 +817,31 @@ QtObject {
       ], done, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var gone = !sc._has(e, "trash-src.txt")
-          // restaura para dejar la papelera limpia, y confirma el round-trip
+          // restores to leave the trash clean, and confirms the round-trip
           sc._seqOps([function () { FileOperations.restoreByOrigPath(work) }], done, function () {
             sc._listOnce(sc.opsDir, function (e2) {
               done(gone && sc._has(e2, "trash-src.txt"),
-                   gone ? "enviado y restaurado" : "no salió del origen")
+                   gone ? "sent and restored" : "didn't leave the source")
             })
           })
         })
       })
     })
 
-    // Ejerce el camino de FRONTEND (ActionEngine.runNativeTrash/Restore), no
-    // solo FileOperations del backend: cazaría el bug de Fase 14.D en que los
-    // callers (DeleteOps/FileOps/ClipboardOps/ConflictActions) invocaban
-    // nombres inexistentes (trashFiles/copyFiles/...) tras renombrar la API a
-    // runNative*. El backend pasaba 67/67 pero borrar/copiar/mover no hacían
-    // nada. Instancia ActionEngine con un navController stub (solo refresh()).
+    // Exercises the FRONTEND path (ActionEngine.runNativeTrash/Restore), not
+    // just the backend FileOperations: it would catch the Phase 14.D bug where the
+    // callers (DeleteOps/FileOps/ClipboardOps/ConflictActions) invoked
+    // nonexistent names (trashFiles/copyFiles/...) after renaming the API to
+    // runNative*. The backend passed 67/67 but delete/copy/move did
+    // nothing. It instantiates ActionEngine with a navController stub (only refresh()).
     add("ActionEngine trash+restore end-to-end (frontend wiring)", function (done) {
       var aeComp = Qt.createComponent(Qt.resolvedUrl("../../logic/ActionEngine.qml"))
       if (aeComp.status === Component.Error) { done(false, aeComp.errorString()); return }
       var stubNav = Qt.createQmlObject('import QtQuick; Item { function refresh() {} }', sc)
       var ae = aeComp.createObject(sc, { "navController": stubNav })
-      if (!ae) { done(false, "no se pudo crear ActionEngine"); return }
-      // Nombre único por ejecución (como los otros tests de papelera): evita
-      // colisiones en Trash/files que dejarían residuo entre corridas.
+      if (!ae) { done(false, "couldn't create ActionEngine"); return }
+      // Unique name per run (like the other trash tests): avoids
+      // collisions in Trash/files that would leave residue between runs.
       var work = sc.opsDir + "/ae-trash-" + Date.now() + ".txt"
       var wname = work.substring(work.lastIndexOf("/") + 1)
       sc._seqOps([function () { FileOperations.copy(sc.note, work) }], done, function () {
@@ -852,8 +852,8 @@ QtObject {
               sc._listOnce(sc.opsDir, function (e2) {
                 var back = sc._has(e2, wname)
                 ae.destroy(); stubNav.destroy()
-                done(gone && back, gone ? (back ? "trash+restore vía ActionEngine OK" : "restore no repuso el fichero")
-                                        : "runNativeTrash no sacó el fichero del origen")
+                done(gone && back, gone ? (back ? "trash+restore via ActionEngine OK" : "restore didn't put the file back")
+                                        : "runNativeTrash didn't take the file out of the source")
               })
             })
           })
@@ -864,12 +864,12 @@ QtObject {
     add("Trash + restore directory (round-trip)", function (done) {
       var dir = sc.opsDir + "/trashdir"
       sc._seqOps([
-        function () { FileOperations.copy(sc.listDir, dir) },     // árbol de 4
+        function () { FileOperations.copy(sc.listDir, dir) },     // tree of 4
         function () { FileOperations.trash(dir) },
         function () { FileOperations.restoreByOrigPath(dir) }
       ], done, function () {
         sc._listOnce(dir, function (e) {
-          done(e.length === 4 && sc._has(e, "sub"), "árbol restaurado: " + e.length)
+          done(e.length === 4 && sc._has(e, "sub"), "tree restored: " + e.length)
         })
       })
     })
@@ -885,7 +885,7 @@ QtObject {
           var ok = false
           for (var i = 0; i < e.length; i++)
             if (e[i].name === "trashlink" && e[i].link && e[i].link.length > 0) ok = true
-          done(ok, ok ? "symlink restaurado como enlace" : "no volvió como symlink")
+          done(ok, ok ? "symlink restored as a link" : "didn't come back as a symlink")
         })
       })
     })
@@ -904,9 +904,9 @@ QtObject {
     })
 
     add("Trash collision (restore both by orig path)", function (done) {
-      // Dos ficheros con el MISMO basename desde carpetas distintas:
-      // moveToTrash renombra uno en la papelera; restoreByOrigPath localiza
-      // cada uno por su ruta ORIGINAL (no por el nombre en files/).
+      // Two files with the SAME basename from different folders:
+      // moveToTrash renames one in the trash; restoreByOrigPath locates
+      // each one by its ORIGINAL path (not by the name in files/).
       var csub = sc.opsDir + "/csub"
       var a = sc.opsDir + "/coll.txt"
       var b = csub + "/coll.txt"
@@ -923,7 +923,7 @@ QtObject {
           var aBack = sc._has(e, "coll.txt")
           sc._listOnce(csub, function (e2) {
             var bBack = sc._has(e2, "coll.txt")
-            done(aBack && bBack, aBack && bBack ? "colisión resuelta, ambos restaurados" : "no restauró ambos")
+            done(aBack && bBack, aBack && bBack ? "collision resolved, both restored" : "didn't restore both")
           })
         })
       })
@@ -934,19 +934,19 @@ QtObject {
       sc._seqOps([
         function () { FileOperations.copy(sc.note, work) },
         function () { FileOperations.trash(work) },
-        function () { FileOperations.copy(sc.note, work) }  // recrea el destino
+        function () { FileOperations.copy(sc.note, work) }  // recreates the destination
       ], done, function () {
-        // restaurar debe FALLAR (destino existe)
+        // restoring must FAIL (destination exists)
         function onErr(op, path, msg) {
           if (path !== work) return
           cleanup()
-          // limpieza: quita el ocupante y restaura de verdad (net-zero)
+          // cleanup: removes the occupant and restores for real (net-zero)
           sc._seqOps([
             function () { FileOperations.remove(work) },
             function () { FileOperations.restoreByOrigPath(work) }
-          ], done, function () { done(true, "error si el destino existe: " + msg) })
+          ], done, function () { done(true, "error if the destination exists: " + msg) })
         }
-        function onFin(op, path) { if (path !== work) return; cleanup(); done(false, "no debería restaurar sobre un destino existente") }
+        function onFin(op, path) { if (path !== work) return; cleanup(); done(false, "should not restore over an existing destination") }
         function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
         FileOperations.error.connect(onErr)
         FileOperations.finished.connect(onFin)
@@ -961,50 +961,50 @@ QtObject {
         function () { FileOperations.mkdir(psub) },
         function () { FileOperations.copy(sc.note, item) },
         function () { FileOperations.trash(item) },
-        function () { FileOperations.remove(psub) },              // borra el padre
-        function () { FileOperations.restoreByOrigPath(item) }    // debe recrear psub
+        function () { FileOperations.remove(psub) },              // deletes the parent
+        function () { FileOperations.restoreByOrigPath(item) }    // must recreate psub
       ], done, function () {
         sc._listOnce(psub, function (e) {
-          done(sc._has(e, "child.txt"), "padre recreado y fichero restaurado")
+          done(sc._has(e, "child.txt"), "parent recreated and file restored")
         })
       })
     })
 
     add("ActionEngine native trash runner + undo (delete-to-trash path)", function (done) {
-      // Cableado REAL del envío a papelera con undo (13.D):
-      // content.trashFiles -> runNativeTrash -> FileOperations.trash; luego
-      // content.undoLast -> restoreFiles(rutas originales) revierte.
+      // REAL wiring of send-to-trash with undo (13.D):
+      // content.trashFiles -> runNativeTrash -> FileOperations.trash; then
+      // content.undoLast -> restoreFiles(original paths) reverts.
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var work = sc.opsDir + "/runner-trash.txt"
-      sc._fileOp(done, function () {          // work creado
+      sc._fileOp(done, function () {          // work created
         var started = c.actionEngine.runNativeTrash([work], "", function () {
-          // registra el undo como DeleteOps
+          // registers the undo like DeleteOps
           c.actionEngine.pushUndo("delete test",
             function () { return c.actionEngine.runNativeRestore([work], "") },
             function () { return c.actionEngine.runNativeTrash([work], "") })
           sc._listOnce(sc.opsDir, function (e) {
-            if (sc._has(e, "runner-trash.txt")) { done(false, "no se envió a papelera"); return }
-            // undo -> restaura (espera el finished del restore)
+            if (sc._has(e, "runner-trash.txt")) { done(false, "wasn't sent to trash"); return }
+            // undo -> restores (waits for the finished of the restore)
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e2) {
-                done(sc._has(e2, "runner-trash.txt"), "enviado y restaurado por undo")
+                done(sc._has(e2, "runner-trash.txt"), "sent and restored by undo")
               })
             })
             c.undoLast()
           })
         })
-        if (!started) done(false, "runNativeTrash devolvió false")
+        if (!started) done(false, "runNativeTrash returned false")
       })
       FileOperations.copy(sc.note, work)
     })
 
-    // -------- Conflictos de copy/move (13.F) --------
+    // -------- copy/move conflicts (13.F) --------
 
     add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
-      // La función NATIVA que sustituye al `test -e` de paste/drop. Debe
-      // devolver los destinos que existen (fichero, carpeta, symlink) y no
-      // los inexistentes.
+      // The NATIVE function that replaces paste/drop's `test -e`. It must
+      // return the destinations that exist (file, folder, symlink) and not
+      // the nonexistent ones.
       var f = sc.opsDir + "/cd-file.txt"
       var d = sc.opsDir + "/cd-dir"
       var l = sc.opsDir + "/cd-link"
@@ -1017,7 +1017,7 @@ QtObject {
         var res = FileOperations.existingPaths([f, d, l, missing])
         var ok = res.length === 3 && res.indexOf(f) >= 0 && res.indexOf(d) >= 0 &&
                  res.indexOf(l) >= 0 && res.indexOf(missing) < 0
-        done(ok, "detectados " + res.length + "/3 (sin el inexistente)")
+        done(ok, "detected " + res.length + "/3 (without the nonexistent one)")
       })
     })
 
@@ -1025,12 +1025,12 @@ QtObject {
       var src = sc.opsDir + "/ccd-src"
       var dst = sc.opsDir + "/ccd-dst"
       sc._seqOps([
-        function () { FileOperations.copy(sc.listDir, src) },  // src: árbol de 4
-        function () { FileOperations.mkdir(dst) },             // dst: dir existente
-        function () { FileOperations.copy(src, dst, true) }    // overwrite -> reemplaza
+        function () { FileOperations.copy(sc.listDir, src) },  // src: tree of 4
+        function () { FileOperations.mkdir(dst) },             // dst: existing dir
+        function () { FileOperations.copy(src, dst, true) }    // overwrite -> replaces
       ], done, function () {
         sc._listOnce(dst, function (e) {
-          done(e.length === 4 && sc._has(e, "sub"), "dir reemplazado: " + e.length + " entradas")
+          done(e.length === 4 && sc._has(e, "sub"), "dir replaced: " + e.length + " entries")
         })
       })
     })
@@ -1038,10 +1038,10 @@ QtObject {
     add("Copy conflict without overwrite errors (skip semantics)", function (done) {
       var dst = sc.opsDir + "/ccs.txt"
       sc._seqOps([function () { FileOperations.copy(sc.note, dst) }], done, function () {
-        // copiar de nuevo SIN overwrite debe fallar: es justo lo que la
-        // resolución "skip" evita al no llamar a copy para ese ítem.
+        // copying again WITHOUT overwrite must fail: it's exactly what the
+        // "skip" resolution avoids by not calling copy for that item.
         function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
-        function onFin(op, path) { cleanup(); done(false, "no debería copiar sobre existente sin overwrite") }
+        function onFin(op, path) { cleanup(); done(false, "should not copy over existing without overwrite") }
         function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
         FileOperations.error.connect(onErr)
         FileOperations.finished.connect(onFin)
@@ -1057,7 +1057,7 @@ QtObject {
         function () { FileOperations.copy(sc.note, dst) }
       ], done, function () {
         function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
-        function onFin(op, path) { cleanup(); done(false, "no debería mover sobre existente sin overwrite") }
+        function onFin(op, path) { cleanup(); done(false, "should not move over existing without overwrite") }
         function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
         FileOperations.error.connect(onErr)
         FileOperations.finished.connect(onFin)
@@ -1069,22 +1069,22 @@ QtObject {
       var l = sc.opsDir + "/cos-link"
       sc._seqOps([
         function () { FileOperations.copy(sc.dir + "/link.txt", l) },  // dst: symlink
-        function () { FileOperations.copy(sc.note, l, true) }          // overwrite -> fichero
+        function () { FileOperations.copy(sc.note, l, true) }          // overwrite -> file
       ], done, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var isFileNow = false
           for (var i = 0; i < e.length; i++)
             if (e[i].name === "cos-link") isFileNow = (!e[i].link || e[i].link.length === 0)
-          done(isFileNow, isFileNow ? "symlink reemplazado por fichero" : "sigue siendo symlink")
+          done(isFileNow, isFileNow ? "symlink replaced by file" : "still a symlink")
         })
       })
     })
 
-    // -------- Progreso nativo + limpieza de cancelación (13.G) --------
+    // -------- Native progress + cancellation cleanup (13.G) --------
 
     add("Copy progress (byte-accurate, reaches total)", function (done) {
-      // La señal progress(op,path,done,total) del backend (sin `du`). Copiar
-      // 32 MiB debe emitir varios eventos por bytes y terminar en done==total.
+      // The backend's progress(op,path,done,total) signal (without `du`). Copying
+      // 32 MiB must emit several byte events and end at done==total.
       var src = sc.dir + "/big.bin"
       var dst = sc.opsDir + "/prog-copy.bin"
       var count = 0, lastDone = -1, lastTotal = -1
@@ -1093,7 +1093,7 @@ QtObject {
         if (path !== src) return
         cleanup()
         var ok = count > 0 && lastTotal === 33554432 && lastDone === lastTotal
-        done(ok, "eventos=" + count + " last=" + lastDone + "/" + lastTotal)
+        done(ok, "events=" + count + " last=" + lastDone + "/" + lastTotal)
       }
       function onErr(op, path, msg) { if (path !== src) return; cleanup(); done(false, "error: " + msg) }
       function cleanup() { FileOperations.progress.disconnect(onProg); FileOperations.finished.disconnect(onFin); FileOperations.error.disconnect(onErr) }
@@ -1104,9 +1104,9 @@ QtObject {
     })
 
     add("Move cross-fs progress (best-effort)", function (done) {
-      // Un move que cruza de disco (HOME -> /tmp) usa copyTree y emite
-      // progress; si es el mismo fs, es un rename atómico (sin progreso). En
-      // ambos casos debe terminar bien. Limpia el /tmp al final.
+      // A move that crosses disks (HOME -> /tmp) uses copyTree and emits
+      // progress; if it's the same fs, it's an atomic rename (no progress). In
+      // both cases it must finish fine. Cleans up /tmp at the end.
       var work = sc.opsDir + "/mvprog-src.bin"
       var xfsDst = "/tmp/omafiles-selfcheck-mvprog-" + Date.now() + ".bin"
       sc._seqOps([function () { FileOperations.copy(sc.dir + "/big.bin", work) }], done, function () {
@@ -1116,8 +1116,8 @@ QtObject {
           if (path !== work) return
           cleanupSig()
           var progOk = count === 0 || (lastTotal > 0 && lastDone === lastTotal)
-          // limpia el destino en /tmp (esperando su finished)
-          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(progOk, count > 0 ? "progreso cross-fs " + count + " eventos" : "rename atómico (mismo fs)") }
+          // cleans up the destination in /tmp (waiting for its finished)
+          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(progOk, count > 0 ? "cross-fs progress " + count + " events" : "atomic rename (same fs)") }
           FileOperations.finished.connect(rmDone)
           FileOperations.error.connect(rmDone)
           FileOperations.remove(xfsDst, true)
@@ -1132,7 +1132,7 @@ QtObject {
     })
 
     add("Copy cancellation leaves no partial file", function (done) {
-      // El backend (forceRemove) limpia la copia parcial al abortar.
+      // The backend (forceRemove) cleans up the partial copy on aborting.
       var src = sc.dir + "/big.bin"
       var dst = sc.opsDir + "/cancel-partial.bin"
       function onErr(op, path, msg) {
@@ -1140,9 +1140,9 @@ QtObject {
         cleanup()
         if (msg !== "cancelled") { done(false, "error: " + msg); return }
         var partial = FileOperations.existingPaths([dst])
-        done(partial.length === 0, partial.length === 0 ? "sin residuo parcial" : "quedó copia parcial")
+        done(partial.length === 0, partial.length === 0 ? "no partial residue" : "partial copy left")
       }
-      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "terminó antes de cancelar") }
+      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "finished before cancelling") }
       function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
       FileOperations.error.connect(onErr)
       FileOperations.finished.connect(onFin)
@@ -1151,8 +1151,8 @@ QtObject {
     })
 
     add("Copy cancellation leaves no partial directory", function (done) {
-      // Cancelar la copia de un árbol (500 ficheros) no debe dejar la carpeta
-      // destino a medio crear: forceRemove borra el árbol parcial.
+      // Cancelling the copy of a tree (500 files) must not leave the destination
+      // folder half-created: forceRemove deletes the partial tree.
       var src = sc.dir + "/bigdir"
       var dst = sc.opsDir + "/cancel-partial-dir"
       function onErr(op, path, msg) {
@@ -1160,9 +1160,9 @@ QtObject {
         cleanup()
         if (msg !== "cancelled") { done(false, "error: " + msg); return }
         var partial = FileOperations.existingPaths([dst])
-        done(partial.length === 0, partial.length === 0 ? "árbol parcial limpiado" : "quedó carpeta parcial")
+        done(partial.length === 0, partial.length === 0 ? "partial tree cleaned up" : "partial folder left")
       }
-      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "terminó antes de cancelar") }
+      function onFin(op, path) { if (path !== src) return; cleanup(); done(false, "finished before cancelling") }
       function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
       FileOperations.error.connect(onErr)
       FileOperations.finished.connect(onFin)
@@ -1180,13 +1180,13 @@ QtObject {
           if (msg !== "cancelled") { done(false, "error: " + msg); return }
           var srcOk = FileOperations.existingPaths([work]).length === 1
           var noPartial = FileOperations.existingPaths([xfsDst]).length === 0
-          done(srcOk && noPartial, "cross-fs cancelado: src=" + srcOk + " sin parcial=" + noPartial)
+          done(srcOk && noPartial, "cross-fs cancelled: src=" + srcOk + " no partial=" + noPartial)
         }
         function onFin(op, path) {
           if (path !== work) return
           cleanup()
-          // rename atómico (mismo fs): el move se completó -> limpia el /tmp.
-          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(true, "rename atómico (mismo fs), sin parcial posible") }
+          // atomic rename (same fs): the move completed -> cleans up /tmp.
+          function rmDone(o, p) { if (p !== xfsDst) return; FileOperations.finished.disconnect(rmDone); FileOperations.error.disconnect(rmDone); done(true, "atomic rename (same fs), no partial possible") }
           FileOperations.finished.connect(rmDone)
           FileOperations.error.connect(rmDone)
           FileOperations.remove(xfsDst, true)
@@ -1199,33 +1199,33 @@ QtObject {
       })
     })
 
-    // -------- Undo / Redo nativo (13.H) --------
-    // El undo/redo de las operaciones PRINCIPALES (move, trash) ya es nativo
-    // (13.B/D): el llamador registra pushUndo con funciones que invocan
-    // moveFiles/restoreFiles/trashFiles (runners de FileOperations, 0 shell).
-    // Aquí se valida el ciclo completo a través del contrato real de la UI
+    // -------- Native undo / redo (13.H) --------
+    // The undo/redo of the MAIN operations (move, trash) is already native
+    // (13.B/D): the caller registers pushUndo with functions that invoke
+    // moveFiles/restoreFiles/trashFiles (FileOperations runners, 0 shell).
+    // Here the full cycle is validated through the real UI contract
     // (content.pushUndo/undoLast/redoLast + UndoState).
 
     add("Undo + redo move (full cycle)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var work = sc.opsDir + "/urm-src.txt"
       var dst = sc.opsDir + "/urm-dst.txt"
       var pairs = [{ src: work, dest: dst }]
       var reversed = [{ src: dst, dest: work }]
-      sc._fileOp(done, function () {          // work creado
+      sc._fileOp(done, function () {          // work created
         c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
           c.actionEngine.pushUndo("move",
             function () { return c.actionEngine.runNativeMove(reversed, "", false) },
             function () { return c.actionEngine.runNativeMove(pairs, "", false) })
           sc._listOnce(sc.opsDir, function (e) {
-            if (!(sc._has(e, "urm-dst.txt") && !sc._has(e, "urm-src.txt"))) { done(false, "no movió"); return }
-            sc._fileOp(done, function () {    // undo -> mover de vuelta
+            if (!(sc._has(e, "urm-dst.txt") && !sc._has(e, "urm-src.txt"))) { done(false, "didn't move"); return }
+            sc._fileOp(done, function () {    // undo -> move back
               sc._listOnce(sc.opsDir, function (e2) {
-                if (!(sc._has(e2, "urm-src.txt") && !sc._has(e2, "urm-dst.txt"))) { done(false, "undo no revirtió"); return }
-                sc._fileOp(done, function () {  // redo -> mover otra vez
+                if (!(sc._has(e2, "urm-src.txt") && !sc._has(e2, "urm-dst.txt"))) { done(false, "undo didn't revert"); return }
+                sc._fileOp(done, function () {  // redo -> move again
                   sc._listOnce(sc.opsDir, function (e3) {
-                    done(sc._has(e3, "urm-dst.txt") && !sc._has(e3, "urm-src.txt"), "undo y redo OK")
+                    done(sc._has(e3, "urm-dst.txt") && !sc._has(e3, "urm-src.txt"), "undo and redo OK")
                   })
                 })
                 c.redoLast()
@@ -1240,7 +1240,7 @@ QtObject {
 
     add("Undo + redo trash (full cycle)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var work = sc.opsDir + "/urt.txt"
       sc._fileOp(done, function () {
         c.actionEngine.runNativeTrash([work], "", function () {
@@ -1248,13 +1248,13 @@ QtObject {
             function () { return c.actionEngine.runNativeRestore([work], "") },
             function () { return c.actionEngine.runNativeTrash([work], "") })
           sc._listOnce(sc.opsDir, function (e) {
-            if (sc._has(e, "urt.txt")) { done(false, "no se envió a papelera"); return }
-            sc._fileOp(done, function () {   // undo -> restaurar
+            if (sc._has(e, "urt.txt")) { done(false, "wasn't sent to trash"); return }
+            sc._fileOp(done, function () {   // undo -> restore
               sc._listOnce(sc.opsDir, function (e2) {
-                if (!sc._has(e2, "urt.txt")) { done(false, "undo no restauró"); return }
-                sc._fileOp(done, function () {  // redo -> a papelera otra vez
+                if (!sc._has(e2, "urt.txt")) { done(false, "undo didn't restore"); return }
+                sc._fileOp(done, function () {  // redo -> to trash again
                   sc._listOnce(sc.opsDir, function (e3) {
-                    done(!sc._has(e3, "urt.txt"), "undo y redo trash OK")
+                    done(!sc._has(e3, "urt.txt"), "undo and redo trash OK")
                   })
                 })
                 c.redoLast()
@@ -1267,9 +1267,9 @@ QtObject {
       FileOperations.copy(sc.note, work)
     })
 
-    add("Undo sequence (LIFO: revierte el último primero)", function (done) {
+    add("Undo sequence (LIFO: reverts the last one first)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var a1 = sc.opsDir + "/seqA.txt", a2 = sc.opsDir + "/seqA-dst.txt"
       var b1 = sc.opsDir + "/seqB.txt", b2 = sc.opsDir + "/seqB-dst.txt"
       sc._seqOps([
@@ -1280,14 +1280,14 @@ QtObject {
           c.actionEngine.pushUndo("A", function () { return c.actionEngine.runNativeMove([{ src: a2, dest: a1 }], "", false) }, null)
           c.actionEngine.runNativeMove([{ src: b1, dest: b2 }], "", false, function () {
             c.actionEngine.pushUndo("B", function () { return c.actionEngine.runNativeMove([{ src: b2, dest: b1 }], "", false) }, null)
-            sc._fileOp(done, function () {   // undo #1 -> revierte B (LIFO)
+            sc._fileOp(done, function () {   // undo #1 -> reverts B (LIFO)
               sc._listOnce(sc.opsDir, function (e) {
                 var bBack = sc._has(e, "seqB.txt") && !sc._has(e, "seqB-dst.txt")
                 var aStill = sc._has(e, "seqA-dst.txt") && !sc._has(e, "seqA.txt")
-                if (!(bBack && aStill)) { done(false, "LIFO: no revirtió B primero"); return }
-                sc._fileOp(done, function () {  // undo #2 -> revierte A
+                if (!(bBack && aStill)) { done(false, "LIFO: didn't revert B first"); return }
+                sc._fileOp(done, function () {  // undo #2 -> reverts A
                   sc._listOnce(sc.opsDir, function (e2) {
-                    done(sc._has(e2, "seqA.txt") && !sc._has(e2, "seqA-dst.txt"), "LIFO OK: B y luego A")
+                    done(sc._has(e2, "seqA.txt") && !sc._has(e2, "seqA-dst.txt"), "LIFO OK: B and then A")
                   })
                 })
                 c.undoLast()
@@ -1299,29 +1299,29 @@ QtObject {
       })
     })
 
-    add("Cancel then undo (la cancelación no altera la pila)", function (done) {
+    add("Cancel then undo (cancellation doesn't alter the stack)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
+      if (!c) { done(false, "no composition root"); return }
       var work = sc.opsDir + "/ctu-src.txt"
       var dst = sc.opsDir + "/ctu-dst.txt"
-      sc._fileOp(done, function () {          // work creado
+      sc._fileOp(done, function () {          // work created
         c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, function () {
           c.actionEngine.pushUndo("move", function () { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false) }, null)
-          // una copia grande directa + cancel (no toca el stack de undo)
+          // a direct large copy + cancel (doesn't touch the undo stack)
           var bigSrc = sc.dir + "/big.bin"
           function onErr(op, path, msg) {
             if (path !== bigSrc) return
             cleanup()
             if (msg !== "cancelled") { done(false, "cancel error: " + msg); return }
-            // el undo del move sigue disponible -> revierte
+            // the move's undo is still available -> reverts
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e) {
-                done(sc._has(e, "ctu-src.txt") && !sc._has(e, "ctu-dst.txt"), "undo tras cancelación revierte el move")
+                done(sc._has(e, "ctu-src.txt") && !sc._has(e, "ctu-dst.txt"), "undo after cancellation reverts the move")
               })
             })
             c.undoLast()
           }
-          function onFin(op, path) { if (path !== bigSrc) return; cleanup(); done(false, "la copia terminó antes de cancelar") }
+          function onFin(op, path) { if (path !== bigSrc) return; cleanup(); done(false, "the copy finished before cancelling") }
           function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
           FileOperations.error.connect(onErr)
           FileOperations.finished.connect(onFin)
@@ -1334,8 +1334,8 @@ QtObject {
 
     add("Undo registry consistency (UndoState stacks)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin composition root"); return }
-      // Limpia las pilas para aserciones absolutas (singleton compartido).
+      if (!c) { done(false, "no composition root"); return }
+      // Clears the stacks for absolute assertions (shared singleton).
       UndoState.undoStack = []
       UndoState.redoStack = []
       var work = sc.opsDir + "/urc-src.txt"
@@ -1346,18 +1346,18 @@ QtObject {
             function () { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false) },
             function () { return c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false) })
           var afterPush = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
-          // undoLast/redoLast actualizan las pilas de forma SÍNCRONA e inician
-          // un move async. Se llama la acción ANTES de conectar el _fileOp,
-          // así el `ok` del runner (conectado durante undoLast) dispara antes
-          // que este handler y libera nativeBusy para el redoLast siguiente.
+          // undoLast/redoLast update the stacks SYNCHRONOUSLY and start
+          // an async move. The action is called BEFORE connecting the _fileOp,
+          // so the runner's `ok` (connected during undoLast) fires before
+          // this handler and frees nativeBusy for the following redoLast.
           c.undoLast()
           var afterUndo = UndoState.undoStack.length === 0 && UndoState.redoStack.length === 1
-          sc._fileOp(done, function () {   // el undo move terminó
+          sc._fileOp(done, function () {   // the undo move finished
             c.redoLast()
             var afterRedo = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
-            sc._fileOp(done, function () { // el redo move terminó (libera nativeBusy)
+            sc._fileOp(done, function () { // the redo move finished (frees nativeBusy)
               done(afterPush && afterUndo && afterRedo,
-                   "pilas push/undo/redo: " + afterPush + "/" + afterUndo + "/" + afterRedo)
+                   "push/undo/redo stacks: " + afterPush + "/" + afterUndo + "/" + afterRedo)
             })
           })
         })
@@ -1371,7 +1371,7 @@ QtObject {
         sc._fileOp(done, function () {
           sc._listOnce(sc.opsDir + "/newdir", function (e) {
             var ok = sc._has(e, "moved.txt")
-            done(ok, ok ? "" : "moved.txt no está en destino")
+            done(ok, ok ? "" : "moved.txt isn't at the destination")
           })
         })
         FileOperations.move(sc.opsDir + "/toMove.txt", sc.opsDir + "/newdir/moved.txt")
@@ -1382,67 +1382,67 @@ QtObject {
       sc._fileOp(done, function () {
         sc._listOnce(sc.opsDir, function (e) {
           var ok = !sc._has(e, "copy.txt")
-          done(ok, ok ? "" : "copy.txt sigue existiendo")
+          done(ok, ok ? "" : "copy.txt still exists")
         })
       })
       FileOperations.remove(sc.opsDir + "/copy.txt")
     })
 
     add("FileOperations trash + restore (net-zero)", function (done) {
-      // Nombre único: evita que moveToTrash renombre por colisión en la
-      // papelera del usuario y garantiza que el basename en Trash/files es
-      // el esperado. Los fixtures viven en el montaje de HOME, así que
-      // moveToTrash usa la papelera de casa.
+      // Unique name: avoids moveToTrash renaming due to a collision in the
+      // user's trash and guarantees that the basename in Trash/files is
+      // the expected one. The fixtures live in the HOME mount, so
+      // moveToTrash uses the home trash.
       var fname = "selfcheck-trash-" + Date.now() + ".txt"
       var target = sc.opsDir + "/" + fname
       var trashFiles = Backend.Env.get("HOME") + "/.local/share/Trash/files/" + fname
       FileOperations.copy(sc.note, target)
-      sc._fileOp(done, function () {                 // copy listo
-        sc._fileOp(done, function () {               // trash listo (target -> papelera)
-          sc._fileOp(done, function () {             // restore listo
+      sc._fileOp(done, function () {                 // copy done
+        sc._fileOp(done, function () {               // trash done (target -> trash)
+          sc._fileOp(done, function () {             // restore done
             sc._listOnce(sc.opsDir, function (e) {
               var ok = sc._has(e, fname)
-              done(ok, ok ? "restaurado a su sitio" : "no volvió tras restore")
+              done(ok, ok ? "restored to its place" : "didn't come back after restore")
             })
           })
-          // restore recibe la ruta DENTRO de la papelera (contrato real: la
-          // vista Papelera lista .../Trash/files y restaura por esa ruta),
-          // no la ruta original.
+          // restore receives the path INSIDE the trash (real contract: the
+          // Trash view lists .../Trash/files and restores by that path),
+          // not the original path.
           FileOperations.restore(trashFiles)
         })
         FileOperations.trash(target)
       })
     })
 
-    // -------- Refresco de paneles de fondo (regresión 14.C / auditoría 14.E) --------
-    // Un panel de fondo (pestaña NO activa) debe recargarse cuando algo muta
-    // su carpeta desde otra pestaña. La señal es NavState.refreshTick++, que
-    // el panel escucha por Connections. En 14.C refreshTick se movió de
-    // OmafilesContent a NavState pero el Connections seguía apuntando a
-    // hostRoot -> el panel de fondo dejó de refrescarse (regresión silenciosa:
-    // qmllint rc=0 porque hostRoot es Item sin tipar, sin warning en arranque,
-    // y --selfcheck no cubría paneles de fondo). Este test lo blinda: falla si
-    // el panel no refleja el cambio tras refreshTick.
+    // -------- Background panel refresh (14.C regression / 14.E audit) --------
+    // A background panel (NON-active tab) must reload when something mutates
+    // its folder from another tab. The signal is NavState.refreshTick++, which
+    // the panel listens to via Connections. In 14.C refreshTick moved from
+    // OmafilesContent to NavState but the Connections still pointed to
+    // hostRoot -> the background panel stopped refreshing (silent regression:
+    // qmllint rc=0 because hostRoot is an untyped Item, no warning at startup,
+    // and --selfcheck didn't cover background panels). This test shields it: it fails if
+    // the panel doesn't reflect the change after refreshTick.
     add("Background panel refreshes on content change (non-active tab)", function (done) {
       var c = sc._content
-      if (!c) { done(false, "sin _content"); return }
+      if (!c) { done(false, "no _content"); return }
       var bgDir = sc.dir + "/bgpanel-" + Date.now()
 
       FileOperations.mkdir(bgDir)
-      sc._fileOp(done, function () {                    // bgDir creado (vacío)
-        // SortOps real: con SortState por defecto (name/asc) isDefaultOrder es
-        // true, así que _sorted devuelve las entradas tal cual sin tocar
-        // fileTypeUtils/root (por eso pueden ir nulos). panelsRow es un stub
-        // para las geometrías; slotWidth/height 0 => la ListView no instancia
-        // delegates y no se tocan dependencias visuales nulas.
+      sc._fileOp(done, function () {                    // bgDir created (empty)
+        // Real SortOps: with default SortState (name/asc) isDefaultOrder is
+        // true, so _sorted returns the entries as is without touching
+        // fileTypeUtils/root (that's why they can be null). panelsRow is a stub
+        // for the geometries; slotWidth/height 0 => the ListView doesn't instantiate
+        // delegates and no null visual dependencies are touched.
         var soC = Qt.createComponent(Qt.resolvedUrl("../../logic/SortOps.qml"))
         if (soC.status !== Component.Ready) { done(false, "SortOps: " + soC.errorString()); return }
         var sortOps = soC.createObject(sc)
         var panelsRow = sc._panelsRowStub.createObject(sc)
         var bgC = Qt.createComponent(Qt.resolvedUrl("../../panels/BackgroundPanel.qml"))
         if (bgC.status !== Component.Ready) { done(false, "BackgroundPanel: " + bgC.errorString()); return }
-        // index 1 != activeTabIndex 0 => visible (pestaña NO activa), que es
-        // justo la condición del guard de refreshMe().
+        // index 1 != activeTabIndex 0 => visible (NON-active tab), which is
+        // exactly the condition of the refreshMe() guard.
         TabsState.activeTabIndex = 0
         var bg = bgC.createObject(sc, {
           modelData: { path: bgDir }, index: 1,
@@ -1453,38 +1453,38 @@ QtObject {
         function cleanup() { bg.destroy(); sortOps.destroy(); panelsRow.destroy() }
         function cache() { return c.tabEntriesCache[bgDir] }
 
-        // 1) esperar a que el listado inicial (onCompleted -> refreshMe, llamada
-        //    directa, no vía el Connections) pueble la caché con la carpeta vacía.
+        // 1) wait for the initial listing (onCompleted -> refreshMe, a direct
+        //    call, not via the Connections) to populate the cache with the empty folder.
         sc._poll(function () { return cache() !== undefined && cache().length === 0 }, function (ok0) {
-          if (!ok0) { cleanup(); done(false, "el panel no listó la carpeta inicial vacía"); return }
-          // 2) mutar la carpeta y disparar el refresco SOLO por refreshTick.
+          if (!ok0) { cleanup(); done(false, "the panel didn't list the initial empty folder"); return }
+          // 2) mutate the folder and trigger the refresh ONLY via refreshTick.
           FileOperations.copy(sc.note, bgDir + "/appeared.txt")
           sc._fileOp(done, function () {
             NavState.refreshTick += 1
-            // 3) el panel de fondo debe re-listar y reflejar el fichero nuevo.
-            //    Si el Connections está roto, la caché se queda vacía -> timeout.
+            // 3) the background panel must re-list and reflect the new file.
+            //    If the Connections is broken, the cache stays empty -> timeout.
             sc._poll(function () { var e = cache(); return e && sc._has(e, "appeared.txt") }, function (ok) {
-              // bgDir vive dentro del QTemporaryDir del arnés (main.cpp lo
-              // borra al salir); NO se lanza un remove async aquí -- un
-              // fire-and-forget en el último test corre concurrente con la
-              // limpieza de QTemporaryDir y aborta su removeRecursively.
+              // bgDir lives inside the harness's QTemporaryDir (main.cpp
+              // deletes it on exit); NO async remove is launched here -- a
+              // fire-and-forget in the last test runs concurrent with the
+              // QTemporaryDir cleanup and aborts its removeRecursively.
               cleanup()
-              done(ok, ok ? "el panel de fondo reflejó el cambio vía refreshTick"
-                          : "el panel de fondo NO se refrescó tras refreshTick (Connections roto)")
+              done(ok, ok ? "the background panel reflected the change via refreshTick"
+                          : "the background panel did NOT refresh after refreshTick (broken Connections)")
             })
           })
         })
       })
     })
 
-    // -------- Integraciones nativas restantes (Fase 16) --------
-    // Búsqueda recursiva nativa (SearchWorker, sustituye a search-recursive.sh):
-    // coincidencia por nombre, profundidad (subcarpetas) y filtro de ocultos.
+    // -------- Remaining native integrations (Phase 16) --------
+    // Native recursive search (SearchWorker, replaces search-recursive.sh):
+    // name match, depth (subfolders) and hidden filter.
     add("Native recursive search: name, depth, hidden filter (Fase 16)", function (done) {
       var base = sc.dir + "/srch-" + Date.now()
       var mk = function (p) { return function () { FileOperations.mkdir(p) } }
       var cp = function (p) { return function () { FileOperations.copy(sc.note, p) } }
-      // Árbol: match en raíz, match en subcarpeta, match dentro de carpeta oculta.
+      // Tree: match at root, match in subfolder, match inside a hidden folder.
       sc._seqOps([
         mk(base), mk(base + "/sub"), mk(base + "/.hid"),
         cp(base + "/alpha-root.txt"),
@@ -1497,19 +1497,19 @@ QtObject {
         function names(entries) { return entries.map(function (e) { return e.name }).sort() }
         function onResults(entries, truncated) {
           if (phase === 0) {
-            // showHidden=false: alpha-root.txt + sub/alpha-deep.txt, NO el oculto.
+            // showHidden=false: alpha-root.txt + sub/alpha-deep.txt, NOT the hidden one.
             var got = names(entries)
             var ok0 = got.length === 2 && got.indexOf("alpha-root.txt") >= 0
               && got.indexOf("sub/alpha-deep.txt") >= 0 && truncated === false
-            if (!ok0) { sw.results.disconnect(onResults); sw.destroy(); done(false, "sin ocultos: " + JSON.stringify(got)); return }
+            if (!ok0) { sw.results.disconnect(onResults); sw.destroy(); done(false, "without hidden: " + JSON.stringify(got)); return }
             phase = 1
             sw.search(base, "alpha", true)
           } else {
-            // showHidden=true: incluye .hid/alpha-hidden.txt (3 en total).
+            // showHidden=true: includes .hid/alpha-hidden.txt (3 in total).
             var g2 = names(entries)
             var ok1 = g2.length === 3 && g2.indexOf(".hid/alpha-hidden.txt") >= 0
             sw.results.disconnect(onResults); sw.destroy()
-            done(ok1, ok1 ? "nombre+profundidad+ocultos OK" : "con ocultos: " + JSON.stringify(g2))
+            done(ok1, ok1 ? "name+depth+hidden OK" : "with hidden: " + JSON.stringify(g2))
           }
         }
         sw.results.connect(onResults)
@@ -1517,29 +1517,29 @@ QtObject {
       })
     })
 
-    // Listado nativo de la Papelera (FileOperations.trashRoots/trashInfo,
-    // sustituyen a trash-roots.sh/trash-info.sh): trash-roots incluye la de
-    // casa; trash-info refleja un ítem recién enviado con su ruta original.
+    // Native Trash listing (FileOperations.trashRoots/trashInfo,
+    // replace trash-roots.sh/trash-info.sh): trash-roots includes the
+    // home one; trash-info reflects a just-sent item with its original path.
     add("Native trash listing: trashRoots + trashInfo (Fase 16)", function (done) {
       var home = Backend.Env.get("HOME")
       var roots = FileOperations.trashRoots()
       var homeTrash = home + "/.local/share/Trash"
       var hasHome = roots.indexOf(homeTrash) >= 0
-      if (!hasHome) { done(false, "trashRoots no incluye la papelera de casa: " + JSON.stringify(roots)); return }
+      if (!hasHome) { done(false, "trashRoots doesn't include the home trash: " + JSON.stringify(roots)); return }
 
       var fname = "selfcheck-trashinfo-" + Date.now() + ".txt"
       var target = sc.opsDir + "/" + fname
       FileOperations.copy(sc.note, target)
       sc._fileOp(done, function () {          // copy
         sc._fileOp(done, function () {        // trash
-          // trashInfo debe listar el ítem con su ruta original y epoch>0.
+          // trashInfo must list the item with its original path and epoch>0.
           var info = FileOperations.trashInfo()
           var found = null
           for (var i = 0; i < info.length; i++)
             if (info[i].origPath === target) found = info[i]
           var ok = found !== null && found.epoch > 0 && found.trashRoot === homeTrash
           sc._fileOp(done, function () {      // restore (cleanup)
-            done(ok, ok ? "trashRoots+trashInfo OK" : "trashInfo no refleja el ítem")
+            done(ok, ok ? "trashRoots+trashInfo OK" : "trashInfo doesn't reflect the item")
           })
           FileOperations.restoreByOrigPath(target)
         })
@@ -1547,47 +1547,47 @@ QtObject {
       })
     })
 
-    // NetworkMounts.list() nativo (sustituye a list-network-mounts.sh): sin
-    // montajes GVfs activos en el entorno de test, debe devolver una lista
-    // (vacía) sin romper. Smoke test: no se puede afirmar contenido sin un
-    // mount real, pero sí que el camino nativo responde con un array.
+    // Native NetworkMounts.list() (replaces list-network-mounts.sh): without
+    // active GVfs mounts in the test environment, it must return a list
+    // (empty) without breaking. Smoke test: content can't be asserted without a
+    // real mount, but the native path does respond with an array.
     add("Native network mounts listing returns a list (Fase 16)", function (done) {
       var l = Backend.NetworkMounts.list()
       done(l !== undefined && l !== null && typeof l.length === "number",
-           "NetworkMounts.list() -> " + (l ? l.length : "null") + " entradas")
+           "NetworkMounts.list() -> " + (l ? l.length : "null") + " entries")
     })
 
     // ======================= BUG-01 (Hardening-1) =======================
 
-    // Regresión del informe BUG_AUDIT_V3: la detección de conflictos debe ver
-    // un symlink ROTO (destino inexistente) como una entrada existente. Con el
-    // criterio antiguo (QFileInfo::exists, que sigue el symlink) existingPaths
-    // devolvía 0 y la UI no avisaba, divergiendo del comportamiento real de la
-    // op nativa. Ahora usa lstat (entryExists) en existingPaths y en los guards
-    // de copy()/move(): mismo criterio en UI y backend. Esta prueba FALLABA con
-    // el código anterior.
+    // Regression from the BUG_AUDIT_V3 report: conflict detection must see
+    // a BROKEN symlink (nonexistent target) as an existing entry. With the
+    // old criterion (QFileInfo::exists, which follows the symlink) existingPaths
+    // returned 0 and the UI didn't warn, diverging from the real behavior of the
+    // native op. Now it uses lstat (entryExists) in existingPaths and in the
+    // copy()/move() guards: same criterion in UI and backend. This test FAILED with
+    // the previous code.
     add("Conflict detection sees a broken symlink (BUG-01)", function (done) {
       var link = sc.opsDir + "/bug01-broken-" + Date.now()
       sc._sh(["ln", "-s", "/omafiles-no-such-target-xyz", link], function (r) {
-        if (r.exitCode !== 0) { done(false, "no se pudo crear el symlink roto: " + r.stderr); return }
+        if (r.exitCode !== 0) { done(false, "couldn't create the broken symlink: " + r.stderr); return }
         var hit = FileOperations.existingPaths([link])
         done(hit.length === 1 && hit[0] === link,
-             hit.length === 1 ? "symlink roto detectado como conflicto"
-                              : "existingPaths NO detectó el symlink roto (n=" + hit.length + ")")
+             hit.length === 1 ? "broken symlink detected as a conflict"
+                              : "existingPaths did NOT detect the broken symlink (n=" + hit.length + ")")
       })
     })
 
     // ======================= BUG-02 (Hardening-1) =======================
-    // Smoke tests de los scripts .sh que siguen formando parte del
-    // comportamiento de la UI. Objetivo: que una regresión como la de
-    // empty-trash.sh (que pasó 70/70 en verde) haga fallar el arnés.
+    // Smoke tests of the .sh scripts that are still part of the
+    // UI's behavior. Goal: that a regression like the one in
+    // empty-trash.sh (which passed 70/70 green) makes the harness fail.
 
-    // empty-trash.sh AISLADO: HOME apunta a un home falso dentro del tmp del
-    // selfcheck y un findmnt falso (por PATH) impide que se escaneen montajes
-    // reales -> NUNCA toca la papelera de verdad del usuario. Prepara una
-    // papelera de casa con un ítem y confirma que el script la vacía. Una
-    // regresión que no descubra las raíces (como la de trash-roots.sh) dejaría
-    // el ítem sin borrar y haría fallar esto.
+    // ISOLATED empty-trash.sh: HOME points to a fake home inside the selfcheck's
+    // tmp and a fake findmnt (via PATH) prevents real mounts from being scanned
+    // -> it NEVER touches the user's real trash. It prepares a home
+    // trash with an item and confirms that the script empties it. A
+    // regression that doesn't discover the roots (like the trash-roots.sh one) would leave
+    // the item undeleted and would make this fail.
     add("empty-trash.sh empties an isolated home trash (BUG-02)", function (done) {
       var fakeHome = sc.dir + "/et-home"
       var tFiles = fakeHome + "/.local/share/Trash/files"
@@ -1599,42 +1599,42 @@ QtObject {
         "printf '[Trash Info]\\n' > " + _q(tInfo + "/victim.txt.trashinfo") + " && " +
         "printf '#!/bin/sh\\n' > " + _q(fakeBin + "/findmnt") + " && chmod +x " + _q(fakeBin + "/findmnt")
       sc._sh(["bash", "-c", setup], function (r0) {
-        if (r0.exitCode !== 0) { done(false, "setup falló: " + r0.stderr); return }
+        if (r0.exitCode !== 0) { done(false, "setup failed: " + r0.stderr); return }
         var run = "env -i HOME=" + _q(fakeHome) + " PATH=" + _q(fakeBin) + ":/usr/bin:/bin bash "
           + _q(sc.pluginRoot + "/empty-trash.sh")
         sc._sh(["bash", "-c", run], function (r1) {
           sc._sh(["bash", "-c", "ls -A " + _q(tFiles) + " | wc -l"], function (r2) {
             var remaining = parseInt(String(r2.stdout).trim(), 10)
             done(r1.exitCode === 0 && remaining === 0,
-                 "exit=" + r1.exitCode + " ítems restantes=" + remaining)
+                 "exit=" + r1.exitCode + " remaining items=" + remaining)
           })
         })
       })
     })
 
-    // list-archive.sh sobre un .tar determinista construido desde listDir
-    // (sub/ + alpha/beta/gamma.txt). Confirma que lista los elementos de primer
-    // nivel en el contrato NUL-delimitado (name\0isdir\0...).
+    // list-archive.sh over a deterministic .tar built from listDir
+    // (sub/ + alpha/beta/gamma.txt). Confirms that it lists the top-level
+    // elements in the NUL-delimited contract (name\0isdir\0...).
     add("list-archive.sh lists a tar fixture (BUG-02)", function (done) {
       var tarPath = sc.opsDir + "/la-fixture.tar"
       var mk = "tar -cf " + _q(tarPath) + " -C " + _q(sc.listDir) + " sub alpha.txt beta.txt gamma.txt"
       sc._sh(["bash", "-c", mk], function (r0) {
-        if (r0.exitCode !== 0) { done(false, "tar setup falló: " + r0.stderr); return }
+        if (r0.exitCode !== 0) { done(false, "tar setup failed: " + r0.stderr); return }
         sc._sh(["bash", sc.pluginRoot + "/list-archive.sh", tarPath, ""], function (r) {
           var toks = String(r.stdout).split("\0")
           var names = []
           for (var i = 0; i < toks.length; i += 2) if (toks[i]) names.push(toks[i])
           var ok = r.exitCode === 0 && names.indexOf("sub") >= 0 && names.indexOf("alpha.txt") >= 0
-          done(ok, ok ? "listó " + names.length + " entradas de primer nivel"
-                      : "salida=[" + names.join(",") + "] exit=" + r.exitCode)
+          done(ok, ok ? "listed " + names.length + " top-level entries"
+                      : "output=[" + names.join(",") + "] exit=" + r.exitCode)
         })
       })
     })
 
-    // mount-iso.sh: no se puede montar en headless. Se ejercita la RUTA DE
-    // FALLO: ante una ruta inexistente el script no debe imprimir un "Mounted…"
-    // falso ni colgarse -> sale != 0 y sin stdout. Verifica que se invoca y que
-    // su guardia (set -e + comprobación de loopdev) funciona.
+    // mount-iso.sh: can't mount in headless. It exercises the FAILURE
+    // PATH: given a nonexistent path the script must not print a fake "Mounted…"
+    // nor hang -> it exits != 0 and with no stdout. Verifies that it's invoked and that
+    // its guard (set -e + loopdev check) works.
     add("mount-iso.sh fails safely on a bad path (BUG-02)", function (done) {
       sc._sh(["bash", sc.pluginRoot + "/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
         var ok = r.exitCode !== 0 && String(r.stdout).trim() === ""
@@ -1642,70 +1642,70 @@ QtObject {
       })
     })
 
-    // open-with-list.sh sobre un .txt: exit 0 y salida con forma TSV válida
-    // (vacía, o cada línea con un TAB nombre<TAB>id). No fija QUÉ apps hay
-    // (depende del sistema); sí que se invoca y responde en su contrato.
+    // open-with-list.sh over a .txt: exit 0 and output with valid TSV shape
+    // (empty, or each line with a TAB name<TAB>id). It doesn't fix WHICH apps there are
+    // (depends on the system); it does check that it's invoked and responds in its contract.
     add("open-with-list.sh returns valid TSV (BUG-02)", function (done) {
       sc._sh(["bash", sc.pluginRoot + "/open-with-list.sh", sc.note], function (r) {
         var lines = String(r.stdout).split("\n").filter(function (l) { return l.length > 0 })
         var shapeOk = lines.every(function (l) { return l.indexOf("\t") >= 0 })
-        done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " líneas=" + lines.length)
+        done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " lines=" + lines.length)
       })
     })
 
     // ======================= BUG-03 (Hardening-2) =======================
 
-    // Properties/chmod construían `du -shc -- <todas>` y `stat -c%a -- <todas>`
-    // en una sola línea bash -> con selección enorme se reventaba el límite de
-    // longitud (ARG_MAX / 128 KiB por argumento) y el diálogo se quedaba sin
-    // tamaño/permisos. Ahora usan FileOperations.totalSize/octalModes (nativo,
-    // sin línea de comandos). La prueba construye una lista que SÍ desborda esa
-    // línea: el camino nativo la maneja; el shell antiguo falla. Falla con el
-    // código anterior (octalModes no existía -> TypeError).
+    // Properties/chmod built `du -shc -- <all>` and `stat -c%a -- <all>`
+    // in a single bash line -> with a huge selection it blew the length
+    // limit (ARG_MAX / 128 KiB per argument) and the dialog was left without
+    // size/permissions. Now they use FileOperations.totalSize/octalModes (native,
+    // no command line). The test builds a list that DOES overflow that
+    // line: the native path handles it; the old shell fails. It fails with the
+    // previous code (octalModes didn't exist -> TypeError).
     add("Properties/chmod handle a huge selection without ARG_MAX (BUG-03)", function (done) {
-      // Dos fixtures que existen (para afirmar suma/modo correctos) + relleno de
-      // rutas largas inexistentes hasta que la línea `stat/du -- <todas>` que
-      // usaba el código viejo desbordaría el límite por-argumento (128 KiB).
+      // Two fixtures that exist (to assert correct sum/mode) + padding of
+      // long nonexistent paths until the `stat/du -- <all>` line that
+      // the old code used would overflow the per-argument limit (128 KiB).
       var reals = [sc.note, sc.png]
       var expected = FileOperations.totalSize(reals)
       var pad = new Array(160).join("x")
       var big = reals.slice()
       while (big.length < 2000) big.push(sc.opsDir + "/" + pad + big.length)
-      // NATIVO: no construye línea de comandos -> aguanta la lista enorme.
-      var total = FileOperations.totalSize(big)      // suma solo los 2 reales
-      var modes = FileOperations.octalModes(big)     // alineado con big, "" si falta
+      // NATIVE: doesn't build a command line -> handles the huge list.
+      var total = FileOperations.totalSize(big)      // sums only the 2 real ones
+      var modes = FileOperations.octalModes(big)     // aligned with big, "" if missing
       var nativeOk = total === expected
         && modes.length === big.length && modes[0].length > 0 && modes[2] === ""
-      if (!nativeOk) { done(false, "nativo: total=" + total + " exp=" + expected
+      if (!nativeOk) { done(false, "native: total=" + total + " exp=" + expected
         + " len=" + modes.length + " m0='" + modes[0] + "' m2='" + modes[2] + "'"); return }
-      // ANTIGUO: la MISMA forma `stat -c%a -- <todas>` que usaba el código viejo
-      // -> el arg -c desborda el límite y exec falla (exit != 0).
+      // OLD: the SAME `stat -c%a -- <all>` form that the old code used
+      // -> the -c arg overflows the limit and exec fails (exit != 0).
       var oldCmd = "stat -c%a -- " + big.map(function (p) { return _q(p) }).join(" ")
       sc._sh(["bash", "-c", oldCmd], function (r) {
         done(r.exitCode !== 0,
-             "nativo OK (" + big.length + " rutas); línea shell antigua falló (exit=" + r.exitCode + ")")
+             "native OK (" + big.length + " paths); old shell line failed (exit=" + r.exitCode + ")")
       })
     })
 
     // ======================= BUG-05 (Hardening-2) =======================
 
-    // ArchiveActions abría un miembro de archivo con `tar xf A -O <miembro>`
-    // sin "--": un miembro que empiece por "-" (p.ej. "-foo") lo tomaba tar
-    // como opciones y fallaba. El patrón corregido es `tar xf A -O -- <miembro>`.
-    // Se crea un .tar con un miembro "-foo" y se comprueba que la forma NUEVA
-    // lo vuelca y la ANTIGUA falla.
+    // ArchiveActions opened an archive member with `tar xf A -O <member>`
+    // without "--": a member starting with "-" (e.g. "-foo") was taken by tar
+    // as options and failed. The corrected pattern is `tar xf A -O -- <member>`.
+    // A .tar with a member "-foo" is created and it's checked that the NEW form
+    // dumps it and the OLD one fails.
     add("tar extracts a member whose name starts with '-' (BUG-05)", function (done) {
       var d = sc.opsDir + "/bug05"
       var arch = d + "/a.tar"
       var setup = "mkdir -p " + _q(d) + " && cd " + _q(d)
         + " && printf 'contenido05' > ./-foo && tar cf " + _q(arch) + " -- -foo"
       sc._sh(["bash", "-c", setup], function (r0) {
-        if (r0.exitCode !== 0) { done(false, "setup falló: " + r0.stderr); return }
+        if (r0.exitCode !== 0) { done(false, "setup failed: " + r0.stderr); return }
         sc._sh(["bash", "-c", "tar xf " + _q(arch) + " -O -- " + _q("-foo")], function (rNew) {
           sc._sh(["bash", "-c", "tar xf " + _q(arch) + " -O " + _q("-foo") + " 2>/dev/null"], function (rOld) {
             var ok = rNew.exitCode === 0 && String(rNew.stdout) === "contenido05" && rOld.exitCode !== 0
-            done(ok, "nuevo: exit=" + rNew.exitCode + " out='" + String(rNew.stdout)
-              + "' | antiguo exit=" + rOld.exitCode)
+            done(ok, "new: exit=" + rNew.exitCode + " out='" + String(rNew.stdout)
+              + "' | old exit=" + rOld.exitCode)
           })
         })
       })

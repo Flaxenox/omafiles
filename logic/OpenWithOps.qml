@@ -3,7 +3,7 @@ import QtQuick
 import "../state"
 import "../services"
 
-// Diálogo "Abrir con..." -- vigésimo primer componente extraído de
+// "Open with..." dialog -- twenty-first component extracted from
 // Omafiles.qml.
 Item {
   property Item root: null

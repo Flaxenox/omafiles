@@ -4,20 +4,20 @@ import qs.Ui
 import "../dialogs"
 import "../state"
 
-// DialogLayer -- capa de diálogos/overlays modales de Omafiles (Fase 11.B,
-// josema: descomponer el god object core/OmafilesContent.qml por
-// responsabilidad). Contiene TODO lo que antes eran los últimos ~315
-// líneas de OmafilesContent: renombrar en lote, conectar a servidor,
-// permisos, propiedades, ayuda de atajos, tarjeta de copiar/mover en curso,
-// abrir-con, menú contextual, los siete ConfirmDialog, los dos
-// ConflictResolveDialog y la paleta de comandos.
+// DialogLayer -- modal dialog/overlay layer of Omafiles (Phase 11.B,
+// josema: decompose the god object core/OmafilesContent.qml by
+// responsibility). It contains EVERYTHING that used to be the last ~315
+// lines of OmafilesContent: bulk rename, connect to server,
+// permissions, properties, shortcuts help, copy/move-in-progress card,
+// open-with, context menu, the seven ConfirmDialog, the two
+// ConflictResolveDialog and the command palette.
 //
-// Dependencias INYECTADAS explícitamente (mismo patrón que ActiveFileList,
-// no vía root.* -- ver ARCHITECTURE.md: dialogs reciben datos por
-// props/callbacks). root/list para la fachada y devolver el foco; los ops
-// de logic/ que cada diálogo confirma. Los siete ConfirmDialog se exponen
-// como alias porque ActiveFileList los referencia de vuelta (abre/cierra
-// según el resultado del listado).
+// Dependencies INJECTED explicitly (same pattern as ActiveFileList,
+// not via root.* -- see ARCHITECTURE.md: dialogs receive data via
+// props/callbacks). root/list for the facade and returning focus; the ops
+// from logic/ that each dialog confirms. The seven ConfirmDialog are exposed
+// as aliases because ActiveFileList references them back (opens/closes
+// according to the listing result).
 Item {
   id: dialogLayer
   anchors.fill: parent
@@ -42,7 +42,7 @@ Item {
   property alias compressConflictConfirm: compressConflictConfirm
   property alias bulkRenameConflictConfirm: bulkRenameConflictConfirm
 
-  // ---------- Renombrar en lote ----------
+  // ---------- Bulk rename ----------
   BulkRenamePanel {
     anchors.fill: parent
     open: DialogsState.bulkRenameOpen
@@ -54,7 +54,7 @@ Item {
     onFocusReturnRequested: list.forceActiveFocus()
   }
 
-  // ---------- Conectar a servidor ----------
+  // ---------- Connect to server ----------
   ConnectServer {
     anchors.fill: parent
     open: DialogsState.connectServerOpen
@@ -67,7 +67,7 @@ Item {
     onFocusReturnRequested: list.forceActiveFocus()
   }
 
-  // ---------- Permisos (chmod) ----------
+  // ---------- Permissions (chmod) ----------
   ChmodPanel {
     anchors.fill: parent
     open: ChmodState.chmodOpen
@@ -82,7 +82,7 @@ Item {
     onApplyRequested: function (mode) { fileOps.commitChmod(mode) }
   }
 
-  // ---------- Propiedades ----------
+  // ---------- Properties ----------
   PropertiesPanel {
     anchors.fill: parent
     open: PropertiesState.propertiesOpen
@@ -97,19 +97,19 @@ Item {
     onCloseRequested: PropertiesState.propertiesOpen = false
   }
 
-  // ---------- Ayuda de atajos de teclado ----------
-  // Primer componente extraído a su propio fichero (ShortcutsHelp.qml)
-  // -- ver comentario ahí sobre por qué se eligió este trozo primero.
+  // ---------- Keyboard shortcuts help ----------
+  // First component extracted to its own file (ShortcutsHelp.qml)
+  // -- see the comment there about why this piece was chosen first.
   ShortcutsHelp {
     anchors.fill: parent
     open: DialogsState.shortcutsHelpOpen
     onRequestClose: DialogsState.shortcutsHelpOpen = false
   }
 
-  // ---------- Copiar/mover en curso ----------
-  // No bloquea el resto de la ventana (sin MouseArea de fondo a pantalla
-  // completa) -- cp/mv no reportan progreso real, así que esto es solo
-  // "sigue vivo" (puntos animados) + Cancel, no una barra de porcentaje.
+  // ---------- Copy/move in progress ----------
+  // It doesn't block the rest of the window (no full-screen background
+  // MouseArea) -- cp/mv don't report real progress, so this is only
+  // "still alive" (animated dots) + Cancel, not a percentage bar.
   BorderSurface {
     id: actionBusyCard
     visible: ActionState.actionBusy
@@ -141,10 +141,10 @@ Item {
         Text {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - cancelActionButton.width - parent.spacing
-          // Porcentaje real para copiar/mover (ver
-          // startCopyProgress/actionProgressPct); puntos animados
-          // para cualquier otra acción, que no tiene un "tamaño
-          // total" con el que calcular nada.
+          // Real percentage for copy/move (see
+          // startCopyProgress/actionProgressPct); animated dots
+          // for any other action, which has no "total
+          // size" to compute anything with.
           text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : root.actionBusyDots)
           font.pixelSize: Style.font.subtitle
           font.family: Style.font.family
@@ -176,8 +176,8 @@ Item {
           radius: height / 2
           color: Color.accent
 
-          // Fase 22: 120 ms sin overshoot (antes 200 ms). Solo suaviza el
-          // avance del progreso; nada de rebote/elástico.
+          // Phase 22: 120 ms without overshoot (before 200 ms). It only smooths the
+          // progress advance; no bounce/elastic.
           Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
       }
@@ -191,7 +191,7 @@ Item {
     onTriggered: root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
   }
 
-  // ---------- Abrir con... ----------
+  // ---------- Open with... ----------
   OpenWithPanel {
     anchors.fill: parent
     open: PreviewState.openWithOpen
@@ -201,7 +201,7 @@ Item {
     onAppSelected: function (appId) { openWithOps.launchWith(appId) }
   }
 
-  // ---------- Menú contextual ----------
+  // ---------- Context menu ----------
   ContextMenuPanel {
     anchors.fill: parent
     open: ContextMenuState.contextMenuOpen
@@ -325,7 +325,7 @@ Item {
     onConfirmed: fileOps.runPendingBulkRename()
   }
 
-  // ---------- Conflicto al pegar ----------
+  // ---------- Paste conflict ----------
   ConflictResolveDialog {
     anchors.fill: parent
     open: ConflictState.pasteConflictOpen
@@ -335,7 +335,7 @@ Item {
     onCancelRequested: clipboardOps.cancelPasteConflict()
   }
 
-  // ---------- Conflicto al soltar (drag & drop) ----------
+  // ---------- Drop conflict (drag & drop) ----------
   ConflictResolveDialog {
     anchors.fill: parent
     open: ConflictState.dropConflictOpen
@@ -345,7 +345,7 @@ Item {
     onCancelRequested: dragDropOps.cancelDropConflict()
   }
 
-  // ---------- Paleta de comandos (: o Ctrl+P) ----------
+  // ---------- Command palette (: or Ctrl+P) ----------
   CommandPalettePanel {
     anchors.fill: parent
     open: PaletteState.paletteOpen

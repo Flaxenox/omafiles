@@ -4,14 +4,14 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Cuenta las entradas directas de una carpeta para el subtítulo de la lista de
-// ficheros ("42 items", Fase 23, josema). NO toca DirectoryModel (que lista la
-// carpeta ACTUAL): cuenta el contenido de las SUBcarpetas visibles, a demanda
-// (una por fila-carpeta) y de forma ASÍNCRONA (QThreadPool) para no bloquear la
-// UI ni en carpetas enormes (node_modules). QDirIterator recorre el directorio
-// sin stat por entrada. El resultado llega por la señal counted(path, n); la
-// caché (con invalidación) la lleva state/FolderCountState en QML. Singleton
-// QML, sin dependencia de Quickshell.
+// Counts the direct entries of a folder for the file list subtitle
+// ("42 items", Phase 23, josema). It does NOT touch DirectoryModel (which lists
+// the CURRENT folder): it counts the content of the visible SUBfolders, on
+// demand (one per folder-row) and ASYNCHRONOUSLY (QThreadPool) so as not to
+// block the UI even on huge folders (node_modules). QDirIterator walks the
+// directory without a stat per entry. The result arrives via the counted(path,
+// n) signal; the cache (with invalidation) is handled by state/FolderCountState
+// in QML. QML singleton, no dependency on Quickshell.
 class FolderCounter : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -20,9 +20,10 @@ class FolderCounter : public QObject {
 public:
   explicit FolderCounter(QObject *parent = nullptr);
 
-  // Lanza el conteo async de `path`. includeHidden refleja NavState.showHidden
-  // para que el número cuadre con lo que se vería dentro. Emite counted(path,n)
-  // al terminar (n = -1 si no se puede abrir: permisos, no existe, no es dir).
+  // Launches the async count of `path`. includeHidden mirrors
+  // NavState.showHidden so the number matches what would be seen inside. Emits
+  // counted(path,n) on completion (n = -1 if it cannot be opened: permissions,
+  // does not exist, is not a dir).
   Q_INVOKABLE void request(const QString &path, bool includeHidden);
 
 signals:

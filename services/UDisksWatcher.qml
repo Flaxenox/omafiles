@@ -2,17 +2,17 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Watcher reactivo de dispositivos -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.UDisksWatcher (suscripción D-Bus a org.freedesktop.UDisks2,
-// ver backend/UDisksWatcher.cpp). Fase 20 (josema): sustituto reactivo del
-// polling de 7 s. Como el contrato es una SEÑAL (no una función), este
-// adaptador la reemite para que logic/core no importen Omafiles.Backend
-// (regla 8), igual que JsonStore reemite loaded/saved.
+// Reactive device watcher -- thin adapter over the C++ singleton
+// Omafiles.Backend.UDisksWatcher (D-Bus subscription to org.freedesktop.UDisks2,
+// see backend/UDisksWatcher.cpp). Phase 20 (josema): reactive replacement for the
+// 7 s polling. Since the contract is a SIGNAL (not a function), this
+// adapter re-emits it so logic/core do not import Omafiles.Backend
+// (rule 8), just as JsonStore re-emits loaded/saved.
 QtObject {
   id: root
 
-  // Reemitida cuando UDisks2 notifica cualquier cambio de dispositivo de
-  // bloque. El frontend responde con refreshMounts().
+  // Re-emitted when UDisks2 notifies any block-device
+  // change. The frontend responds with refreshMounts().
   signal devicesChanged()
 
   function available() { return Backend.UDisksWatcher.available() }

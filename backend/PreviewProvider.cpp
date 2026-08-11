@@ -19,12 +19,12 @@ QVariantMap PreviewProvider::info(const QString &path) {
   m[QStringLiteral("mtime")] =
       static_cast<qint64>(fi.lastModified().toSecsSinceEpoch());
 
-  // MIME por contenido + extensión (abre y lee una cabecera pequeña; barato
-  // para un solo fichero seleccionado).
+  // MIME by content + extension (opens and reads a small header; cheap
+  // for a single selected file).
   static QMimeDatabase db;
   m[QStringLiteral("mime")] = db.mimeTypeForFile(fi).name();
 
-  // Permisos básicos del propietario como cadena "rwx".
+  // Basic owner permissions as an "rwx" string.
   const QFileDevice::Permissions p = fi.permissions();
   QString perms;
   perms += (p & QFileDevice::ReadOwner) ? QLatin1Char('r') : QLatin1Char('-');
@@ -43,14 +43,14 @@ void PreviewProvider::requestText(const QString &path, int maxBytes) {
       [this, path, maxBytes, gen]() {
         QFile file(path);
         if (!file.open(QIODevice::ReadOnly))
-          return; // ilegible: no emite (el panel deja el estado anterior/vacío)
+          return; // unreadable: does not emit (the panel keeps the previous/empty state)
 
         const qint64 total = file.size();
         const QByteArray raw = file.read(maxBytes);
         file.close();
         const bool truncated = total > maxBytes;
 
-        // Detección de codificación: intenta UTF-8; si es inválido, Latin-1.
+        // Encoding detection: tries UTF-8; if invalid, Latin-1.
         QStringDecoder dec(QStringConverter::Utf8,
                            QStringConverter::Flag::Stateless);
         QString content = dec.decode(raw);
@@ -68,7 +68,7 @@ void PreviewProvider::requestText(const QString &path, int maxBytes) {
         QMetaObject::invokeMethod(
             this,
             [this, path, content, encoding, bytes, lines, truncated, gen]() {
-              // Cancelación: descartar si ya se pidió otra preview después.
+              // Cancellation: discard if another preview was already requested after.
               if (gen != m_gen)
                 return;
               emit textReady(path, content, encoding, bytes, lines, truncated);

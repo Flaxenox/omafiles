@@ -1,15 +1,15 @@
 import Omafiles.Backend as Backend
 
-// Listado de directorios -- adaptador fino que re-exporta el tipo C++
-// Omafiles.Backend.DirectoryModel (QAbstractListModel sobre readdir/stat,
-// ver backend/DirectoryModel.cpp) bajo el nombre
-// Omafiles.Services.DirectoryModel. Fase 6.B (josema).
+// Directory listing -- thin adapter that re-exports the C++ type
+// Omafiles.Backend.DirectoryModel (QAbstractListModel over readdir/stat,
+// see backend/DirectoryModel.cpp) under the name
+// Omafiles.Services.DirectoryModel. Phase 6.B (josema).
 //
-// No es singleton a proposito: como ProcessRunner, varias pestanas pueden
-// listar rutas distintas a la vez, cada una con su instancia. La API
-// (list/error/loading/count/entries/listed + roles del modelo) es la del
-// backend; logic/ no importa Omafiles.Backend directamente (regla 8). Es la
-// fuente viva del listado desde la Fase 6.C (ya no hay list-dir.sh): tanto el
-// panel activo (NavigationController) como los de fondo (BackgroundPanel)
-// listan por aqui via DirLister.
+// Not a singleton on purpose: like ProcessRunner, several tabs can
+// list different paths at once, each with its own instance. The API
+// (list/error/loading/count/entries/listed + the model roles) is the
+// backend's; logic/ does not import Omafiles.Backend directly (rule 8). It is the
+// live source of the listing since Phase 6.C (there is no more list-dir.sh): both the
+// active panel (NavigationController) and the background ones (BackgroundPanel)
+// list through here via DirLister.
 Backend.DirectoryModel {}

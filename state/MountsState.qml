@@ -1,18 +1,18 @@
 pragma Singleton
 import QtQuick
 
-// Unidades locales y montajes de red listados en la barra lateral --
-// decimoquinto singleton de la capa state/, completa
+// Local drives and network mounts listed in the sidebar --
+// fifteenth singleton of the state/ layer, completes
 // logic/MountActions.qml.
 QtObject {
   property var mounts: []
-  // Dispositivo (device path, p.ej. /dev/sdb1) cuya expulsión está en curso --
-  // dispara el spinner del botón de eject de la barra lateral (Fase 21). Se
-  // pone en MountActions.ejectMount() y se limpia al terminar; la fila
-  // desaparece sola cuando UDisksWatcher refresca el listado. Sin timers.
+  // Device (device path, e.g. /dev/sdb1) whose ejection is in progress --
+  // triggers the spinner of the sidebar's eject button (Phase 21). It is
+  // set in MountActions.ejectMount() and cleared on completion; the row
+  // disappears on its own when UDisksWatcher refreshes the listing. No timers.
   property string ejectingDevice: ""
-  // Ubicaciones de red (SFTP/SMB/WebDAV/FTP) montadas vía GVfs -- cada
-  // una es un directorio real bajo $XDG_RUNTIME_DIR/gvfs/, list-dir.sh la
-  // navega igual que cualquier carpeta local sin cambios.
+  // Network locations (SFTP/SMB/WebDAV/FTP) mounted via GVfs -- each
+  // one is a real directory under $XDG_RUNTIME_DIR/gvfs/, list-dir.sh
+  // navigates it just like any local folder unchanged.
   property var networkMounts: []
 }

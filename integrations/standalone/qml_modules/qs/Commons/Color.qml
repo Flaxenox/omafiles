@@ -1,27 +1,27 @@
 pragma Singleton
 import QtQuick
 
-// Color de qs.Commons para el frontend Qt6 (Fase 17, josema). Es el MISMO
-// Color.qml real de Omarchy (misma resolución de superficies: pick/flatColor/
-// composed + los QtObject por superficie), salvo que la paleta fundacional y
-// el diccionario shellValues NO se leen aquí con Quickshell.Io/FileView sino
-// que vienen de ThemeSource (que sí lee colors.toml/shell.toml y sondea los
-// cambios). Así los componentes qs.Ui copiados del real renderizan idéntico a
-// Quickshell y siguen el tema en vivo.
+// qs.Commons Color for the Qt6 frontend (Phase 17, josema). It's the SAME
+// real Omarchy Color.qml (same surface resolution: pick/flatColor/
+// composed + the per-surface QtObject), except that the foundational palette and
+// the shellValues dictionary are NOT read here with Quickshell.Io/FileView but
+// come from ThemeSource (which does read colors.toml/shell.toml and polls the
+// changes). So the qs.Ui components copied from the real one render identical to
+// Quickshell and follow the theme live.
 QtObject {
   id: root
 
-  // Paleta fundacional (colors.toml) — vía ThemeSource.
+  // Foundational palette (colors.toml) — via ThemeSource.
   readonly property color foreground: ThemeSource.foreground
   readonly property color background: ThemeSource.background
   readonly property color accent: ThemeSource.accent
   readonly property color urgent: ThemeSource.urgent
   readonly property color muted: ThemeSource.muted
 
-  // Dict "seccion.clave" -> string crudo (shell.toml) — vía ThemeSource.
+  // Dict "section.key" -> raw string (shell.toml) — via ThemeSource.
   readonly property var shellValues: ThemeSource.shellValues
 
-  // --- resolución de superficie (verbatim del Color.qml real) -------------
+  // --- surface resolution (verbatim from the real Color.qml) -------------
   function pick(key, fallback) {
     var v = shellValues[key]
     return (typeof v === "string" && v.length > 0) ? v : fallback
@@ -57,7 +57,7 @@ QtObject {
     return Util.alpha(flatColor(pick(colorKey, colorFallback), colorFallback), pickAlpha(alphaKey, alphaFallback))
   }
 
-  // --- superficies (las que usan Omafiles y sus componentes) --------------
+  // --- surfaces (the ones Omafiles and its components use) --------------
   readonly property QtObject tooltip: QtObject {
     property color background: root.composed("tooltip.background", "tooltip.background-alpha", root.background, 1.0)
     property color text: root.pick("tooltip.text", root.foreground)

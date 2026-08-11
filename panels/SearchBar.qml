@@ -3,30 +3,30 @@ import qs.Commons
 import qs.Ui
 import "../state"
 
-// Lupa de búsqueda expandible de la barra superior (Fase 19, josema). En
-// reposo solo se ve la lupa, pegada al borde derecho de navRow; al activarla
-// (clic o Ctrl+F) el campo se despliega HACIA LA IZQUIERDA con una animación
-// suave, comiéndole ancho al breadcrumb (que MainLayout encoge, nunca a 0:
-// la ruta sigue visible, truncada). No es un sistema de búsqueda nuevo:
-// reutiliza SearchOps/SearchWorker (búsqueda recursiva incremental desde la
-// carpeta actual, resultados en NavState.entries = el mismo panel activo).
+// Expandable search magnifier of the top bar (Phase 19, josema). At
+// rest only the magnifier is shown, stuck to the right edge of navRow; on activating it
+// (click or Ctrl+F) the field unfolds TO THE LEFT with a smooth
+// animation, eating width from the breadcrumb (which MainLayout shrinks, never to 0:
+// the path stays visible, truncated). It's not a new search system:
+// it reuses SearchOps/SearchWorker (incremental recursive search from the
+// current folder, results in NavState.entries = the same active panel).
 //
-// Vive en panels/ (no shared/) porque lee NavState y llama a searchOps: capa
-// panels/ = puede leer state/ y accionar logic/ inyectado, igual que
-// ActivePanelInputRows. Un único componente para los dos frontends (Quickshell
-// y Qt6): no hay nada específico de host aquí.
+// It lives in panels/ (not shared/) because it reads NavState and calls searchOps: the
+// panels/ layer = can read state/ and drive injected logic/, just like
+// ActivePanelInputRows. A single component for both frontends (Quickshell
+// and Qt6): there is nothing host-specific here.
 Item {
   id: sb
 
-  // Inyectadas por MainLayout (patrón ActiveFileList, no root.*).
+  // Injected by MainLayout (ActiveFileList pattern, not root.*).
   property Item list: null
   property var searchOps: null
   property var navController: null
   property var selectionOps: null
 
-  // Ancho máximo que MainLayout deja para el campo expandido (lo que sobra
-  // tras reservar un mínimo para el breadcrumb) -- así en ventanas estrechas
-  // la lupa se expande menos y la ruta nunca desaparece.
+  // Maximum width that MainLayout leaves for the expanded field (what's left
+  // after reserving a minimum for the breadcrumb) -- so in narrow windows
+  // the magnifier expands less and the path never disappears.
   property real maxWidth: 300
 
   readonly property int collapsedW: Style.spacing.controlHeight
@@ -34,40 +34,40 @@ Item {
 
   height: Style.spacing.controlHeight
   width: NavState.searching ? expandedW : collapsedW
-  // Expansión/colapso suave (200-250 ms) hacia la izquierda: la lupa queda
-  // fija a la derecha porque MainLayout ancla este componente al final de
-  // navRow y encoge el breadcrumb en su lugar.
+  // Smooth expand/collapse (200-250 ms) to the left: the magnifier stays
+  // fixed to the right because MainLayout anchors this component at the end of
+  // navRow and shrinks the breadcrumb in its place.
   Behavior on width { enabled: !NavState.suppressSearchAnim; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
   function expand() {
     if (NavState.searching) { field.forceActiveFocus(); return }
-    searchOps.startSearch() // searching=true, query="" -> el campo se hace visible y toma foco
+    searchOps.startSearch() // searching=true, query="" -> the field becomes visible and takes focus
   }
   function collapse() {
-    searchOps.exitSearch() // searching=false, cancela, limpia, refresca, deselecciona
+    searchOps.exitSearch() // searching=false, cancels, clears, refreshes, deselects
   }
 
-  // Fondo del campo -- solo visible al expandir (en reposo: solo la lupa).
-  // Mismo radio que el resto de controles de la app (TextField/Button usan
-  // Style.cornerRadius = decoration:rounding de Hyprland), no una píldora
-  // redonda: así sigue las esquinas originales del tema.
+  // Field background -- only visible when expanded (at rest: only the magnifier).
+  // Same radius as the rest of the app's controls (TextField/Button use
+  // Style.cornerRadius = Hyprland's decoration:rounding), not a round
+  // pill: so it follows the theme's original corners.
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius
     color: NavState.searching ? Color.menu.selectedBackground : "transparent"
     border.width: NavState.searching ? Style.spacing.hairline : 0
     border.color: Color.menu.border
-    // Igual que la animación de ancho: durante un cambio de pestaña el fondo NO
-    // debe hacer fade (si no, la lupa colapsada de la tab a la que llegas
-    // parpadea "seleccionada" al desvanecerse el selectedBackground). Snap.
+    // Same as the width animation: during a tab switch the background must NOT
+    // fade (otherwise the collapsed magnifier of the tab you arrive at
+    // flickers "selected" as the selectedBackground fades out). Snap.
     Behavior on color { enabled: !NavState.suppressSearchAnim; ColorAnimation { duration: 200 } }
   }
 
   TextField {
     id: field
-    // Lupa a la IZQUIERDA (mockup de josema): el campo va a su derecha,
-    // hasta el borde. En reposo (width = collapsedW) el campo queda de ancho
-    // ~0 e invisible, y solo se ve la lupa pegada al borde derecho de navRow.
+    // Magnifier on the LEFT (josema's mockup): the field goes to its right,
+    // up to the edge. At rest (width = collapsedW) the field is ~0 wide
+    // and invisible, and only the magnifier stuck to the right edge of navRow is shown.
     anchors.left: iconSlot.right
     anchors.leftMargin: Style.spacing.xs
     anchors.right: parent.right
@@ -86,14 +86,14 @@ Item {
       debounce.restart()
     }
     onVisibleChanged: if (visible) forceActiveFocus(); else if (sb.list) sb.list.forceActiveFocus()
-    // Clic fuera con el campo vacío -> colapsar (si hay texto, se mantiene
-    // abierto mostrando los resultados aunque el foco se vaya a una fila).
+    // Click outside with the field empty -> collapse (if there is text, it stays
+    // open showing the results even if focus goes to a row).
     onActiveFocusChanged: {
-      // La ListView reclama el foco activo cada vez que su modelo se resetea
-      // (el filtro en vivo cambia con cada letra), lo que dejaba escribir solo
-      // una letra. Mientras la lupa está abierta con texto, el teclado es del
-      // campo (SearchBar gestiona Up/Down/Enter/Escape), así que se lo
-      // devolvemos en el siguiente ciclo (callLater evita pelear en el mismo).
+      // The ListView reclaims active focus every time its model resets
+      // (the live filter changes with each letter), which used to let you type only
+      // one letter. While the magnifier is open with text, the keyboard belongs to the
+      // field (SearchBar handles Up/Down/Enter/Escape), so we
+      // give it back on the next cycle (callLater avoids fighting in the same one).
       if (!activeFocus && NavState.searching && NavState.searchQuery.length > 0) Qt.callLater(forceActiveFocus)
       else if (!activeFocus && NavState.searching && NavState.searchQuery.length === 0) sb.collapse()
     }
@@ -136,8 +136,8 @@ Item {
       opacity: NavState.searching ? 1 : Style.emphasis.strong
     }
 
-    // Spinner mínimo: un punto en órbita (sin depender de glyph ni de
-    // gradientes cónicos). Solo mientras una búsqueda está en vuelo.
+    // Minimal spinner: a dot in orbit (without depending on a glyph or
+    // conical gradients). Only while a search is in flight.
     Item {
       id: spinner
       anchors.centerIn: parent
@@ -168,8 +168,8 @@ Item {
     id: debounce
     interval: 150
     onTriggered: {
-      // Incremental recursiva a partir de 2 caracteres; con 0-1 se restaura
-      // el listado normal de la carpeta actual (ver SearchOps).
+      // Incremental recursive from 2 characters; with 0-1 the normal
+      // listing of the current folder is restored (see SearchOps).
       if (NavState.searchQuery.length >= 2) sb.searchOps.runDeepSearch()
       else sb.searchOps.restoreListing()
     }

@@ -3,13 +3,13 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo "Abrir con...". Cuarto componente extraído de Omafiles.qml --
-// como con ConnectServer.qml, la acción real (lanzar la app elegida) se
-// expone como señal parametrizada en vez de llamar a root.launchWith()
-// directamente desde dentro del componente.
+// "Open with..." dialog. Fourth component extracted from Omafiles.qml --
+// as with ConnectServer.qml, the real action (launch the chosen app) is
+// exposed as a parameterized signal instead of calling root.launchWith()
+// directly from within the component.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 

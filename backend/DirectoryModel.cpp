@@ -17,20 +17,20 @@ inline bool asciiDigit(QChar c) {
   return c.unicode() >= u'0' && c.unicode() <= u'9';
 }
 
-// Compara nombres como Utils.naturalCompare(a.toLowerCase(), b.toLowerCase())
-// del lado QML: number-aware (los dígitos ASCII se comparan por VALOR, no
-// carácter a carácter) y case-insensitive. Fase 10.A: este es el orden
-// VISIBLE. Antes se ordenaba aquí por collation de glibc (paridad byte a byte
-// con list-dir.sh) y luego SortOps re-ordenaba SIEMPRE en JS con este mismo
-// naturalCompare, tirando el trabajo de C++; ahora se hace una sola vez aquí
-// y SortOps ya no re-ordena el caso por defecto (name/asc). Devuelve <0, 0,
+// Compares names like Utils.naturalCompare(a.toLowerCase(), b.toLowerCase())
+// on the QML side: number-aware (ASCII digits are compared by VALUE, not
+// character by character) and case-insensitive. Phase 10.A: this is the
+// VISIBLE order. Previously it sorted here by glibc collation (byte-for-byte
+// parity with list-dir.sh) and then SortOps ALWAYS re-sorted in JS with this
+// same naturalCompare, throwing away the C++ work; now it is done once here
+// and SortOps no longer re-sorts the default case (name/asc). Returns <0, 0,
 // >0.
 //
-// Fase 27 (PERF_AUDIT_RC1): ESPERA los dos nombres YA en minúsculas. std::sort
-// hace O(n log n) comparaciones, así que hacer `.toLower()` aquí dentro
-// asignaba ~2·n·log n QString por listado (tormenta de asignaciones medida en
-// el benchmark). El toLower se hace ahora UNA vez por entrada en sortInto
-// (transformada de Schwartz) y esta función opera sobre las claves ya bajadas.
+// Phase 27 (PERF_AUDIT_RC1): EXPECTS the two names ALREADY lowercased. std::sort
+// does O(n log n) comparisons, so doing `.toLower()` in here
+// allocated ~2·n·log n QString per listing (allocation storm measured in
+// the benchmark). The toLower is now done ONCE per entry in sortInto
+// (Schwartzian transform) and this function operates on the already-lowered keys.
 int naturalCompareLowered(const QString &a, const QString &b) {
   int i = 0, j = 0;
   const int na = a.size(), nb = b.size();
@@ -38,8 +38,8 @@ int naturalCompareLowered(const QString &a, const QString &b) {
     const bool da = asciiDigit(a[i]);
     const bool db = asciiDigit(b[j]);
     if (da && db) {
-      // Runs de dígitos: comparar como enteros (sin ceros a la izquierda;
-      // más largo = mayor; igual longitud -> lexicográfico).
+      // Runs of digits: compare as integers (no leading zeros;
+      // longer = greater; equal length -> lexicographic).
       int i2 = i, j2 = j;
       while (i2 < na && asciiDigit(a[i2]))
         i2++;
@@ -59,11 +59,11 @@ int naturalCompareLowered(const QString &a, const QString &b) {
       i = i2;
       j = j2;
     } else if (da != db) {
-      // Dígito antes que no-dígito (en JS: numero - Infinity < 0).
+      // Digit before non-digit (in JS: number - Infinity < 0).
       return da ? -1 : 1;
     } else {
-      // Runs de no-dígitos: comparar con la collation del locale (como el
-      // .localeCompare() de JS).
+      // Runs of non-digits: compare with the locale collation (like the
+      // .localeCompare() of JS).
       int i2 = i, j2 = j;
       while (i2 < na && !asciiDigit(a[i2]))
         i2++;
@@ -80,33 +80,33 @@ int naturalCompareLowered(const QString &a, const QString &b) {
   return (na - i) - (nb - j);
 }
 
-// Escanea UN directorio y APPEND-ea sus entradas a dirs/files (sin
-// ordenar; el llamador ordena una vez al final). Devuelve el codigo de
-// error espejo de list-dir.sh: 0 ok, 2 sin permiso, 3 no existe, 4 no es
-// carpeta, 1 otro. En listado agregado (papelera) el llamador ignora el
-// codigo y simplemente se salta las carpetas que fallan.
+// Scans ONE directory and APPENDs its entries to dirs/files (without
+// sorting; the caller sorts once at the end). Returns the error
+// code mirroring list-dir.sh: 0 ok, 2 no permission, 3 does not exist, 4 not a
+// folder, 1 other. In an aggregate listing (trash) the caller ignores the
+// code and simply skips the folders that fail.
 int gatherOne(const QByteArray &p, bool showHidden,
               QVector<DirectoryModel::Entry> &dirs,
               QVector<DirectoryModel::Entry> &files) {
-  // stat/-d/-r-x siguen symlinks igual que los tests de bash del script.
+  // stat/-d/-r-x follow symlinks just like the script's bash tests.
   struct stat st;
   if (::stat(p.constData(), &st) != 0)
-    return 3; // no existe (-e falso; incluye symlink colgante)
+    return 3; // does not exist (-e false; includes a dangling symlink)
   if (!S_ISDIR(st.st_mode))
-    return 4; // no es carpeta (-d falso)
+    return 4; // not a folder (-d false)
   if (::access(p.constData(), R_OK | X_OK) != 0)
-    return 2; // sin permiso de lectura/ejecucion
+    return 2; // no read/execute permission
   DIR *dir = ::opendir(p.constData());
   if (!dir)
-    return 1; // otro (equivalente al cd que fallaba)
+    return 1; // other (equivalent to the cd that failed)
 
   struct dirent *de;
   while ((de = ::readdir(dir)) != nullptr) {
     const char *n = de->d_name;
-    // Saltar "." y ".." siempre.
+    // Always skip "." and "..".
     if (n[0] == '.' && (n[1] == '\0' || (n[1] == '.' && n[2] == '\0')))
       continue;
-    // Dotfiles solo con showHidden (equivale a shopt dotglob del script).
+    // Dotfiles only with showHidden (equivalent to the script's shopt dotglob).
     if (!showHidden && n[0] == '.')
       continue;
 
@@ -114,22 +114,22 @@ int gatherOne(const QByteArray &p, bool showHidden,
     full += '/';
     full += n;
 
-    // Fase 27 (PERF_AUDIT_RC1): una sola syscall en el caso común. Antes se
-    // hacían SIEMPRE lstat + stat (2 syscalls/entrada -> 200k a 100k ficheros).
-    // Para un NO-symlink stat==lstat, así que el segundo era redundante: se
-    // hace lstat primero y solo se sigue con stat cuando de verdad hay un
-    // enlace que resolver. Comportamiento idéntico (un path que stat resuelve
-    // pero lstat no es imposible: lstat no deja de resolver el path, solo no
-    // deref-a el último componente).
+    // Phase 27 (PERF_AUDIT_RC1): a single syscall in the common case. Before,
+    // lstat + stat were done ALWAYS (2 syscalls/entry -> 200k at 100k files).
+    // For a NON-symlink stat==lstat, so the second was redundant: lstat is
+    // done first and only followed by stat when there really is a
+    // link to resolve. Behaviour identical (a path that stat resolves
+    // but lstat does not is impossible: lstat still resolves the path, it just
+    // does not deref the last component).
     struct stat ls;
     const bool lok = (::lstat(full.constData(), &ls) == 0);
     const bool isLink = lok && S_ISLNK(ls.st_mode);
     struct stat s;
     bool followed;
     if (isLink) {
-      followed = (::stat(full.constData(), &s) == 0); // seguir el enlace
+      followed = (::stat(full.constData(), &s) == 0); // follow the link
     } else {
-      s = ls; // no-symlink: lstat ya es el stat, sin segunda syscall
+      s = ls; // non-symlink: lstat is already the stat, no second syscall
       followed = lok;
     }
 
@@ -143,18 +143,18 @@ int gatherOne(const QByteArray &p, bool showHidden,
 
     if (e.isDir) {
       e.type = QStringLiteral("dir");
-      e.size = 0; // el script fuerza tamano 0 en carpetas
+      e.size = 0; // the script forces size 0 on folders
       e.mtime = static_cast<qint64>(s.st_mtime);
       dirs.push_back(std::move(e));
     } else {
       e.type = QStringLiteral("file");
       if (followed) {
-        // Fichero normal o symlink que resuelve: datos del destino.
+        // Normal file or symlink that resolves: data of the target.
         e.size = static_cast<qint64>(s.st_size);
         e.mtime = static_cast<qint64>(s.st_mtime);
       } else if (lok) {
-        // Symlink roto: fallback a lstat (tamano = longitud del target,
-        // mtime = del propio enlace), igual que el `stat -c` sin -L.
+        // Broken symlink: fallback to lstat (size = length of the target,
+        // mtime = of the link itself), like the `stat -c` without -L.
         e.size = static_cast<qint64>(ls.st_size);
         e.mtime = static_cast<qint64>(ls.st_mtime);
       } else {
@@ -168,12 +168,12 @@ int gatherOne(const QByteArray &p, bool showHidden,
   return 0;
 }
 
-// Ordena UN grupo por nombre (case-insensitive, number-aware) con una
-// transformada de Schwartz: baja cada nombre a minúsculas UNA sola vez, ordena
-// un vector de índices sobre esas claves precomputadas, y reordena el grupo con
-// un único barrido de moves al final. Antes (Fase 10.A) el toLower vivía dentro
-// del comparador, que std::sort llama O(n log n) veces -> a 100k eran ~1,7M
-// comparaciones × 2 toLower = tormenta de asignaciones (Fase 27, medido).
+// Sorts ONE group by name (case-insensitive, number-aware) with a
+// Schwartzian transform: lowercases each name ONCE, sorts
+// a vector of indices over those precomputed keys, and reorders the group with
+// a single sweep of moves at the end. Before (Phase 10.A) the toLower lived
+// inside the comparator, which std::sort calls O(n log n) times -> at 100k it
+// was ~1.7M comparisons × 2 toLower = allocation storm (Phase 27, measured).
 void sortGroup(QVector<DirectoryModel::Entry> &v) {
   const int n = v.size();
   if (n < 2)
@@ -194,33 +194,33 @@ void sortGroup(QVector<DirectoryModel::Entry> &v) {
   v = std::move(out);
 }
 
-// Ordena dirs y files por nombre (carpetas primero al concatenar) con la
-// collation de glibc, y los deja en rows.
+// Sorts dirs and files by name (folders first when concatenating) with the
+// glibc collation, and leaves them in rows.
 void sortInto(QVector<DirectoryModel::Entry> &dirs,
               QVector<DirectoryModel::Entry> &files,
               QVector<DirectoryModel::Entry> &rows) {
   sortGroup(dirs);
   sortGroup(files);
-  rows = std::move(dirs); // carpetas primero, luego ficheros
+  rows = std::move(dirs); // folders first, then files
   rows += files;
 }
 
-// Hash 64-bit (FNV-1a) del CONTENIDO visible del listado, en orden. Cubre
-// exactamente los campos que Utils.entriesEqual comparaba y que decidirian un
-// relayout: name, size, mtime, isDir (type) y link. Corre en el hilo worker.
-// Fase 27 (PERF_AUDIT_RC1). Devuelto como hex para que QML lo compare como
-// string (un double JS no representa 64 bits exactos).
+// 64-bit hash (FNV-1a) of the VISIBLE content of the listing, in order. Covers
+// exactly the fields that Utils.entriesEqual compared and that would decide a
+// relayout: name, size, mtime, isDir (type) and link. Runs on the worker thread.
+// Phase 27 (PERF_AUDIT_RC1). Returned as hex so QML compares it as a
+// string (a JS double does not represent 64 exact bits).
 QString signatureOf(const QVector<DirectoryModel::Entry> &rows) {
-  quint64 h = 1469598103934665603ULL; // offset basis FNV-1a
+  quint64 h = 1469598103934665603ULL; // FNV-1a offset basis
   const auto mix = [&h](quint64 v) {
     h ^= v;
-    h *= 1099511628211ULL; // prime FNV-1a
+    h *= 1099511628211ULL; // FNV-1a prime
   };
   mix(static_cast<quint64>(rows.size()));
   for (const DirectoryModel::Entry &e : rows) {
     for (QChar c : e.name)
       mix(c.unicode());
-    mix(0x1F); // separador de campo (evita colisiones por concatenacion)
+    mix(0x1F); // field separator (avoids collisions by concatenation)
     mix(static_cast<quint64>(e.size));
     mix(static_cast<quint64>(e.mtime));
     mix(e.isDir ? 1u : 0u);
@@ -236,10 +236,10 @@ QString signatureOf(const QVector<DirectoryModel::Entry> &rows) {
 DirectoryModel::DirectoryModel(QObject *parent) : QObject(parent) {}
 
 DirectoryModel::~DirectoryModel() {
-  // Cortar la entrega de cualquier worker en vuelo: bajo el lock, marcar
-  // muerto. Un worker que aun no haya entregado vera alive=false y no hara
-  // invokeMethod(this); uno que ya lo tenga cogido nos bloquea aqui hasta
-  // que suelte (entrega instantanea, solo postea un evento).
+  // Cut off the delivery of any in-flight worker: under the lock, mark it
+  // dead. A worker that has not delivered yet will see alive=false and will not
+  // do invokeMethod(this); one that already holds it blocks us here until
+  // it releases (instant delivery, it only posts an event).
   std::lock_guard<std::mutex> lk(m_life->mtx);
   m_life->alive = false;
 }
@@ -251,15 +251,15 @@ DirectoryModel::Result DirectoryModel::scan(const QString &path,
   r.error = gatherOne(QFile::encodeName(path), showHidden, dirs, files);
   if (r.error == 0)
     sortInto(dirs, files, r.rows);
-  r.signature = signatureOf(r.rows); // en el worker, no en la UI
+  r.signature = signatureOf(r.rows); // on the worker, not on the UI
   return r;
 }
 
 DirectoryModel::Result DirectoryModel::scanMany(const QStringList &paths,
                                                 bool showHidden) {
-  // Papelera: fusiona el contenido de varias raices. Las que fallan (no
-  // existen / sin permiso) se saltan en silencio, igual que el
-  // `[[ -d "$root/files" ]] &&` de list-trash.sh. error siempre 0.
+  // Trash: merges the content of several roots. The ones that fail (do not
+  // exist / no permission) are skipped silently, like the
+  // `[[ -d "$root/files" ]] &&` of list-trash.sh. error always 0.
   Result r;
   QVector<Entry> dirs, files;
   for (const QString &path : paths)
@@ -271,17 +271,17 @@ DirectoryModel::Result DirectoryModel::scanMany(const QStringList &paths,
 
 void DirectoryModel::startScan(std::function<Result()> job) {
   const quint64 generation = ++m_generation;
-  // El escaneo pesado (stat de cada entrada) va a un hilo del pool para no
-  // bloquear la UI; el resultado se aplica de vuelta en el hilo de UI. Un
-  // resultado de una generacion vieja (navegacion rapida) se descarta.
-  auto life = m_life; // copia del control block, sobrevive al modelo
+  // The heavy scan (stat of each entry) goes to a pool thread so as not to
+  // block the UI; the result is applied back on the UI thread. A
+  // result of an old generation (fast navigation) is discarded.
+  auto life = m_life; // copy of the control block, outlives the model
   QThreadPool::globalInstance()->start(QRunnable::create(
       [this, life, job = std::move(job), generation]() {
         Result result = job();
-        // Entrega segura: solo invocar sobre `this` si sigue vivo. El
-        // destructor toma este mismo lock, asi que o vemos alive=false (y no
-        // tocamos el objeto muerto), o lo tenemos cogido y el destructor
-        // espera a que soltemos.
+        // Safe delivery: only invoke on `this` if it is still alive. The
+        // destructor takes this same lock, so either we see alive=false (and do
+        // not touch the dead object), or we hold it and the destructor
+        // waits for us to release.
         std::lock_guard<std::mutex> lk(life->mtx);
         if (!life->alive)
           return;
@@ -299,39 +299,39 @@ void DirectoryModel::list(const QString &path, bool showHidden) {
 }
 
 void DirectoryModel::listMany(const QStringList &paths, bool showHidden) {
-  // Agregado de varias raices (papelera). Los consumidores usan el array
-  // `entries` (name/type/size/mtime/link) + trashInfo.
+  // Aggregate of several roots (trash). The consumers use the
+  // `entries` array (name/type/size/mtime/link) + trashInfo.
   startScan([paths, showHidden]() { return scanMany(paths, showHidden); });
 }
 
 bool DirectoryModel::watch(const QString &path) {
   if (!m_watcher) {
     m_watcher = new QFileSystemWatcher(this);
-    // QFileSystemWatcher usa inotify del kernel directamente (sin forkear
-    // inotifywait). Reemite un directoryChanged() plano; el debounce y el
-    // refresco -- con su guarda de no-refrescar-a-mitad-de-renombrado --
-    // siguen en NavigationController.
+    // QFileSystemWatcher uses the kernel's inotify directly (without forking
+    // inotifywait). It re-emits a plain directoryChanged(); the debounce and
+    // the refresh -- with its guard against refreshing-mid-rename --
+    // stay in NavigationController.
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this,
             [this](const QString &changed) {
-              // Token de cancelacion: solo propagar el evento si es de la
-              // carpeta que se vigila AHORA. Un evento tardio de un watcher
-              // viejo (ruta distinta) se descarta -> no repuebla la carpeta
-              // a la que el usuario ya ha navegado.
+              // Cancellation token: only propagate the event if it is from the
+              // folder being watched NOW. A late event from an old
+              // watcher (different path) is discarded -> it does not repopulate
+              // the folder the user has already navigated to.
               if (changed == m_watchedPath)
                 emit directoryChanged();
             });
   }
-  // Vigilar solo un directorio a la vez: quitar el anterior.
+  // Watch only one directory at a time: remove the previous one.
   const QStringList prev = m_watcher->directories();
   if (!prev.isEmpty())
     m_watcher->removePaths(prev);
   m_watchedPath = path;
-  return m_watcher->addPath(path); // false si no se pudo (limite/ruta)
+  return m_watcher->addPath(path); // false if it could not (limit/path)
 }
 
 void DirectoryModel::unwatch() {
-  // Invalidar el token: cualquier evento en vuelo de un watcher previo se
-  // descartara al no coincidir con m_watchedPath (vacio).
+  // Invalidate the token: any in-flight event from a previous watcher will
+  // be discarded on not matching m_watchedPath (empty).
   m_watchedPath.clear();
   if (!m_watcher)
     return;
@@ -341,7 +341,7 @@ void DirectoryModel::unwatch() {
 }
 
 void DirectoryModel::apply(Result result, quint64 generation) {
-  // Descartar si ya se pidio otro listado despues de este.
+  // Discard if another listing was already requested after this one.
   if (generation != m_generation)
     return;
 
@@ -359,8 +359,8 @@ QVariantList DirectoryModel::entries() const {
   QVariantList out;
   out.reserve(m_rows.size());
   for (const Entry &e : m_rows) {
-    // Mismas cinco claves que producia Utils.parseEntries(list-dir.sh),
-    // para comparar y, luego, sustituir sin que cambie el consumidor.
+    // Same five keys that Utils.parseEntries(list-dir.sh) produced,
+    // to compare and, later, replace without the consumer changing.
     QVariantMap m;
     m[QStringLiteral("type")] = e.type;
     m[QStringLiteral("name")] = e.name;

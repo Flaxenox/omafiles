@@ -3,24 +3,24 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Navegación/historial del panel activo -- vigésimo segundo componente
-// extraído de Omafiles.qml. currentPath/tabEntriesCache/entries siguen
-// en root (state/TabsState.qml ya documentaba que eran "demasiado
-// centrales para mover" en un intento anterior; esta vez se mueve el
-// CONTROLADOR, no el estado en sí). refresh/navigateTo/enter/goUp/
+// Navigation/history of the active panel -- twenty-second component
+// extracted from Omafiles.qml. currentPath/tabEntriesCache/entries still
+// live in root (state/TabsState.qml already documented that they were "too
+// central to move" in an earlier attempt; this time the CONTROLLER is
+// moved, not the state itself). refresh/navigateTo/enter/goUp/
 // navBack/navForward/startDirWatch/stopDirWatch/openWithDefault/
-// _goToPath siguen expuestas como wrappers finos en root -- las llaman
-// unos 10 ficheros distintos (KeyboardShortcuts, MountActions,
+// _goToPath stay exposed as thin wrappers in root -- they are called by
+// about 10 different files (KeyboardShortcuts, MountActions,
 // Persistence, BookmarkOps, SearchOps, ArchiveActions, ActionEngine,
-// BackgroundPanel, TabOps, FileListRow) y no compensa el riesgo de
-// tocar todos esos sitios de llamada.
-// El listado en sí (parseo/orden/trash-info.sh) vive en DirLister
-// (Fase 1.6, josema) -- este componente ya NO es dueño de ningún
-// Process propio, solo orquesta CUÁNDO listar y qué hacer con el
-// resultado (scroll, selección pendiente...). BackgroundPanel instancia
-// su propio DirLister por pestaña de fondo -- mismo mecanismo, sin
-// compartir el Process (varias pestañas pueden listar rutas distintas
-// a la vez).
+// BackgroundPanel, TabOps, FileListRow) and it's not worth the risk of
+// touching all those call sites.
+// The listing itself (parsing/sorting/trash-info.sh) lives in DirLister
+// (Phase 1.6, josema) -- this component no longer owns any Process
+// of its own, it only orchestrates WHEN to list and what to do with the
+// result (scroll, pending selection...). BackgroundPanel instantiates
+// its own DirLister per background tab -- same mechanism, without
+// sharing the Process (several tabs can list different paths
+// at the same time).
 Item {
   id: navCtrl
   property Item root: null
@@ -31,78 +31,78 @@ Item {
   property Item selectionOps: null
   property Item sortOps: null
 
-  // ---------- Refresco / vigilancia de directorio ----------
+  // ---------- Directory refresh / watching ----------
   function refresh() {
-    // Centralizado aquí para que TODO lo que ya llama a refresh() (toggle
-    // de ocultos, el "Refresh" de la paleta, el onExited de las acciones
-    // de fichero...) recargue lo correcto sin tener que acordarse de
-    // comprobar inArchive en cada sitio.
+    // Centralized here so that EVERYTHING that already calls refresh() (hidden
+    // toggle, the palette's "Refresh", the onExited of the file
+    // actions...) reloads the correct thing without having to remember to
+    // check inArchive at every site.
     if (ArchiveState.inArchive) { archiveActions.refreshArchiveListing(); return }
     dirLister.list(NavState.currentPath)
   }
 
-  // Reasigna NavState.entries SOLO si el contenido de verdad cambió --
-  // QML/ListView no compara el contenido de un array modelo, solo la
-  // referencia, así que reasignar aunque los datos sean idénticos
-  // dispara un relayout completo (recrea TODAS las filas desde cero).
-  // Con pocas filas no se nota, pero con la papelera (agrega varios
-  // discos, puede tener bastantes más filas, con subtítulos que a veces
-  // envuelven a dos líneas) ese relayout tarda lo bastante como para
-  // verse -- NavState.entries ya se había puesto al instante desde
-  // tabEntriesCache en _goToPath, y este listProc "trae una copia fresca
-  // por detrás" (ver el comentario ahí) que con la papelera llega
-  // notablemente más tarde que con una carpeta normal, así que el doble
-  // pintado (caché -> fresco) deja de fundirse en un solo frame y se ve
-  // como un salto real (reportado por josema; mis tres intentos
-  // anteriores -- trashInfo compartida, carrera de scroll, esperar a
-  // trashInfo también en el panel activo -- atacaban mecanismos reales
-  // pero no ESTE, que es el que de verdad causaba el salto).
+  // Reassigns NavState.entries ONLY if the content actually changed --
+  // QML/ListView doesn't compare the content of a model array, only the
+  // reference, so reassigning even if the data is identical
+  // triggers a full relayout (recreates ALL the rows from scratch).
+  // With few rows it's not noticeable, but with the trash (aggregates several
+  // disks, may have quite a few more rows, with subtitles that sometimes
+  // wrap to two lines) that relayout takes long enough to be
+  // seen -- NavState.entries was already set instantly from
+  // tabEntriesCache in _goToPath, and this listProc "brings a fresh copy
+  // behind the scenes" (see the comment there) which with the trash arrives
+  // notably later than with a normal folder, so the double
+  // paint (cache -> fresh) stops merging into a single frame and looks
+  // like a real jump (reported by josema; my three earlier
+  // attempts -- shared trashInfo, scroll race, waiting for
+  // trashInfo also in the active panel -- attacked real mechanisms
+  // but not THIS one, which is the one that actually caused the jump).
   function _applyEntries(parsed) {
-    // Búsqueda GLOBAL activa (2+ caracteres): NavState.entries son los
-    // RESULTADOS de la búsqueda, no el listado de la carpeta. Un listProc de
-    // fondo -- el que _goToPath lanza al cambiar de pestaña, o el watcher de la
-    // carpeta -- NO debe pisarlos, o al restaurar una búsqueda por pestaña se
-    // perdería justo después de restaurarla. El filtro en vivo (<2 chars) SÍ
-    // usa el listado, así que solo se ignora con query >= 2.
+    // GLOBAL search active (2+ characters): NavState.entries are the
+    // search RESULTS, not the folder listing. A background
+    // listProc -- the one _goToPath launches on switching tabs, or the folder's
+    // watcher -- must NOT overwrite them, or restoring a per-tab search would
+    // lose it right after restoring it. The live filter (<2 chars) DOES
+    // use the listing, so it is only ignored with query >= 2.
     if (NavState.searching && NavState.searchQuery.length >= 2) {
       root.loaded = true
       return
     }
-    // Comparación por contenido barata (Fase 10.A): antes eran otros dos
-    // JSON.stringify del array completo. entriesEqual es O(n) sin
-    // asignaciones.
+    // Cheap content comparison (Phase 10.A): before these were another two
+    // JSON.stringify of the whole array. entriesEqual is O(n) without
+    // allocations.
     var changed = !Utils.entriesEqual(parsed, NavState.entries)
     if (changed) NavState.entries = parsed
     _finishListLoad(changed)
   }
 
-  // Ver listProc.onFinished -- lo que queda por hacer una vez
-  // NavState.entries ya está puesto. resetView: false
-  // cuando _applyEntries() decidió que el contenido no había cambiado de
-  // verdad -- en ese caso list.contentY ya estaba bien (nadie lo tocó) y
-  // no hace falta el reset+restauración de scroll de abajo.
+  // See listProc.onFinished -- what remains to be done once
+  // NavState.entries is already set. resetView: false
+  // when _applyEntries() decided the content hadn't really changed
+  // -- in that case list.contentY was already fine (nobody touched it) and
+  // the reset+scroll-restoration below is not needed.
   function _finishListLoad(resetView) {
     if (resetView) {
-      // El array de arriba es un objeto nuevo, no una mutación del
-      // anterior -- QML/Qt no siempre reancla bien el origen interno de
-      // ListView (originY) al reemplazar el modelo entero así, sobre todo
-      // si la lista anterior era más corta. `list.contentY = 0` (puesto
-      // ANTES de lanzar este proceso, en toggleHidden/navigateTo/etc) no
-      // basta porque corre contra el modelo VIEJO -- esto es lo que
-      // realmente deja el hueco arriba del todo. positionViewAtBeginning()
-      // es la forma correcta de QML de resetear origen+contentY juntos,
-      // justo cuando el modelo nuevo ya está puesto.
+      // The array above is a new object, not a mutation of the
+      // previous one -- QML/Qt doesn't always re-anchor the internal origin of
+      // ListView (originY) well when replacing the whole model like this, especially
+      // if the previous list was shorter. `list.contentY = 0` (set
+      // BEFORE launching this process, in toggleHidden/navigateTo/etc) doesn't
+      // suffice because it runs against the OLD model -- this is what
+      // really leaves the gap at the very top. positionViewAtBeginning()
+      // is QML's correct way to reset origin+contentY together,
+      // right when the new model is already set.
       list.positionViewAtBeginning()
-      // TabOps._restoreTabScroll() pone list.contentY a la posición
-      // guardada justo DESPUÉS de pedir la navegación -- pero esa misma
-      // navegación es la que dispara este listProc asíncrono, que siempre
-      // acaba resetéandolo con el positionViewAtBeginning() de arriba. Si
-      // este Process tarda más que esa restauración síncrona (la papelera,
-      // que agrega varios discos, tarda notablemente más que una carpeta
-      // normal), gana la carrera al revés. root._pendingScrollY es la
-      // forma de que quien pidió la restauración sobreviva a este reset,
-      // aplicándose EN el mismo tick que positionViewAtBeginning en vez de
-      // antes.
+      // TabOps._restoreTabScroll() sets list.contentY to the saved
+      // position right AFTER requesting the navigation -- but that same
+      // navigation is what triggers this asynchronous listProc, which always
+      // ends up resetting it with the positionViewAtBeginning() above. If
+      // this Process takes longer than that synchronous restoration (the trash,
+      // which aggregates several disks, takes notably longer than a normal
+      // folder), it wins the race the other way. root._pendingScrollY is the
+      // way for whoever requested the restoration to survive this reset,
+      // being applied IN the same tick as positionViewAtBeginning instead of
+      // before.
       if (root._pendingScrollIndex >= 0) {
         list.positionAtIndexWithOffset(root._pendingScrollIndex, root._pendingScrollOffset)
       } else if (root._pendingScrollY >= 0) {
@@ -122,11 +122,11 @@ Item {
       }
     }
     if (foundIndices.length > 0) {
-      // selectOnly() ya cubría el caso de 1 (el de siempre: marcador de
-      // fichero, reciente, la mayoría de ShowItems reales). Varios a la
-      // vez (ShowItems con multi-selección real en el llamador, ver
-      // dbus-filemanager1.py) no tenían forma de aplicarse antes -- se
-      // resaltaban todos, con el primero como "principal".
+      // selectOnly() already covered the case of 1 (the usual one: file
+      // bookmark, recent, most real ShowItems). Several at
+      // once (ShowItems with real multi-selection in the caller, see
+      // dbus-filemanager1.py) had no way to be applied before -- they were
+      // all highlighted, with the first as "main".
       SelectionState.selectedIndex = foundIndices[0]
       SelectionState.anchorIndex = foundIndices[0]
       SelectionState.selectedIndices = foundIndices
@@ -136,20 +136,20 @@ Item {
     }
   }
 
-  // Refresco en vivo del panel ACTIVO -- antes nada se refrescaba solo:
-  // conectar un USB o crear un fichero por terminal no aparecía hasta F5.
-  // Deliberadamente solo el panel activo, no cada panel de fondo (mismo
-  // criterio ya aplicado en todo el fichero: los paneles de fondo tienen
-  // funcionalidad reducida). Si inotify-tools no está instalado, el
-  // Process simplemente falla al arrancar y esto se queda como un no-op
-  // silencioso -- mismo patrón de "opcional, degrada con gracia" que
+  // Live refresh of the ACTIVE panel -- before, nothing refreshed on its own:
+  // plugging in a USB or creating a file via terminal didn't appear until F5.
+  // Deliberately only the active panel, not each background panel (same
+  // criterion already applied throughout the file: background panels have
+  // reduced functionality). If inotify-tools is not installed, the
+  // Process simply fails to start and this stays as a silent
+  // no-op -- same "optional, degrades gracefully" pattern as
   // ffmpegthumbnailer/pygmentize/pdftoppm.
   function startDirWatch(path) {
-    // Fase 6.D (josema): vigilancia NATIVA primero (QFileSystemWatcher
-    // dentro de DirectoryModel, inotify del kernel sin forkear
-    // inotifywait). Si el modelo no puede vigilar (límite de descriptores,
-    // ruta rara), watch() devuelve false y se cae al inotifywait de antes
-    // -- fallback exigido por BACKEND_DESIGN.md, no sustitución ciega.
+    // Phase 6.D (josema): NATIVE watching first (QFileSystemWatcher
+    // inside DirectoryModel, kernel inotify without forking
+    // inotifywait). If the model can't watch (descriptor limit,
+    // odd path), watch() returns false and it falls back to the previous inotifywait
+    // -- fallback required by BACKEND_DESIGN.md, not a blind replacement.
     if (!dirLister.watch(path)) {
       dirWatchProc.start(["inotifywait", "-m", "-q", "-e",
         "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path])
@@ -161,24 +161,24 @@ Item {
     dirWatchProc.stop()
   }
 
-  // ---------- Navegación / historial ----------
+  // ---------- Navigation / history ----------
   function navigateTo(path) {
     if (!path) return
-    // Normaliza barras finales/dobles básicas sin depender de un proceso externo.
+    // Normalizes basic trailing/double slashes without depending on an external process.
     path = path.replace(/\/+$/, "") || "/"
     _pushHistory(path)
     _goToPath(path)
   }
 
-  // La navegación real (usada por navigateTo Y por atrás/adelante/cambio de
-  // pestaña, que ya deciden ellos mismos la entrada de historial correcta y
-  // no quieren que ésta se vuelva a tocar).
+  // The real navigation (used by navigateTo AND by back/forward/tab
+  // switch, which already decide the correct history entry themselves and
+  // don't want it touched again).
   function _goToPath(path) {
-    // Cualquier navegación real (bookmark, atrás/adelante, cambio de
-    // pestaña, editar la ruta a mano...) sale del modo "dentro de un
-    // comprimido" -- currentPath nunca cambia mientras se navega DENTRO
-    // del archivo (ver enter()/goUp()/inArchive), así que si esto se
-    // ejecuta es que el usuario se fue a otro sitio de verdad.
+    // Any real navigation (bookmark, back/forward, tab
+    // switch, editing the path by hand...) exits the "inside an
+    // archive" mode -- currentPath never changes while browsing INSIDE
+    // the archive (see enter()/goUp()/inArchive), so if this
+    // runs it means the user went somewhere else for real.
     if (ArchiveState.inArchive) { ArchiveState.inArchive = false; ArchiveState.archivePath = ""; ArchiveState.archiveSubPath = "" }
     NavState.currentPath = path
     selectionOps.selectOnly(-1)
@@ -186,17 +186,17 @@ Item {
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
     EditModeState.editingPath = false
-    // list.contentY nunca se corrige solo: si venías desplazado hacia abajo
-    // en la carpeta anterior, esa posición de scroll se queda fija aunque
-    // el listado nuevo no tenga nada ahí -- se ve como un hueco vacío
-    // arriba del todo en vez de las primeras filas.
+    // list.contentY never corrects itself: if you were scrolled down
+    // in the previous folder, that scroll position stays fixed even though
+    // the new listing has nothing there -- it looks like an empty gap
+    // at the very top instead of the first rows.
     list.contentY = list.originY
-    // Si esta ruta ya estaba cargada en un panel de fondo (típico al
-    // cambiar de pestaña pasando el cursor), se pinta con esos datos al
-    // instante en vez de esperar a que listProc arranque -- sin esto se
-    // veía un parpadeo con el listado de la pestaña anterior durante esos
-    // milisegundos. refresh() de todas formas trae una copia fresca por
-    // detrás enseguida, sustituyéndola sin que se note.
+    // If this path was already loaded in a background panel (typical when
+    // switching tabs by moving the cursor over it), it is painted with that data
+    // instantly instead of waiting for listProc to start -- without this a
+    // flicker with the previous tab's listing was seen during those
+    // milliseconds. refresh() brings a fresh copy behind
+    // the scenes soon anyway, replacing it unnoticed.
     if (root.tabEntriesCache[path]) NavState.entries = root.tabEntriesCache[path]
     refresh()
     startDirWatch(path)
@@ -204,8 +204,8 @@ Item {
 
   function _pushHistory(path) {
     if (TabsState.navHistory[TabsState.navHistoryIndex] === path) return
-    // Trunca cualquier "adelante" antes de añadir -- mismo comportamiento
-    // que el historial de cualquier navegador.
+    // Truncates any "forward" before adding -- same behavior
+    // as any browser's history.
     var h = TabsState.navHistory.slice(0, TabsState.navHistoryIndex + 1)
     h.push(path)
     TabsState.navHistory = h
@@ -224,41 +224,41 @@ Item {
     _goToPath(TabsState.navHistory[TabsState.navHistoryIndex])
   }
 
-  // Usado por BackgroundPanel (doble clic sobre un fichero en un panel de
-  // fondo) y launchRecent() para no depender de Quickshell directamente
-  // fuera de services/.
-  // Detached (execDetached de verdad, sin pipes de stdout/stderr ni
-  // seguimiento) + gtk-launch, NO xdg-open ni gio open -- tercer intento
-  // real en la misma sesión (Fase 1.5, josema) hasta encontrar algo
-  // fiable:
-  //  1. xdg-open (Detached): bajo Hyprland (XDG_CURRENT_DESKTOP=Hyprland,
-  //     no reconocido como gnome/kde/...) cae en su rama "generic", que
-  //     ejecuta el Exec= del .desktop a mano IGNORANDO Terminal=true --
-  //     para apps como nvim.desktop eso lanza nvim sin terminal ni TTY,
-  //     colgado para siempre sin que se vea nada.
-  //  2. gio open (ProcessRunner, con o sin "bash -c" de por medio, con o
-  //     sin setsid): sí respeta Terminal=true en pruebas manuales desde
-  //     una shell normal, pero lanzado desde el Process de Quickshell el
-  //     terminal que abre por dentro para Terminal=true no sobrevivía de
-  //     forma fiable (a veces sí, la mayoría no) -- no se encontró la
-  //     causa exacta, pero mismo patrón de siempre: Quickshell.Io.Process
-  //     con StdioCollector no es de fiar para lanzar algo que a su vez
-  //     bifurca una app de larga duración.
-  //  3. gtk-launch vía Detached (esta): mismo mecanismo YA verificado
-  //     fiable en OpenWithOps.launchWith() ("Abrir con..."), que sí
-  //     respeta Terminal=true. Solo falta resolver primero el id del
-  //     .desktop por defecto (gtk-launch necesita un id, no una ruta).
+  // Used by BackgroundPanel (double click on a file in a background
+  // panel) and launchRecent() to avoid depending on Quickshell directly
+  // outside services/.
+  // Detached (real execDetached, without stdout/stderr pipes nor
+  // tracking) + gtk-launch, NOT xdg-open nor gio open -- third real
+  // attempt in the same session (Phase 1.5, josema) until finding something
+  // reliable:
+  //  1. xdg-open (Detached): under Hyprland (XDG_CURRENT_DESKTOP=Hyprland,
+  //     not recognized as gnome/kde/...) it falls into its "generic" branch, which
+  //     executes the .desktop's Exec= by hand IGNORING Terminal=true --
+  //     for apps like nvim.desktop that launches nvim without a terminal or TTY,
+  //     hung forever without anything being shown.
+  //  2. gio open (ProcessRunner, with or without a "bash -c" in between, with or
+  //     without setsid): it does respect Terminal=true in manual tests from
+  //     a normal shell, but launched from the Quickshell Process the
+  //     terminal it opens internally for Terminal=true didn't survive
+  //     reliably (sometimes yes, most times no) -- the exact
+  //     cause wasn't found, but the usual pattern: Quickshell.Io.Process
+  //     with StdioCollector is not to be trusted to launch something that in turn
+  //     forks a long-running app.
+  //  3. gtk-launch via Detached (this one): same mechanism ALREADY verified
+  //     reliable in OpenWithOps.launchWith() ("Open with..."), which does
+  //     respect Terminal=true. It only remains to first resolve the id of the
+  //     default .desktop (gtk-launch needs an id, not a path).
   function openWithDefault(path) {
     Detached.run(["bash", "-c", 'id=$(xdg-mime query default "$(xdg-mime query filetype "$1")"); [ -n "$id" ] && exec gtk-launch "$id" "$1"', "_", path])
   }
 
   function enter(entry) {
     if (!entry) return
-    // Resultado de búsqueda GLOBAL (SearchBackend): la entrada trae `path`
-    // absoluto de OTRA carpeta cualquiera. "Abrir" aquí significa REVELAR, como
-    // en Nautilus/Spotlight: una carpeta -> entrar en ella; un fichero -> ir a
-    // su carpeta dejándolo seleccionado (no lanzarlo a ciegas desde una lista
-    // que mezcla ubicaciones dispares). En ambos casos salimos del buscador.
+    // GLOBAL search result (SearchBackend): the entry carries an absolute
+    // `path` of any OTHER folder. "Open" here means REVEAL, like
+    // in Nautilus/Spotlight: a folder -> enter it; a file -> go to
+    // its folder leaving it selected (not launch it blindly from a list
+    // that mixes disparate locations). In both cases we exit the searcher.
     if (entry.path) {
       NavState.searching = false
       NavState.searchQuery = ""
@@ -306,12 +306,12 @@ Item {
     navigateTo(idx > 0 ? NavState.currentPath.substring(0, idx) : "/")
   }
 
-  // "close_write" (fichero cerrado tras escribir) en vez de fiarse solo
-  // de "modify" -- así una copia grande en curso no dispara un refresh
-  // por cada bloque escrito, solo cuando el fichero realmente queda
-  // listo. inotifywait -m no termina nunca solo (modo monitor); se mata
-  // explícitamente (stop()) al navegar a otra carpeta o cerrar la
-  // ventana, ver startDirWatch()/stopDirWatch().
+  // "close_write" (file closed after writing) instead of trusting only
+  // "modify" -- so an ongoing large copy doesn't trigger a refresh
+  // for every block written, only when the file is really
+  // ready. inotifywait -m never ends on its own (monitor mode); it is killed
+  // explicitly (stop()) when navigating to another folder or closing the
+  // window, see startDirWatch()/stopDirWatch().
   ProcessWatcher {
     id: dirWatchProc
     onLineRead: dirWatchDebounce.restart()
@@ -319,21 +319,21 @@ Item {
 
   Timer {
     id: dirWatchDebounce
-    // Varios eventos casi seguidos (copiar/mover/borrar varios ficheros
-    // a la vez) colapsan en un solo refresh en vez de uno por evento.
+    // Several events almost back to back (copying/moving/deleting several files
+    // at once) collapse into a single refresh instead of one per event.
     interval: 400
-    // No refrescar mientras hay un nombre a medio escribir -- un
-    // refresh en pleno renombrado podría reordenar la lista y dejar
-    // renamingIndex apuntando a la fila equivocada (mismo tipo de bug
-    // ya visto y arreglado para el caso de entrar en un archivo a medio
-    // renombrar). Se pierde ese refresh puntual, pero el próximo evento
-    // real (o una navegación normal) lo recupera.
+    // Don't refresh while there is a name half-written -- a
+    // refresh in the middle of a rename could reorder the list and leave
+    // renamingIndex pointing to the wrong row (same kind of bug
+    // already seen and fixed for the case of entering an archive mid-
+    // rename). That particular refresh is lost, but the next real
+    // event (or a normal navigation) recovers it.
     onTriggered: if (!root.hasPendingEdit) refresh()
   }
 
-  // Dueño del Process de listado real -- ver logic/DirLister.qml. Solo
-  // hay UNA instancia aquí (el panel activo solo lista una ruta a la
-  // vez); cada BackgroundPanel tiene la suya propia.
+  // Owner of the real listing Process -- see logic/DirLister.qml. There is
+  // only ONE instance here (the active panel only lists one path at a
+  // time); each BackgroundPanel has its own.
   DirLister {
     id: dirLister
     trashDir: Paths.trashDir
@@ -341,10 +341,10 @@ Item {
     sortOps: navCtrl.sortOps
     onPathErrorChanged: NavState.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)
-    // Vigilancia nativa: el modelo avisa de un cambio -> mismo debounce +
-    // guarda hasPendingEdit de siempre (abajo), solo cambia la FUENTE del
-    // aviso (antes dirWatchProc/inotifywait, ahora el QFileSystemWatcher
-    // del modelo). El inotifywait sigue como fallback (ver startDirWatch).
+    // Native watching: the model signals a change -> same debounce +
+    // hasPendingEdit guard as always (below), only the SOURCE of the
+    // notice changes (before dirWatchProc/inotifywait, now the model's
+    // QFileSystemWatcher). inotifywait remains as fallback (see startDirWatch).
     onDirectoryChanged: dirWatchDebounce.restart()
   }
 }

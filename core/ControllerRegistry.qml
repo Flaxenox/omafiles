@@ -2,20 +2,20 @@ import QtQuick
 import "../logic"
 import "../services"
 
-// ControllerRegistry -- ÚNICO propietario de todos los controladores de
-// logic/ (Fase 11.C, josema: erradicar el ownership disperso que señalaba la
-// auditoría 2026-08-09). Antes OmafilesContent instanciaba los 22
-// controladores + los usaba por id como god object; ahora los instancia
-// aquí y los recibe por propiedad. Los controladores siguen viendo
-// OmafilesContent como `root` (estado caliente en NavState + fachada por
-// delegación) y la ListView activa como `list` -- ambos inyectados.
+// ControllerRegistry -- SOLE owner of all the logic/ controllers
+// (Phase 11.C, josema: eradicate the scattered ownership that the
+// 2026-08-09 audit flagged). Before, OmafilesContent instantiated the 22
+// controllers + used them by id as a god object; now it instantiates them
+// here and receives them by property. The controllers still see
+// OmafilesContent as `root` (hot state in NavState + facade by
+// delegation) and the active ListView as `list` -- both injected.
 //
-// `root: registry.root` / `list: registry.list` van CUALIFICADOS: como
-// registry tiene properties root/list y cada controlador también, un
-// `root: root` sin cualificar se autorreferenciaría (binding loop -> null,
-// mismo caso que MainLayout). Las referencias cruzadas entre controladores
-// (selectionOps, archiveActions, tabOps...) son ids, no properties, así que
-// se resuelven inequívocamente y se quedan sin cualificar.
+// `root: registry.root` / `list: registry.list` go QUALIFIED: since
+// registry has properties root/list and each controller does too, an
+// unqualified `root: root` would self-reference (binding loop -> null,
+// same case as MainLayout). The cross references between controllers
+// (selectionOps, archiveActions, tabOps...) are ids, not properties, so
+// they resolve unambiguously and stay unqualified.
 Item {
   id: registry
 
@@ -165,10 +165,10 @@ Item {
     sortOps: sortOps
   }
 
-  // Lanzador compartido para abrir con la app por defecto / abrir una
-  // terminal aquí -- ver openWithDefault()/openTerminalHere() más
-  // arriba. ProcessRunner (con seguimiento), no Detached: bug real
-  // documentado ahí (gio open vs xdg-open bajo Hyprland, envuelto en
+  // Shared launcher to open with the default app / open a
+  // terminal here -- see openWithDefault()/openTerminalHere()
+  // above. ProcessRunner (with tracking), not Detached: real bug
+  // documented there (gio open vs xdg-open under Hyprland, wrapped in
   // bash -c).
   ProcessRunner {
     id: openProc

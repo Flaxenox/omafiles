@@ -4,19 +4,19 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// Backend C++ de services/Notifier.qml (Fase 5.C, josema). Notificaciones
-// de escritorio -- hoy lanza "notify-send" como proceso desatendido, la
-// MISMA forma que la implementacion Quickshell sobre
-// Quickshell.execDetached(). Ver services/Notifier.qml para el contrato y
-// el porque de centralizar aqui el titulo "Omafiles".
+// C++ backend for services/Notifier.qml (Phase 5.C, josema). Desktop
+// notifications -- today it launches "notify-send" as a detached process, the
+// SAME way as the Quickshell implementation over Quickshell.execDetached().
+// See services/Notifier.qml for the contract and the reason for centralizing
+// the "Omafiles" title here.
 //
-// Nota de diseno (BACKEND_DESIGN.md 5.1): la forma idiomatica seria
-// org.freedesktop.Notifications por QDBus (sin fork, con IDs de
-// notificacion). Se deja como notify-send en 5.C para no introducir
-// cambios de comportamiento; la migracion a QDBus es trabajo posterior.
+// Design note (BACKEND_DESIGN.md 5.1): the idiomatic form would be
+// org.freedesktop.Notifications over QDBus (no fork, with notification IDs).
+// It is left as notify-send in 5.C to avoid introducing behaviour changes; the
+// migration to QDBus is later work.
 //
-// Singleton QML (Omafiles.Backend.Notifier): sin estado, se consume como
-// Notifier.notify("texto").
+// QML singleton (Omafiles.Backend.Notifier): stateless, consumed as
+// Notifier.notify("text").
 class Notifier : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -25,7 +25,7 @@ class Notifier : public QObject {
 public:
   explicit Notifier(QObject *parent = nullptr);
 
-  // Muestra una notificacion de escritorio con el titulo fijo "Omafiles"
-  // y `text` como cuerpo.
+  // Shows a desktop notification with the fixed "Omafiles" title
+  // and `text` as the body.
   Q_INVOKABLE void notify(const QString &text);
 };

@@ -5,24 +5,24 @@ import Omafiles.Backend as Backend
 import "../../core"
 import ".."
 
-// Adaptador de host Qt6 standalone (Fase 4 → Fase 18, josema). Es el
-// equivalente de integrations/quickshell/HostBridge.qml para el frontend
-// Qt6: instancia el MISMO core/OmafilesContent.qml pero sobre un
-// ApplicationWindow en vez de un FloatingWindow. Cumple el mismo contrato de
-// host (ver integrations/HostAdapter.qml):
-//   · show()/hide()/close()  -- built-in de Window/ApplicationWindow.
-//   · cierre externo         -- onClosing (botón de cerrar del WM / Alt+F4).
-//   · geometría (tamaño)     -- vía HostAdapter, misma persistencia que
+// Standalone Qt6 host adapter (Phase 4 → Phase 18, josema). It's the
+// equivalent of integrations/quickshell/HostBridge.qml for the Qt6
+// frontend: it instantiates the SAME core/OmafilesContent.qml but over an
+// ApplicationWindow instead of a FloatingWindow. It fulfills the same host
+// contract (see integrations/HostAdapter.qml):
+//   · show()/hide()/close()  -- built-in of Window/ApplicationWindow.
+//   · external close          -- onClosing (WM's close button / Alt+F4).
+//   · geometry (size)         -- via HostAdapter, same persistence as
 //                               Quickshell (~/.local/state/omafiles/window.json).
-// El bootstrap (crear el engine, cargar este fichero) lo hace main.cpp; por
-// eso, a diferencia del lado Quickshell, aquí la ventana ES la raíz (main.cpp
-// espera un QQuickWindow) y no hay un Omafiles.qml intermedio ni objeto
-// `shell` del host.
+// The bootstrap (create the engine, load this file) is done by main.cpp; that's
+// why, unlike the Quickshell side, here the window IS the root (main.cpp
+// expects a QQuickWindow) and there is no intermediate Omafiles.qml nor host
+// `shell` object.
 ApplicationWindow {
   id: window
   visible: true
-  // Tamaño por defecto de la primera apertura; HostAdapter lo sobrescribe si
-  // hay un window.json guardado (ver onSizeRestored).
+  // Default size of the first opening; HostAdapter overrides it if
+  // there is a saved window.json (see onSizeRestored).
   width: 1400
   height: 900
   minimumWidth: 560
@@ -43,28 +43,28 @@ ApplicationWindow {
     }
   }
 
-  // Cierre externo (botón de cerrar del gestor de ventanas / Alt+F4) y cierre
-  // interno (Esc / cerrar la última pestaña, vía onCloseRequested -> window.
-  // close()). En un standalone de una sola ventana, cerrar = terminar la app
-  // (quitOnLastWindowClosed). content.close() es quien PERSISTE la sesión
-  // (saveSession, síncrono) además de parar el watcher y resetear diálogos;
-  // llamarlo aquí es imprescindible, si no la sesión no se guarda nunca en el
-  // standalone (regresión de la Fase 25: antes esto solo ponía opened=false y
-  // se saltaba el guardado, así que session.json quedaba congelado).
+  // External close (window manager's close button / Alt+F4) and internal
+  // close (Esc / closing the last tab, via onCloseRequested -> window.
+  // close()). In a single-window standalone, closing = quitting the app
+  // (quitOnLastWindowClosed). content.close() is the one that PERSISTS the session
+  // (saveSession, synchronous) besides stopping the watcher and resetting dialogs;
+  // calling it here is essential, otherwise the session is never saved in the
+  // standalone (Phase 25 regression: before this only set opened=false and
+  // skipped the save, so session.json stayed frozen).
   onClosing: content.close()
 
   OmafilesContent {
     id: content
     anchors.fill: parent
-    // Esc / cerrar la última pestaña: sin objeto `shell` que avisar (no hay
-    // host que oculte el plugin), así que se cierra la ventana directamente.
+    // Esc / closing the last tab: no `shell` object to notify (there is no
+    // host to hide the plugin), so the window is closed directly.
     onCloseRequested: window.close()
   }
 
-  // Instancia única (Fase 25): una segunda invocación `omafiles [ruta]` no abre
-  // otra ventana -- main.cpp entrega el payload por el socket local y aquí se
-  // navega/selecciona (content.open) y se trae la ventana al frente. Mismo
-  // content.open() que usa la apertura inicial y que usaba el summon del plugin.
+  // Single instance (Phase 25): a second invocation `omafiles [path]` doesn't open
+  // another window -- main.cpp delivers the payload over the local socket and here it
+  // navigates/selects (content.open) and brings the window to the front. Same
+  // content.open() that the initial opening uses and that the plugin's summon used.
   Connections {
     target: SingleInstance
     function onReceived(payload) {
@@ -77,8 +77,8 @@ ApplicationWindow {
 
   Component.onCompleted: {
     adapter.restore()
-    // Payload inicial de la línea de comandos (main.cpp). Vacío = restaura la
-    // sesión anterior (carpeta/pestañas), igual que el arranque del plugin.
+    // Initial payload from the command line (main.cpp). Empty = restores the
+    // previous session (folder/tabs), same as the plugin startup.
     content.open(typeof omafilesInitialPayload !== "undefined" ? omafilesInitialPayload : "")
   }
 }

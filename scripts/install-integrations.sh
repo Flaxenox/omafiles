@@ -1,53 +1,53 @@
 #!/bin/bash
-# Autoregistra Omafiles como gestor de archivos del sistema: .desktop con
-# MimeType=inode/directory (xdg-open/"Open folder") + servicio D-Bus
-# org.freedesktop.FileManager1 ("Show in file manager" de Firefox/GTK/Qt).
-# Lo lanza la app al arrancar (core/AppBindings.qml) desde
-# <resourceDir>/scripts/, así que nadie tiene que ejecutarlo a mano.
+# Self-registers Omafiles as the system file manager: .desktop with
+# MimeType=inode/directory (xdg-open/"Open folder") + the D-Bus service
+# org.freedesktop.FileManager1 ("Show in file manager" of Firefox/GTK/Qt).
+# It's launched by the app on startup (core/AppBindings.qml) from
+# <resourceDir>/scripts/, so no one has to run it by hand.
 #
-# Idempotente y versionado: no repite el trabajo en cada arranque del shell,
-# solo la primera vez o cuando INTEGRATION_VERSION suba (si en el futuro
-# cambia la plantilla). Si el usuario revierte el default a mano después,
-# no lo pisamos otra vez hasta que subamos la versión.
+# Idempotent and versioned: it doesn't repeat the work on every shell startup,
+# only the first time or when INTEGRATION_VERSION goes up (if the template
+# changes in the future). If the user reverts the default by hand afterward,
+# we don't clobber it again until we bump the version.
 
 set -euo pipefail
 
-# Bug real (auditoría 2026-08-05): con "set -e", cualquier paso que
-# fallara a mitad abortaba el script en silencio -- STATE_FILE nunca se
-# llegaba a escribir, así que el siguiente arranque del shell reintentaba
-# el mismo paso fallido para siempre, sin ningún aviso visible (stderr de
-# xdg-mime/dbus-send ya iba a /dev/null a propósito). Este trap asegura
-# que al menos se vea UNA notificación de que algo falló, en vez de un
-# fallo mudo repitiéndose cada arranque sin que nadie se entere.
+# Real bug (audit 2026-08-05): with "set -e", any step that
+# failed midway aborted the script silently -- STATE_FILE was never
+# written, so the next shell startup retried
+# the same failed step forever, without any visible notice (stderr of
+# xdg-mime/dbus-send already went to /dev/null on purpose). This trap ensures
+# that at least ONE notification is seen that something failed, instead of a
+# mute failure repeating on every startup without anyone noticing.
 on_error() {
   command -v notify-send >/dev/null 2>&1 && notify-send \
     "Omafiles" "Failed to set up default-file-manager integrations. Will retry on next launch." >/dev/null 2>&1
 }
 trap on_error ERR
 
-# Fase 29: v4 movio las rutas Exec del .desktop y los servicios D-Bus del repo
-# a la ubicacion XDG estable ($XDG_DATA_HOME/omafiles); v5 anadio el icono
-# oficial + su variante simbolica; v6 anade StartupWMClass=omafiles (para que el
-# dock/taskbar case la ventana con este .desktop y pinte el icono). Subir la
-# version fuerza la reescritura y la recopia en instalaciones anteriores.
+# Phase 29: v4 moved the .desktop Exec paths and the D-Bus services from the repo
+# to the stable XDG location ($XDG_DATA_HOME/omafiles); v5 added the official
+# icon + its symbolic variant; v6 adds StartupWMClass=omafiles (so that the
+# dock/taskbar matches the window with this .desktop and paints the icon). Bumping the
+# version forces the rewrite and re-copy in earlier installations.
 INTEGRATION_VERSION=6
 
-# RES_DIR: raiz ESTABLE de recursos instalados (Fase 29). Los Exec apuntan aqui,
-# no al repo, asi que borrar el repositorio no rompe abrir carpetas ni "show in
-# file manager". Requiere `cmake --install` (que copia scripts/ y assets/ aqui).
+# RES_DIR: STABLE root of installed resources (Phase 29). The Exec point here,
+# not to the repo, so deleting the repository doesn't break opening folders nor "show in
+# file manager". Requires `cmake --install` (which copies scripts/ and assets/ here).
 RES_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omafiles"
-# SELF_RES: la raiz de recursos donde vive ESTE script (para leer el icono sin
-# depender de que el install haya corrido ya). En una instalacion == RES_DIR.
+# SELF_RES: the resource root where THIS script lives (to read the icon without
+# depending on the install having already run). In an installation == RES_DIR.
 SELF_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
 
-# Fase 29: migración idempotente de la config heredada. actions.toml pasó de
-# ~/.config/omarchy/omafiles/ a la config XDG propia (~/.config/omafiles/). Va
-# ANTES del early-exit por versión, para que corra aunque las integraciones ya
-# estén al día. Solo copia si la antigua existe y la nueva todavía no, y NO
-# borra la antigua (por si el usuario aún corre una versión vieja en paralelo).
+# Phase 29: idempotent migration of the inherited config. actions.toml moved from
+# ~/.config/omarchy/omafiles/ to its own XDG config (~/.config/omafiles/). It goes
+# BEFORE the version early-exit, so it runs even if the integrations are already
+# up to date. It only copies if the old one exists and the new one doesn't yet, and does NOT
+# delete the old one (in case the user still runs an old version in parallel).
 LEGACY_ACTIONS="$HOME/.config/omarchy/omafiles/actions.toml"
 NEW_ACTIONS="${XDG_CONFIG_HOME:-$HOME/.config}/omafiles/actions.toml"
 if [[ -f "$LEGACY_ACTIONS" && ! -e "$NEW_ACTIONS" ]]; then
@@ -66,27 +66,27 @@ DBUS_SERVICES_DIR="$XDG_DATA/dbus-1/services"
 ICON_DIR="$XDG_DATA/icons/hicolor/scalable/apps"
 mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR"
 
-# Bug real: el .desktop de abajo referencia Icon=omafiles, pero nada
-# instalaba nunca el SVG en sí -- estaba puesto a mano en este equipo
-# concreto, así que una máquina nueva (o un ~/.local/share/icons
-# reconstruido) se quedaría con el icono genérico de "gestor de
-# archivos" sin ningún aviso. Ahora el SVG vive en el propio repo
-# (assets/omafiles.svg) y este script lo instala como cualquier otra
-# integración.
+# Real bug: the .desktop below references Icon=omafiles, but nothing
+# ever installed the SVG itself -- it was placed by hand on this specific
+# machine, so a new machine (or a rebuilt ~/.local/share/icons)
+# would be left with the generic "file manager" icon
+# without any notice. Now the SVG lives in the repo itself
+# (assets/omafiles.svg) and this script installs it like any other
+# integration.
 for _ic in omafiles.svg omafiles-symbolic.svg; do
   [[ -f "$SELF_RES/assets/$_ic" ]] && cp -f "$SELF_RES/assets/$_ic" "$ICON_DIR/$_ic"
 done
 
-# ID reverse-DNS: obligatorio para la activación D-Bus del .desktop (un nombre
-# de bus válido necesita puntos; "omafiles" a secas no vale).
+# reverse-DNS ID: mandatory for the D-Bus activation of the .desktop (a valid
+# bus name needs dots; plain "omafiles" won't do).
 APP_ID=io.github.percius04.omafiles
 
-# .desktop DBusActivatable (v3). Firefox/Zen "abrir carpeta contenedora" NO usa
-# xdg-mime ni org.freedesktop.FileManager1: activa el gestor por defecto vía
-# org.freedesktop.Application.Open, y solo lo hace con gestores DBusActivatable
-# (Nautilus lo es por ser GApplication). Sin esto, Zen resolvía el default
-# (omafiles) pero no podía activarlo por D-Bus y caía a Nautilus. Sustituye al
-# antiguo omafiles.desktop (no activable).
+# .desktop DBusActivatable (v3). Firefox/Zen "open containing folder" does NOT use
+# xdg-mime nor org.freedesktop.FileManager1: it activates the default manager via
+# org.freedesktop.Application.Open, and only does so with DBusActivatable managers
+# (Nautilus is one by being a GApplication). Without this, Zen resolved the default
+# (omafiles) but couldn't activate it over D-Bus and fell back to Nautilus. It replaces the
+# old omafiles.desktop (not activatable).
 rm -f "$APPS_DIR/omafiles.desktop"
 cat >"$APPS_DIR/$APP_ID.desktop" <<EOF
 [Desktop Entry]
@@ -103,16 +103,16 @@ DBusActivatable=true
 StartupWMClass=omafiles
 EOF
 
-# Servicio D-Bus de org.freedesktop.Application (la interfaz que activa el
-# .desktop DBusActivatable). El Name DEBE ser el mismo id del .desktop.
+# D-Bus service of org.freedesktop.Application (the interface that activates the
+# DBusActivatable .desktop). The Name MUST be the same id as the .desktop.
 cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
 [D-BUS Service]
 Name=$APP_ID
 Exec=$RES_DIR/scripts/dbus-app-open.py
 EOF
 
-# Servicio D-Bus org.freedesktop.FileManager1 ("Show in file manager" de apps
-# GTK/Qt que sí usan esta interfaz).
+# D-Bus service org.freedesktop.FileManager1 ("Show in file manager" of
+# GTK/Qt apps that do use this interface).
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.FileManager1.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.FileManager1
@@ -122,17 +122,17 @@ EOF
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
 command -v xdg-mime >/dev/null 2>&1 && xdg-mime default "$APP_ID.desktop" inode/directory >/dev/null 2>&1
 
-# Si algo (típicamente Nautilus) ya se activó y cogió el nombre de bus antes
-# de que existiera nuestro .service, forzamos un rescan para que el próximo
-# ShowItems/ShowFolders ya nos llegue a nosotros sin esperar al próximo login.
+# If something (typically Nautilus) already activated and took the bus name before
+# our .service existed, we force a rescan so that the next
+# ShowItems/ShowFolders reaches us without waiting for the next login.
 command -v dbus-send >/dev/null 2>&1 && dbus-send --session --type=method_call \
   --dest=org.freedesktop.DBus /org/freedesktop/DBus \
   org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1
 
 echo -n "$INTEGRATION_VERSION" >"$STATE_FILE"
 
-# notify-send estándar (freedesktop), independiente de Omarchy. El icono es el
-# propio de la app (Icon=omafiles ya instalado en hicolor).
+# Standard notify-send (freedesktop), independent of Omarchy. The icon is the
+# app's own (Icon=omafiles already installed in hicolor).
 command -v notify-send >/dev/null 2>&1 && notify-send -i omafiles \
   "Omafiles" "Set as the default file manager (folders, xdg-open, and \"show in file manager\")." >/dev/null 2>&1
 

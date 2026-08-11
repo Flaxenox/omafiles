@@ -1,12 +1,12 @@
 pragma Singleton
 import QtQuick
 
-// Estado de los seis diálogos de conflicto (renombrar/pegar/extraer/
-// comprimir/renombrado en lote/soltar) -- cuarto singleton de la capa
-// state/, mismo patrón validado con Selection/Clipboard/Undo. La lógica
-// que decide cuándo abrirlos y qué hacer al confirmar sigue en
-// logic/ConflictActions.qml (y en RenameOps/ClipboardOps/ArchiveActions/
-// FileOps/DragDropOps para el caso sin conflicto).
+// State of the six conflict dialogs (rename/paste/extract/
+// compress/bulk-rename/drop) -- fourth singleton of the
+// state/ layer, same pattern validated with Selection/Clipboard/Undo. The logic
+// that decides when to open them and what to do on confirm stays in
+// logic/ConflictActions.qml (and in RenameOps/ClipboardOps/ArchiveActions/
+// FileOps/DragDropOps for the conflict-free case).
 QtObject {
   property var pendingRename: null // { oldPath, newPath }
   property bool renameConflictOpen: false
@@ -32,12 +32,12 @@ QtObject {
   property int bulkRenameConflictCount: 0
   property bool bulkRenameConflictOpen: false
 
-  // ---------- Arrastrar y soltar ----------
-  // Deliberadamente separado del portapapeles de Ctrl+C/X/V (ver
-  // state/ClipboardState.qml) -- un drag no debe pisar lo que el usuario
-  // tenga copiado a mano. Interno (misma app) = mover; desde fuera (otra
-  // app) = copiar, decidido por DragEvent.source (null si el drag viene
-  // de fuera).
+  // ---------- Drag and drop ----------
+  // Deliberately separate from the Ctrl+C/X/V clipboard (see
+  // state/ClipboardState.qml) -- a drag must not clobber what the user
+  // has copied by hand. Internal (same app) = move; from outside (another
+  // app) = copy, decided by DragEvent.source (null if the drag comes
+  // from outside).
   property var dropPendingSources: []
   property string dropTargetDir: ""
   property bool dropIsMove: false

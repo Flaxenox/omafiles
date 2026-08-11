@@ -1,13 +1,13 @@
 import QtQuick
 import "../state"
 
-// Marcadores, recientes, historial de renombrado en lote e iconos de
-// unidades/red -- lógica de negocio que vivía en Omafiles.qml pese a no
-// depender de casi nada (root + persistence, y tabOps/mountOps solo para
-// las dos acciones de menú de unidades de red). Encontrado en la misma
-// auditoría que logic/SortOps.qml y logic/FileTypeUtils.qml. Sin
-// wrappers -- solo 12 sitios de llamada externos en total, repartidos en
-// 3 ficheros (Sidebar.qml, OpenWithOps.qml, ConflictActions.qml).
+// Bookmarks, recents, bulk-rename history and drive/network
+// icons -- business logic that lived in Omafiles.qml despite not
+// depending on almost anything (root + persistence, and tabOps/mountOps only for
+// the two network-drive menu actions). Found in the same
+// audit as logic/SortOps.qml and logic/FileTypeUtils.qml. No
+// wrappers -- only 12 external call sites in total, spread across
+// 3 files (Sidebar.qml, OpenWithOps.qml, ConflictActions.qml).
 Item {
   property Item root: null
   property Item navController: null
@@ -17,10 +17,10 @@ Item {
   property Item tabOps: null
   property Item mountOps: null
 
-  // ---------- Recientes / historial ----------
-  // Llamado al abrir un fichero de verdad (enter()/launchWith(), NO al
-  // navegar por carpetas -- para eso ya están el historial y las
-  // pestañas). Mueve al principio si ya estaba, tope 20 entradas.
+  // ---------- Recents / history ----------
+  // Called on actually opening a file (enter()/launchWith(), NOT on
+  // navigating folders -- for that the history and the
+  // tabs are already there). Moves to the top if it was already there, cap 20 entries.
   function addRecent(path, name) {
     var next = BookmarksState.recentFiles.filter(function (r) { return r.path !== path })
     next.unshift({ path: path, name: name })
@@ -49,37 +49,37 @@ Item {
     persistence.saveBulkRenameHistory()
   }
 
-  // ---------- Marcadores / iconos de unidades ----------
+  // ---------- Bookmarks / drive icons ----------
   function removeBookmark(path) {
-    // Trash es fija -- no se puede quitar (ver el guard gemelo en
-    // bookmarkActions() de Omafiles.qml, que ni siquiera ofrece la
-    // opción; este es el guard real, por si algún día se llama desde
-    // otro sitio).
+    // Trash is fixed -- it cannot be removed (see the twin guard in
+    // bookmarkActions() of Omafiles.qml, which does not even offer the
+    // option; this is the real guard, in case it is one day called from
+    // somewhere else).
     if (path === Paths.trashDir) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
   }
 
-  // type: "dir" (por defecto, compatible con marcadores guardados antes
-  // de que existiera este campo -- todos eran de carpeta) o "file".
+  // type: "dir" (default, compatible with bookmarks saved before
+  // this field existed -- they were all folder ones) or "file".
   function addBookmark(path, label, type) {
     if (BookmarksState.bookmarks.some(function (b) { return b.path === path })) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
     persistence.saveBookmarks()
   }
 
-  // Icono de la barra lateral -- Home/Trash por ruta especial, Imágenes/
-  // Vídeos/Música reutilizan el mismo glyph que ya usa iconFor() para esos
-  // tipos de fichero (así no hay que mantener dos catálogos de icono), y
-  // cualquier otra carpeta (Documents, Downloads, Projects, Almacén,
-  // marcadores añadidos a mano...) cae en la carpeta genérica.
+  // Sidebar icon -- Home/Trash by special path, Pictures/
+  // Videos/Music reuse the same glyph that iconFor() already uses for those
+  // file types (so there is no need to maintain two icon catalogs), and
+  // any other folder (Documents, Downloads, Projects, Almacén,
+  // manually added bookmarks...) falls to the generic folder.
   function iconForBookmark(modelData) {
     if (modelData.path === Paths.homeDir) return "\u{F015}"
     if (modelData.path === Paths.trashDir) return "\u{F0A7A}"
-    // Marcador de fichero suelto (no carpeta) -- icono real por
-    // extensión, como en la lista principal, en vez de adivinar por
-    // nombre de etiqueta (eso solo tiene sentido para las carpetas
-    // especiales de abajo).
+    // Bookmark of a loose file (not a folder) -- real icon by
+    // extension, like in the main list, instead of guessing by
+    // label name (that only makes sense for the special
+    // folders below).
     if (modelData.type === "file") return fileTypeUtils.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
     var label = modelData.label.toLowerCase()
     if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return fileTypeUtils.iconFor({ name: "x.jpg" })
@@ -93,21 +93,21 @@ Item {
   }
 
   function iconForMount(mount) {
-    // Óptico/ISO (Fase 20, josema): una ISO montada aparece como loop device
-    // con fstype iso9660 O udf (Mafia: udf) -- antes solo se miraba iso9660,
-    // así que la ISO caía en el icono USB. Se detecta por fstype óptico O por
-    // /dev/loop*, y usa el icono de disco (mismo glyph que el fichero .iso).
+    // Optical/ISO (Phase 20, josema): a mounted ISO appears as a loop device
+    // with fstype iso9660 OR udf (Mafia: udf) -- previously only iso9660 was checked,
+    // so the ISO fell to the USB icon. It is detected by optical fstype OR by
+    // /dev/loop*, and uses the disc icon (same glyph as the .iso file).
     var fs = (mount.fstype || "").toLowerCase()
     var optical = fs === "iso9660" || fs === "udf"
       || (mount.device || "").indexOf("/dev/loop") === 0
     if (optical) return fileTypeUtils.iconFor({ type: "file", name: "x.iso" })
-    // Extraíble (USB/disco externo) vs partición interna.
+    // Removable (USB/external disk) vs internal partition.
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
   }
 
-  // U+F0870 (md-folder_network) -- ya verificado contra el cmap real de
-  // JetBrainsMono Nerd Font en una pasada anterior (ver notas de iconos
-  // de tipo de fichero/dispositivo), reservado entonces para esto mismo.
+  // U+F0870 (md-folder_network) -- already verified against the real cmap of
+  // JetBrainsMono Nerd Font in a previous pass (see the file/device
+  // type icon notes), reserved then for this very thing.
   function iconForNetworkMount(mount) {
     return "\u{F0870}"
   }

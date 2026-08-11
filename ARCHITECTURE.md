@@ -8,14 +8,14 @@ official frontend**. The core (`core/`, `logic/`, `state/`, `panels/`,
 `dialogs/`, `services/`, and the C++ `Omafiles.Backend`) is unchanged — the
 migration only swapped the host that instantiates it.
 
-> **Nota (RC1).** Las secciones de abajo que describen
-> `integrations/quickshell/` (`HostBridge.qml`, `Omafiles.qml`) y los
-> `services/` sobre `Quickshell.Io.Process`/`Quickshell.env` documentan el
-> **contrato original de dos hosts** por contexto histórico. Esos ficheros
-> **ya no están en el árbol**: solo se distribuye `integrations/standalone/`,
-> y los `services/` envuelven el backend C++ (`Omafiles.Backend`), no
-> Quickshell. El contrato de host (Fase 18) y las reglas de dependencia siguen
-> siendo válidos; solo hay una implementación de host viva
+> **Note (RC1).** The sections below that describe
+> `integrations/quickshell/` (`HostBridge.qml`, `Omafiles.qml`) and the
+> `services/` over `Quickshell.Io.Process`/`Quickshell.env` document the
+> **original two-host contract** for historical context. Those files
+> **are no longer in the tree**: only `integrations/standalone/` is shipped,
+> and the `services/` wrap the C++ backend (`Omafiles.Backend`), not
+> Quickshell. The host contract (Phase 18) and the dependency rules are still
+> valid; there is only one live host implementation
 > (`integrations/standalone/Main.qml`).
 
 The app is installed to `~/.local` (no root) and, as of **Fase 29**, is fully

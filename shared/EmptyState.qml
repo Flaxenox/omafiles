@@ -1,19 +1,19 @@
 import QtQuick
 import qs.Commons
 
-// Estado vacío ("Nothing here yet" / "Trash is empty" / "No results
-// for...") -- trece componente extraído de Omafiles.qml, y el segundo
-// (después de FileRowVisual.qml) que unifica panel activo y de fondo
-// en vez de solo relocalizar código.
+// Empty state ("Nothing here yet" / "Trash is empty" / "No results
+// for...") -- thirteenth component extracted from Omafiles.qml, and the second
+// (after FileRowVisual.qml) that unifies the active and background panels
+// instead of just relocating code.
 //
-// OJO al tocar esto: `centerOn` es el motivo real de un bug ya cazado
-// una vez esta misma sesión -- el icono/texto "saltaba" de sitio al
-// pasar el ratón entre paneles porque el panel activo se centraba
-// sobre un contenedor que incluía la cabecera (navRow/breadcrumb) y el
-// de fondo sobre uno que no. Aquí solo hay un componente, así que ya
-// no puede volver a desincronizarse -- pero quien lo use SIEMPRE debe
-// pasar la ListView real del panel (list/bgList), nunca un contenedor
-// más amplio, o el bug vuelve.
+// BEWARE when touching this: `centerOn` is the real cause of a bug already caught
+// once this same session -- the icon/text "jumped" position when
+// hovering between panels because the active panel centered
+// over a container that included the header (navRow/breadcrumb) and the
+// background one over one that did not. Here there is only one component, so it can
+// no longer desynchronize -- but whoever uses it must ALWAYS
+// pass the panel's real ListView (list/bgList), never a wider
+// container, or the bug returns.
 Column {
   id: root
 

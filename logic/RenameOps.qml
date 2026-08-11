@@ -3,17 +3,16 @@ import qs.Commons
 import "../state"
 import "../services"
 
-// Renombrar / nueva carpeta / nuevo fichero, con su undo -- decimoséptimo
-// componente extraído de Omafiles.qml. Mismo patrón que FileOps: sin
-// Process propio, todo pasa por los wrappers de root
+// Rename / new folder / new file, with their undo -- seventeenth
+// component extracted from Omafiles.qml. Same pattern as FileOps: no
+// Process of its own, everything goes through the root wrappers
 // (actionEngine.runAction/actionEngine.pushUndo).
 //
-// Fase 7 (josema): "nueva carpeta" (caso común, sin sobrescribir) es la
-// PRIMERA operación cableada al backend nativo -- crea con
-// FileOperations.mkdir en vez de "mkdir -p" por shell. El resto de
-// operaciones sigue en el motor de acciones shell hasta un escalón
-// posterior. El undo se mantiene con rmdir (falla si el usuario ya metió
-// algo dentro, a propósito).
+// Phase 7 (josema): "new folder" (common case, without overwriting) is the
+// FIRST operation wired to the native backend -- it creates with
+// FileOperations.mkdir instead of "mkdir -p" via shell. The rest of the
+// operations stays in the shell action engine until a later step. The undo is
+// kept with rmdir (fails if the user already put something inside, on purpose).
 Item {
   id: renameOps
   property Item root: null
@@ -21,10 +20,10 @@ Item {
   property Item navController: null
 
 
-  // Rutas de "nueva carpeta" nativa en vuelo -> nombre. El undo se registra
-  // solo cuando FileOperations.mkdir termina CON ÉXITO (ver la Connections
-  // de abajo), no antes ni en un redo. Mismo patrón que Persistence con
-  // JsonStore (Connections declarativa sobre el singleton de services).
+  // Native "new folder" paths in flight -> name. The undo is registered
+  // only when FileOperations.mkdir finishes SUCCESSFULLY (see the Connections
+  // below), not before nor on a redo. Same pattern as Persistence with
+  // JsonStore (declarative Connections over the services singleton).
   property var _nativeMkdirPending: ({})
 
   function startRename(index) {
@@ -41,10 +40,10 @@ Item {
     ConflictState.renameConflictOpen = false
     if (!r) return
     var oldName = r.oldPath.substring(r.oldPath.lastIndexOf("/") + 1)
-    // Igual que en makeLinkFor: el undo solo se registra si el "mv" de
-    // verdad ocurrió. Antes se registraba siempre, incluso cuando runAction
-    // lo descartaba por haber otra acción en curso (el rename ya se había
-    // dado por hecho en la UI -- el input se cerraba igual).
+    // Same as in makeLinkFor: the undo is only registered if the "mv"
+    // actually happened. Before, it was always registered, even when runAction
+    // discarded it because another action was in progress (the rename had
+    // already been assumed done in the UI -- the input closed anyway).
     var renameCmd = "mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath)
     actionEngine.runAction(renameCmd, undefined, function () {
       actionEngine.pushUndo("rename to \"" + oldName + "\"", function () {
@@ -76,26 +75,26 @@ Item {
     EditModeState.creatingFile = true
   }
 
-  // commitNewFile()/commitNewFolder() (comprobar si ya existe algo con
-  // ese nombre) viven en logic/ConflictActions.qml, junto a
-  // newFileCheckProc/newFolderCheckProc -- mismo patrón que commitRename/
-  // renameCheckProc. Estas dos son la ejecución real (con overwrite=true
-  // si el usuario confirmó sobrescribir en el diálogo de conflicto).
+  // commitNewFile()/commitNewFolder() (check whether something with
+  // that name already exists) live in logic/ConflictActions.qml, next to
+  // newFileCheckProc/newFolderCheckProc -- same pattern as commitRename/
+  // renameCheckProc. These two are the real execution (with overwrite=true
+  // if the user confirmed overwriting in the conflict dialog).
   function runPendingNewFile(overwrite) {
     var pending = ConflictState.pendingNewFile
     ConflictState.pendingNewFile = null
     ConflictState.newFileConflictOpen = false
     if (!pending) return
-    // overwrite: -rf primero (puede ser una carpeta entera, no solo un
-    // fichero) y luego touch -- coherente con el "-f" que ya usan
-    // paste/drop al sobrescribir (fuerza sin pasar por la papelera).
+    // overwrite: -rf first (it could be a whole folder, not just a
+    // file) and then touch -- consistent with the "-f" already used by
+    // paste/drop when overwriting (forces without going through the trash).
     var newFileCmd = (overwrite ? "rm -rf -- " + Util.shellQuote(pending.path) + " && " : "")
       + "touch -- " + Util.shellQuote(pending.path)
     actionEngine.runAction(newFileCmd, undefined, function () {
-      // gio trash en vez de rm: si el usuario ya escribió algo antes de
-      // deshacer, va a la papelera en vez de perderse sin recuperación.
-      // No intenta restaurar lo que hubiera sobrescrito -- mismo límite
-      // que ya tiene pegar/soltar con overwrite.
+      // gio trash instead of rm: if the user already wrote something before
+      // undoing, it goes to the trash instead of being lost with no recovery.
+      // It does not try to restore whatever it may have overwritten -- same limit
+      // that paste/drop with overwrite already has.
       actionEngine.pushUndo("new file \"" + pending.name + "\"", function () {
         return actionEngine.runAction("gio trash -- " + Util.shellQuote(pending.path))
       }, function () {
@@ -115,9 +114,9 @@ Item {
     ConflictState.newFolderConflictOpen = false
     if (!pending) return
     if (overwrite) {
-      // Sobrescribir un nombre ya existente (caso raro): implica un rm -rf
-      // destructivo, se queda en el motor de acciones shell probado -- Fase
-      // 7 solo cablea el mkdir del caso común al backend nativo.
+      // Overwriting an already-existing name (rare case): it implies a
+      // destructive rm -rf, it stays in the tested shell action engine -- Phase
+      // 7 only wires the mkdir of the common case to the native backend.
       var cmd = "rm -rf -- " + Util.shellQuote(pending.path) + " && mkdir -p -- " + Util.shellQuote(pending.path)
       actionEngine.runAction(cmd, undefined, function () {
         actionEngine.pushUndo("new folder \"" + pending.name + "\"", function () {
@@ -128,37 +127,37 @@ Item {
       })
       return
     }
-    // Caso común: mkdir NATIVO (Fase 7). El undo se registra al terminar con
-    // éxito (ver la Connections de abajo).
+    // Common case: NATIVE mkdir (Phase 7). The undo is registered on
+    // successful completion (see the Connections below).
     renameOps._nativeMkdirPending[pending.path] = pending.name
     FileOperations.mkdir(pending.path)
   }
 
-  // Cierra el ciclo de la "nueva carpeta" nativa: refresca y registra el
-  // undo cuando mkdir termina bien. Declarativa como Persistence con
+  // Closes the loop of the native "new folder": refreshes and registers the
+  // undo when mkdir finishes well. Declarative like Persistence with
   // JsonStore.
   Connections {
     target: FileOperations
     function onFinished(op, path) {
       if (op !== "mkdir") return
-      // Refresco inmediato (como actionProc.onFinished): el panel activo lo
-      // cubre el watcher, pero refreshTick refresca también los de fondo que
-      // muestren esta misma carpeta.
+      // Immediate refresh (like actionProc.onFinished): the active panel is
+      // covered by the watcher, but refreshTick also refreshes the background
+      // ones showing this same folder.
       navController.refresh()
       NavState.refreshTick += 1
       var name = renameOps._nativeMkdirPending[path]
-      if (name === undefined) return // redo u otro mkdir: no re-registrar
+      if (name === undefined) return // redo or another mkdir: do not re-register
       delete renameOps._nativeMkdirPending[path]
       actionEngine.pushUndo("new folder \"" + name + "\"", function () {
-        // rmdir (no rm -rf): si ya hay algo dentro, falla en vez de borrarlo.
+        // rmdir (not rm -rf): if there is already something inside, it fails instead of deleting it.
         return actionEngine.runAction("rmdir -- " + Util.shellQuote(path))
       }, function () {
-        FileOperations.mkdir(path) // redo: sin re-registrar
+        FileOperations.mkdir(path) // redo: without re-registering
         return true
       })
     }
     function onError(op, path, message) {
-      // El aviso al usuario ya lo dio el adaptador (Notifier). Solo limpiar.
+      // The notice to the user was already given by the adapter (Notifier). Just clean up.
       if (op === "mkdir" && renameOps._nativeMkdirPending[path] !== undefined)
         delete renameOps._nativeMkdirPending[path]
     }

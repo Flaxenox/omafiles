@@ -3,21 +3,21 @@ import qs.Commons
 import qs.Ui
 import "../state"
 
-// Filas de "nueva carpeta"/"nuevo fichero" del panel activo (Fase 19: la
-// búsqueda salió de aquí a la lupa expandible de la barra superior,
-// panels/SearchBar.qml). Las dos son mutuamente excluyentes
+// "New folder"/"new file" rows of the active panel (Phase 19: the
+// search moved out of here to the expandable magnifier of the top bar,
+// panels/SearchBar.qml). The two are mutually exclusive
 // (EditModeState.creatingFolder/creatingFile -- startNewFolder()/
-// startNewFile() apaga la otra antes de encender la suya), así que como
-// Column con las dos Row visible-condicional, la altura total de este
-// componente (accesible desde fuera por su id) es la de la única fila visible
-// en cada momento, o 0 si ninguna lo está -- Column ya descarta hijos
-// invisibles del cálculo. listContainer en MainLayout resta esa altura una
-// sola vez en vez de sumar términos condicionales por separado.
+// startNewFile() turns the other off before turning on its own), so as a
+// Column with the two Row visible-conditional, the total height of this
+// component (accessible from outside via its id) is that of the single row visible
+// at each moment, or 0 if none is -- Column already discards invisible
+// children from the calculation. listContainer in MainLayout subtracts that height once
+// instead of summing conditional terms separately.
 Column {
   property Item root: null
-  // La ListView principal (id "list" en MainLayout) -- cada campo le
-  // devuelve el foco al ocultarse (Escape/Enter), y sin pasarlo explícito
-  // no es visible desde este fichero.
+  // The main ListView (id "list" in MainLayout) -- each field returns
+  // focus to it when hidden (Escape/Enter), and without passing it explicitly
+  // it isn't visible from this file.
   property Item list: null
   property Item conflictActions: null
   width: parent.width

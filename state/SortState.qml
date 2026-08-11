@@ -1,18 +1,18 @@
 pragma Singleton
 import QtQuick
 
-// Criterio de orden actual (nombre/tamaño/fecha/tipo, asc/desc) --
-// decimotercer singleton de la capa state/, completa la migración de
-// logic/SortOps.qml (su lógica ya estaba extraída; este era el único
-// estado que manipulaba y que seguía viviendo en Omafiles.qml).
+// Current sort criterion (name/size/date/type, asc/desc) --
+// thirteenth singleton of the state/ layer, completes the migration of
+// logic/SortOps.qml (its logic was already extracted; this was the only
+// state it manipulated and that still lived in Omafiles.qml).
 QtObject {
   property string sortKey: "name"
   property bool sortDesc: false
 
-  // Claves de orden disponibles y sus etiquetas (Fase 14.B, josema, cierra
-  // O2/O3 de la revalidación): eran constantes readonly de OmafilesContent
-  // (sortKeys/sortKeyLabels) leídas por logic/SortOps. Configuración de
-  // orden pura -- su sitio natural es junto a sortKey/sortDesc.
+  // Available sort keys and their labels (Phase 14.B, josema, closes
+  // O2/O3 of the revalidation): they were readonly constants of OmafilesContent
+  // (sortKeys/sortKeyLabels) read by logic/SortOps. Pure sort
+  // configuration -- their natural place is next to sortKey/sortDesc.
   readonly property var sortKeys: ["name", "size", "mtime", "type"]
   readonly property var sortKeyLabels: ({ name: "Name", size: "Size", mtime: "Date", type: "Type" })
 }

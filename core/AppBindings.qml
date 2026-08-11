@@ -2,14 +2,14 @@ import "../state"
 import QtQuick
 import "../services"
 
-// AppBindings -- wiring de ciclo de vida y temporizadores de Omafiles (Fase
-// 11.C, josema: completar el desacoplamiento del frontend). Reúne las
-// reacciones/temporizadores que no son ni UI (MainLayout/DialogLayer) ni
-// fachada operativa (CommandFacade): el autoregistro como gestor de archivos
-// al cargar, el sondeo periódico de discos/red y el debounce de la tecla `g`
-// (gg -> ir arriba). Recibe solo lo que usa: `root` (pluginDir/opened/
-// gPending) y `mountOps`. Expone `gTimer` como alias porque KeyboardShortcuts
-// (vía ActiveFileList) lo reinicia.
+// AppBindings -- lifecycle and timer wiring of Omafiles (Phase
+// 11.C, josema: complete the frontend decoupling). It gathers the
+// reactions/timers that are neither UI (MainLayout/DialogLayer) nor
+// operational facade (CommandFacade): the self-registration as file manager
+// on load, the periodic polling of disks/network and the debounce of the `g` key
+// (gg -> go to top). It receives only what it uses: `root` (pluginDir/opened/
+// gPending) and `mountOps`. It exposes `gTimer` as an alias because KeyboardShortcuts
+// (via ActiveFileList) restarts it.
 Item {
   id: appBindings
 
@@ -18,41 +18,41 @@ Item {
 
   property alias gTimer: gTimer
 
-  // Autoregistro como gestor de archivos del sistema (MimeType inode/
-  // directory + org.freedesktop.FileManager1) -- se lanza una vez al cargar
-  // el plugin. El script es idempotente (scripts/install-integrations.sh),
-  // así que llamarlo en cada arranque del shell es barato y seguro.
+  // Self-registration as the system file manager (MimeType inode/
+  // directory + org.freedesktop.FileManager1) -- launched once on loading
+  // the plugin. The script is idempotent (scripts/install-integrations.sh),
+  // so calling it on every shell startup is cheap and safe.
   Component.onCompleted: {
-    // Bajo el arnés de validación (omafiles --selfcheck, Fase 12) NO se
-    // autoregistra como gestor de archivos: el selfcheck instancia el core
-    // muchas veces y no debe tener efectos secundarios en el sistema. En un
-    // arranque normal OMAFILES_SELFCHECK no existe y el comportamiento es el
-    // de siempre.
+    // Under the validation harness (omafiles --selfcheck, Phase 12) it does NOT
+    // self-register as file manager: the selfcheck instantiates the core
+    // many times and must not have side effects on the system. On a
+    // normal startup OMAFILES_SELFCHECK does not exist and the behavior is the
+    // usual one.
     if (Env.get("OMAFILES_SELFCHECK") === "1") return
     Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
   }
 
-  // Dispositivos de bloque (USB/ISO/discos): reactivos vía UDisks2 (Fase 20).
-  // El watcher nativo (backend/UDisksWatcher, suscripción D-Bus) emite
-  // devicesChanged() coalescido ante cualquier conexión/expulsión/montaje/
-  // cambio de label, y aquí se responde volviendo a listar -- sin polling. La
-  // carga inicial la hace OmafilesContent.open(); `enabled: root.opened` evita
-  // relistar con la ventana cerrada (al reabrir, open() pone al día).
+  // Block devices (USB/ISO/disks): reactive via UDisks2 (Phase 20).
+  // The native watcher (backend/UDisksWatcher, D-Bus subscription) emits
+  // devicesChanged() coalesced on any connection/ejection/mount/
+  // label change, and here it responds by listing again -- no polling. The
+  // initial load is done by OmafilesContent.open(); `enabled: root.opened` avoids
+  // re-listing with the window closed (on reopening, open() catches up).
   //
-  // Montajes de RED (GVfs) NO los cubre UDisks2: se refrescan solo por eventos
-  // internos (conectar/desconectar servidor en Omafiles, navegar a red) y al
-  // abrir la ventana -- sin polling periódico. LIMITACIÓN CONOCIDA: un montaje
-  // de red creado desde OTRA app (nautilus...) no aparece hasta el siguiente
-  // evento interno o reapertura. Mejora futura: un watcher específico de GVfs
-  // (señales D-Bus de org.gtk.vfs), nunca polling.
+  // NETWORK mounts (GVfs) are NOT covered by UDisks2: they are refreshed only by
+  // internal events (connect/disconnect server in Omafiles, navigate to network) and on
+  // opening the window -- without periodic polling. KNOWN LIMITATION: a network
+  // mount created from ANOTHER app (nautilus...) does not appear until the next
+  // internal event or reopening. Future improvement: a GVfs-specific watcher
+  // (D-Bus signals of org.gtk.vfs), never polling.
   Connections {
     target: UDisksWatcher
     enabled: root.opened
     function onDevicesChanged() { mountOps.refreshMounts() }
   }
 
-  // Debounce de la tecla `g` (pulsar `g` dos veces seguidas = ir arriba del
-  // todo, estilo vim). onTriggered limpia el estado si no llegó la segunda.
+  // Debounce of the `g` key (pressing `g` twice in a row = go to the very
+  // top, vim style). onTriggered clears the state if the second didn't arrive.
   Timer {
     id: gTimer
     interval: 600

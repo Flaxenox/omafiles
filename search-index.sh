@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Búsqueda GLOBAL indexada para la lupa de Omafiles: consulta el índice que ya
-# mantiene el sistema (no recorre el disco) y devuelve rutas absolutas.
+# Indexed GLOBAL search for the Omafiles magnifier: queries the index that the
+# system already maintains (doesn't walk the disk) and returns absolute paths.
 #
-# Backends, en orden de preferencia (Prioridad 1/2 del encargo):
-#   1. Tracker (tracker3 / TinySPARQL)  -- el mismo motor que Nautilus.
-#   2. plocate / locate                  -- índice ligero de rutas.
-# Si no hay NINGUNO, sale con código 2 (sentinel): el lado QML cae entonces al
-# SearchWorker recursivo (Prioridad 3). NO se crea índice ni daemon propios.
+# Backends, in order of preference (Priority 1/2 of the assignment):
+#   1. Tracker (tracker3 / TinySPARQL)  -- the same engine as Nautilus.
+#   2. plocate / locate                  -- lightweight path index.
+# If there is NONE, it exits with code 2 (sentinel): the QML side then falls back to
+# the recursive SearchWorker (Priority 3). NO index nor daemon of its own is created.
 #
-# Uso:  search-index.sh <query> [limit] [showHidden:0|1]
-# Salida (stdout): una línea por resultado, "tipo\tRUTA_ABSOLUTA"
-#   tipo = "dir" | "file"  (se resuelve con test -d, saltando rutas fantasma
-#   del índice que ya no existen en disco). El orden de relevancia lo hace el
-#   lado QML (SearchBackend); aquí solo se listan las coincidencias.
-# stderr: "backend=<nombre>" para diagnóstico (qué motor respondió).
+# Usage:  search-index.sh <query> [limit] [showHidden:0|1]
+# Output (stdout): one line per result, "type\tABSOLUTE_PATH"
+#   type = "dir" | "file"  (resolved with test -d, skipping phantom paths
+#   from the index that no longer exist on disk). The relevance ordering is done by the
+#   QML side (SearchBackend); here only the matches are listed.
+# stderr: "backend=<name>" for diagnosis (which engine responded).
 
 set -uo pipefail
 
@@ -23,16 +23,16 @@ show_hidden=${3:-0}
 
 [[ -z $query ]] && exit 0
 
-# Filtrado de ruido + ocultos.
-#   - Ruido SIEMPRE fuera (aunque showHidden): cachés y árboles enormes de
-#     dependencias que ensucian cualquier búsqueda global (node_modules,
-#     .cache, .git, .pnpm). Tracker ya los excluye de su índice; con plocate
-#     (que indexa TODO) hay que filtrarlos aquí para que los resultados útiles
-#     no queden sepultados bajo miles de rutas de caché.
-#   - Ocultos (sin showHidden): se filtra SOLO por el basename (el propio
-#     fichero/carpeta oculto, p.ej. ~/.bashrc), NO por carpetas padre ocultas
-#     -- muchas apps viven bajo ~/.local/share, ~/.config, etc. y deben
-#     encontrarse igual (Steam, Discord...).
+# Noise + hidden filtering.
+#   - Noise ALWAYS out (even with showHidden): caches and huge dependency
+#     trees that clutter any global search (node_modules,
+#     .cache, .git, .pnpm). Tracker already excludes them from its index; with plocate
+#     (which indexes EVERYTHING) they have to be filtered here so the useful results
+#     don't get buried under thousands of cache paths.
+#   - Hidden (without showHidden): filtered ONLY by the basename (the hidden
+#     file/folder itself, e.g. ~/.bashrc), NOT by hidden parent folders
+#     -- many apps live under ~/.local/share, ~/.config, etc. and should
+#     be found anyway (Steam, Discord...).
 filter_noise() {
   grep -vaE '/(node_modules|\.cache|\.git|\.pnpm|\.cargo|\.rustup)(/|$)'
 }
@@ -41,7 +41,7 @@ filter_hidden() {
   else awk -F/ '$NF !~ /^\./'; fi
 }
 
-# Convierte una URI file:// (lo que emite Tracker) en ruta local decodificada.
+# Converts a file:// URI (what Tracker emits) into a decoded local path.
 uri_to_path() {
   sed -e 's|^file://||' | python3 -c 'import sys,urllib.parse
 for line in sys.stdin:
@@ -50,8 +50,8 @@ for line in sys.stdin:
 }
 
 emit_types() {
-  # Lee rutas por stdin y emite "tipo\truta" para las que existen. `[ -d ]` es
-  # builtin (sin fork), así que 200 comprobaciones son baratas.
+  # Reads paths from stdin and emits "type\tpath" for those that exist. `[ -d ]` is
+  # a builtin (no fork), so 200 checks are cheap.
   local p
   while IFS= read -r p; do
     [[ -z $p ]] && continue
@@ -61,16 +61,16 @@ emit_types() {
   done
 }
 
-# Se sobre-pide al índice (fetch) porque el filtrado de ruido/ocultos y el
-# descarte de rutas fantasma reducen el conteo; así el lado QML tiene un pool
-# amplio del que ordenar por relevancia y quedarse con los 200 mejores.
+# The index is over-fetched because the noise/hidden filtering and the
+# phantom-path discard reduce the count; so the QML side has a
+# wide pool to order by relevance and keep the best 200.
 fetch=$(( limit * 4 ))
 (( fetch > 1200 )) && fetch=1200
 
 if command -v tracker3 >/dev/null 2>&1; then
   echo "backend=tracker3" >&2
-  # `tracker3 search` imprime cabeceras + URIs file://; nos quedamos con esas.
-  # Tracker ya excluye cachés de su índice, pero pasamos los filtros igual.
+  # `tracker3 search` prints headers + file:// URIs; we keep those.
+  # Tracker already excludes caches from its index, but we pass the filters anyway.
   tracker3 search --limit "$fetch" -- "$query" 2>/dev/null \
     | grep -oE 'file://[^ ]+' | uri_to_path | filter_noise | filter_hidden | emit_types
   exit 0
@@ -88,6 +88,6 @@ if command -v locate >/dev/null 2>&1; then
   exit 0
 fi
 
-# Ningún backend indexado: el llamador (SearchBackend.qml) usa SearchWorker.
+# No indexed backend: the caller (SearchBackend.qml) uses SearchWorker.
 echo "backend=none" >&2
 exit 2

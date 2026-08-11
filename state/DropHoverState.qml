@@ -1,12 +1,12 @@
 pragma Singleton
 import QtQuick
 
-// Feedback visual de "arrastrando por encima de..." durante un
-// drag&drop -- decimoséptimo singleton de la capa state/. dropHoverIndex
-// es para filas de la lista principal (FileListRow.qml, indexado por
-// posición); dropHoverPath es para marcadores/unidades en la barra
-// lateral (Sidebar.qml, indexado por ruta) -- dos formas del mismo
-// concepto, con la clave que le encaja a cada UI.
+// Visual "dragging over..." feedback during a
+// drag&drop -- seventeenth singleton of the state/ layer. dropHoverIndex
+// is for rows of the main list (FileListRow.qml, indexed by
+// position); dropHoverPath is for bookmarks/drives in the
+// sidebar (Sidebar.qml, indexed by path) -- two forms of the same
+// concept, with the key that fits each UI.
 QtObject {
   property int dropHoverIndex: -1
   property string dropHoverPath: ""

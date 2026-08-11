@@ -2,12 +2,12 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Montajes de red GVfs -- adaptador fino sobre el singleton C++
-// Omafiles.Backend.NetworkMounts (lee $XDG_RUNTIME_DIR/gvfs, ver
-// backend/NetworkMounts.cpp). Fase 16 (josema): sustituto nativo de
-// list-network-mounts.sh. Reenvía list() para que logic/ no importe
-// Omafiles.Backend (regla 8). Igual que el resto de services/.
+// GVfs network mounts -- thin adapter over the C++ singleton
+// Omafiles.Backend.NetworkMounts (reads $XDG_RUNTIME_DIR/gvfs, see
+// backend/NetworkMounts.cpp). Phase 16 (josema): native replacement for
+// list-network-mounts.sh. Forwards list() so logic/ does not import
+// Omafiles.Backend (rule 8). Like the rest of services/.
 QtObject {
-  // Ubicaciones de red montadas ahora mismo: [{ label, path, scheme }].
+  // Network locations mounted right now: [{ label, path, scheme }].
   function list() { return Backend.NetworkMounts.list() }
 }

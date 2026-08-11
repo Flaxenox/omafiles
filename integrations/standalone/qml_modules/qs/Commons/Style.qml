@@ -260,16 +260,16 @@ QtObject {
 
   // -------------------------------------------------------- text emphasis
   //
-  // Niveles de opacidad para texto NO primario. Existen para que fechas,
-  // tamaños, contadores, subtítulos, footers y breadcrumbs inactivos
-  // compartan un ÚNICO nivel de contraste (`secondary`) en vez de repetir
-  // literales sueltos (0.5 / 0.55 / 0.6 / 0.7 …) por cada componente, que
-  // era lo que hacía que dos grises casi iguales convivieran en la misma
-  // pantalla. El color siempre sale de `Color.*`; esto solo modula su
-  // presencia. Tres escalones bastan para todo el texto secundario:
-  //   strong    — secundario prominente (estado vacío, placeholders, pistas)
-  //   secondary — metadato por defecto (fechas, tamaños, contadores, subtítulos, footers, breadcrumb inactivo)
-  //   muted     — afordancia tenue (separadores de breadcrumb, iconos en reposo)
+  // Opacity levels for NON-primary text. They exist so that dates,
+  // sizes, counters, subtitles, footers and inactive breadcrumbs
+  // share a SINGLE contrast level (`secondary`) instead of repeating
+  // loose literals (0.5 / 0.55 / 0.6 / 0.7 …) per component, which
+  // was what made two nearly-identical grays coexist on the same
+  // screen. The color always comes from `Color.*`; this only modulates its
+  // presence. Three steps suffice for all secondary text:
+  //   strong    — prominent secondary (empty state, placeholders, hints)
+  //   secondary — default metadata (dates, sizes, counters, subtitles, footers, inactive breadcrumb)
+  //   muted     — faint affordance (breadcrumb separators, icons at rest)
   readonly property QtObject emphasis: QtObject {
     readonly property real strong: 0.75
     readonly property real secondary: 0.6

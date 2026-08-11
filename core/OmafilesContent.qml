@@ -7,63 +7,63 @@ import "../logic"
 import "../shared"
 import "../state"
 
-// OmafilesContent -- el árbol visual completo + todo el wiring de
-// Omafiles (Fase 3, josema: separar el composition root del frontend
-// Quickshell). Contiene TODO lo que antes vivía directo en Omafiles.qml
-// salvo lo específico del host: sin FloatingWindow, sin HostBridge, sin
-// la property `shell`. Omafiles.qml (ahora un bootstrap fino del
-// frontend Quickshell) instancia esto dentro de un HostBridge y conecta
-// open()/close()/opened/closeRequested() por fuera -- ver ese fichero
-// para el lado Quickshell del contrato.
+// OmafilesContent -- the complete visual tree + all the wiring of
+// Omafiles (Phase 3, josema: separate the composition root from the
+// Quickshell frontend). It contains EVERYTHING that used to live directly in Omafiles.qml
+// except the host-specific bits: no FloatingWindow, no HostBridge, no
+// the `shell` property. Omafiles.qml (now a thin bootstrap of the
+// Quickshell frontend) instantiates this inside a HostBridge and connects
+// open()/close()/opened/closeRequested() from outside -- see that file
+// for the Quickshell side of the contract.
 Item {
   id: root
 
-  // homeDir/pluginDir/trashDir/thumbCacheDir, los *.json de estado y
-  // defaultBookmarks viven ahora en state/Paths.qml (Fase 14.B): rutas y
-  // configuración derivadas de $HOME, no estado del composition root.
-  // currentPath/entries/showHidden/searchQuery/visibleEntries viven en
-  // state/NavState.qml (Fase 11.A) y NavState es su ÚNICA fuente de verdad
-  // (Fase 14.A). El estado runtime de nav/búsqueda (searching/searchTruncated/
-  // currentPathError/pendingSelectNames/refreshTick) también se movió a
-  // NavState (Fase 14.C). tabs/activeTabIndex/navHistory/
-  // navHistoryIndex viven en state/TabsState.qml.
-  // Caché de listados por ruta, alimentada por los paneles de fondo cada
-  // vez que refrescan -- ver _goToPath(). Se queda aquí (caché de vista, no
-  // dato estructural; su unificación es trabajo aparte).
+  // homeDir/pluginDir/trashDir/thumbCacheDir, the state *.json and
+  // defaultBookmarks now live in state/Paths.qml (Phase 14.B): paths and
+  // configuration derived from $HOME, not composition-root state.
+  // currentPath/entries/showHidden/searchQuery/visibleEntries live in
+  // state/NavState.qml (Phase 11.A) and NavState is their SOLE source of truth
+  // (Phase 14.A). The runtime nav/search state (searching/searchTruncated/
+  // currentPathError/pendingSelectNames/refreshTick) was also moved to
+  // NavState (Phase 14.C). tabs/activeTabIndex/navHistory/
+  // navHistoryIndex live in state/TabsState.qml.
+  // Cache of listings by path, fed by the background panels every
+  // time they refresh -- see _goToPath(). It stays here (view cache, not
+  // structural data; its unification is separate work).
   property var tabEntriesCache: ({})
   property bool opened: false
   property bool loaded: false
 
-  // Suprime la micro-transición de fade de la lista (Fase 22) para el
-  // PRÓXIMO repintado del panel activo. Lo activa TabOps al cambiar/cerrar
-  // pestaña: ahí el listado que adopta el panel activo ya estaba a la vista
-  // (era un panel de fondo), así que fundirlo al activarlo es un flash
-  // redundante al pasar el cursor. La navegación real (entrar en una carpeta,
-  // atrás/adelante, operaciones) NO lo activa, así que sigue con su fade.
+  // Suppresses the list's fade micro-transition (Phase 22) for the
+  // NEXT repaint of the active panel. TabOps activates it on switching/closing
+  // a tab: there the listing the active panel adopts was already in view
+  // (it was a background panel), so fading it in when activated is a
+  // redundant flash on hover. Real navigation (entering a folder,
+  // back/forward, operations) does NOT activate it, so it keeps its fade.
   property bool suppressListFade: false
 
-  // Posición de scroll pendiente de restaurar EN CUANTO termine el
-  // próximo listProc -- ver el comentario largo junto a
-  // positionViewAtBeginning() en listProc, quien lo consume. -1 = nada
-  // pendiente (sentinel, ya que 0 es una posición de scroll válida en sí
-  // misma). Estado puramente de vista: se queda en el composition root.
+  // Scroll position pending restoration AS SOON AS the
+  // next listProc finishes -- see the long comment next to
+  // positionViewAtBeginning() in listProc, which consumes it. -1 = nothing
+  // pending (sentinel, since 0 is a valid scroll position in
+  // itself). Purely view state: it stays in the composition root.
   property real _pendingScrollY: -1
-  // Igual que _pendingScrollY pero por ÍNDICE (positionViewAtIndex): el panel
-  // activo restaura el scroll por índice, no por píxel, para que coincida
-  // EXACTAMENTE con el panel de fondo (que también usa índice). Si mezclaran
-  // píxel/índice, la conversión entre ambos derivaba ~1 fila por ida y vuelta.
+  // Same as _pendingScrollY but by INDEX (positionViewAtIndex): the active
+  // panel restores scroll by index, not by pixel, so it matches
+  // EXACTLY the background panel (which also uses index). If they mixed
+  // pixel/index, the conversion between them drifted ~1 row per round trip.
   property int _pendingScrollIndex: -1
-  // Offset sub-fila que acompaña a _pendingScrollIndex (píxeles dentro de la
-  // fila de arriba), para reproducir el scroll EXACTO, no alineado a fila.
+  // Sub-row offset accompanying _pendingScrollIndex (pixels within the
+  // top row), to reproduce the EXACT scroll, not row-aligned.
   property real _pendingScrollOffset: 0
 
-  // undoStack/redoStack viven ahora en state/UndoState.qml (singleton) --
-  // tercer slice de la capa state/. Lógica sin cambios en
+  // undoStack/redoStack now live in state/UndoState.qml (singleton) --
+  // third slice of the state/ layer. Logic unchanged in
   // logic/ActionEngine.qml.
 
-  // undoLast/redoLast siguen como wrappers finos porque la capa visual
-  // (menús/paleta) los llama por la fachada del root. pushUndo ya no: sus
-  // llamadores de logic/ reciben actionEngine inyectado (Fase 14.D).
+  // undoLast/redoLast remain as thin wrappers because the visual layer
+  // (menus/palette) calls them via the root facade. pushUndo no longer: its
+  // logic/ callers receive actionEngine injected (Phase 14.D).
   function undoLast() {
     registry.actionEngine.undoLast()
   }
@@ -72,42 +72,42 @@ Item {
     registry.actionEngine.redoLast()
   }
 
-  // selectedIndex/selectedIndices/anchorIndex/marquee* viven ahora en
-  // state/SelectionState.qml (singleton, pragma Singleton) -- primer
-  // piloto de la capa state/ (ver [[project_omafiles_architecture_rules]]),
-  // en vez de properties sueltas aquí pasadas por prop-drilling. La lógica
-  // que las manipula sigue en logic/SelectionOps.qml sin cambios.
-  // Altura real medida de una fila (todas iguales, ver updateMarqueeSelection).
-  // Sirve para calcular la altura del footer sin pasar por
-  // list.contentHeight -- que en esta versión de Qt incluye al propio
-  // footer, y usarlo ahí sería una propiedad que depende de sí misma
-  // (confirmado en vivo: "Binding loop detected for property height").
+  // selectedIndex/selectedIndices/anchorIndex/marquee* now live in
+  // state/SelectionState.qml (singleton, pragma Singleton) -- first
+  // pilot of the state/ layer (see [[project_omafiles_architecture_rules]]),
+  // instead of loose properties here passed by prop-drilling. The logic
+  // that manipulates them stays in logic/SelectionOps.qml unchanged.
+  // Real measured height of a row (all equal, see updateMarqueeSelection).
+  // Used to compute the footer height without going through
+  // list.contentHeight -- which in this version of Qt includes the footer
+  // itself, and using it there would be a property that depends on itself
+  // (confirmed live: "Binding loop detected for property height").
   property real measuredRowHeight: 0
 
-  // sortKey/sortDesc + sortKeys/sortKeyLabels viven ahora en
-  // state/SortState.qml (estos dos últimos movidos en Fase 14.B, cierra O3);
-  // completa logic/SortOps.qml.
+  // sortKey/sortDesc + sortKeys/sortKeyLabels now live in
+  // state/SortState.qml (these last two moved in Phase 14.B, closes O3);
+  // completes logic/SortOps.qml.
 
-  // renamingIndex/creatingFolder/creatingFile/editingPath viven ahora en
-  // state/EditModeState.qml -- decimoctavo slice de la capa state/.
-  // Hay una edición sin confirmar en el panel activo (nombre a medio
-  // escribir) -- usado para no tirarla al vuelo por un simple hover sobre
-  // otro panel (ver el HoverHandler de bgPanel más abajo).
+  // renamingIndex/creatingFolder/creatingFile/editingPath now live in
+  // state/EditModeState.qml -- eighteenth slice of the state/ layer.
+  // There is an unconfirmed edit in the active panel (name half-
+  // written) -- used to avoid discarding it on the fly on a simple hover over
+  // another panel (see bgPanel's HoverHandler further down).
   readonly property bool hasPendingEdit: EditModeState.renamingIndex >= 0 || EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.editingPath
 
-  // Bug real (auditoría 2026-08-05): cualquier diálogo con un paso de
-  // "confirmar" que relee NavState.currentPath/registry.selectionOps.selectedEntries() EN EL
-  // MOMENTO DEL CLIC (no al abrirse) puede acabar actuando sobre la
-  // carpeta equivocada si la pestaña activa cambia mientras el diálogo
-  // sigue abierto -- y nada impedía que cambiara, porque el hover-para-
-  // activar-panel solo se bloqueaba para hasPendingEdit/contextMenuOpen,
-  // no para el resto de diálogos (chmod, abrir-con, conflictos al pegar/
-  // extraer/comprimir/renombrar en lote/soltar, confirmar borrado,
-  // paleta, conectar a servidor, propiedades). En vez de capturar la
-  // ruta a mano en cada sitio, un único punto de bloqueo en
-  // switchToTab() cubre todos los casos de golpe: mientras cualquiera de
-  // estos está abierto, la pestaña activa (y su currentPath) no se
-  // puede mover por debajo del diálogo.
+  // Real bug (audit 2026-08-05): any dialog with a
+  // "confirm" step that re-reads NavState.currentPath/registry.selectionOps.selectedEntries() AT THE
+  // MOMENT OF THE CLICK (not on opening) can end up acting on the
+  // wrong folder if the active tab changes while the dialog
+  // stays open -- and nothing prevented it from changing, because the hover-to-
+  // activate-panel was only blocked for hasPendingEdit/contextMenuOpen,
+  // not for the rest of the dialogs (chmod, open-with, conflicts on paste/
+  // extract/compress/bulk rename/drop, confirm delete,
+  // palette, connect to server, properties). Instead of capturing the
+  // path by hand at each site, a single blocking point in
+  // switchToTab() covers all cases at once: while any of
+  // these is open, the active tab (and its currentPath) cannot
+  // move out from under the dialog.
   readonly property bool hasBlockingOverlay: root.hasPendingEdit || ContextMenuState.contextMenuOpen
     || root.pendingDeleteNames.length > 0 || ConflictState.renameConflictOpen || ConflictState.pasteConflictOpen
     || ConflictState.extractConflictOpen || ConflictState.compressConflictOpen || ConflictState.bulkRenameConflictOpen
@@ -115,16 +115,16 @@ Item {
     || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
     || ChmodState.chmodOpen || PropertiesState.propertiesOpen || DialogsState.connectServerOpen
 
-  // actionBusy/actionLabel/actionProgressPct/_actionOnSuccess viven ahora en
-  // state/ActionState.qml -- duodécimo slice de la capa state/, completa
-  // la migración de logic/ActionEngine.qml (undoStack/redoStack ya estaban
-  // en state/UndoState.qml). actionBusyDots se queda aquí -- animación
-  // puramente visual, ver el Timer más abajo.
+  // actionBusy/actionLabel/actionProgressPct/_actionOnSuccess now live in
+  // state/ActionState.qml -- twelfth slice of the state/ layer, completes
+  // the migration of logic/ActionEngine.qml (undoStack/redoStack were already
+  // in state/UndoState.qml). actionBusyDots stays here -- purely
+  // visual animation, see the Timer further down.
   property string actionBusyDots: ""
 
-  // clipboardPaths/clipboardMode viven ahora en state/ClipboardState.qml
-  // (singleton) -- segundo slice de la capa state/, mismo patrón que
-  // SelectionState. Lógica sin cambios en logic/ClipboardOps.qml.
+  // clipboardPaths/clipboardMode now live in state/ClipboardState.qml
+  // (singleton) -- second slice of the state/ layer, same pattern as
+  // SelectionState. Logic unchanged in logic/ClipboardOps.qml.
 
   property var pendingDeleteNames: []
 
@@ -133,86 +133,86 @@ Item {
   // pendingCompress/compressConflictOpen, pendingBulkRename/
   // bulkRenameInternalDupes/bulkRenameConflictCount/bulkRenameConflictOpen,
   // dropPendingSources/dropTargetDir/dropIsMove/dropConflictNames/
-  // dropConflictOpen viven ahora en state/ConflictState.qml (singleton) --
-  // cuarto slice de la capa state/. Lógica sin cambios en
-  // logic/ConflictActions.qml y demás.
+  // dropConflictOpen now live in state/ConflictState.qml (singleton) --
+  // fourth slice of the state/ layer. Logic unchanged in
+  // logic/ConflictActions.qml and others.
 
-  // dropHoverIndex/dropHoverPath viven ahora en state/DropHoverState.qml --
-  // decimoséptimo slice de la capa state/.
+  // dropHoverIndex/dropHoverPath now live in state/DropHoverState.qml --
+  // seventeenth slice of the state/ layer.
 
-  // contextMenuOpen/X/Y/Actions viven ahora en state/ContextMenuState.qml,
-  // paletteOpen/Query/Index en state/PaletteState.qml, y previewOpen/
-  // openWithOpen/openWithApps/openWithEntry en state/PreviewState.qml --
-  // quinto, sexto y séptimo slice de la capa state/.
+  // contextMenuOpen/X/Y/Actions now live in state/ContextMenuState.qml,
+  // paletteOpen/Query/Index in state/PaletteState.qml, and previewOpen/
+  // openWithOpen/openWithApps/openWithEntry in state/PreviewState.qml --
+  // fifth, sixth and seventh slice of the state/ layer.
 
   property bool gPending: false
 
-  // bulkRenameOpen/Pattern, shortcutsHelpOpen y connectServerOpen/Uri/
-  // Error/networkConnecting viven ahora en state/DialogsState.qml --
-  // undécimo slice de la capa state/.
+  // bulkRenameOpen/Pattern, shortcutsHelpOpen and connectServerOpen/Uri/
+  // Error/networkConnecting now live in state/DialogsState.qml --
+  // eleventh slice of the state/ layer.
 
-  // chmodOpen/Names/Mixed/Mode/HasDir/Recursive/OriginalModes viven ahora
-  // en state/ChmodState.qml -- octavo slice de la capa state/.
+  // chmodOpen/Names/Mixed/Mode/HasDir/Recursive/OriginalModes now live
+  // in state/ChmodState.qml -- eighth slice of the state/ layer.
 
   // propertiesOpen/Entry/Size/SizeLoading/Perms/Owner/Mtime/RequestId/
-  // _propertiesStatOwner/_propertiesDuOwner/Multi/Count viven ahora en
-  // state/PropertiesState.qml -- noveno slice de la capa state/.
+  // _propertiesStatOwner/_propertiesDuOwner/Multi/Count now live in
+  // state/PropertiesState.qml -- ninth slice of the state/ layer.
 
   // previewEntry/Text/IsText/Highlighted/PdfImage/AudioInfo/RequestId/
   // _previewTextOwner/_previewHighlightOwner/_previewPdfOwner/
-  // _previewAudioOwner viven ahora en state/PreviewContentState.qml --
-  // décimo slice de la capa state/.
+  // _previewAudioOwner now live in state/PreviewContentState.qml --
+  // tenth slice of the state/ layer.
 
-  // trashInfo vive ahora en state/TrashState.qml -- decimonoveno slice
-  // de la capa state/.
-  // mounts/networkMounts viven ahora en state/MountsState.qml --
-  // decimoquinto slice de la capa state/.
+  // trashInfo now lives in state/TrashState.qml -- nineteenth slice
+  // of the state/ layer.
+  // mounts/networkMounts now live in state/MountsState.qml --
+  // fifteenth slice of the state/ layer.
 
-  // Navegar dentro de un .zip/.7z/.rar/.tar sin extraerlo -- NavState.currentPath
-  // NUNCA cambia mientras esto está activo (sigue siendo la carpeta real
-  // que contiene el archivo); root.entries pasa a venir de list-archive.sh
-  // en vez de list-dir.sh. Deliberadamente de solo lectura: sin selección
-  // múltiple/menú contextual/renombrar/borrar/chmod/arrastrar -- ver los
-  // guards "if (ArchiveState.inArchive) return" en cada acción que muta
-  // disco. inArchive/archivePath/archiveSubPath viven ahora en
-  // state/ArchiveState.qml -- vigésimo slice de la capa state/.
+  // Browse inside a .zip/.7z/.rar/.tar without extracting it -- NavState.currentPath
+  // NEVER changes while this is active (it remains the real folder
+  // containing the archive); root.entries comes from list-archive.sh
+  // instead of list-dir.sh. Deliberately read-only: no multiple
+  // selection/context menu/rename/delete/chmod/drag -- see the
+  // "if (ArchiveState.inArchive) return" guards in each action that mutates
+  // disk. inArchive/archivePath/archiveSubPath now live in
+  // state/ArchiveState.qml -- twentieth slice of the state/ layer.
 
-  // defaultBookmarks y los cuatro *.json de estado (bookmarksFile/recentFile/
-  // sessionFile/bulkRenameHistoryFile) viven ahora en state/Paths.qml (Fase
+  // defaultBookmarks and the four state *.json (bookmarksFile/recentFile/
+  // sessionFile/bulkRenameHistoryFile) now live in state/Paths.qml (Phase
   // 14.B). bookmarks/recentFiles/recentLoaded/bulkRenameHistory/
-  // bulkRenameHistoryLoaded/bookmarksLoaded viven en state/BookmarksState.qml.
+  // bulkRenameHistoryLoaded/bookmarksLoaded live in state/BookmarksState.qml.
 
-  // Las listas de extensiones (imageExt/videoExt/audioExt/archiveExt/codeExt/
-  // tarExt) viven ahora en state/FileTypeConfig.qml (Fase 14.B).
+  // The extension lists (imageExt/videoExt/audioExt/archiveExt/codeExt/
+  // tarExt) now live in state/FileTypeConfig.qml (Phase 14.B).
 
-  // ---------- Tipo de fichero (extensión/icono) ----------
-  // iconFor/isImage/isVideo/isAudio/isPdf siguen como wrappers finos porque
-  // la capa visual (delegates/paneles) los llama por la fachada del root.
-  // extOf ya no: sus llamadores de logic/ reciben fileTypeUtils inyectado
-  // (Fase 14.D). El controlador real es logic/FileTypeUtils.qml.
+  // ---------- File type (extension/icon) ----------
+  // iconFor/isImage/isVideo/isAudio/isPdf remain as thin wrappers because
+  // the visual layer (delegates/panels) calls them via the root facade.
+  // extOf no longer: its logic/ callers receive fileTypeUtils injected
+  // (Phase 14.D). The real controller is logic/FileTypeUtils.qml.
   function iconFor(entry) { return registry.fileTypeUtils.iconFor(entry) }
   function isImage(entry) { return registry.fileTypeUtils.isImage(entry) }
   function isVideo(entry) { return registry.fileTypeUtils.isVideo(entry) }
   function isAudio(entry) { return registry.fileTypeUtils.isAudio(entry) }
   function isPdf(entry) { return registry.fileTypeUtils.isPdf(entry) }
 
-  // ---------- Miniaturas de vídeo (ffmpegthumbnailer, en cola de 1 a la vez) ----------
-  // thumbCacheDir vive ahora en state/Paths.qml (Fase 14.B).
-  // videoThumbReady/thumbQueue/thumbBusy viven ahora en
-  // state/VideoThumbState.qml -- decimocuarto slice de la capa state/.
+  // ---------- Video thumbnails (ffmpegthumbnailer, queued 1 at a time) ----------
+  // thumbCacheDir now lives in state/Paths.qml (Phase 14.B).
+  // videoThumbReady/thumbQueue/thumbBusy now live in
+  // state/VideoThumbState.qml -- fourteenth slice of the state/ layer.
 
-  // thumbKeyFor (clave en memoria del dict de miniaturas) vive en Utils.js.
-  // El hash de nombre de fichero de caché es único y vive en el backend
-  // (ThumbnailProvider.cacheKey, SHA-1) desde la Fase B1.
+  // thumbKeyFor (in-memory key of the thumbnail dict) lives in Utils.js.
+  // The cache file-name hash is unique and lives in the backend
+  // (ThumbnailProvider.cacheKey, SHA-1) since Phase B1.
 
-  // ---------- Selección (individual + lazo) ----------
+  // ---------- Selection (individual + lasso) ----------
 
-  // ---------- Refresco / vigilancia de directorio ----------
-  // La lógica real vive en logic/NavigationController.qml (navController
-  // más abajo) -- estos son wrappers finos porque refresh/startDirWatch/
-  // stopDirWatch los llaman ~10 ficheros distintos (KeyboardShortcuts,
-  // MountActions, Persistence, ArchiveActions, ActionEngine...) y no
-  // compensa el riesgo de tocar todos esos sitios de llamada.
+  // ---------- Directory refresh / watching ----------
+  // The real logic lives in logic/NavigationController.qml (navController
+  // further down) -- these are thin wrappers because refresh/startDirWatch/
+  // stopDirWatch are called by ~10 different files (KeyboardShortcuts,
+  // MountActions, Persistence, ArchiveActions, ActionEngine...) and it's not
+  // worth the risk of touching all those call sites.
   function refresh() { registry.navController.refresh() }
   function startDirWatch(path) { registry.navController.startDirWatch(path) }
   function stopDirWatch() { registry.navController.stopDirWatch() }
@@ -220,39 +220,39 @@ Item {
 
   // addRecent/removeRecent/clearRecent/addBulkRenameHistory,
   // removeBookmark/addBookmark/iconForBookmark/isBookmarked,
-  // iconForMount/iconForNetworkMount/networkMountActions viven ahora en
+  // iconForMount/iconForNetworkMount/networkMountActions now live in
   // logic/BookmarkOps.qml.
-  // parseMounts/parseNetworkMounts: movidas a Utils.js (funciones puras).
+  // parseMounts/parseNetworkMounts: moved to Utils.js (pure functions).
 
 
-  // ---------- Papelera ----------
+  // ---------- Trash ----------
   function emptyTrash() {
-    // "gio trash --empty" solo vacía la papelera de casa -- ahora que
-    // la vista agrega la de cualquier disco montado (ver
-    // trash-roots.sh), vaciar tiene que cubrir las mismas o el botón
-    // dejaría cosas huérfanas afirmando haber vaciado del todo.
+    // "gio trash --empty" only empties the home trash -- now that
+    // the view aggregates that of any mounted disk (see
+    // trash-roots.sh), emptying has to cover the same or the button
+    // would leave things orphaned while claiming to have emptied everything.
     registry.actionEngine.runAction("bash " + Util.shellQuote(Paths.resourceDir + "/empty-trash.sh"), "Emptying trash…")
   }
 
-  // parseEntries: movida a Utils.js (función pura, comentario completo
-  // sobre el protocolo NUL-delimitado está ahí ahora).
+  // parseEntries: moved to Utils.js (pure function, the full comment
+  // about the NUL-delimited protocol is there now).
 
-  // naturalCompare: movida a Utils.js (función pura).
+  // naturalCompare: moved to Utils.js (pure function).
 
-  // ---------- Orden de la lista ----------
+  // ---------- List order ----------
   // compareEntries/sortEntries/sortLabel/setSort/cycleSort/reverseSort
-  // viven ahora en logic/SortOps.qml.
+  // now live in logic/SortOps.qml.
 
-  // ---------- Navegación / historial / pestañas ----------
-  // joinPath se movió a Utils.js (función pura, Fase 14.D): logic/ y la capa
-  // visual la llaman como Utils.joinPath, ya no por la fachada del root.
+  // ---------- Navigation / history / tabs ----------
+  // joinPath moved to Utils.js (pure function, Phase 14.D): logic/ and the
+  // visual layer call it as Utils.joinPath, no longer via the root facade.
 
-  // La lógica real de navegación/historial vive en
-  // logic/NavigationController.qml (navController más abajo) -- wrappers
-  // finos por el mismo motivo que refresh()/startDirWatch() arriba
-  // (llamados desde KeyboardShortcuts, MountActions, BookmarkOps,
+  // The real navigation/history logic lives in
+  // logic/NavigationController.qml (navController further down) -- thin
+  // wrappers for the same reason as refresh()/startDirWatch() above
+  // (called from KeyboardShortcuts, MountActions, BookmarkOps,
   // ArchiveActions, TabOps, FileListRow, BackgroundPanel...). _goToPath
-  // también se expone así -- TabOps ya la llama como root._goToPath(...).
+  // is also exposed like this -- TabOps already calls it as root._goToPath(...).
   function navigateTo(path) { registry.navController.navigateTo(path) }
   function _goToPath(path) { registry.navController._goToPath(path) }
   function navBack() { registry.navController.navBack() }
@@ -261,22 +261,22 @@ Item {
   function enter(entry) { registry.navController.enter(entry) }
   function goUp() { registry.navController.goUp() }
 
-  // ---------- Ciclo de vida (abrir/cerrar la ventana del host) ----------
+  // ---------- Lifecycle (open/close the host window) ----------
   // Host-initiated open/close (`shell toggle`/`shell summon`/`shell hide`).
-  // `payload` es "<ruta>" o "<ruta>\n<nombre-a-seleccionar>" en texto
-  // plano (o "" / "{}" si no hay ninguna) -- la manda `scripts/open-path.sh`
-  // (xdg-open/.desktop, sin selección) o `scripts/dbus-filemanager1.py`
-  // (interfaz org.freedesktop.FileManager1, con selección para ShowItems).
+  // `payload` is "<path>" or "<path>\n<name-to-select>" in plain
+  // text (or "" / "{}" if there is none) -- sent by `scripts/open-path.sh`
+  // (xdg-open/.desktop, no selection) or `scripts/dbus-filemanager1.py`
+  // (org.freedesktop.FileManager1 interface, with selection for ShowItems).
   function open(payload) {
     root.opened = true
 
     var nlIdx = payload ? payload.indexOf("\n") : -1
     var folderPart = nlIdx >= 0 ? payload.substring(0, nlIdx) : payload
-    // Varios nombres a seleccionar de golpe se separan con \x1f (ASCII
-    // Unit Separator) -- un solo nombre sin \x1f sigue funcionando igual
-    // que antes (array de 1). Ver dbus-filemanager1.py, que ahora agrupa
-    // varios URIs de la misma carpeta en un único summon() con todos los
-    // nombres, en vez de un summon (y una pestaña) por URI.
+    // Several names to select at once are separated with \x1f (ASCII
+    // Unit Separator) -- a single name without \x1f still works the same
+    // as before (array of 1). See dbus-filemanager1.py, which now groups
+    // several URIs of the same folder into a single summon() with all the
+    // names, instead of one summon (and one tab) per URI.
     var selectPart = nlIdx >= 0 ? payload.substring(nlIdx + 1) : ""
     var selectNames = selectPart ? selectPart.split("\x1f") : []
     var targetPath = (folderPart && folderPart.charAt(0) === "/") ? folderPart : ""
@@ -292,19 +292,19 @@ Item {
         TabsState.navHistoryIndex = 0
         root.refresh()
       } else {
-        // Primera apertura de esta sesión de Quickshell sin una ruta
-        // pedida por el host -- intenta restaurar carpeta/pestañas de la
-        // sesión anterior (session.json) en vez de abrir siempre en
-        // homeDir. loadSession() dispara refresh()/startDirWatch ella
-        // sola en cuanto sabe la ruta real (leer el fichero es async), así
-        // que aquí no se hace -- evita listar homeDir de más para tirarlo
-        // enseguida si sí había sesión guardada.
+        // First open of this Quickshell session without a path
+        // requested by the host -- tries to restore folder/tabs from the
+        // previous session (session.json) instead of always opening in
+        // homeDir. loadSession() triggers refresh()/startDirWatch on its
+        // own as soon as it knows the real path (reading the file is async), so
+        // it's not done here -- avoids listing homeDir extra only to discard it
+        // right away if there was indeed a saved session.
         restoringSession = true
         registry.persistence.loadSession()
       }
     } else if (targetPath) {
-      // Ya estaba cargado antes (uso normal previo): abre en pestaña
-      // nueva para no perder la ubicación en la que ya estaba el usuario.
+      // It was already loaded before (previous normal use): opens in a new
+      // tab so as not to lose the location the user was already in.
       registry.tabOps.newTab()
       root.navigateTo(targetPath)
       registry.tabOps.saveActiveTab()
@@ -315,13 +315,13 @@ Item {
     if (!BookmarksState.bulkRenameHistoryLoaded) registry.persistence.loadBulkRenameHistory()
     registry.mountOps.refreshMounts()
     registry.mountOps.refreshNetworkMounts()
-    // Cubre los dos casos restantes: primera carga con target (currentPath
-    // recién puesto, arriba) y reabrir apuntando a un target (navigateTo ya
-    // lo arrancó dentro de _goToPath, esto solo lo reafirma sobre la misma
-    // ruta final) o reabrir SIN target (la ventana estaba cerrada -> close()
-    // paró el watcher -> sin esto se reabriría mostrando una carpeta sin
-    // vigilar). El caso restante (restoringSession) ya lo cubre
-    // Persistence.loadSession() por su cuenta.
+    // Covers the two remaining cases: first load with target (currentPath
+    // just set, above) and reopening pointing to a target (navigateTo already
+    // started it inside _goToPath, this only reaffirms it over the same final
+    // path) or reopening WITHOUT target (the window was closed -> close()
+    // stopped the watcher -> without this it would reopen showing an unwatched
+    // folder). The remaining case (restoringSession) is already covered by
+    // Persistence.loadSession() on its own.
     if (!restoringSession && !ArchiveState.inArchive) root.startDirWatch(NavState.currentPath)
   }
 
@@ -335,9 +335,9 @@ Item {
     EditModeState.editingPath = false
     root.pendingDeleteNames = []
     ContextMenuState.contextMenuOpen = false
-    // keepLoaded:true mantiene vivo el componente entre cierres -- sin
-    // resetear esto, la próxima vez que se abra la ventana aparecería el
-    // mismo diálogo/panel todavía abierto de la sesión anterior.
+    // keepLoaded:true keeps the component alive between closes -- without
+    // resetting this, the next time the window is opened the same
+    // dialog/panel from the previous session would appear still open.
     PropertiesState.propertiesOpen = false
     DialogsState.shortcutsHelpOpen = false
     ChmodState.chmodOpen = false
@@ -358,11 +358,11 @@ Item {
     DialogsState.connectServerOpen = false
   }
 
-  // User-initiated close (Esc, cerrar la última pestaña, botón de cerrar de
-  // la ventana). Antes hablaba con el host directamente (root.shell.hide());
-  // ahora solo emite closeRequested() -- Omafiles.qml (el bootstrap del
-  // frontend Quickshell) decide si eso significa avisar al host o cerrar
-  // directo, sin que este fichero sepa nada de Quickshell.
+  // User-initiated close (Esc, closing the last tab, the window's close
+  // button). Before it talked to the host directly (root.shell.hide());
+  // now it only emits closeRequested() -- Omafiles.qml (the Quickshell
+  // frontend bootstrap) decides whether that means notifying the host or closing
+  // directly, without this file knowing anything about Quickshell.
   signal closeRequested()
 
   function requestClose() {
@@ -370,25 +370,25 @@ Item {
   }
 
 
-  // runAction/chainCmds/startCopyProgress y los runners nativos (copyFiles/
-  // moveFiles/removeFiles/trashFiles/restoreFiles) eran wrappers finos a
-  // registry.actionEngine.*; sus llamadores de logic/ reciben ahora
-  // actionEngine inyectado (Fase 14.D), así que se retiraron. cancelAction se
-  // queda: lo llama la capa visual (botón de cancelar) por la fachada del
-  // root.
+  // runAction/chainCmds/startCopyProgress and the native runners (copyFiles/
+  // moveFiles/removeFiles/trashFiles/restoreFiles) were thin wrappers to
+  // registry.actionEngine.*; their logic/ callers now receive
+  // actionEngine injected (Phase 14.D), so they were removed. cancelAction
+  // stays: the visual layer (cancel button) calls it via the root
+  // facade.
   function cancelAction() {
     registry.actionEngine.cancelAction()
   }
 
   function openTerminalHere() {
-    // ProcessRunner, no Detached -- mismo motivo que openWithDefault().
+    // ProcessRunner, not Detached -- same reason as openWithDefault().
     registry.openProc.start(["xdg-terminal-exec", "--dir=" + NavState.currentPath])
   }
 
-  // ---------- Fachada operativa (delegada a core/CommandFacade.qml) ----------
-  // Fase 11.C: los cuerpos de estos builders viven en CommandFacade; aquí
-  // quedan delegados finos para que paneles/diálogos/KeyboardShortcuts sigan
-  // llamando root.X()/hostRoot.X() sin cambios.
+  // ---------- Operational facade (delegated to core/CommandFacade.qml) ----------
+  // Phase 11.C: the bodies of these builders live in CommandFacade; here
+  // remain thin delegates so panels/dialogs/KeyboardShortcuts keep
+  // calling root.X()/hostRoot.X() unchanged.
   function paletteCommands() { return commandFacade.paletteCommands() }
   function filteredPaletteCommands() { return commandFacade.filteredPaletteCommands() }
   function openPalette() { commandFacade.openPalette() }
@@ -405,46 +405,46 @@ Item {
   function pathSegments() { return commandFacade.pathSegments() }
   function pathSegmentsFor(targetPath) { return commandFacade.pathSegmentsFor(targetPath) }
 
-  // Autoregistro como gestor de archivos del sistema (MimeType inode/
-  // directory + org.freedesktop.FileManager1) -- se lanza una vez al
-  // cargar el plugin, sin esperar a que el usuario abra la ventana ni
-  // tenga que ejecutar nada a mano. El script es idempotente (ver
-  // scripts/install-integrations.sh), así que llamarlo en cada arranque
-  // del shell es barato y seguro.
+  // Self-registration as the system file manager (MimeType inode/
+  // directory + org.freedesktop.FileManager1) -- launched once on
+  // loading the plugin, without waiting for the user to open the window nor
+  // having to run anything by hand. The script is idempotent (see
+  // scripts/install-integrations.sh), so calling it on every shell
+  // startup is cheap and safe.
 
-  // dirWatchProc/dirWatchDebounce/listProc/trashInfoProc viven ahora en
-  // logic/NavigationController.qml (navController más abajo), junto con
-  // el resto del controlador de navegación/listado.
+  // dirWatchProc/dirWatchDebounce/listProc/trashInfoProc now live in
+  // logic/NavigationController.qml (navController further down), along with
+  // the rest of the navigation/listing controller.
 
-  // Discos/red no tienen un evento fácil de vigilar aquí (habría que
-  // suscribirse a señales D-Bus de UDisks2/GVfs) -- un polling modesto
-  // es la opción honesta dado el alcance: enchufar un USB o que una
-  // ubicación de red se caiga se nota en unos segundos en vez de nunca
-  // (antes) o de tener que montar infraestructura D-Bus (después,
-  // quizás). "running: root.opened" para que no siga en marcha de fondo
-  // con la ventana cerrada.
+  // Disks/network have no easy event to watch here (one would have to
+  // subscribe to UDisks2/GVfs D-Bus signals) -- modest polling
+  // is the honest option given the scope: plugging in a USB or a network
+  // location going down is noticed in a few seconds instead of never
+  // (before) or having to set up D-Bus infrastructure (later,
+  // maybe). "running: root.opened" so it doesn't keep running in the background
+  // with the window closed.
 
-  // ---------- Controladores (logic/) ----------
-  // Fase 11.C: OmafilesContent ya NO instancia los controladores. Su ÚNICO
-  // propietario es core/ControllerRegistry.qml (ownership única de la
-  // auditoría 2026-08-09). Aquí se instancia el registro y se exponen sus
-  // controladores como alias para que la fachada operativa y la capa visual
-  // los referencien por el mismo nombre, sin god object ni reescribir cada
-  // sitio de llamada.
+  // ---------- Controllers (logic/) ----------
+  // Phase 11.C: OmafilesContent no longer instantiates the controllers. Their SOLE
+  // owner is core/ControllerRegistry.qml (single ownership from the
+  // 2026-08-09 audit). Here the registry is instantiated and its
+  // controllers are exposed as aliases so the operational facade and the visual layer
+  // reference them by the same name, without a god object nor rewriting each
+  // call site.
   ControllerRegistry {
     id: registry
     root: root
     list: mainLayout.list
   }
 
-  // Motor de acciones expuesto como referencia (no wrapper): MainLayout lo
-  // inyecta hacia KeyboardShortcuts y el arnés --selfcheck ejercita sus
-  // runners nativos directamente, la MISMA ruta que usa la app tras la
-  // inyección de dependencias (Fase 14.D). Es un seam explícito, no la
-  // fachada genérica del god object.
+  // Action engine exposed as a reference (not wrapper): MainLayout
+  // injects it into KeyboardShortcuts and the --selfcheck harness exercises its
+  // native runners directly, the SAME path the app uses after
+  // dependency injection (Phase 14.D). It's an explicit seam, not the
+  // generic god-object facade.
   readonly property alias actionEngine: registry.actionEngine
 
-  // Fachada operativa (builders de menús/comandos/migas). Fase 11.C.
+  // Operational facade (menu/command/breadcrumb builders). Phase 11.C.
   CommandFacade {
     id: commandFacade
     root: root
@@ -465,7 +465,7 @@ Item {
     customActions: registry.customActions
   }
 
-  // Wiring de ciclo de vida y temporizadores. Fase 11.C.
+  // Lifecycle and timer wiring. Phase 11.C.
   AppBindings {
     id: appBindings
     root: root
@@ -505,10 +505,10 @@ Item {
     newFolderConflictConfirm: dialogLayer.newFolderConflictConfirm
   }
 
-  // ---------- Capa de diálogos/overlays (Fase 11.B) ----------
-  // Hermana de MainLayout (ambas anchors.fill: parent) -- antes hija de la
-  // tarjeta; geométricamente idéntico (la tarjeta llena root). Los siete
-  // ConfirmDialog los expone DialogLayer y MainLayout los recibe para su
+  // ---------- Dialog/overlay layer (Phase 11.B) ----------
+  // Sibling of MainLayout (both anchors.fill: parent) -- before a child of the
+  // card; geometrically identical (the card fills root). The seven
+  // ConfirmDialog are exposed by DialogLayer and MainLayout receives them for its
   // ActiveFileList.
   DialogLayer {
     id: dialogLayer

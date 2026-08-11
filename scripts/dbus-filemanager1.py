@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# Backend de org.freedesktop.FileManager1 para Omafiles.
+# org.freedesktop.FileManager1 backend for Omafiles.
 #
-# Muchas apps (Firefox al terminar una descarga, "Show in file manager" de
-# apps GTK/Qt, etc.) no usan xdg-mime/.desktop para "abrir la carpeta
-# contenedora" -- llaman a este interfaz D-Bus, que tradicionalmente solo
-# provee Nautilus (org.freedesktop.FileManager1.service en
-# /usr/share/dbus-1/services/). Este servicio de usuario, activado por
-# D-Bus a demanda, le quita el puesto reenviando la petición al binario
-# Omafiles (instancia única).
+# Many apps (Firefox when finishing a download, "Show in file manager" of
+# GTK/Qt apps, etc.) don't use xdg-mime/.desktop to "open the containing
+# folder" -- they call this D-Bus interface, which traditionally only
+# Nautilus provides (org.freedesktop.FileManager1.service in
+# /usr/share/dbus-1/services/). This user service, activated by
+# D-Bus on demand, takes its place by forwarding the request to the
+# Omafiles binary (single instance).
 
 import sys
 import urllib.parse
@@ -19,7 +19,7 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "org.freedesktop.FileManager1"
 OBJECT_PATH = "/org/freedesktop/FileManager1"
-# Se lanza el binario Qt6 standalone (instancia única) desde su ruta estable.
+# The standalone Qt6 binary (single instance) is launched from its stable path.
 OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """
@@ -52,9 +52,9 @@ def uri_to_path(uri):
 
 
 def summon(folder, select_name=""):
-    # Mismo payload que entiende core/OmafilesContent.open(): carpeta absoluta,
-    # opcionalmente "\n" + nombres a seleccionar (varios con \x1f). El binario
-    # (instancia única) navega a esa carpeta trayendo la ventana al frente.
+    # Same payload that core/OmafilesContent.open() understands: absolute folder,
+    # optionally "\n" + names to select (several with \x1f). The binary
+    # (single instance) navigates to that folder bringing the window to the front.
     payload = folder if not select_name else folder + "\n" + select_name
     try:
         Gio.Subprocess.new(
@@ -62,23 +62,23 @@ def summon(folder, select_name=""):
             Gio.SubprocessFlags.NONE,
         )
     except GLib.Error as e:
-        print("omafiles FileManager1: fallo al lanzar omafiles:", e, file=sys.stderr)
+        print("omafiles FileManager1: failed to launch omafiles:", e, file=sys.stderr)
 
 
 def handle_show(uris, select_item):
-    # Bug real (auditoría 2026-08-05): esto llamaba a summon() una vez POR
-    # URI. Como el plugin es keepLoaded, cada summon después del primero
-    # cae en la rama "ya estaba cargado" de Omafiles.qml open(), que
-    # SIEMPRE abre una pestaña nueva -- así que seleccionar varios
-    # ficheros de la MISMA carpeta en otra app (ej. varias descargas en
-    # Firefox, "Mostrar en el gestor de archivos") abría una pestaña
-    # duplicada por fichero, con solo el último de verdad resaltado.
-    # Ahora se agrupan por carpeta contenedora y se manda un único
-    # summon por carpeta, con todos los nombres de esa carpeta en el
-    # payload (separados por \x1f -- ver Omafiles.qml open()).
+    # Real bug (audit 2026-08-05): this called summon() once PER
+    # URI. Since the plugin is keepLoaded, each summon after the first
+    # falls into the "already loaded" branch of Omafiles.qml open(), which
+    # ALWAYS opens a new tab -- so selecting several
+    # files from the SAME folder in another app (e.g. several downloads in
+    # Firefox, "Show in file manager") opened a duplicate
+    # tab per file, with only the last one actually highlighted.
+    # Now they are grouped by containing folder and a single
+    # summon is sent per folder, with all the names of that folder in the
+    # payload (separated by \x1f -- see Omafiles.qml open()).
     if select_item:
-        # ShowItems/ShowItemProperties siempre significan "muéstralo
-        # dentro de su carpeta contenedora", sea fichero o carpeta.
+        # ShowItems/ShowItemProperties always mean "show it
+        # inside its containing folder", whether file or folder.
         groups = {}
         order = []
         for uri in uris:
@@ -127,8 +127,8 @@ def on_bus_acquired(connection, name):
 
 
 def on_name_lost(connection, name):
-    # Otro proceso ya tiene el nombre (o el bus lo ha retirado) -- no hay
-    # nada que disputar, simplemente salimos.
+    # Another process already has the name (or the bus withdrew it) -- there's
+    # nothing to dispute, we simply exit.
     loop.quit()
 
 

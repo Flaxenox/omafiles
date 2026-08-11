@@ -2,58 +2,58 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Contenido visual de una fila de fichero/carpeta (icono/miniatura +
-// nombre + subtítulo) -- duodécimo componente extraído de Omafiles.qml,
-// y el primero compartido de verdad entre el panel activo y los de
-// fondo. Antes eran dos bloques casi idénticos (rowContent/thumbSlot/
-// nameCol y bgRowContent/bgThumbSlot/bgNameCol) que se habían ido
-// desincronizando varias veces esta sesión (el bug del icono sin
-// alinear con el nombre, el de la altura de fila con 1px de más...) --
-// un solo componente para los dos elimina esa clase de bug de raíz en
-// vez de solo relocalizarla.
+// Visual content of a file/folder row (icon/thumbnail +
+// name + subtitle) -- twelfth component extracted from Omafiles.qml,
+// and the first truly shared between the active panel and the background
+// ones. Previously they were two nearly identical blocks (rowContent/thumbSlot/
+// nameCol and bgRowContent/bgThumbSlot/bgNameCol) that had been
+// desynchronizing several times this session (the bug of the icon not
+// aligned with the name, the one of the row height with 1px too much...) --
+// a single component for both eliminates that class of bug at its root
+// instead of just relocating it.
 //
-// Deliberadamente NO incluye el campo de renombrar en línea (solo lo
-// tiene el panel activo) ni el MouseArea (cada panel lo necesita
-// distinto: el activo con selección/menú contextual/atajos, el de
-// fondo solo doble-clic + arrastrar) -- ambos siguen viviendo en el
-// delegado de cada panel, anclados con el mismo ancho de icono conocido
-// (Style.spacing.controlHeight) en vez de necesitar ver el "thumbSlot"
-// interno de aquí.
+// It deliberately does NOT include the inline rename field (only the
+// active panel has it) nor the MouseArea (each panel needs it
+// differently: the active one with selection/context menu/shortcuts, the
+// background one only double-click + drag) -- both stay in the
+// delegate of each panel, anchored with the same known icon width
+// (Style.spacing.controlHeight) instead of needing to see the internal
+// "thumbSlot" here.
 Item {
   id: root
 
   property string name: ""
   property bool isDir: false
   property bool isBroken: false
-  // Equivalente a "rowSurface.current" en el panel activo -- el panel
-  // de fondo nunca lo pone a true (ahí no existe selección de fila).
+  // Equivalent to "rowSurface.current" in the active panel -- the background
+  // panel never sets it to true (there is no row selection there).
   property bool highlighted: false
-  // Nombre en gris (recorte pendiente) -- solo aplica en el panel activo.
+  // Name in grey (pending cut) -- only applies in the active panel.
   property bool dimmed: false
-  // Solo se usa cuando !isDir && !isBroken (root.iconFor(modelData) ya
-  // resuelto por quien llama).
+  // Only used when !isDir && !isBroken (root.iconFor(modelData) already
+  // resolved by the caller).
   property string fileIconGlyph: ""
-  // Miniatura ya resuelta (imagen real o miniatura de vídeo en caché) --
-  // "" si no aplica, mismo ternario que antes pero calculado por quien
-  // llama (conoce basePath/root.currentPath, este componente no).
+  // Thumbnail already resolved (real image or cached video thumbnail) --
+  // "" if it does not apply, same ternary as before but computed by the
+  // caller (knows basePath/root.currentPath, this component does not).
   property url thumbSource: ""
   property string metaText: ""
-  // Valor exacto para el tooltip del subtítulo cuando el contador está
-  // abreviado (12.3k -> "12,347 items"); "" = sin tooltip (Fase 23).
+  // Exact value for the subtitle tooltip when the counter is
+  // abbreviated (12.3k -> "12,347 items"); "" = no tooltip (Phase 23).
   property string metaTooltip: ""
-  // El campo de renombrar del panel activo ocupa este mismo hueco --
-  // oculta el nombre/subtítulo pero deja el icono visible, igual que
-  // hacía "nameCol.visible: root.renamingIndex !== index" antes.
+  // The active panel's rename field occupies this same slot --
+  // it hides the name/subtitle but leaves the icon visible, just as
+  // "nameCol.visible: root.renamingIndex !== index" did before.
   property bool showNameText: true
 
-  // Altura de fila DETERMINISTA (opción 3, josema): NO se calcula desde el
-  // contenido real (nameCol.implicitHeight sale de Text.height, que varía según
-  // el estado de carga de la fuente/miniaturas -> la MISMA fila medía distinto
-  // en cada panel y el scroll derivaba). Se deriva de FontMetrics (cálculo puro
-  // del tipo de letra: alto de línea idéntico en TODAS las filas y en ambos
-  // paneles, independiente de qué haya cargado). Se reservan SIEMPRE las dos
-  // líneas (nombre + subtítulo) aunque una fila no tenga subtítulo, para que la
-  // altura no cambie nunca -> position = index * rowHeight + subOffset exacto.
+  // DETERMINISTIC row height (option 3, josema): it is NOT computed from the
+  // real content (nameCol.implicitHeight comes from Text.height, which varies according to
+  // the loading state of the font/thumbnails -> the SAME row measured differently
+  // in each panel and the scroll drifted). It is derived from FontMetrics (pure computation
+  // of the typeface: identical line height in ALL rows and in both
+  // panels, independent of what has loaded). Both lines are ALWAYS reserved
+  // (name + subtitle) even if a row has no subtitle, so the
+  // height never changes -> position = index * rowHeight + subOffset exact.
   FontMetrics { id: _nameFM; font.family: Style.font.family; font.pixelSize: Style.font.title; font.weight: Font.Medium }
   FontMetrics { id: _metaFM; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall }
   implicitHeight: Math.max(Style.spacing.controlHeight,
@@ -61,17 +61,17 @@ Item {
 
   Item {
     id: thumbSlot
-    // Contenedor de tamaño FIJO para la miniatura: la imagen (asíncrona) se
-    // recorta dentro (clip) y NUNCA altera la geometría del delegado.
+    // FIXED-size container for the thumbnail: the (asynchronous) image is
+    // cropped inside (clip) and NEVER alters the delegate's geometry.
     clip: true
     anchors.left: parent.left
-    // Alineado con el nombre (nameText), no con el bloque de dos
-    // líneas completo -- ver la nota larga que ya existía junto a esta
-    // misma fórmula antes de extraerla aquí: "anchors.verticalCenter:
-    // nameText.verticalCenter" no daba el resultado esperado en este
-    // fichero por algún motivo nunca identificado del todo; "y"
-    // explícito a partir de nameCol.y sí, y está verificado con overlay
-    // de depuración.
+    // Aligned with the name (nameText), not with the full two-line
+    // block -- see the long note that already existed next to this
+    // same formula before extracting it here: "anchors.verticalCenter:
+    // nameText.verticalCenter" did not give the expected result in this
+    // file for some reason never fully identified; an explicit "y"
+    // from nameCol.y does, and it is verified with a debug
+    // overlay.
     y: nameCol.y + (nameText.height - height) / 2
     width: Style.spacing.controlHeight
     height: Style.spacing.controlHeight
@@ -96,12 +96,12 @@ Item {
       color: root.highlighted ? Color.menu.selectedText : Color.menu.text
     }
 
-    // Antes se ocultaba con "!hasThumb", que decide por EXTENSIÓN -- una
-    // imagen real pero lenta de cargar (o con contenido corrupto,
-    // status nunca llega a Ready) tenía hasThumb=true sin que la Image
-    // de arriba se hiciera visible nunca, así que la fila se quedaba
-    // sin icono ninguno. Se basa en el estado real de carga de la
-    // propia Image.
+    // Previously it was hidden with "!hasThumb", which decides by EXTENSION -- a
+    // real but slow-to-load image (or with corrupt content,
+    // status never reaches Ready) had hasThumb=true without the Image
+    // above ever becoming visible, so the row was left
+    // with no icon at all. It is based on the real loading state of the
+    // Image itself.
     OpticalGlyph {
       anchors.fill: parent
       visible: !root.isDir && !thumbImage.visible && !root.isBroken
@@ -111,10 +111,10 @@ Item {
       color: root.highlighted ? Color.menu.selectedText : Color.menu.text
     }
 
-    // Enlace simbólico roto (md-link_variant_off, verificado contra el
-    // cmap real de la fuente) -- antes se veía como un fichero normal
-    // de 0 bytes fechado en 1970, sin ningún indicio de que el destino
-    // ya no existe.
+    // Broken symlink (md-link_variant_off, verified against the
+    // font's real cmap) -- previously it looked like a normal
+    // 0-byte file dated 1970, with no hint that the target
+    // no longer exists.
     OpticalGlyph {
       anchors.fill: parent
       visible: root.isBroken
@@ -125,9 +125,9 @@ Item {
     }
   }
 
-  // Fila de dos líneas (nombre + tamaño/fecha relativa) -- mismo patrón
-  // que el ejemplo real de fila compuesta de Omarchy (icono + Column de
-  // título/subtítulo).
+  // Two-line row (name + size/relative date) -- same pattern
+  // as Omarchy's real composed-row example (icon + Column of
+  // title/subtitle).
   Column {
     id: nameCol
     visible: root.showNameText
@@ -161,8 +161,8 @@ Item {
       opacity: Style.emphasis.secondary
       elide: Text.ElideRight
 
-      // Tooltip con el valor exacto cuando el contador se muestra abreviado
-      // (12.3k items -> 12,347 items). Solo si metaTooltip viene informado.
+      // Tooltip with the exact value when the counter is shown abbreviated
+      // (12.3k items -> 12,347 items). Only if metaTooltip is provided.
       HoverHandler { id: metaHover; enabled: root.metaTooltip.length > 0 }
       PanelToolTip {
         visible: metaHover.hovered && root.metaTooltip.length > 0

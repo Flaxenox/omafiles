@@ -3,18 +3,18 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Overlay de ayuda de atajos de teclado (tecla "?"). Extraído de
-// Omafiles.qml como primer paso de un componentizado incremental --
-// se eligió este por ser el trozo más aislado del fichero: sin
-// Process/async, sin tocar disco, una sola propiedad externa (si está
-// abierto) y una sola acción hacia fuera (pedir cerrarse). El resto del
-// fichero sigue siendo el dueño real de root.shortcutsHelpOpen; este
-// componente solo lo refleja.
+// Keyboard shortcuts help overlay ("?" key). Extracted from
+// Omafiles.qml as the first step of an incremental componentization --
+// this one was chosen for being the most isolated piece of the file: no
+// Process/async, no touching disk, a single external property (whether it is
+// open) and a single action outward (request closing). The rest of the
+// file is still the real owner of root.shortcutsHelpOpen; this
+// component only reflects it.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos. La tarjeta se
-// ajusta al contenido (título + lista de 320 + botón), en vez de una
-// altura fija que dejaba hueco muerto debajo del botón Close (B-01).
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs. The card
+// adjusts to the content (title + list of 320 + button), instead of a
+// fixed height that left dead space below the Close button (B-01).
 Item {
   id: root
 
@@ -39,9 +39,9 @@ Item {
 
     Flickable {
       width: parent.width
-      // Altura fija de la ZONA de scroll (no de la tarjeta): deja sitio
-      // para las ~27 filas sin que haga scroll casi nunca, y la tarjeta
-      // se ajusta a esto + título + botón (sin hueco muerto).
+      // Fixed height of the scroll AREA (not the card): it leaves room
+      // for the ~27 rows so it hardly ever scrolls, and the card
+      // adjusts to this + title + button (no dead space).
       height: 320
       clip: true
       contentWidth: width
@@ -53,9 +53,9 @@ Item {
         width: parent.width
         spacing: Style.spacing.xs
 
-        // Mismo orden que la tabla de la sección "Keyboard
-        // shortcuts" del README -- si se añade/edita un atajo ahí,
-        // hacerlo aquí también.
+        // Same order as the table of the "Keyboard
+        // shortcuts" section of the README -- if a shortcut is added/edited there,
+        // do it here too.
         Repeater {
           model: [
             { key: "j / k / ↓ / ↑", action: "Move down / up" },

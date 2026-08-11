@@ -3,16 +3,16 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// Diálogo "ya existe, ¿sobrescribir/omitir/cancelar?". Séptimo
-// componente extraído de Omafiles.qml -- a diferencia de los
-// anteriores, este no es solo una reubicación: "Conflicto al pegar" y
-// "Conflicto al soltar" eran dos bloques de ~55 líneas IDÉNTICOS salvo
-// qué función llamaban, así que se unifican en un solo componente
-// reutilizable con señales genéricas (overwriteRequested/skipRequested/
-// cancelRequested) en vez de mantener la duplicación en dos ficheros.
+// "Already exists, overwrite/skip/cancel?" dialog. Seventh
+// component extracted from Omafiles.qml -- unlike the
+// previous ones, this is not just a relocation: "Paste conflict" and
+// "Drop conflict" were two ~55-line blocks IDENTICAL except for
+// which function they called, so they are unified into a single
+// reusable component with generic signals (overwriteRequested/skipRequested/
+// cancelRequested) instead of keeping the duplication in two files.
 //
-// El envoltorio modal (scrim + tarjeta + animación + padding) es
-// shared/ModalSurface.qml, común a todos los diálogos.
+// The modal wrapper (scrim + card + animation + padding) is
+// shared/ModalSurface.qml, common to all dialogs.
 Item {
   id: root
 

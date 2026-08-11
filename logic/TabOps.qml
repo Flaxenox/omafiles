@@ -1,24 +1,24 @@
 import QtQuick
 import "../state"
 
-// Ciclo de vida de las pestañas/paneles: crear, cerrar, cambiar de activa,
-// navegar/deshacer-historial de una pestaña que NO es la activa --
-// vigésimo cuarto componente extraído de Omafiles.qml. `_goToPath()` (la
-// navegación de la pestaña ACTIVA en sí) se queda en root -- es el núcleo
-// de la navegación real, demasiado central para mover, y estas funciones
-// ya lo llaman como `navController._goToPath(...)` sin problema.
+// Tab/panel lifecycle: create, close, switch active,
+// navigate/undo-history of a tab that is NOT the active one --
+// twenty-fourth component extracted from Omafiles.qml. `_goToPath()` (the
+// navigation of the ACTIVE tab itself) stays in root -- it's the core
+// of the real navigation, too central to move, and these functions
+// already call it as `navController._goToPath(...)` without any problem.
 Item {
   property Item root: null
   property Item navController: null
 
-  // La ListView principal (id "list" en Omafiles.qml) -- guardar/restaurar
-  // scroll al cambiar de pestaña.
+  // The main ListView (id "list" in Omafiles.qml) -- save/restore
+  // scroll when switching tabs.
   property Item list: null
   property Item archiveActions: null
   property Item previewLoader: null
 
-  // Cierra la pestaña/panel en `index`, sea o no la activa (la × de cada
-  // panel puede estar en uno que no es el que tiene el foco ahora mismo).
+  // Closes the tab/panel at `index`, whether or not it is the active one (the × of each
+  // panel may be in one that is not the one currently focused).
   function closeTabAt(index) {
     if (TabsState.tabs.length <= 1) { root.requestClose(); return }
     if (index === TabsState.activeTabIndex) { closeTab(); return }
@@ -28,10 +28,10 @@ Item {
     if (TabsState.activeTabIndex > index) TabsState.activeTabIndex -= 1
   }
 
-  // Navegar DENTRO de un panel que no es el activo -- no toca
-  // NavState.currentPath/NavState.entries (esos son solo del panel activo), solo el
-  // propio objeto de esa pestaña. Mantiene su historial igual que
-  // navigateTo mantiene el de la pestaña activa.
+  // Navigate WITHIN a panel that is not the active one -- it doesn't touch
+  // NavState.currentPath/NavState.entries (those belong only to the active panel), only the
+  // tab's own object. It keeps its history just like
+  // navigateTo keeps that of the active tab.
   function navigateTabTo(index, path) {
     if (!path || index < 0 || index >= TabsState.tabs.length) return
     path = path.replace(/\/+$/, "") || "/"
@@ -45,10 +45,10 @@ Item {
     TabsState.tabs = next
   }
 
-  // Atrás/adelante para un panel que no es el activo -- mismo concepto que
-  // navBack/navForward, pero leyendo/escribiendo el historial guardado en
-  // ese objeto de pestaña en concreto en vez de TabsState.navHistory (que es
-  // solo el de la activa).
+  // Back/forward for a panel that is not the active one -- same concept as
+  // navBack/navForward, but reading/writing the history saved in
+  // that particular tab object instead of TabsState.navHistory (which is
+  // only the active one's).
   function navTabBack(index) {
     if (index === TabsState.activeTabIndex) { navController.navBack(); return }
     if (index < 0 || index >= TabsState.tabs.length) return
@@ -79,23 +79,23 @@ Item {
       path: NavState.currentPath, history: TabsState.navHistory, historyIndex: TabsState.navHistoryIndex,
       previewOpen: PreviewState.previewOpen, previewEntry: PreviewContentState.previewEntry, scrollY: list.contentY,
       inArchive: ArchiveState.inArchive, archivePath: ArchiveState.archivePath, archiveSubPath: ArchiveState.archiveSubPath,
-      // Índice de la primera fila visible (además del scrollY en píxeles): el
-      // panel de fondo lo restaura con positionViewAtIndex, que es INMUNE a que
-      // el contentHeight del ListView se calcule perezosamente (por píxel el
-      // scroll del fondo quedaba clampado/desplazado respecto al activo).
+      // Index of the first visible row (besides the scrollY in pixels): the
+      // background panel restores it with positionViewAtIndex, which is IMMUNE to the
+      // ListView's contentHeight being computed lazily (by pixel, the
+      // background scroll ended up clamped/shifted relative to the active one).
       scrollIndex: list.firstVisibleIndex(),
       scrollOffset: list.firstVisibleOffset(),
-      // Contenido de la carpeta EN CRUDO (lo que ve el panel activo ahora). El
-      // panel de fondo lo adopta SÍNCRONO al pasar a segundo plano, así su lista
-      // no está vacía ni se puebla async -> positionViewAtIndex acierta al
-      // instante y el scroll queda congelado sin salto. Es una referencia al
-      // array, barato. (Con búsqueda abierta el panel de fondo usa searchEntries,
-      // no esto.)
+      // The folder content RAW (what the active panel sees now). The
+      // background panel adopts it SYNCHRONOUSLY when moving to the background, so its list
+      // is not empty nor populated async -> positionViewAtIndex hits the mark
+      // instantly and the scroll stays frozen with no jump. It is a reference to the
+      // array, cheap. (With search open, the background panel uses searchEntries,
+      // not this.)
       entries: NavState.entries,
-      // La búsqueda (lupa) es del panel activo, no global: sin guardarla aquí
-      // se "colaba" a la pestaña a la que cambiabas (searching/searchQuery viven
-      // en NavState, singleton). Se guardan los RESULTADOS también, para
-      // restaurarlos al instante sin re-lanzar la búsqueda. Ver _restoreTabSearch.
+      // The search (magnifier) belongs to the active panel, not global: without saving it here
+      // it "leaked" to the tab you switched to (searching/searchQuery live
+      // in NavState, singleton). The RESULTS are saved too, to
+      // restore them instantly without re-launching the search. See _restoreTabSearch.
       searching: NavState.searching, searchQuery: NavState.searchQuery,
       searchTruncated: NavState.searchTruncated,
       searchEntries: NavState.searching ? NavState.entries : undefined
@@ -103,27 +103,27 @@ Item {
     TabsState.tabs = next
   }
 
-  // Restaura el historial atrás/adelante propio de `tab` como el "en curso"
-  // -- usado por switchToTab/closeTab al aterrizar en una pestaña que no es
-  // la que se acaba de crear (esa ya trae su historial propio desde cero).
+  // Restores `tab`'s own back/forward history as the "current" one
+  // -- used by switchToTab/closeTab when landing on a tab that is not
+  // the one just created (that one already carries its own history from scratch).
   function _restoreTabHistory(tab) {
     TabsState.navHistory = tab.history || [tab.path]
     TabsState.navHistoryIndex = tab.historyIndex !== undefined ? tab.historyIndex : 0
   }
 
-  // La preview (foto/vídeo/texto) es del panel activo, y _goToPath la
-  // cierra siempre (selectOnly(-1) al navegar) -- sin esto, cambiar de
-  // pestaña se veía como si la preview se perdiera aunque la pestaña
-  // original la siguiera teniendo abierta. Se llama DESPUÉS de _goToPath,
-  // que ya dejó currentPath listo para que loadPreview lea el fichero
-  // correcto si es de texto.
-  // Bug real: navegar DENTRO de un comprimido (inArchive/archivePath/
-  // archiveSubPath) no era parte del estado guardado por pestaña -- al
-  // cambiar de pestaña con el ratón y volver, _goToPath() ya había
-  // salido del modo archivo sin que nada lo restaurase, así que la
-  // pestaña aterrizaba en la carpeta real que contiene el .zip en vez de
-  // en la ruta de dentro donde estaba navegando. Llamado DESPUÉS de
-  // _goToPath (que es quien limpia inArchive), mismo patrón que
+  // The preview (photo/video/text) belongs to the active panel, and _goToPath
+  // always closes it (selectOnly(-1) on navigating) -- without this, switching
+  // tabs looked as if the preview was lost even though the original tab
+  // still had it open. It is called AFTER _goToPath,
+  // which already left currentPath ready so loadPreview reads the
+  // correct file if it is text.
+  // Real bug: navigating WITHIN an archive (inArchive/archivePath/
+  // archiveSubPath) was not part of the state saved per tab -- when
+  // switching tabs with the mouse and coming back, _goToPath() had already
+  // exited the archive mode without anything restoring it, so the
+  // tab landed on the real folder containing the .zip instead of
+  // on the inner path where it was browsing. Called AFTER
+  // _goToPath (which is the one that clears inArchive), same pattern as
   // _restoreTabPreview/_restoreTabScroll.
   function _restoreTabArchive(tab) {
     if (tab.inArchive && tab.archivePath) {
@@ -142,25 +142,25 @@ Item {
     }
   }
 
-  // _goToPath() siempre deja list.contentY = list.originY (arriba del
-  // todo) al navegar -- sin esto, volver a una pestaña en la que se había
-  // bajado en la lista aterrizaba siempre en la fila 0, perdiendo la
-  // posición aunque la carpeta en sí no hubiera cambiado. Se llama
-  // DESPUÉS de _goToPath, mismo motivo que _restoreTabPreview: para
-  // entonces el modelo (NavState.visibleEntries) ya está actualizado y
-  // contentHeight ya refleja el listado correcto.
-  // Esto es solo la restauración INMEDIATA (mientras el listProc que
-  // _goToPath acaba de lanzar sigue en marcha) -- root._pendingScrollY
-  // guarda la misma posición para que listProc la vuelva a aplicar ella
-  // misma justo después de su propio positionViewAtBeginning() cuando
-  // termine, que si no la pisaría (ver el comentario largo ahí, era el
-  // origen real del parpadeo al cambiar de panel de fondo a activo con
-  // la papelera).
+  // _goToPath() always leaves list.contentY = list.originY (all the way
+  // up) on navigating -- without this, returning to a tab where you had
+  // scrolled down the list always landed on row 0, losing the
+  // position even though the folder itself hadn't changed. It is called
+  // AFTER _goToPath, same reason as _restoreTabPreview: by
+  // then the model (NavState.visibleEntries) is already updated and
+  // contentHeight already reflects the correct listing.
+  // This is only the IMMEDIATE restoration (while the listProc that
+  // _goToPath just launched is still running) -- root._pendingScrollY
+  // keeps the same position so listProc reapplies it
+  // itself right after its own positionViewAtBeginning() when it
+  // finishes, which would otherwise overwrite it (see the long comment there, it was the
+  // real origin of the flicker when switching from background panel to active with
+  // the trash).
   function _restoreTabScroll(tab) {
-    // Por ÍNDICE (positionViewAtIndex), igual que el panel de fondo, para que la
-    // posición coincida EXACTAMENTE al ir y volver (mezclar píxel/índice
-    // derivaba ~1 fila por ida y vuelta). _pendingScrollIndex lo re-aplica tras
-    // el listProc async de _goToPath (que resetea con positionViewAtBeginning).
+    // By INDEX (positionViewAtIndex), like the background panel, so the
+    // position matches EXACTLY when going and coming back (mixing pixel/index
+    // drifted ~1 row per round trip). _pendingScrollIndex reapplies it after
+    // _goToPath's async listProc (which resets with positionViewAtBeginning).
     if (tab.scrollIndex !== undefined && tab.scrollIndex >= 0) {
       list.positionAtIndexWithOffset(tab.scrollIndex, tab.scrollOffset || 0)
       root._pendingScrollIndex = tab.scrollIndex
@@ -174,13 +174,13 @@ Item {
     }
   }
 
-  // Restaura (o limpia) el modo búsqueda propio de `tab`. Se llama DESPUÉS de
-  // _goToPath, que ya repobló NavState.entries con el listado normal de la
-  // carpeta -- si esta pestaña estaba buscando, le devolvemos sus resultados
-  // guardados encima. Si NO estaba buscando, hay que apagar el flag global
-  // igualmente: la pestaña que dejamos podía estar en modo búsqueda y ese
-  // estado, al ser de NavState (singleton), habría quedado activo aquí. Mismo
-  // patrón que _restoreTabArchive/_restoreTabPreview.
+  // Restores (or clears) `tab`'s own search mode. It is called AFTER
+  // _goToPath, which already repopulated NavState.entries with the folder's normal
+  // listing -- if this tab was searching, we give it back its
+  // saved results on top. If it was NOT searching, the global flag must be
+  // turned off anyway: the tab we left could be in search mode and that
+  // state, being NavState (singleton), would have stayed active here. Same
+  // pattern as _restoreTabArchive/_restoreTabPreview.
   function _restoreTabSearch(tab) {
     if (tab.searching) {
       NavState.searching = true
@@ -197,20 +197,20 @@ Item {
   function switchToTab(index) {
     if (index < 0 || index >= TabsState.tabs.length || index === TabsState.activeTabIndex) return
     if (root.hasBlockingOverlay) return
-    // La lupa NO debe animar su expandir/colapsar por un cambio de pestaña: al
-    // adoptar el estado de búsqueda de la nueva tab, `searching` cambia y la
-    // barra haría la animación de minimizar/expandir en la tab a la que llegas
-    // (se ve mal). Se suprime durante todo el cambio; snap en vez de animación.
+    // The magnifier must NOT animate its expand/collapse due to a tab change: when
+    // adopting the search state of the new tab, `searching` changes and the
+    // bar would do the minimize/expand animation on the tab you arrive at
+    // (it looks bad). It is suppressed during the whole switch; snap instead of animation.
     NavState.suppressSearchAnim = true
     saveActiveTab()
     TabsState.activeTabIndex = index
     _restoreTabHistory(TabsState.tabs[index])
-    // El panel activo adopta el listado de la pestaña que ya estaba a la
-    // vista como panel de fondo -- sin fade (ver root.suppressListFade), o
-    // pasar el cursor por un panel produciría un parpadeo redundante. Se
-    // limpia justo después: el único cambio de modelo que dispara el fade lo
-    // hace _goToPath de forma síncrona (pinta desde tabEntriesCache), así que
-    // para cuando vuelve ya se consumió.
+    // The active panel adopts the listing of the tab that was already in
+    // view as a background panel -- without fade (see root.suppressListFade), or
+    // moving the cursor over a panel would produce a redundant flicker. It is
+    // cleared right after: the only model change that triggers the fade is
+    // done by _goToPath synchronously (it paints from tabEntriesCache), so
+    // by the time it returns it was already consumed.
     root.suppressListFade = true
     navController._goToPath(TabsState.tabs[index].path)
     root.suppressListFade = false
@@ -229,8 +229,8 @@ Item {
     TabsState.navHistoryIndex = 0
   }
 
-  // Para quien no use Ctrl+T -- una pestaña nueva ya apuntando a `path` (una
-  // fila de carpeta, un marcador, una unidad), no a la carpeta actual.
+  // For whoever doesn't use Ctrl+T -- a new tab already pointing to `path` (a
+  // folder row, a bookmark, a drive), not the current folder.
   function openInNewTab(path) {
     if (!path) return
     saveActiveTab()
@@ -250,8 +250,8 @@ Item {
     var newIndex = Math.min(TabsState.activeTabIndex, next.length - 1)
     TabsState.activeTabIndex = newIndex
     _restoreTabHistory(TabsState.tabs[newIndex])
-    // Igual que switchToTab: la pestaña que queda ya estaba a la vista como
-    // panel de fondo, así que se adopta sin fade (evita el parpadeo).
+    // Same as switchToTab: the remaining tab was already in view as a
+    // background panel, so it is adopted without fade (avoids the flicker).
     root.suppressListFade = true
     navController._goToPath(TabsState.tabs[newIndex].path)
     root.suppressListFade = false

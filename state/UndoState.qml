@@ -1,19 +1,19 @@
 pragma Singleton
 import QtQuick
 
-// Pilas de deshacer/rehacer (Ctrl+Z / Ctrl+Shift+Z) -- tercer singleton
-// de la capa state/, mismo patrón validado con SelectionState/
-// ClipboardState. Acciones reversibles: renombrar, nueva carpeta/fichero,
-// borrar (a la papelera), mover (cortar+pegar/arrastrar), renombrado en
-// lote, chmod y enlace. Copiar/comprimir se quedan fuera a propósito --
-// deshacerlos es más ambiguo (¿borrar la copia? ¿y si ya se movió/editó?)
-// que perder por error algo renombrado/movido/borrado/con permisos
-// cambiados. La lógica que las manipula sigue en logic/ActionEngine.qml.
+// Undo/redo stacks (Ctrl+Z / Ctrl+Shift+Z) -- third singleton
+// of the state/ layer, same pattern validated with SelectionState/
+// ClipboardState. Reversible actions: rename, new folder/file,
+// delete (to trash), move (cut+paste/drag), bulk
+// rename, chmod and link. Copy/compress are left out on purpose --
+// undoing them is more ambiguous (delete the copy? what if it was already
+// moved/edited?) than losing by mistake something renamed/moved/deleted/with
+// changed permissions. The logic that manipulates them stays in logic/ActionEngine.qml.
 QtObject {
   property var undoStack: []
-  // redoFn es opcional -- solo las entradas que lo llevan aparecen en
-  // Ctrl+Shift+Z. Cualquier acción NUEVA (pushUndo de verdad, no un
-  // redo/undo de una ya existente) invalida el redo pendiente, mismo
-  // comportamiento que cualquier editor de texto.
+  // redoFn is optional -- only the entries that carry it appear in
+  // Ctrl+Shift+Z. Any NEW action (a real pushUndo, not a
+  // redo/undo of an existing one) invalidates the pending redo, same
+  // behaviour as any text editor.
   property var redoStack: []
 }

@@ -2,13 +2,13 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// Panel de vista previa (Espacio). Undécimo componente extraído de
-// Omafiles.qml -- puramente de lectura (nada de clics propios más allá
-// de "no dejar pasar el toque a lo de detrás"), así que a diferencia de
-// Sidebar.qml no hace falta ni una señal: todo lo que antes eran
-// llamadas a root.isImage(root.previewEntry)/etc. repetidas varias
-// veces por el fichero ahora son booleanos ya resueltos que pasa el
-// padre (que sigue siendo el único que ve esas funciones).
+// Preview panel (Space). Eleventh component extracted from
+// Omafiles.qml -- purely read-only (no clicks of its own beyond
+// "don't let the tap pass through to what's behind"), so unlike
+// Sidebar.qml it doesn't even need a signal: everything that used to be
+// calls to root.isImage(root.previewEntry)/etc. repeated several
+// times across the file are now already-resolved booleans passed by the
+// parent (which is still the only one that sees those functions).
 Item {
   id: root
 
@@ -69,8 +69,8 @@ Item {
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         source: root.isImageEntry ? root.imageSource : ""
-        // Fase 22: fade-in al terminar de cargar (0 -> 1, 120 ms), nada de
-        // aparecer de golpe. Sin bloquear nada.
+        // Phase 22: fade-in when loading finishes (0 -> 1, 120 ms), no
+        // appearing all at once. Without blocking anything.
         opacity: status === Image.Ready ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 120 } }
       }
@@ -94,10 +94,10 @@ Item {
         contentWidth: width
         contentHeight: (root.highlightedText.length > 0 ? previewHighlightedItem : previewTextItem).implicitHeight
 
-        // Resaltado de sintaxis cuando highlight-preview.sh
-        // (Pygments) reconoció el lenguaje -- ver loadPreview().
-        // Mismo Flickable/posición que el Text plano de abajo,
-        // uno de los dos siempre queda oculto.
+        // Syntax highlighting when highlight-preview.sh
+        // (Pygments) recognized the language -- see loadPreview().
+        // Same Flickable/position as the plain Text below,
+        // one of the two is always hidden.
         Text {
           id: previewHighlightedItem
           visible: root.highlightedText.length > 0
@@ -147,11 +147,11 @@ Item {
             spacing: Style.spacing.sm
 
             Text {
-              // 84 no le llegaba a "Sample rate" (se pegaba con
-              // el valor sin espacio, confirmado midiendo el
-              // glyph real de la fuente) -- 120 deja margen de
-              // sobra para cualquier etiqueta actual de esta
-              // tabla al tamaño de fuente real de la app.
+              // 84 didn't reach "Sample rate" (it stuck to
+              // the value without a space, confirmed by measuring the
+              // font's real glyph) -- 120 leaves plenty of margin
+              // for any current label of this
+              // table at the app's real font size.
               width: 120
               text: parent.modelData.label
               font.pixelSize: Style.font.subtitle

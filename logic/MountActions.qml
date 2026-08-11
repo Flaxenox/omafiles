@@ -3,15 +3,15 @@ import "../state"
 import "../services"
 import "../Utils.js" as Utils
 
-// Montar/expulsar unidades (udisksctl) + conectar/desconectar unidades de
-// red (gio mount) -- duodécimo componente extraído de Omafiles.qml, y el
-// primero en mover Process + las funciones que los orquestan juntos desde
-// fuera de la zona de "Panel activo" (mismo criterio que ConflictActions:
-// código relacionado que vivía disperso, aquí ya estaba físicamente
-// contiguo en el fichero salvo por las funciones, ahora se queda junto de
-// verdad). Todas las llamadas externas usaban `root.xxx(...)`, así que se
-// actualizaron a `mountActions.xxx(...)` en sus sitios de llamada -- no
-// quedan wrappers sueltos en root.
+// Mount/eject drives (udisksctl) + connect/disconnect network drives
+// (gio mount) -- twelfth component extracted from Omafiles.qml, and the
+// first to move Process + the functions that orchestrate them together out
+// of the "Active panel" zone (same criterion as ConflictActions:
+// related code that lived scattered; here it was already physically
+// contiguous in the file except for the functions, which now truly live
+// together). All external calls used `root.xxx(...)`, so they were
+// updated to `mountActions.xxx(...)` at their call sites -- no loose
+// wrappers remain in root.
 Item {
   property Item root: null
   property Item navController: null
@@ -23,8 +23,8 @@ Item {
   }
 
   function refreshNetworkMounts() {
-    // Enumeración NATIVA de montajes GVfs (Fase 16): NetworkMounts.list()
-    // sustituye a list-network-mounts.sh. Síncrona (readdir sobre gvfs).
+    // NATIVE enumeration of GVfs mounts (Phase 16): NetworkMounts.list()
+    // replaces list-network-mounts.sh. Synchronous (readdir over gvfs).
     MountsState.networkMounts = NetworkMounts.list()
   }
 
@@ -48,12 +48,12 @@ Item {
     DialogsState.connectServerOpen = false
   }
 
-  // "setsid" + matar el grupo entero al cancelar, mismo motivo que
-  // runAction()/cancelAction(): gio mount puede quedarse esperando
-  // credenciales que nunca van a llegar (esta app no tiene un diálogo de
-  // usuario/contraseña -- ver comentario largo en connectServerOpen más
-  // abajo en el fichero, junto al diálogo), y sin esto Cancelar no
-  // conseguiría matar el proceso de verdad.
+  // "setsid" + kill the whole group on cancel, same reason as
+  // runAction()/cancelAction(): gio mount can get stuck waiting for
+  // credentials that are never going to arrive (this app has no
+  // user/password dialog -- see the long comment on connectServerOpen further
+  // down in the file, next to the dialog), and without this Cancel wouldn't
+  // actually manage to kill the process.
   function commitConnectToServer() {
     var uri = DialogsState.connectServerUri.trim()
     if (!uri) return
@@ -68,13 +68,13 @@ Item {
   }
 
   function ejectMount(mount) {
-    // Sin esta guardia, hacer doble clic en "Expulsar" reasignaba
-    // ejectProc.command a mitad de la primera llamada, reiniciándola --
-    // mismo problema que runAction() ya evitaba para las acciones de
-    // fichero, pero este proceso no lo tenía.
-    // Aviso explícito en vez de un return mudo -- sin esto, el segundo
-    // clic no hacía nada visible y parecía que la app había ignorado la
-    // pulsación, igual que le pasaba antes a runAction() (ver ahí).
+    // Without this guard, double-clicking "Eject" would reassign
+    // ejectProc.command in the middle of the first call, restarting it --
+    // same problem runAction() already avoided for file actions,
+    // but this process didn't have it.
+    // Explicit notice instead of a mute return -- without this, the second
+    // click did nothing visible and it looked like the app had ignored the
+    // press, same as used to happen to runAction() (see there).
     if (ejectProc.busy) {
       Notifier.notify("Still ejecting a drive — try again in a moment")
       return
@@ -84,33 +84,34 @@ Item {
     ejectProc.wasInside = wasInside
     ejectProc.tabIndex = TabsState.activeTabIndex
     ejectProc.device = mount.device
-    // Spinner del botón de eject (Fase 21): se limpia en ejectProc.onFinished.
+    // Eject button spinner (Phase 21): cleared in ejectProc.onFinished.
     MountsState.ejectingDevice = mount.device
     ejectProc.start(["udisksctl", "unmount", "-b", mount.device])
   }
 
-  // udisksctl imprime "Mounted /dev/sdX at /run/media/user/Label." -- se
-  // extrae la ruta de ahí en vez de relanzar list-mounts.sh y adivinar cuál
-  // es la unidad recién montada.
+  // udisksctl prints "Mounted /dev/sdX at /run/media/user/Label." -- the
+  // path is extracted from there instead of re-running list-mounts.sh and
+  // guessing which is the newly mounted drive.
   function mountDevice(mount) {
     if (mountProc.busy) {
       Notifier.notify("Still mounting a drive — try again in a moment")
       return
     }
-    // Capturado aquí (no releído en onFinished) -- si el ratón pasa a otro
-    // panel mientras el montaje tarda, el resultado debe navegar el
-    // panel que lo pidió, no el que resulte estar activo cuando termine.
+    // Captured here (not re-read in onFinished) -- if the mouse moves to
+    // another panel while the mount takes a while, the result must navigate
+    // the panel that requested it, not whichever happens to be active when it
+    // finishes.
     mountProc.tabIndex = TabsState.activeTabIndex
     mountProc.start(["udisksctl", "mount", "-b", mount.device])
   }
 
-  // A diferencia de isArchive() (enterArchive(), navegación de solo
-  // lectura sin montar nada de verdad), un .iso se monta como un
-  // dispositivo loop real -- así lo que haya dentro (un instalador, por
-  // ejemplo) se puede ejecutar/copiar igual que en cualquier carpeta
-  // normal, no solo mirarlo. Aparece en la barra lateral como cualquier
-  // otra unidad extraíble en cuanto se monta (list-mounts.sh ya distingue
-  // el icono por fstype=iso9660) y se expulsa igual que una.
+  // Unlike isArchive() (enterArchive(), read-only navigation without
+  // mounting anything for real), an .iso is mounted as a real loop
+  // device -- so whatever is inside (an installer, for example) can be
+  // run/copied just like in any normal folder, not just looked at. It
+  // appears in the sidebar like any other removable drive as soon as it is
+  // mounted (list-mounts.sh already distinguishes the icon by
+  // fstype=iso9660) and is ejected the same way.
   function mountIso(entry) {
     if (mountIsoProc.busy) {
       Notifier.notify("Still mounting an ISO — try again in a moment")
@@ -128,13 +129,13 @@ Item {
     }
   }
 
-  // Req 4 (Fase 20): si la unidad extraíble/externa que estabas navegando se
-  // expulsa (físicamente o desde otra app), UDisks2 dispara refreshMounts() y
-  // aquí se detecta que currentPath cuelga de un punto de montaje que ya no
-  // está montado -> se navega a Home. Solo mira rutas bajo /run/media o /mnt
-  // (las gestionadas por unidades): una ruta normal del home nunca dispara
-  // esto. El eject MANUAL ya navegaba con su propio wasInside; esto cubre la
-  // expulsión que NO inició la app.
+  // Req 4 (Phase 20): if the removable/external drive you were browsing is
+  // ejected (physically or from another app), UDisks2 triggers refreshMounts()
+  // and here it is detected that currentPath hangs off a mount point that is no
+  // longer mounted -> navigate to Home. It only looks at paths under /run/media
+  // or /mnt (the ones managed by drives): a normal home path never triggers
+  // this. A MANUAL eject already navigated with its own wasInside; this covers
+  // the ejection NOT started by the app.
   function _ensureCurrentPathMounted() {
     var p = NavState.currentPath
     if (p.indexOf("/run/media/") !== 0 && p.indexOf("/mnt/") !== 0) return
@@ -154,10 +155,10 @@ Item {
       MountsState.ejectingDevice = ""
       if (result.exitCode === 0) {
         if (ejectProc.wasInside) tabOps.navigateTabTo(ejectProc.tabIndex, Paths.homeDir)
-        // Un .iso montado con mountIso() deja el /dev/loopN asociado al
-        // fichero aunque ya esté desmontado -- sin esto, el .iso se queda
-        // "en uso" (no se puede mover/borrar) y cada uno gastaría un loop
-        // device para siempre hasta reiniciar.
+        // An .iso mounted with mountIso() leaves the /dev/loopN associated to
+        // the file even after it is unmounted -- without this, the .iso stays
+        // "in use" (can't be moved/deleted) and each one would use up a loop
+        // device forever until reboot.
         if (ejectProc.device.indexOf("/dev/loop") === 0) {
           Detached.run(["udisksctl", "loop-delete", "-b", ejectProc.device])
         }
@@ -210,24 +211,25 @@ Item {
     }
   }
 
-  // Sin -a/--anonymous ni forma de pasar contraseña: si el servidor pide
-  // credenciales, gio necesita un GMountOperation interactivo que esta
-  // app no implementa (sería un sub-proyecto en sí mismo, tipo el diálogo
-  // "Conectar a servidor" + llavero de Nautilus). Funciona bien para SFTP
-  // con clave SSH ya configurada, o cualquier servidor con credenciales
-  // ya guardadas en el llavero de una conexión anterior (con Nautilus,
-  // por ejemplo) -- si se queda colgado esperando una contraseña que
-  // nunca llega, el usuario tiene el botón Cancelar del diálogo
-  // (cancelNetworkConnect/setsid, mismo mecanismo que cancelAction()).
+  // Without -a/--anonymous nor any way to pass a password: if the server asks
+  // for credentials, gio needs an interactive GMountOperation that this
+  // app does not implement (it would be a sub-project in itself, like the
+  // "Connect to server" dialog + keyring of Nautilus). It works fine for SFTP
+  // with an SSH key already set up, or any server with credentials already
+  // saved in the keyring from a previous connection (with Nautilus, for
+  // example) -- if it gets stuck waiting for a password that never arrives,
+  // the user has the dialog's Cancel button
+  // (cancelNetworkConnect/setsid, same mechanism as cancelAction()).
   ProcessRunner {
     id: networkMountProc
     onFinished: function (result) {
       DialogsState.networkConnecting = false
       if (result.exitCode === 0) {
         DialogsState.connectServerOpen = false
-        // gio no imprime la ruta local igual que udisksctl -- se relista
-        // (nativo, síncrono) y se entra al mount que no estaba antes (el que
-        // acaba de aparecer) en vez de parsear la salida de "gio mount".
+        // gio does not print the local path the way udisksctl does -- it is
+        // re-listed (native, synchronous) and we enter the mount that wasn't
+        // there before (the one that just appeared) instead of parsing the
+        // output of "gio mount".
         var before = MountsState.networkMounts.map(function (m) { return m.path })
         var parsed = NetworkMounts.list()
         MountsState.networkMounts = parsed
