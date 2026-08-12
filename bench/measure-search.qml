@@ -11,7 +11,13 @@ Item {
     property int i: -1
     property real t0: 0
     property string q: ""
-    function next(){ i++; if(i>=qs.length){Qt.exit(0);return} q=qs[i]; t0=Date.now(); sw.search("/home/josema/.cache/omafiles-perfbench/100k", q, false) }
+    // Portable dataset location: explicit override, else the XDG cache dir
+    // (fallback $HOME/.cache). No hardcoded home or username; runs on any clone.
+    readonly property string cacheHome: Env.get("XDG_CACHE_HOME") !== ""
+      ? Env.get("XDG_CACHE_HOME") : Env.get("HOME") + "/.cache"
+    readonly property string base: Env.get("OMAFILES_PERFBENCH_DIR") !== ""
+      ? Env.get("OMAFILES_PERFBENCH_DIR") : cacheHome + "/omafiles-perfbench"
+    function next(){ i++; if(i>=qs.length){Qt.exit(0);return} q=qs[i]; t0=Date.now(); sw.search(base + "/100k", q, false) }
   }
   Component.onCompleted: harness.next()
 }

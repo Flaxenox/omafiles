@@ -1,5 +1,9 @@
 import os, sys
-base = "/home/josema/.cache/omafiles-perfbench"
+# Portable dataset location: honor an explicit override, else the XDG cache dir
+# (fallback ~/.cache). No hardcoded home or username, so this runs on any clone.
+base = os.environ.get("OMAFILES_PERFBENCH_DIR") or os.path.join(
+    os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache"),
+    "omafiles-perfbench")
 sizes = {"1k":1000, "10k":10000, "50k":50000, "100k":100000}
 for name, n in sizes.items():
     d = os.path.join(base, name)

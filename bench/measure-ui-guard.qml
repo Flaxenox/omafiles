@@ -8,12 +8,13 @@ Item {
   DirectoryModel { id: m; onListed: harness.step() }
   QtObject {
     id: harness
-    property var dirs: [
-      "/home/josema/.cache/omafiles-perfbench/1k",
-      "/home/josema/.cache/omafiles-perfbench/10k",
-      "/home/josema/.cache/omafiles-perfbench/50k",
-      "/home/josema/.cache/omafiles-perfbench/100k"
-    ]
+    // Portable dataset location: explicit override, else the XDG cache dir
+    // (fallback $HOME/.cache). No hardcoded home or username; runs on any clone.
+    readonly property string cacheHome: Env.get("XDG_CACHE_HOME") !== ""
+      ? Env.get("XDG_CACHE_HOME") : Env.get("HOME") + "/.cache"
+    readonly property string base: Env.get("OMAFILES_PERFBENCH_DIR") !== ""
+      ? Env.get("OMAFILES_PERFBENCH_DIR") : cacheHome + "/omafiles-perfbench"
+    property var dirs: [base + "/1k", base + "/10k", base + "/50k", base + "/100k"]
     property int i: -1
     property string last: ""
     function next() { i++; if (i >= dirs.length) { Qt.exit(0); return } last = ""; m.list(dirs[i], false) }

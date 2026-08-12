@@ -6,12 +6,26 @@
 // contra backend/DirectoryModel.cpp (ver bench/README.md).
 #include "DirectoryModel.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QString>
 #include <QVariantList>
 #include <algorithm>
 #include <cstdio>
 #include <vector>
+
+// Portable dataset location: honor an explicit override, else the XDG cache dir
+// (fallback ~/.cache). No hardcoded home or username, so this runs on any clone.
+static QString resolveBase() {
+  const QByteArray override = qgetenv("OMAFILES_PERFBENCH_DIR");
+  if (!override.isEmpty())
+    return QString::fromLocal8Bit(override);
+  const QByteArray xdg = qgetenv("XDG_CACHE_HOME");
+  const QString cacheHome =
+      xdg.isEmpty() ? QDir::homePath() + "/.cache" : QString::fromLocal8Bit(xdg);
+  return cacheHome + "/omafiles-perfbench";
+}
 
 static double medianOf(std::vector<double> v) {
   std::sort(v.begin(), v.end());
@@ -51,7 +65,7 @@ static void benchDir(const QString &path, int iters) {
 
 int main(int argc, char **argv) {
   QCoreApplication app(argc, argv);
-  const char *base = "/home/josema/.cache/omafiles-perfbench";
+  const QString base = resolveBase();
   const char *sizes[] = {"1k", "10k", "50k", "100k"};
   const int iters = 9;
   // Warm-up: una pasada por cada dir para calentar la caché de inodos.
