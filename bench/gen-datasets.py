@@ -12,7 +12,7 @@ for name, n in sizes.items():
     if existing >= n:
         print(f"{name}: already {existing}", flush=True); continue
     for i in range(n):
-        # mezcla: dígitos (naturalCompare), MixedCase (toLower/locale), extensiones
+        # mix: digits (naturalCompare), MixedCase (toLower/locale), extensions
         if i % 50 == 0:
             fn = f"Folder_{i:06d}"
             os.makedirs(os.path.join(d, fn), exist_ok=True)
@@ -21,7 +21,7 @@ for name, n in sizes.items():
             p = os.path.join(d, fn)
             if not os.path.exists(p):
                 open(p, "w").close()
-    # symlinks: uno válido, uno roto
+    # symlinks: one valid, one broken
     try:
         os.symlink(os.path.join(d, "File_000001_Report.txt"), os.path.join(d, "zzz_link_valid"))
     except FileExistsError: pass

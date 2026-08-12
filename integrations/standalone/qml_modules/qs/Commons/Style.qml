@@ -329,7 +329,7 @@ QtObject {
   // OMARCHY_MENU_FONT override for users who want a different family on the
   // summoned popups than on the bar. Resolved once at startup; an empty env
   // value falls back to the shared fontconfig alias.
-  // menuFontFamily sin OMARCHY_MENU_FONT (sin env de Quickshell aquí).
+  // menuFontFamily without OMARCHY_MENU_FONT (no Quickshell env here).
   readonly property string menuFontFamily: fontFamily
 
   readonly property QtObject font: QtObject {

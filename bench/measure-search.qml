@@ -3,7 +3,7 @@ import Omafiles.Backend
 Item {
   SearchWorker { id: sw; onResults: function(list, truncated) {
     var dt = Date.now() - harness.t0
-    console.log("query='" + harness.q + "' resultados=" + list.length + " truncado=" + truncated + " tiempo=" + dt + "ms")
+    console.log("query='" + harness.q + "' results=" + list.length + " truncated=" + truncated + " time=" + dt + "ms")
     harness.next()
   }}
   QtObject { id: harness

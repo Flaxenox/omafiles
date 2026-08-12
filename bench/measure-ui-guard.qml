@@ -1,9 +1,9 @@
 import QtQuick
 import Omafiles.Backend
 
-// Compara el coste EN HILO DE UI de la guarda "¿cambió la carpeta?":
-//   ANTES (Fase 10.A): Utils.entriesEqual -> itera N entradas, materializa todo.
-//   AHORA (Fase 27):  comparar DirectoryModel.signature (string) -> O(1).
+// Compares the UI-THREAD cost of the "did the folder change?" guard:
+//   BEFORE (Phase 10.A): Utils.entriesEqual -> iterates N entries, materializes all.
+//   NOW (Phase 27): compare DirectoryModel.signature (string) -> O(1).
 Item {
   DirectoryModel { id: m; onListed: harness.step() }
   QtObject {
@@ -19,9 +19,9 @@ Item {
     property string last: ""
     function next() { i++; if (i >= dirs.length) { Qt.exit(0); return } last = ""; m.list(dirs[i], false) }
     function step() {
-      // NUEVO camino: leer la firma y comparar (esto es TODO lo que corre en la
-      // guarda cuando la carpeta no cambió). Medimos 1000 repeticiones para que
-      // el reloj de ms lo capte.
+      // NEW path: read signature and compare (this is ALL that runs in the
+      // guard when the folder did not change). We measure 1000 repetitions so
+      // the millisecond timer captures it.
       var reps = 1000
       var t0 = Date.now()
       var changed = 0
@@ -30,13 +30,13 @@ Item {
         if (sig !== last) { changed++; }
       }
       var t1 = Date.now()
-      // materialización perezosa (solo lectura, sin iterar): lo que hace ListView
+      // Lazy materialization (read-only, no iteration): what ListView does
       var e = m.entries
       var t2 = Date.now()
       last = m.signature
       console.log("rows=" + e.length
         + "  signatureGuard(x" + reps + ")=" + (t1 - t0) + "ms"
-        + "  -> " + ((t1 - t0) / reps).toFixed(4) + "ms/vez"
+        + "  -> " + ((t1 - t0) / reps).toFixed(4) + "ms/call"
         + "  lazyRead=" + (t2 - t1) + "ms")
       next()
     }
