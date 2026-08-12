@@ -3,3 +3,6 @@
 .DS_Store
 __pycache__/
 build/
+
+# Private AI workspace (governance for AI agents; not part of the public repo)
+.claude/
