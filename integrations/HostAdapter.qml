@@ -1,14 +1,14 @@
-pragma ComponentBehavior: Bound
 import QtQuick
 import "../services"
 
+
 // Omafiles host contract (Phase 18, josema) -- the ONLY artifact that
-// formalizes what a host frontend must provide to the core. There are two
-// implementations that fulfill it: integrations/quickshell/HostBridge.qml
-// (over FloatingWindow) and integrations/standalone/Main.qml (over
-// ApplicationWindow). The core (core/OmafilesContent.qml) knows neither
-// of the two: it exposes open()/close()/opened + the closeRequested() signal and nothing
-// else.
+// formalizes what a host frontend must provide to the core. The official
+// implementation is integrations/standalone/Main.qml (over ApplicationWindow);
+// the former Quickshell frontend has been removed. The core
+// (core/OmafilesContent.qml) exposes open()/close()/opened + the closeRequested()
+// signal and nothing else.
+
 //
 // The contract is divided into:
 //

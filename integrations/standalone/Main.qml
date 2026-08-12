@@ -5,11 +5,11 @@ import Omafiles.Backend as Backend
 import "../../core"
 import ".."
 
-// Standalone Qt6 host adapter (Phase 4 → Phase 18, josema). It's the
-// equivalent of integrations/quickshell/HostBridge.qml for the Qt6
-// frontend: it instantiates the SAME core/OmafilesContent.qml but over an
-// ApplicationWindow instead of a FloatingWindow. It fulfills the same host
-// contract (see integrations/HostAdapter.qml):
+// Standalone Qt6 host adapter (Phase 4 → Phase 18, josema). It is the
+// single official host frontend for Omafiles: it instantiates
+// core/OmafilesContent.qml over an ApplicationWindow.
+// It fulfills the host contract (see integrations/HostAdapter.qml):
+
 //   · show()/hide()/close()  -- built-in of Window/ApplicationWindow.
 //   · external close          -- onClosing (WM's close button / Alt+F4).
 //   · geometry (size)         -- via HostAdapter, same persistence as
