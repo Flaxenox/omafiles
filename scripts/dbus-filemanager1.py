@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # org.freedesktop.FileManager1 backend for Omafiles.
 #
 # Many apps (Firefox when finishing a download, "Show in file manager" of
