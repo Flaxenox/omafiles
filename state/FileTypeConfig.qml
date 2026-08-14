@@ -1,10 +1,8 @@
 pragma Singleton
 import QtQuick
 
-// Extension lists per file type: they were
-// readonly properties of OmafilesContent read by logic/FileTypeUtils
-// (icon/isImage/isVideo/isAudio), PreviewLoader (text/code),
-// ArchiveActions and ConflictActions (tar). Pure static configuration, not
+// Extension lists per file type: static configuration for PreviewLoader,
+// ArchiveActions, and ConflictActions. Pure static configuration, not
 // composition-root state -- here they stay as the single source.
 //
 // O2 (BACKEND_DESIGN.md 6.B) foresees a MimeDb in C++ that decides the type by

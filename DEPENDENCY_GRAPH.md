@@ -13,11 +13,9 @@ its `host*` injections.
 graph LR
   ActionEngine --> NavigationController
   ArchiveActions --> ActionEngine
-  ArchiveActions --> FileTypeUtils
   ArchiveActions --> NavigationController
   ArchiveActions --> SelectionOps
   ArchiveActions --> SortOps
-  BookmarkOps --> FileTypeUtils
   BookmarkOps --> MountActions
   BookmarkOps --> NavigationController
   BookmarkOps --> Persistence
@@ -29,7 +27,6 @@ graph LR
   ConflictActions --> BookmarkOps
   ConflictActions --> ClipboardOps
   ConflictActions --> FileOps
-  ConflictActions --> FileTypeUtils
   ConflictActions --> RenameOps
   ConflictActions --> SelectionOps
   DeleteOps --> ActionEngine
@@ -63,7 +60,6 @@ graph LR
   Persistence --> NavigationController
   Persistence --> TabOps
   PreviewLoader --> FileMeta
-  PreviewLoader --> FileTypeUtils
   PreviewLoader --> VideoThumbnails
   PropertiesLoader --> SelectionOps
   RenameOps --> ActionEngine
@@ -72,14 +68,12 @@ graph LR
   SearchOps --> SelectionOps
   SearchOps --> SortOps
   SelectionOps --> PreviewLoader
-  SortOps --> FileTypeUtils
   TabOps --> ArchiveActions
   TabOps --> NavigationController
   TabOps --> PreviewLoader
 ```
 
-Leaves (no `logic/` dependencies): `FileMeta`, `FileTypeUtils`,
-`VideoThumbnails`.
+Leaves (no `logic/` dependencies): `FileMeta`, `VideoThumbnails`. Pure file type and string utilities live in `Utils.js`.
 
 ## The graph is NO LONGER acyclic (on purpose, since 14.D)
 
