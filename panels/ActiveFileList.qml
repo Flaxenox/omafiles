@@ -284,14 +284,14 @@ Item {
               open: PreviewState.previewOpen
               entryName: PreviewContentState.previewEntry ? PreviewContentState.previewEntry.name : ""
               hasEntry: !!PreviewContentState.previewEntry
-              isImageEntry: PreviewContentState.previewEntry ? root.isImage(PreviewContentState.previewEntry) : false
-              isVideoEntry: PreviewContentState.previewEntry ? root.isVideo(PreviewContentState.previewEntry) : false
-              isTextEntry: !!PreviewContentState.previewEntry && !root.isImage(PreviewContentState.previewEntry) && PreviewContentState.previewIsText
-              isPdfEntry: PreviewContentState.previewEntry ? root.isPdf(PreviewContentState.previewEntry) : false
-              isAudioEntry: PreviewContentState.previewEntry ? root.isAudio(PreviewContentState.previewEntry) : false
+              isImageEntry: PreviewContentState.previewEntry ? Utils.isImage(PreviewContentState.previewEntry) : false
+              isVideoEntry: PreviewContentState.previewEntry ? Utils.isVideo(PreviewContentState.previewEntry) : false
+              isTextEntry: !!PreviewContentState.previewEntry && !Utils.isImage(PreviewContentState.previewEntry) && PreviewContentState.previewIsText
+              isPdfEntry: PreviewContentState.previewEntry ? Utils.isPdf(PreviewContentState.previewEntry) : false
+              isAudioEntry: PreviewContentState.previewEntry ? Utils.isAudio(PreviewContentState.previewEntry) : false
               imageSource: PreviewContentState.previewImage ? Util.fileUrl(PreviewContentState.previewImage) : ""
               videoThumbSource: {
-                if (!PreviewContentState.previewEntry || !root.isVideo(PreviewContentState.previewEntry)) return ""
+                if (!PreviewContentState.previewEntry || !Utils.isVideo(PreviewContentState.previewEntry)) return ""
                 var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, NavState.currentPath)] || ""
                 return p ? Util.fileUrl(p) : ""
               }
