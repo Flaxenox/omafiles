@@ -63,16 +63,13 @@ Item {
       PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
       Image {
-        visible: root.isImageEntry
+        visible: root.isImageEntry && root.imageSource !== ""
         width: parent.width
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        cache: true
         source: root.isImageEntry ? root.imageSource : ""
-        // Phase 22: fade-in when loading finishes (0 -> 1, 120 ms), no
-        // appearing all at once. Without blocking anything.
-        opacity: status === Image.Ready ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Image {
@@ -81,9 +78,8 @@ Item {
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        cache: true
         source: root.videoThumbSource
-        opacity: status === Image.Ready ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Flickable {
@@ -127,9 +123,8 @@ Item {
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
         asynchronous: true
+        cache: true
         source: root.pdfImageSource
-        opacity: status === Image.Ready ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
       }
 
       Column {

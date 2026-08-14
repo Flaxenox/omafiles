@@ -37,34 +37,49 @@ Item {
     PreviewContentState.previewRequestId += 1
     var reqId = PreviewContentState.previewRequestId
     PreviewContentState.previewEntry = entry
-    PreviewState.previewOpen = true
-    PreviewContentState.previewText = ""
-    PreviewContentState.previewHighlighted = ""
-    PreviewContentState.previewPdfImage = ""
-    PreviewContentState.previewImage = ""
-    PreviewContentState.previewAudioInfo = []
     var ext = Utils.extOf(entry.name)
     var path = Utils.entryPath(NavState.currentPath, entry)
-    PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
-    if (PreviewContentState.previewIsText && !Utils.isImage(entry)) {
-      // NATIVE text & syntax highlighting (PreviewProvider): reads and highlights
-      // on a worker thread in-process, with cancellation by generation.
+    var isImg = Utils.isImage(entry)
+    var isPdf = Utils.isPdf(entry)
+    var isVid = Utils.isVideo(entry)
+    var isAud = Utils.isAudio(entry)
+    var isTxt = (FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === "") && !isImg
+
+    PreviewContentState.previewIsText = isTxt
+
+    if (isTxt) {
       PreviewContentState._previewTextOwner = reqId
       Backend.PreviewProvider.requestText(path)
+    } else {
+      PreviewContentState.previewText = ""
+      PreviewContentState.previewHighlighted = ""
     }
-    // Image and PDF: scaled render + cache via ThumbnailProvider.
-    if (Utils.isImage(entry)) {
+
+    if (isImg) {
       PreviewContentState._previewImageOwner = reqId
-      PreviewContentState.previewImage = Backend.ThumbnailProvider.request(path, previewSize)
+      var img = Backend.ThumbnailProvider.request(path, previewSize)
+      PreviewContentState.previewImage = img || ""
+    } else {
+      PreviewContentState.previewImage = ""
     }
-    if (Utils.isPdf(entry)) {
+
+    if (isPdf) {
       PreviewContentState._previewPdfOwner = reqId
-      PreviewContentState.previewPdfImage = Backend.ThumbnailProvider.request(path, previewSize)
+      var pdf = Backend.ThumbnailProvider.request(path, previewSize)
+      PreviewContentState.previewPdfImage = pdf || ""
+    } else {
+      PreviewContentState.previewPdfImage = ""
     }
-    if (Utils.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
-    if (Utils.isAudio(entry)) {
+
+    if (isVid) {
+      videoThumbs.requestVideoThumb(entry)
+    }
+
+    if (isAud) {
       PreviewContentState._previewAudioOwner = reqId
       audioInfoProc.start(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path])
+    } else {
+      PreviewContentState.previewAudioInfo = []
     }
   }
 
