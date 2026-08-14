@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # Implements org.freedesktop.Application for Omafiles, so that it's a
 # D-BUS-ACTIVATABLE file manager.
 #

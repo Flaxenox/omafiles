@@ -28,9 +28,10 @@ trap on_error ERR
 # Phase 29: v4 moved the .desktop Exec paths and the D-Bus services from the repo
 # to the stable XDG location ($XDG_DATA_HOME/omafiles); v5 added the official
 # icon + its symbolic variant; v6 adds StartupWMClass=omafiles (so that the
-# dock/taskbar matches the window with this .desktop and paints the icon). Bumping the
+# dock/taskbar matches the window with this .desktop and paints the icon); v7
+# fixes D-Bus service section headers and system python shebangs. Bumping the
 # version forces the rewrite and re-copy in earlier installations.
-INTEGRATION_VERSION=6
+INTEGRATION_VERSION=7
 
 # RES_DIR: STABLE root of installed resources (Phase 29). The Exec point here,
 # not to the repo, so deleting the repository doesn't break opening folders nor "show in
