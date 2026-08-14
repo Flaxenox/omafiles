@@ -211,5 +211,43 @@ QtObject {
           })
           Backend.FileOperations.copy(sc.note, sc.opsDir + "/to-trash.txt")
         })
+
+        sc.add("Undo + redo rename (full cycle)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var oldFile = sc.opsDir + "/ren-old.txt"
+          var newFile = sc.opsDir + "/ren-new.txt"
+          sc._fileOp(done, function () {
+            ConflictState.pendingRename = { oldPath: oldFile, newPath: newFile }
+            c.controllers.renameOps.runPendingRename(false)
+            var timeout = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
+            timeout.triggered.connect(function () {
+              sc._listOnce(sc.opsDir, function (e1) {
+                var renamed = sc._has(e1, "ren-new.txt") && !sc._has(e1, "ren-old.txt")
+                if (!renamed) { done(false, "rename failed"); return }
+                c.undoLast()
+                var timeout2 = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
+                timeout2.triggered.connect(function () {
+                  sc._listOnce(sc.opsDir, function (e2) {
+                    var undone = sc._has(e2, "ren-old.txt") && !sc._has(e2, "ren-new.txt")
+                    if (!undone) { done(false, "undo rename failed"); return }
+                    c.redoLast()
+                    var timeout3 = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
+                    timeout3.triggered.connect(function () {
+                      sc._listOnce(sc.opsDir, function (e3) {
+                        var redone = sc._has(e3, "ren-new.txt") && !sc._has(e3, "ren-old.txt")
+                        done(redone, redone ? "rename undo/redo OK" : "redo rename failed")
+                      })
+                    })
+                    timeout3.start()
+                  })
+                })
+                timeout2.start()
+              })
+            })
+            timeout.start()
+          })
+          Backend.FileOperations.copy(sc.note, oldFile)
+        })
   }
 }
