@@ -39,6 +39,12 @@ public:
   // Checks if the file extension supports syntax highlighting.
   Q_INVOKABLE bool isHighlightable(const QString &extensionOrFilename);
 
+  // Extracts audio/video metadata in-process (synchronous lookup).
+  Q_INVOKABLE QVariantList audioMetadata(const QString &path);
+
+  // Asynchronously extracts audio metadata on a thread pool with cancellation.
+  Q_INVOKABLE void requestAudio(const QString &path);
+
 signals:
   // content = read text; highlighted = HTML with inline syntax styling;
   // encoding = "utf-8" | "latin1"; bytes = read; lines = approximate number
@@ -47,6 +53,10 @@ signals:
                  const QString &highlighted, const QString &encoding,
                  qint64 bytes, int lines, bool truncated);
 
+  // info = array of { label, value } metadata items.
+  void audioReady(const QString &path, const QVariantList &info);
+
 private:
-  quint64 m_gen = 0; // generation of the last text request (cancellation)
+  quint64 m_gen = 0;      // generation of the last text request (cancellation)
+  quint64 m_audioGen = 0; // generation of the last audio request (cancellation)
 };

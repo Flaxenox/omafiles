@@ -78,19 +78,24 @@ Item {
 
     if (isAud) {
       PreviewContentState._previewAudioOwner = reqId
-      audioInfoProc.start(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path])
+      Backend.PreviewProvider.requestAudio(path)
     } else {
       PreviewContentState.previewAudioInfo = []
     }
   }
 
-  // Plain text & syntax highlighted ready (PreviewProvider).
+  // Plain text & syntax highlighted & audio metadata ready (PreviewProvider).
   Connections {
     target: Backend.PreviewProvider
     function onTextReady(path, content, highlighted, encoding, bytes, lines, truncated) {
       if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId) {
         PreviewContentState.previewText = content
         PreviewContentState.previewHighlighted = highlighted
+      }
+    }
+    function onAudioReady(path, info) {
+      if (PreviewContentState._previewAudioOwner === PreviewContentState.previewRequestId) {
+        PreviewContentState.previewAudioInfo = info
       }
     }
   }
@@ -109,10 +114,5 @@ Item {
         if (q) PreviewContentState.previewPdfImage = q
       }
     }
-  }
-
-  Backend.ProcessRunner {
-    id: audioInfoProc
-    onFinished: function (result) { if (PreviewContentState._previewAudioOwner === PreviewContentState.previewRequestId) PreviewContentState.previewAudioInfo = fileMeta.parseAudioInfo(result.stdout) }
   }
 }

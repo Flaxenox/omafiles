@@ -133,6 +133,26 @@ QtObject {
           done(allOk, allOk ? "C++, Python, QML highlighting OK" : "highlighting check failed")
         })
 
+        sc.add("Backend.PreviewProvider native audio metadata", function (done) {
+          var syncInfo = Backend.PreviewProvider.audioMetadata(sc.wav)
+          var hasWav = syncInfo.length > 0
+          
+          function onAudio(path, info) {
+            if (path !== sc.wav) return
+            Backend.PreviewProvider.audioReady.disconnect(onAudio)
+            var ok = info && info.length > 0
+            var codecOk = false
+            for (var i = 0; i < info.length; ++i) {
+              if (info[i].label === "Codec" && info[i].value === "WAV") codecOk = true
+            }
+            var pass = hasWav && ok && codecOk
+            done(pass, pass ? "WAV metadata parsed: items=" + info.length : "audio metadata extraction failed")
+          }
+          
+          Backend.PreviewProvider.audioReady.connect(onAudio)
+          Backend.PreviewProvider.requestAudio(sc.wav)
+        })
+
         sc.add("Backend.PreviewProvider info", function (done) {
           var info = Backend.PreviewProvider.info(sc.note)
           var ok = info && typeof info === "object" && Object.keys(info).length > 0

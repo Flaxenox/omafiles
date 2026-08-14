@@ -35,6 +35,7 @@ QtObject {
   readonly property string jsonFile: dir + "/json/t.json"
   readonly property string png: dir + "/img.png"
   readonly property string pdf: dir + "/doc.pdf"
+  readonly property string wav: dir + "/audio.wav"
   readonly property string note: dir + "/note.txt"
 
   // ---- runner state ----

@@ -259,6 +259,38 @@ bool writeSelfCheckFixtures(const QString &base) {
     p.end();
   }
 
+  // Real synthetic WAV for MediaInfo / PreviewProvider audio metadata.
+  {
+    QFile wav(base + "/audio.wav");
+    if (wav.open(QIODevice::WriteOnly)) {
+      QByteArray w;
+      w.append("RIFF", 4);
+      quint32 riffSize = 36 + 44100 * 4;
+      w.append(reinterpret_cast<const char *>(&riffSize), 4);
+      w.append("WAVEfmt ", 8);
+      quint32 fmtSize = 16;
+      quint16 audioFmt = 1; // PCM
+      quint16 numCh = 2;    // Stereo
+      quint32 sampleRate = 44100;
+      quint32 byteRate = 44100 * 4;
+      quint16 blockAlign = 4;
+      quint16 bitsPerSample = 16;
+      w.append(reinterpret_cast<const char *>(&fmtSize), 4);
+      w.append(reinterpret_cast<const char *>(&audioFmt), 2);
+      w.append(reinterpret_cast<const char *>(&numCh), 2);
+      w.append(reinterpret_cast<const char *>(&sampleRate), 4);
+      w.append(reinterpret_cast<const char *>(&byteRate), 4);
+      w.append(reinterpret_cast<const char *>(&blockAlign), 2);
+      w.append(reinterpret_cast<const char *>(&bitsPerSample), 2);
+      w.append("data", 4);
+      quint32 dataSize = 44100 * 4;
+      w.append(reinterpret_cast<const char *>(&dataSize), 4);
+      w.append(QByteArray(1024, '\0'));
+      wav.write(w);
+      wav.close();
+    }
+  }
+
   return QFile::exists(base + "/img.png") && QFile::exists(base + "/doc.pdf");
 }
 

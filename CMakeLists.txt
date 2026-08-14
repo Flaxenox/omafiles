@@ -48,6 +48,8 @@ qt_add_qml_module(omafiles-backend
     backend/PreviewProvider.cpp
     backend/SyntaxHighlighter.h
     backend/SyntaxHighlighter.cpp
+    backend/MediaInfo.h
+    backend/MediaInfo.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
     backend/NetworkMounts.h

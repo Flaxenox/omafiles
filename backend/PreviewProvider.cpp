@@ -1,4 +1,5 @@
 #include "PreviewProvider.h"
+#include "MediaInfo.h"
 #include "SyntaxHighlighter.h"
 
 #include <QDateTime>
@@ -17,6 +18,29 @@ QString PreviewProvider::highlightCode(const QString &source, const QString &ext
 
 bool PreviewProvider::isHighlightable(const QString &extensionOrFilename) {
   return SyntaxHighlighter::isSupported(extensionOrFilename);
+}
+
+QVariantList PreviewProvider::audioMetadata(const QString &path) {
+  const MediaInfo::Metadata meta = MediaInfo::extract(path);
+  return MediaInfo::toVariantList(meta);
+}
+
+void PreviewProvider::requestAudio(const QString &path) {
+  const quint64 gen = ++m_audioGen;
+  QThreadPool::globalInstance()->start(QRunnable::create(
+      [this, path, gen]() {
+        const MediaInfo::Metadata meta = MediaInfo::extract(path);
+        const QVariantList info = MediaInfo::toVariantList(meta);
+
+        QMetaObject::invokeMethod(
+            this,
+            [this, path, info, gen]() {
+              if (gen != m_audioGen)
+                return;
+              emit audioReady(path, info);
+            },
+            Qt::QueuedConnection);
+      }));
 }
 
 QVariantMap PreviewProvider::info(const QString &path) {
