@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(omafiles LANGUAGES CXX)
+project(omafiles VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -126,7 +126,7 @@ install(DIRECTORY "${CMAKE_BINARY_DIR}/qml/Omafiles"
 # The executable is installed RENAMED to `omafiles` in ~/.local/bin (in the user's
 # PATH, without root). The QML is still loaded from the repo (OMAFILES_SOURCE_
 # DIR) during RC1: the repo is the stable install path for now; the
-# packaging with qrc/AUR comes after v1.0.0-rc1. The .desktop, the icon and
+# packaging with qrc/AUR comes after v0.4.0-rc1. The .desktop, the icon and
 # the FileManager1 D-Bus service are installed by scripts/install-integrations.sh
 # (idempotent, launched by AppBindings on open).
 set(OMAFILES_BIN_INSTALL_DIR "$ENV{HOME}/.local/bin"

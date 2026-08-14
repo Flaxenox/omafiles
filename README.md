@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0-beta3`; previously a Quickshell plugin). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.4.0-rc1`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -258,7 +258,7 @@ Because it's a normal Wayland window, it tiles under Hyprland like any app, open
 
 Omafiles is a thin QML front-end over a shared native backend:
 
-- **QML (front-end)** — the UI, split into `core/` (composition root, controller registry, main layout), `panels/` (the file lists and background panels), `dialogs/`, `shared/` (reusable visuals), `logic/` (controllers: navigation, selection, search, file ops, custom actions…), `services/` (thin singletons wrapping the backend), and `state/` (singletons holding hot state — current path, entries, selection, tabs…). No god object: controllers are owned by a single `ControllerRegistry` and receive their dependencies by property.
+- **QML (front-end)** — the UI, split into `core/` (composition root, controller registry, main layout), `panels/` (the file lists and background panels), `dialogs/`, `shared/` (reusable visuals), `logic/` (controllers: navigation, selection, search, file ops, custom actions…), and `state/` (singletons holding hot state — current path, entries, selection, tabs…). No god object: controllers are owned by a single `ControllerRegistry` and receive their dependencies by property.
 - **C++ (`Omafiles.Backend`)** — one shared QML module (`libomafiles-backend.so`) doing the native work, so there are no shell-outs where a native call suffices:
   - `DirectoryModel` — a native `readdir`/`stat` lister that exposes the sorted directory as an entries array (plus a content signature), with a `QFileSystemWatcher` for live refresh.
   - `FileOperations` — copy/move/trash/remove with real progress and cancellation, no partial residue.
@@ -272,7 +272,7 @@ A `--selfcheck` mode runs a headless test harness over the backend runners (77 c
 
 ## Status
 
-Under active development (`v0.9.0-beta3`) — feedback and issues welcome.
+Under active development (`v0.4.0-rc1`) — feedback and issues welcome.
 
 ## License
 

@@ -557,7 +557,7 @@ Item {
          + " of " + bgPanel.bgSearchEntries.length
          + (bgPanel.modelData.searchTruncated ? " · showing first 200" : ""))
       : (dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
-         + " · sort: " + hostSortOps.sortLabel())
+         + " · sort: " + (hostSortOps ? hostSortOps.sortLabel() : ""))
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.menu.text

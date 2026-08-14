@@ -10,6 +10,7 @@
 # Omafiles binary (single instance).
 
 import sys
+import shutil
 import urllib.parse
 from pathlib import Path
 
@@ -19,8 +20,8 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "org.freedesktop.FileManager1"
 OBJECT_PATH = "/org/freedesktop/FileManager1"
-# The standalone Qt6 binary (single instance) is launched from its stable path.
-OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
+# The standalone Qt6 binary (single instance) is launched from its portable path.
+OMAFILES_BIN = shutil.which("omafiles") or str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """
 <node>

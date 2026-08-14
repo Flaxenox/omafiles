@@ -3,6 +3,7 @@
 
 import sys
 import json
+import shutil
 from pathlib import Path
 
 import gi
@@ -11,7 +12,7 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "org.freedesktop.impl.portal.desktop.omafiles"
 OBJECT_PATH = "/org/freedesktop/portal/desktop"
-OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
+OMAFILES_BIN = shutil.which("omafiles") or str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """
 <node>

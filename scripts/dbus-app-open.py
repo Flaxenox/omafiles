@@ -16,6 +16,7 @@
 # "folder" or "folder\nname1\x1fname2" (reveal/select).
 
 import sys
+import shutil
 import urllib.parse
 from pathlib import Path
 
@@ -25,7 +26,7 @@ from gi.repository import Gio, GLib
 
 BUS_NAME = "io.github.percius04.omafiles"
 OBJECT_PATH = "/io/github/percius04/omafiles"
-OMAFILES_BIN = str(Path.home() / ".local" / "bin" / "omafiles")
+OMAFILES_BIN = shutil.which("omafiles") or str(Path.home() / ".local" / "bin" / "omafiles")
 
 INTROSPECTION_XML = """
 <node>
