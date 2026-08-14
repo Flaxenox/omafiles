@@ -12,7 +12,8 @@ import Omafiles.Backend as Backend
 // it resolves ~, absolute paths and paths relative to the current folder.
 Item {
   id: field
-  property Item root: null // for root.navigateTo
+  property Item root: null
+  property var navController: null
   property Item list: null // to return focus on hiding
 
   property var suggestions: []
@@ -58,7 +59,9 @@ Item {
   }
 
   function navigate(target) {
-    root.navigateTo(Backend.PathCompleter.expandTilde(target))
+    var dest = Backend.PathCompleter.expandTilde(target)
+    if (navController) navController.navigateTo(dest)
+    else if (root && root.navigateTo) root.navigateTo(dest)
     EditModeState.editingPath = false
   }
 

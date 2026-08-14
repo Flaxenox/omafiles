@@ -19,6 +19,8 @@ Item {
   id: bgPanel
   property Item hostRoot: null
   property Item hostPanelsRow: null
+  property Item hostNavController: null
+  property Item hostCommandFacade: null
   property Item hostVideoThumbs: null
   property Item hostDragDropOps: null
   property Item hostFileMeta: null
@@ -262,7 +264,7 @@ Item {
       // panels (Visual Sprint 3, B-06).
       width: parent.width - bgNavButtons.width - bgSearchPlaceholder.width - 2 * Style.spacing.controlGap
       height: parent.height
-      segments: hostRoot.pathSegmentsFor(bgPanel.modelData.path)
+      segments: hostCommandFacade ? hostCommandFacade.pathSegmentsFor(bgPanel.modelData.path) : []
       activePath: bgPanel.modelData.path
     }
 
@@ -428,15 +430,13 @@ Item {
         anchors.rightMargin: Style.spacing.rowPaddingX
         implicitHeight: bgFileRow.implicitHeight
 
-        readonly property bool isVid: hostRoot.isVideo(modelData)
+        readonly property bool isVid: Utils.isVideo(modelData)
         readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
         readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
-        // Native thumbnail (images/SVG/PDF) via ThumbnailProvider -- Phase
-        // 10.A: before, the WHOLE image file was loaded to paint it
-        // at 32 px. Same pattern as FileListRow, with THIS panel's path.
+        // Native thumbnail (images/SVG/PDF) via ThumbnailProvider
         readonly property string myPath: Utils.entryPath(bgPanel.modelData.path, modelData)
-        readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
+        readonly property bool wantsThumb: Utils.isImage(modelData) || Utils.isPdf(modelData)
           || modelData.name.toLowerCase().slice(-4) === ".svg"
         property string imgThumb: ""
         onMyPathChanged: {
@@ -478,15 +478,11 @@ Item {
           name: modelData.name
           isDir: modelData.type === "dir"
           isBroken: modelData.link === "broken"
-          fileIconGlyph: hostRoot.iconFor(modelData)
-          // The path is THIS panel's (bgPanel.modelData.path), not
-          // hostRoot.currentPath -- that one belongs to the active panel, and it was exactly
-          // what made the thumbnail fail here when this panel wasn't
-          // the active one.
+          fileIconGlyph: Utils.iconFor(modelData)
           thumbSource: bgRowContent.imgThumb ? Util.fileUrl(bgRowContent.imgThumb)
             : (bgRowContent.vidThumb ? Util.fileUrl(bgRowContent.vidThumb) : "")
-          metaText: hostFileMeta.metaFor(modelData, bgPanel.modelData.path)
-          metaTooltip: hostFileMeta.metaTooltipFor(modelData, bgPanel.modelData.path)
+          metaText: hostFileMeta ? hostFileMeta.metaFor(modelData, bgPanel.modelData.path) : ""
+          metaTooltip: hostFileMeta ? hostFileMeta.metaTooltipFor(modelData, bgPanel.modelData.path) : ""
         }
       }
 
@@ -499,15 +495,11 @@ Item {
         drag.axis: Drag.XAndYAxis
         onDoubleClicked: {
           if (bgPanel.bgSearching) {
-            // Global search result: REVEAL in this panel -- folder ->
-            // enter it; file -> go to its folder. navigateTabTo already leaves
-            // the tab object without search fields, so the search
-            // closes itself on navigating.
             hostTabOps.navigateTabTo(bgPanel.index, modelData.type === "dir" ? modelData.path : modelData.parent)
           } else if (modelData.type === "dir") {
             hostTabOps.navigateTabTo(bgPanel.index, Utils.joinPath(bgPanel.modelData.path, modelData.name))
           } else {
-            hostRoot.openWithDefault(Utils.entryPath(bgPanel.modelData.path, modelData))
+            if (hostNavController) hostNavController.openWithDefault(Utils.entryPath(bgPanel.modelData.path, modelData))
           }
         }
       }

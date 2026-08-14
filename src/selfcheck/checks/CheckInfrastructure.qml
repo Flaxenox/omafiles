@@ -61,10 +61,11 @@ QtObject {
         sc.add("Composition root API surface (open/close/facade)", function (done) {
           var c = sc._content
           if (!c) { done(false, "no composition root"); return }
+          var facade = c.commandFacade || c
           var ok = typeof c.open === "function"
             && typeof c.close === "function"
-            && typeof c.paletteCommands === "function"
-            && typeof c.itemActions === "function"
+            && typeof facade.paletteCommands === "function"
+            && typeof facade.itemActions === "function"
           done(ok, ok ? "" : "missing contract/facade functions")
         })
 
@@ -87,10 +88,11 @@ QtObject {
           if (!c) { done(false, "no composition root"); return }
           // Forces the evaluation of the builders: if a controller came in null
           // due to a registry injection failure, this would throw (see Phase 11.C).
-          var pal = c.paletteCommands().length
-          var items = c.itemActions().length            // 0 without selection: valid
-          var empty = c.emptyAreaActions().length
-          var segs = c.pathSegments().length
+          var facade = c.commandFacade || c
+          var pal = facade.paletteCommands().length
+          var items = facade.itemActions().length            // 0 without selection: valid
+          var empty = facade.emptyAreaActions().length
+          var segs = facade.pathSegments().length
           var ok = pal > 0 && empty > 0 && segs > 0 && (items >= 0)
           done(ok, "palette=" + pal + " emptyArea=" + empty + " segments=" + segs)
         })

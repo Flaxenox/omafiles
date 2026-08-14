@@ -35,7 +35,6 @@ Item {
   readonly property alias tabOps: tabOps
   readonly property alias selectionOps: selectionOps
   readonly property alias sortOps: sortOps
-  readonly property alias fileTypeUtils: fileTypeUtils
   readonly property alias bookmarkOps: bookmarkOps
   readonly property alias navController: navController
   readonly property alias openProc: openProc
@@ -55,7 +54,6 @@ Item {
     sortOps: sortOps
     actionEngine: actionEngine
     navController: navController
-    fileTypeUtils: fileTypeUtils
   }
 
   FileOps {
@@ -136,12 +134,6 @@ Item {
   SortOps {
     id: sortOps
     root: registry.root
-    fileTypeUtils: fileTypeUtils
-  }
-
-  FileTypeUtils {
-    id: fileTypeUtils
-    root: registry.root
   }
 
   BookmarkOps {
@@ -151,7 +143,6 @@ Item {
     tabOps: tabOps
     mountOps: mountOps
     navController: navController
-    fileTypeUtils: fileTypeUtils
   }
 
   NavigationController {
@@ -166,10 +157,7 @@ Item {
   }
 
   // Shared launcher to open with the default app / open a
-  // terminal here -- see openWithDefault()/openTerminalHere()
-  // above. ProcessRunner (with tracking), not Detached: real bug
-  // documented there (gio open vs xdg-open under Hyprland, wrapped in
-  // bash -c).
+  // terminal here.
   Backend.ProcessRunner {
     id: openProc
   }
@@ -204,7 +192,6 @@ Item {
     selectionOps: selectionOps
     bookmarkOps: bookmarkOps
     actionEngine: actionEngine
-    fileTypeUtils: fileTypeUtils
   }
 
   PreviewLoader {
@@ -212,9 +199,7 @@ Item {
     root: registry.root
     videoThumbs: videoThumbs
     fileMeta: fileMeta
-    fileTypeUtils: fileTypeUtils
   }
-
 
   PropertiesLoader {
     id: propertiesLoader

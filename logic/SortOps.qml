@@ -9,12 +9,9 @@ import "../Utils.js" as Utils
 // ("all business logic outside the UI") of the architecture prompt.
 Item {
   property Item root: null
-  property Item fileTypeUtils: null
-
 
   // true when the requested order is the one C++ already returns (DirectoryModel):
-  // name ascending. In that case DirLister does NOT re-sort (see _sorted).
-  // Phase 10.A.
+  // name ascending. In that case DirLister does NOT re-sort.
   readonly property bool isDefaultOrder: SortState.sortKey === "name" && !SortState.sortDesc
 
   function compareEntries(a, b) {
@@ -24,7 +21,7 @@ Item {
     } else if (SortState.sortKey === "mtime") {
       result = a.mtime - b.mtime
     } else if (SortState.sortKey === "type") {
-      var ea = fileTypeUtils.extOf(a.name), eb = fileTypeUtils.extOf(b.name)
+      var ea = Utils.extOf(a.name), eb = Utils.extOf(b.name)
       result = ea < eb ? -1 : (ea > eb ? 1 : 0)
     }
     if (result === 0) {

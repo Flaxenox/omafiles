@@ -21,7 +21,6 @@ import Omafiles.Backend as Backend
 Item {
   property Item root: null
   property Item actionEngine: null
-  property Item fileTypeUtils: null
 
   property Item archiveActions: null
   property Item fileOps: null
@@ -118,7 +117,7 @@ Item {
     var pattern = DialogsState.bulkRenamePattern
     bookmarkOps.addBulkRenameHistory(pattern)
     var pairs = entries.map(function (e, i) {
-      var ext = e.type === "dir" ? "" : (fileTypeUtils.extOf(e.name) ? "." + fileTypeUtils.extOf(e.name) : "")
+      var ext = e.type === "dir" ? "" : (Utils.extOf(e.name) ? "." + Utils.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
       var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
       return {
@@ -128,22 +127,12 @@ Item {
       }
     })
     ConflictState.pendingBulkRename = pairs
-    // Before, this used "mv -n" blindly: a pattern that produces an
-    // already-existing name (or that two items of the selection itself end up
-    // with the same new name) made mv -n not touch THAT particular item,
-    // with no notice of which one was left unrenamed. Now the
-    // conflicts with what already exists on disk are checked beforehand...
     var targetCounts = {}
     pairs.forEach(function (p) {
       if (p.newName === p.oldName) return
       targetCounts[p.newPath] = (targetCounts[p.newPath] || 0) + 1
     })
-    // ...and also the conflicts WITHIN the selection itself (two items
-    // that the pattern leaves with the same new name).
     ConflictState.bulkRenameInternalDupes = Object.keys(targetCounts).filter(function (k) { return targetCounts[k] > 1 }).length
-    // NATIVE conflict (BUG-01): existingPaths over the destinations that change
-    // name, instead of a `test -e` per pair. The total adds the internal
-    // dupes of the selection itself, same as before.
     var checkPaths = pairs.filter(function (p) { return p.newName !== p.oldName })
                           .map(function (p) { return p.newPath })
     var total = Backend.FileOperations.existingPaths(checkPaths).length + ConflictState.bulkRenameInternalDupes
@@ -156,7 +145,7 @@ Item {
   }
 
   function extractHere(entry) {
-    var ext = fileTypeUtils.extOf(entry.name)
+    var ext = Utils.extOf(entry.name)
     var path = Util.shellQuote(Utils.joinPath(NavState.currentPath, entry.name))
     var dir = Util.shellQuote(NavState.currentPath)
     var cmd, listCmd

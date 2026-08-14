@@ -112,3 +112,44 @@ function parseMounts(text) {
     return { label: decodeDeviceLabel(parts[0]), path: decodeDeviceLabel(parts[1]), device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
   })
 }
+
+// File type extension lists and glyph/type helpers
+var IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
+var VIDEO_EXTS = ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]
+var AUDIO_EXTS = ["mp3", "flac", "wav", "ogg", "m4a", "opus"]
+var ARCHIVE_EXTS = ["zip", "tar", "gz", "xz", "rar", "7z", "bz2", "zst"]
+var CODE_EXTS = ["js", "ts", "py", "lua", "sh", "c", "cpp", "h", "rs", "go", "html", "css", "json", "qml", "md", "yml", "yaml", "toml"]
+
+function extOf(name) {
+  var idx = (name || "").lastIndexOf(".")
+  return idx > 0 ? name.substring(idx + 1).toLowerCase() : ""
+}
+
+function iconFor(entry) {
+  if (!entry) return "󰈤"
+  var ext = extOf(entry.name)
+  if (ext === "iso") return "󰗮"
+  if (IMAGE_EXTS.indexOf(ext) >= 0) return "󰺰"
+  if (VIDEO_EXTS.indexOf(ext) >= 0) return "󰸬"
+  if (AUDIO_EXTS.indexOf(ext) >= 0) return "󰸪"
+  if (ARCHIVE_EXTS.indexOf(ext) >= 0) return "󰗄"
+  if (ext === "pdf") return "󰈦"
+  if (CODE_EXTS.indexOf(ext) >= 0) return "󱀫"
+  return "󰈤"
+}
+
+function isImage(entry) {
+  return !!entry && entry.type === "file" && IMAGE_EXTS.indexOf(extOf(entry.name)) >= 0
+}
+
+function isVideo(entry) {
+  return !!entry && entry.type === "file" && VIDEO_EXTS.indexOf(extOf(entry.name)) >= 0
+}
+
+function isAudio(entry) {
+  return !!entry && entry.type === "file" && AUDIO_EXTS.indexOf(extOf(entry.name)) >= 0
+}
+
+function isPdf(entry) {
+  return !!entry && entry.type === "file" && extOf(entry.name) === "pdf"
+}

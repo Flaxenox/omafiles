@@ -24,15 +24,8 @@ Item {
 
   property Item root
   property Item list
-  property var conflictActions
-  property var mountOps
-  property var fileOps
-  property var openWithOps
-  property var deleteOps
-  property var renameOps
-  property var archiveActions
-  property var clipboardOps
-  property var dragDropOps
+  property var controllers
+  property var commandFacade
 
   property alias deleteConfirm: deleteConfirm
   property alias renameConflictConfirm: renameConflictConfirm
@@ -50,7 +43,10 @@ Item {
     pattern: DialogsState.bulkRenamePattern
     history: BookmarksState.bulkRenameHistory
     onCloseRequested: DialogsState.bulkRenameOpen = false
-    onRenameRequested: function (pattern) { DialogsState.bulkRenamePattern = pattern; conflictActions.commitBulkRename() }
+    onRenameRequested: function (pattern) {
+      DialogsState.bulkRenamePattern = pattern
+      if (controllers && controllers.conflictActions) controllers.conflictActions.commitBulkRename()
+    }
     onFocusReturnRequested: list.forceActiveFocus()
   }
 
@@ -61,9 +57,12 @@ Item {
     connecting: DialogsState.networkConnecting
     uri: DialogsState.connectServerUri
     errorText: DialogsState.connectServerError
-    onConnectRequested: function (uri) { DialogsState.connectServerUri = uri; mountOps.commitConnectToServer() }
-    onCancelConnectingRequested: mountOps.cancelNetworkConnect()
-    onCloseRequested: mountOps.cancelConnectToServer()
+    onConnectRequested: function (uri) {
+      DialogsState.connectServerUri = uri
+      if (controllers && controllers.mountOps) controllers.mountOps.commitConnectToServer()
+    }
+    onCancelConnectingRequested: if (controllers && controllers.mountOps) controllers.mountOps.cancelNetworkConnect()
+    onCloseRequested: if (controllers && controllers.mountOps) controllers.mountOps.cancelConnectToServer()
     onFocusReturnRequested: list.forceActiveFocus()
   }
 
@@ -77,9 +76,9 @@ Item {
     hasDir: ChmodState.chmodHasDir
     recursive: ChmodState.chmodRecursive
     onCloseRequested: ChmodState.chmodOpen = false
-    onBitToggled: function (ownerIdx, bit) { fileOps.toggleChmodBit(ownerIdx, bit) }
+    onBitToggled: function (ownerIdx, bit) { if (controllers && controllers.fileOps) controllers.fileOps.toggleChmodBit(ownerIdx, bit) }
     onRecursiveToggled: ChmodState.chmodRecursive = !ChmodState.chmodRecursive
-    onApplyRequested: function (mode) { fileOps.commitChmod(mode) }
+    onApplyRequested: function (mode) { if (controllers && controllers.fileOps) controllers.fileOps.commitChmod(mode) }
   }
 
   // ---------- Properties ----------
@@ -98,8 +97,6 @@ Item {
   }
 
   // ---------- Keyboard shortcuts help ----------
-  // First component extracted to its own file (ShortcutsHelp.qml)
-  // -- see the comment there about why this piece was chosen first.
   ShortcutsHelp {
     anchors.fill: parent
     open: DialogsState.shortcutsHelpOpen
@@ -107,9 +104,6 @@ Item {
   }
 
   // ---------- Copy/move in progress ----------
-  // It doesn't block the rest of the window (no full-screen background
-  // MouseArea) -- cp/mv don't report real progress, so this is only
-  // "still alive" (animated dots) + Cancel, not a percentage bar.
   BorderSurface {
     id: actionBusyCard
     visible: ActionState.actionBusy
@@ -141,11 +135,7 @@ Item {
         Text {
           anchors.verticalCenter: parent.verticalCenter
           width: parent.width - cancelActionButton.width - parent.spacing
-          // Real percentage for copy/move (see
-          // startCopyProgress/actionProgressPct); animated dots
-          // for any other action, which has no "total
-          // size" to compute anything with.
-          text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : root.actionBusyDots)
+          text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : (root ? root.actionBusyDots : ""))
           font.pixelSize: Style.font.subtitle
           font.family: Style.font.family
           color: Color.menu.text
@@ -159,7 +149,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           Accessible.role: Accessible.Button
           Accessible.name: text
-          onClicked: root.cancelAction()
+          onClicked: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelAction()
         }
       }
 
@@ -175,9 +165,6 @@ Item {
           height: parent.height
           radius: height / 2
           color: Color.accent
-
-          // Phase 22: 120 ms without overshoot (before 200 ms). It only smooths the
-          // progress advance; no bounce/elastic.
           Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
         }
       }
@@ -188,7 +175,9 @@ Item {
     running: ActionState.actionBusy
     repeat: true
     interval: 400
-    onTriggered: root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
+    onTriggered: {
+      if (root) root.actionBusyDots = root.actionBusyDots.length >= 3 ? "" : root.actionBusyDots + "."
+    }
   }
 
   // ---------- Open with... ----------
@@ -198,7 +187,7 @@ Item {
     entry: PreviewState.openWithEntry
     apps: PreviewState.openWithApps
     onCloseRequested: PreviewState.openWithOpen = false
-    onAppSelected: function (appId) { openWithOps.launchWith(appId) }
+    onAppSelected: function (appId) { if (controllers && controllers.openWithOps) controllers.openWithOps.launchWith(appId) }
   }
 
   // ---------- Context menu ----------
@@ -215,20 +204,20 @@ Item {
     id: deleteConfirm
     anchors.fill: parent
     z: 10
-    opened: root.pendingDeleteNames.length > 0
+    opened: root && root.pendingDeleteNames && root.pendingDeleteNames.length > 0
     message: NavState.currentPath === Paths.trashDir
-      ? (root.pendingDeleteNames.length === 1
+      ? (root && root.pendingDeleteNames && root.pendingDeleteNames.length === 1
         ? "Delete \"" + root.pendingDeleteNames[0] + "\" PERMANENTLY? This cannot be undone."
-        : "Delete " + root.pendingDeleteNames.length + " items PERMANENTLY? This cannot be undone.")
-      : (root.pendingDeleteNames.length === 1
+        : "Delete " + (root && root.pendingDeleteNames ? root.pendingDeleteNames.length : 0) + " items PERMANENTLY? This cannot be undone.")
+      : (root && root.pendingDeleteNames && root.pendingDeleteNames.length === 1
         ? "Send \"" + root.pendingDeleteNames[0] + "\" to trash?"
-        : "Send " + root.pendingDeleteNames.length + " items to trash?")
+        : "Send " + (root && root.pendingDeleteNames ? root.pendingDeleteNames.length : 0) + " items to trash?")
     confirmText: "Delete"
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: root.pendingDeleteNames = []
-    onConfirmed: deleteOps.confirmDelete()
+    onCanceled: if (root) root.pendingDeleteNames = []
+    onConfirmed: if (controllers && controllers.deleteOps) controllers.deleteOps.confirmDelete()
   }
 
   ConfirmDialog {
@@ -243,8 +232,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: renameOps.cancelPendingRename()
-    onConfirmed: renameOps.runPendingRename(true)
+    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingRename()
+    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingRename(true)
   }
 
   ConfirmDialog {
@@ -259,8 +248,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: renameOps.cancelPendingNewFile()
-    onConfirmed: renameOps.runPendingNewFile(true)
+    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingNewFile()
+    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingNewFile(true)
   }
 
   ConfirmDialog {
@@ -275,8 +264,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: renameOps.cancelPendingNewFolder()
-    onConfirmed: renameOps.runPendingNewFolder(true)
+    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingNewFolder()
+    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingNewFolder(true)
   }
 
   ConfirmDialog {
@@ -291,8 +280,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: archiveActions.cancelPendingExtract()
-    onConfirmed: archiveActions.runPendingExtract()
+    onCanceled: if (controllers && controllers.archiveActions) controllers.archiveActions.cancelPendingExtract()
+    onConfirmed: if (controllers && controllers.archiveActions) controllers.archiveActions.runPendingExtract()
   }
 
   ConfirmDialog {
@@ -305,8 +294,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: archiveActions.cancelPendingCompress()
-    onConfirmed: archiveActions.runPendingCompress()
+    onCanceled: if (controllers && controllers.archiveActions) controllers.archiveActions.cancelPendingCompress()
+    onConfirmed: if (controllers && controllers.archiveActions) controllers.archiveActions.runPendingCompress()
   }
 
   ConfirmDialog {
@@ -321,8 +310,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: fileOps.cancelPendingBulkRename()
-    onConfirmed: fileOps.runPendingBulkRename()
+    onCanceled: if (controllers && controllers.fileOps) controllers.fileOps.cancelPendingBulkRename()
+    onConfirmed: if (controllers && controllers.fileOps) controllers.fileOps.runPendingBulkRename()
   }
 
   // ---------- Paste conflict ----------
@@ -330,9 +319,9 @@ Item {
     anchors.fill: parent
     open: ConflictState.pasteConflictOpen
     names: ConflictState.pasteConflictNames
-    onOverwriteRequested: clipboardOps.runPaste("overwrite")
-    onSkipRequested: clipboardOps.runPaste("skip")
-    onCancelRequested: clipboardOps.cancelPasteConflict()
+    onOverwriteRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.runPaste("overwrite")
+    onSkipRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.runPaste("skip")
+    onCancelRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.cancelPasteConflict()
   }
 
   // ---------- Drop conflict (drag & drop) ----------
@@ -340,9 +329,9 @@ Item {
     anchors.fill: parent
     open: ConflictState.dropConflictOpen
     names: ConflictState.dropConflictNames
-    onOverwriteRequested: conflictActions.runDrop("overwrite")
-    onSkipRequested: conflictActions.runDrop("skip")
-    onCancelRequested: dragDropOps.cancelDropConflict()
+    onOverwriteRequested: if (controllers && controllers.conflictActions) controllers.conflictActions.runDrop("overwrite")
+    onSkipRequested: if (controllers && controllers.conflictActions) controllers.conflictActions.runDrop("skip")
+    onCancelRequested: if (controllers && controllers.dragDropOps) controllers.dragDropOps.cancelDropConflict()
   }
 
   // ---------- Command palette (: or Ctrl+P) ----------
@@ -351,11 +340,11 @@ Item {
     open: PaletteState.paletteOpen
     query: PaletteState.paletteQuery
     index: PaletteState.paletteIndex
-    commands: PaletteState.paletteOpen ? root.filteredPaletteCommands() : []
+    commands: PaletteState.paletteOpen && commandFacade ? commandFacade.filteredPaletteCommands() : []
     onQueryEdited: function (text) { PaletteState.paletteQuery = text; PaletteState.paletteIndex = 0 }
-    onCloseRequested: root.closePalette()
+    onCloseRequested: if (commandFacade) commandFacade.closePalette()
     onIndexRequested: function (idx) { PaletteState.paletteIndex = idx }
-    onCommandActivated: function (idx) { root.runPaletteCommand(idx) }
+    onCommandActivated: function (idx) { if (commandFacade) commandFacade.runPaletteCommand(idx) }
     onFocusReturnRequested: list.forceActiveFocus()
   }
 }

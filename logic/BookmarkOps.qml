@@ -1,16 +1,12 @@
 import QtQuick
 import "../state"
+import "../Utils.js" as Utils
 
 // Bookmarks, recents, bulk-rename history and drive/network
-// icons -- business logic that lived in core despite not
-// depending on almost anything (root + persistence, and tabOps/mountOps only for
-// the two network-drive menu actions). Found in the same
-// audit as logic/SortOps.qml and logic/FileTypeUtils.qml. No
-// 3 files (Sidebar.qml, OpenWithOps.qml, ConflictActions.qml).
+// icons.
 Item {
   property Item root: null
   property Item navController: null
-  property Item fileTypeUtils: null
 
   property Item persistence: null
   property Item tabOps: null
@@ -50,40 +46,27 @@ Item {
 
   // ---------- Bookmarks / drive icons ----------
   function removeBookmark(path) {
-    // Trash is fixed -- it cannot be removed (see the twin guard in
-    // bookmarkActions() of core, which does not even offer the
-    // option; this is the real guard, in case it is one day called from
-    // somewhere else).
     if (path === Paths.trashDir) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.filter(function (b) { return b.path !== path })
     persistence.saveBookmarks()
   }
 
-  // type: "dir" (default, compatible with bookmarks saved before
-  // this field existed -- they were all folder ones) or "file".
+  // type: "dir" (default) or "file".
   function addBookmark(path, label, type) {
     if (BookmarksState.bookmarks.some(function (b) { return b.path === path })) return
     BookmarksState.bookmarks = BookmarksState.bookmarks.concat([{ label: label, path: path, type: type || "dir" }])
     persistence.saveBookmarks()
   }
 
-  // Sidebar icon -- Home/Trash by special path, Pictures/
-  // Videos/Music reuse the same glyph that iconFor() already uses for those
-  // file types (so there is no need to maintain two icon catalogs), and
-  // any other folder (Documents, Downloads, Projects, Almacén,
-  // manually added bookmarks...) falls to the generic folder.
+  // Sidebar icon -- Home/Trash by special path, Pictures/Videos/Music reuse glyphs
   function iconForBookmark(modelData) {
     if (modelData.path === Paths.homeDir) return "\u{F015}"
     if (modelData.path === Paths.trashDir) return "\u{F0A7A}"
-    // Bookmark of a loose file (not a folder) -- real icon by
-    // extension, like in the main list, instead of guessing by
-    // label name (that only makes sense for the special
-    // folders below).
-    if (modelData.type === "file") return fileTypeUtils.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
+    if (modelData.type === "file") return Utils.iconFor({ type: "file", name: modelData.path.substring(modelData.path.lastIndexOf("/") + 1) })
     var label = modelData.label.toLowerCase()
-    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return fileTypeUtils.iconFor({ name: "x.jpg" })
-    if (label.indexOf("video") >= 0) return fileTypeUtils.iconFor({ name: "x.mp4" })
-    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return fileTypeUtils.iconFor({ name: "x.mp3" })
+    if (label.indexOf("picture") >= 0 || label.indexOf("imagen") >= 0) return Utils.iconFor({ name: "x.jpg" })
+    if (label.indexOf("video") >= 0) return Utils.iconFor({ name: "x.mp4" })
+    if (label.indexOf("music") >= 0 || label.indexOf("música") >= 0) return Utils.iconFor({ name: "x.mp3" })
     return "\u{F024B}"
   }
 
@@ -92,15 +75,10 @@ Item {
   }
 
   function iconForMount(mount) {
-    // Optical/ISO: a mounted ISO appears as a loop device
-    // with fstype iso9660 OR udf (Mafia: udf) -- previously only iso9660 was checked,
-    // so the ISO fell to the USB icon. It is detected by optical fstype OR by
-    // /dev/loop*, and uses the disc icon (same glyph as the .iso file).
     var fs = (mount.fstype || "").toLowerCase()
     var optical = fs === "iso9660" || fs === "udf"
       || (mount.device || "").indexOf("/dev/loop") === 0
-    if (optical) return fileTypeUtils.iconFor({ type: "file", name: "x.iso" })
-    // Removable (USB/external disk) vs internal partition.
+    if (optical) return Utils.iconFor({ type: "file", name: "x.iso" })
     return mount.removable ? "\u{F0553}" : "\u{F02CA}"
   }
 

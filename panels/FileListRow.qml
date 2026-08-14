@@ -24,6 +24,8 @@ CursorSurface {
   property Item hostRoot: null
   property Item hostListView: null
   property Item hostCard: null
+  property Item hostNavController: null
+  property Item hostCommandFacade: null
   property Item hostDragDropOps: null
   property Item hostVideoThumbs: null
   property Item hostFileMeta: null
@@ -78,7 +80,7 @@ CursorSurface {
     anchors.rightMargin: Style.spacing.rowPaddingX
     implicitHeight: activeFileRow.implicitHeight
 
-    readonly property bool isVid: hostRoot.isVideo(modelData)
+    readonly property bool isVid: Utils.isVideo(modelData)
     readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, NavState.currentPath) : ""
     readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
 
@@ -87,7 +89,7 @@ CursorSurface {
     // as loading the full image at 32px did. imgThumb is the path of the
     // cached thumbnail ("" until it's ready -> the glyph is shown).
     readonly property string myPath: Utils.entryPath(NavState.currentPath, modelData)
-    readonly property bool wantsThumb: hostRoot.isImage(modelData) || hostRoot.isPdf(modelData)
+    readonly property bool wantsThumb: Utils.isImage(modelData) || Utils.isPdf(modelData)
       || modelData.name.toLowerCase().slice(-4) === ".svg"
     property string imgThumb: ""
     // onMyPathChanged (not Component.onCompleted) because the ListView recycles
@@ -138,7 +140,7 @@ CursorSurface {
       isBroken: modelData.link === "broken"
       highlighted: rowSurface.current
       dimmed: ClipboardState.clipboardMode === "cut" && ClipboardState.clipboardPaths.indexOf(Utils.entryPath(NavState.currentPath, modelData)) >= 0
-      fileIconGlyph: hostRoot.iconFor(modelData)
+      fileIconGlyph: Utils.iconFor(modelData)
       thumbSource: rowContent.imgThumb ? Util.fileUrl(rowContent.imgThumb)
         : (rowContent.vidThumb ? Util.fileUrl(rowContent.vidThumb) : "")
       metaText: hostFileMeta.metaFor(modelData)
@@ -219,19 +221,15 @@ CursorSurface {
       if (mouse.button === Qt.RightButton) {
         if (!hostSelectionOps.isSelected(index)) hostSelectionOps.selectOnly(index)
         var pos = mapToItem(hostCard, mouse.x, mouse.y)
-        hostRoot.openContextMenu(pos.x, pos.y, hostRoot.itemActions())
+        if (hostCommandFacade) hostCommandFacade.openContextMenu(pos.x, pos.y, hostCommandFacade.itemActions())
         return
       }
       if (mouse.modifiers & Qt.ControlModifier) hostSelectionOps.toggleSelect(index)
       else if (mouse.modifiers & Qt.ShiftModifier) hostSelectionOps.selectRange(index)
       else hostSelectionOps.selectOnly(index)
     }
-    // hasPendingEdit: don't enter (and above all don't enter
-    // a compressed archive) while there is an unconfirmed rename/
-    // new-folder/new-file in this
-    // same row or another -- see commitRename() for the
-    // real bug this avoids.
-    onDoubleClicked: if (!hostRoot.hasPendingEdit) hostRoot.enter(modelData)
+    // hasPendingEdit: don't enter while there is an unconfirmed rename/new-folder/new-file
+    onDoubleClicked: if ((!hostRoot || !hostRoot.hasPendingEdit) && hostNavController) hostNavController.enter(modelData)
   }
 
   // Invisible proxy that MouseArea.drag moves -- the only thing that

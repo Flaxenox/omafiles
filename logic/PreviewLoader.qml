@@ -20,7 +20,6 @@ import Omafiles.Backend as Backend
 // (ffmpegthumbnailer) and the audio metadata (ffprobe).
 Item {
   property Item root: null
-  property Item fileTypeUtils: null
 
   property Item videoThumbs: null
   property Item fileMeta: null
@@ -49,10 +48,10 @@ Item {
     PreviewContentState.previewPdfImage = ""
     PreviewContentState.previewImage = ""
     PreviewContentState.previewAudioInfo = []
-    var ext = fileTypeUtils.extOf(entry.name)
+    var ext = Utils.extOf(entry.name)
     var path = Utils.entryPath(NavState.currentPath, entry)
     PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
-    if (PreviewContentState.previewIsText && !fileTypeUtils.isImage(entry)) {
+    if (PreviewContentState.previewIsText && !Utils.isImage(entry)) {
       // NATIVE plain text (PreviewProvider): reads up to 256 KB on a thread,
       // with cancellation by generation if the selection changes. The
       // result arrives via textReady (see the Connections below).
@@ -67,29 +66,23 @@ Item {
         highlightPreviewProc.start([Paths.resourceDir + "/highlight-preview.sh", path, "4000", ext])
       }
     }
-    // Image and PDF: scaled render + cache via ThumbnailProvider. request()
-    // returns the path if it is already cached, or "" and generates it async ->
-    // the Connections of ThumbnailProvider.ready picks it up (re-requests at
-    // preview size, whose cache key does not match the 256px thumbnail of
-    // the list).
-    if (fileTypeUtils.isImage(entry)) {
+    // Image and PDF: scaled render + cache via ThumbnailProvider.
+    if (Utils.isImage(entry)) {
       PreviewContentState._previewImageOwner = reqId
       PreviewContentState.previewImage = Backend.ThumbnailProvider.request(path, previewSize)
     }
-    if (fileTypeUtils.isPdf(entry)) {
+    if (Utils.isPdf(entry)) {
       PreviewContentState._previewPdfOwner = reqId
       PreviewContentState.previewPdfImage = Backend.ThumbnailProvider.request(path, previewSize)
     }
-    if (fileTypeUtils.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
-    if (fileTypeUtils.isAudio(entry)) {
+    if (Utils.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
+    if (Utils.isAudio(entry)) {
       PreviewContentState._previewAudioOwner = reqId
       audioInfoProc.start(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path])
     }
   }
 
-  // Plain text ready (PreviewProvider). Owner guard same as before: if it
-  // moved to another item, it is discarded (and PreviewProvider already
-  // cancels it on its own via the generation).
+  // Plain text ready (PreviewProvider).
   Connections {
     target: Backend.PreviewProvider
     function onTextReady(path, content, encoding, bytes, lines, truncated) {
@@ -98,18 +91,16 @@ Item {
     }
   }
 
-  // Image/PDF thumbnail at preview size ready. The ready signal does not
-  // carry the size, so it is re-requested at previewSize: it returns the path
-  // only when THAT size is cached (ignores the 256px one of the list).
+  // Image/PDF thumbnail at preview size ready.
   Connections {
     target: Backend.ThumbnailProvider
     function onReady(path, thumbPath) {
       var e = PreviewContentState.previewEntry
       if (!e || path !== Utils.entryPath(NavState.currentPath, e)) return
-      if (fileTypeUtils.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
+      if (Utils.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
         var p = Backend.ThumbnailProvider.request(path, previewSize)
         if (p) PreviewContentState.previewImage = p
-      } else if (fileTypeUtils.isPdf(e) && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) {
+      } else if (Utils.isPdf(e) && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) {
         var q = Backend.ThumbnailProvider.request(path, previewSize)
         if (q) PreviewContentState.previewPdfImage = q
       }

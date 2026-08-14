@@ -1,19 +1,9 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../Utils.js" as Utils
 
-// Sidebar (bookmarks/recents/drives/network). Tenth component
-// extracted from core, and the first that is not a modal dialog --
-// it's always visible, so no property needs to be forced by
-// hand to test it live, just restart the shell and look.
-//
-// More interface surface than the previous ones: the icon/context-menu-action
-// builders (iconForBookmark, bookmarkActions,
-// etc.) are passed as function references -- QML allows treating a
-// root-level function as a normal value -- instead of trying to
-// replicate their logic here (unlike ChmodPanel.qml, where it WAS
-// worth reproducing a small calculation locally; here there are
-// too many functions and some read Paths.homeDir/trashDir).
+// Sidebar (bookmarks/recents/drives/network).
 Item {
   id: root
 
@@ -24,16 +14,11 @@ Item {
   property string currentPath: ""
   property string dropHoverPath: ""
   // Device path whose ejection is in progress -> eject button spinner
-  //. Fed by MainLayout from MountsState.ejectingDevice.
   property string ejectingDevice: ""
 
-  // Item against which mapToItem() computes the context menu's
-  // position -- in core it's "card" (the panel's root BorderSurface),
-  // which a separate component cannot see on its own.
   property Item positionRelativeTo: null
 
   property var iconForBookmark: null
-  property var iconFor: null
   property var iconForMount: null
   property var iconForNetworkMount: null
   property var openContextMenu: null
@@ -213,7 +198,7 @@ Item {
           anchors.leftMargin: Style.spacing.sm
           width: Style.font.title
           height: Style.font.title
-          text: root.iconFor({ type: "file", name: parent.modelData.name })
+          text: Utils.iconFor({ type: "file", name: parent.modelData.name })
           fontFamily: Style.font.family
           fontSize: Style.font.icon
           color: Color.menu.text

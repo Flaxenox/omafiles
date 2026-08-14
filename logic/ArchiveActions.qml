@@ -15,7 +15,6 @@ Item {
   property Item root: null
   property Item actionEngine: null
   property Item navController: null
-  property Item fileTypeUtils: null
 
   // The main ListView (id "list" in core) -- refreshArchiveListing()
   // resets its scroll just like refresh() does with a normal folder.
@@ -45,24 +44,16 @@ Item {
   }
 
   // Extracts ONLY that file to a temporary cache (not the whole archive) and
-  // opens it with the default app -- "unzip -p"/"tar xO"/etc. dump a
-  // single member to stdout without touching disk beyond that output file,
-  // just as efficient as opening a normal file even if the .zip is
-  // huge.
+  // opens it with the default app.
   function openFileInArchive(entry) {
     var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-    var ext = fileTypeUtils.extOf(ArchiveState.archivePath)
+    var ext = Utils.extOf(ArchiveState.archivePath)
     var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Backend.ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
     else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    // "--" before the MEMBER (not the archive): a member starting with "-"
-    // (e.g. "-foo", "--bar", "-") would be taken by tar as options and would fail
-    // ("multiple archives require -M"). zip/7z/rar already protect the member
-    // by coming after the archive's "--"; tar needs its own here (BUG-05).
-    // The archive after "xf" is always an absolute Omafiles path, never "-".
     else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out
@@ -71,12 +62,12 @@ Item {
 
   function isArchive(entry) {
     if (entry.type === "dir") return false
-    var ext = fileTypeUtils.extOf(entry.name)
+    var ext = Utils.extOf(entry.name)
     return ext === "zip" || ext === "7z" || ext === "rar" || FileTypeConfig.tarExt.indexOf(ext) >= 0
   }
 
   function isIso(entry) {
-    return entry.type !== "dir" && fileTypeUtils.extOf(entry.name) === "iso"
+    return entry.type !== "dir" && Utils.extOf(entry.name) === "iso"
   }
 
   function runPendingCompress() {
