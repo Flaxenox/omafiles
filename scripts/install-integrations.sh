@@ -67,7 +67,13 @@ APPS_DIR="$XDG_DATA/applications"
 DBUS_SERVICES_DIR="$XDG_DATA/dbus-1/services"
 ICON_DIR="$XDG_DATA/icons/hicolor/scalable/apps"
 PORTALS_DIR="$XDG_DATA/xdg-desktop-portal/portals"
-mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR" "$PORTALS_DIR"
+mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR" "$PORTALS_DIR" "$RES_DIR"
+
+# Ensure runtime scripts are available in the canonical resource directory
+# without requiring a full cmake --install (e.g. when run from a plugin repo).
+if [[ "$SELF_RES" != "$RES_DIR" && -d "$SELF_RES/scripts" ]]; then
+  cp -r "$SELF_RES/scripts" "$RES_DIR/"
+fi
 
 # Real bug: the .desktop below references Icon=omafiles, but nothing
 # ever installed the SVG itself -- it was placed by hand on this specific
@@ -97,7 +103,7 @@ Type=Application
 Name=Omafiles
 GenericName=File manager
 Comment=Custom file manager for Omarchy
-Exec=$SELF_RES/scripts/open-path.sh %u
+Exec=$RES_DIR/scripts/open-path.sh %u
 Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
@@ -111,7 +117,7 @@ EOF
 cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
 [D-BUS Service]
 Name=$APP_ID
-Exec=$SELF_RES/scripts/dbus-app-open.py
+Exec=$RES_DIR/scripts/dbus-app-open.py
 EOF
 
 # D-Bus service org.freedesktop.FileManager1 ("Show in file manager" of
@@ -119,14 +125,14 @@ EOF
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.FileManager1.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.FileManager1
-Exec=$SELF_RES/scripts/dbus-filemanager1.py
+Exec=$RES_DIR/scripts/dbus-filemanager1.py
 EOF
 
 # D-Bus service org.freedesktop.impl.portal.desktop.omafiles
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.impl.portal.desktop.omafiles.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.impl.portal.desktop.omafiles
-Exec=$SELF_RES/scripts/dbus-filechooser.py
+Exec=$RES_DIR/scripts/dbus-filechooser.py
 EOF
 
 # xdg-desktop-portal backend configuration file
