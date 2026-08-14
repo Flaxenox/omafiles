@@ -36,9 +36,8 @@ Item {
   // panel: scroll/selection reset), must use this signal.
   signal listed()
 
-  // The content of the watched folder changed (re-forwards dirModel.
-  // directoryChanged, native watching). NavigationController hooks
-  // here instead of inotifywait for its debounce + refresh.
+  // The content of the watched folder changed (re-forwards dirModel.directoryChanged).
+  // NavigationController hooks here for its debounce + refresh.
   signal directoryChanged()
 
   property string _targetPath: ""
@@ -72,9 +71,7 @@ Item {
     }
   }
 
-  // Native watching of the current directory. Returns false if
-  // the model could not watch (invalid path, descriptor limit) so
-  // the caller falls back to inotifywait.
+  // Native watching of the current directory via QFileSystemWatcher.
   function watch(path) {
     return dirModel.watch(path)
   }

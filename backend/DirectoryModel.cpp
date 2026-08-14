@@ -307,10 +307,8 @@ void DirectoryModel::listMany(const QStringList &paths, bool showHidden) {
 bool DirectoryModel::watch(const QString &path) {
   if (!m_watcher) {
     m_watcher = new QFileSystemWatcher(this);
-    // QFileSystemWatcher uses the kernel's inotify directly (without forking
-    // inotifywait). It re-emits a plain directoryChanged(); the debounce and
-    // the refresh -- with its guard against refreshing-mid-rename --
-    // stay in NavigationController.
+    // QFileSystemWatcher uses the kernel inotify directly. It re-emits directoryChanged();
+    // the debounce + refresh with rename-guard stay in NavigationController.
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this,
             [this](const QString &changed) {
               // Cancellation token: only propagate the event if it is from the

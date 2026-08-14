@@ -124,29 +124,13 @@ Item {
     }
   }
 
-  // Live refresh of the ACTIVE panel -- before, nothing refreshed on its own:
-  // plugging in a USB or creating a file via terminal didn't appear until F5.
-  // Deliberately only the active panel, not each background panel (same
-  // criterion already applied throughout the file: background panels have
-  // reduced functionality). If inotify-tools is not installed, the
-  // Process simply fails to start and this stays as a silent
-  // no-op -- same "optional, degrades gracefully" pattern as
-  // ffmpegthumbnailer/pygmentize/pdftoppm.
+  // Live refresh of the ACTIVE panel: starts native QFileSystemWatcher via DirLister.
   function startDirWatch(path) {
-    // Phase 6.D (josema): NATIVE watching first (QFileSystemWatcher
-    // inside DirectoryModel, kernel inotify without forking
-    // inotifywait). If the model can't watch (descriptor limit,
-    // odd path), watch() returns false and it falls back to the previous inotifywait
-    // -- fallback required by BACKEND_DESIGN.md, not a blind replacement.
-    if (!dirLister.watch(path)) {
-      dirWatchProc.start(["inotifywait", "-m", "-q", "-e",
-        "create,delete,moved_to,moved_from,modify,attrib,close_write", "--", path])
-    }
+    dirLister.watch(path)
   }
 
   function stopDirWatch() {
     dirLister.unwatch()
-    dirWatchProc.stop()
   }
 
   // ---------- Navigation / history ----------
@@ -296,17 +280,6 @@ Item {
     navigateTo(idx > 0 ? NavState.currentPath.substring(0, idx) : "/")
   }
 
-  // "close_write" (file closed after writing) instead of trusting only
-  // "modify" -- so an ongoing large copy doesn't trigger a refresh
-  // for every block written, only when the file is really
-  // ready. inotifywait -m never ends on its own (monitor mode); it is killed
-  // explicitly (stop()) when navigating to another folder or closing the
-  // window, see startDirWatch()/stopDirWatch().
-  Backend.ProcessWatcher {
-    id: dirWatchProc
-    onLineRead: dirWatchDebounce.restart()
-  }
-
   Timer {
     id: dirWatchDebounce
     // Several events almost back to back (copying/moving/deleting several files
@@ -314,14 +287,11 @@ Item {
     interval: 400
     // Don't refresh while there is a name half-written -- a
     // refresh in the middle of a rename could reorder the list and leave
-    // renamingIndex pointing to the wrong row (same kind of bug
-    // already seen and fixed for the case of entering an archive mid-
-    // rename). That particular refresh is lost, but the next real
-    // event (or a normal navigation) recovers it.
+    // renamingIndex pointing to the wrong row.
     onTriggered: if (!root.hasPendingEdit) refresh()
   }
 
-  // Owner of the real listing Process -- see logic/DirLister.qml. There is
+  // Owner of the directory listing model -- see logic/DirLister.qml. There is
   // only ONE instance here (the active panel only lists one path at a
   // time); each BackgroundPanel has its own.
   DirLister {
@@ -331,10 +301,7 @@ Item {
     sortOps: navCtrl.sortOps
     onPathErrorChanged: NavState.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)
-    // Native watching: the model signals a change -> same debounce +
-    // hasPendingEdit guard as always (below), only the SOURCE of the
-    // notice changes (before dirWatchProc/inotifywait, now the model's
-    // QFileSystemWatcher). inotifywait remains as fallback (see startDirWatch).
+    // Native watching: the model's QFileSystemWatcher signals a change -> debounced refresh.
     onDirectoryChanged: dirWatchDebounce.restart()
   }
 }

@@ -101,13 +101,9 @@ public:
   // async contract and same listed()/entries signal.
   Q_INVOKABLE void listMany(const QStringList &paths, bool showHidden = false);
 
-  // Native watching of the last requested directory. Starts a
-  // QFileSystemWatcher over `path` (kernel inotify via Qt, WITHOUT forking
-  // inotifywait). Emits directoryChanged() when its content changes; the
-  // debounce + the refresh are still done by NavigationController, which
-  // keeps its guard against not-refreshing-mid-rename. Returns
-  // false if it could not watch (invalid path, descriptor limit) ->
-  // the caller falls back to ProcessWatcher/inotifywait.
+  // Native watching of the last requested directory via QFileSystemWatcher.
+  // Emits directoryChanged() when its content changes; the debounce + refresh
+  // are handled in NavigationController.
   Q_INVOKABLE bool watch(const QString &path);
   // Stops watching. No-op if there was no watching.
   Q_INVOKABLE void unwatch();
