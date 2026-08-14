@@ -37,6 +37,7 @@ Item {
     PreviewContentState.previewRequestId += 1
     var reqId = PreviewContentState.previewRequestId
     PreviewContentState.previewEntry = entry
+    PreviewState.previewOpen = true
     var ext = Utils.extOf(entry.name)
     var path = Utils.entryPath(NavState.currentPath, entry)
     var isImg = Utils.isImage(entry)

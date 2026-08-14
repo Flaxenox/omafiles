@@ -63,7 +63,7 @@ Item {
       PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
       Image {
-        visible: root.isImageEntry && root.imageSource !== ""
+        visible: root.isImageEntry
         width: parent.width
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
@@ -73,13 +73,13 @@ Item {
       }
 
       Image {
-        visible: root.isVideoEntry && root.videoThumbSource !== ""
+        visible: root.isVideoEntry
         width: parent.width
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         cache: true
-        source: root.videoThumbSource
+        source: root.isVideoEntry ? root.videoThumbSource : ""
       }
 
       Flickable {
@@ -118,13 +118,13 @@ Item {
       }
 
       Image {
-        visible: root.isPdfEntry && root.pdfImageSource !== ""
+        visible: root.isPdfEntry
         width: parent.width
         height: parent.height - 60
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         cache: true
-        source: root.pdfImageSource
+        source: root.isPdfEntry ? root.pdfImageSource : ""
       }
 
       Column {
