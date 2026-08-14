@@ -29,28 +29,16 @@ QtObject {
         // trash with an item and confirms that the script empties it. A
         // regression that doesn't discover the roots (like the trash-roots.sh one) would leave
         // the item undeleted and would make this fail.
-        sc.add("empty-trash.sh empties an isolated home trash (BUG-02)", function (done) {
-          var fakeHome = sc.dir + "/et-home"
-          var tFiles = fakeHome + "/.local/share/Trash/files"
-          var tInfo = fakeHome + "/.local/share/Trash/info"
-          var fakeBin = sc.dir + "/et-bin"
-          var setup =
-            "mkdir -p " + sc._q(tFiles) + " " + sc._q(tInfo) + " " + sc._q(fakeBin) + " && " +
-            "printf x > " + sc._q(tFiles + "/victim.txt") + " && " +
-            "printf '[Trash Info]\\n' > " + sc._q(tInfo + "/victim.txt.trashinfo") + " && " +
-            "printf '#!/bin/sh\\n' > " + sc._q(fakeBin + "/findmnt") + " && chmod +x " + sc._q(fakeBin + "/findmnt")
-          sc._sh(["bash", "-c", setup], function (r0) {
-            if (r0.exitCode !== 0) { done(false, "setup failed: " + r0.stderr); return }
-            var run = "env -i HOME=" + sc._q(fakeHome) + " PATH=" + sc._q(fakeBin) + ":/usr/bin:/bin bash "
-              + sc._q(sc.resourceRoot + "/empty-trash.sh")
-            sc._sh(["bash", "-c", run], function (r1) {
-              sc._sh(["bash", "-c", "ls -A " + sc._q(tFiles) + " | wc -l"], function (r2) {
-                var remaining = parseInt(String(r2.stdout).trim(), 10)
-                done(r1.exitCode === 0 && remaining === 0,
-                     "exit=" + r1.exitCode + " remaining items=" + remaining)
-              })
-            })
-          })
+        sc.add("Backend.FileOperations emptyTrash empties trash roots (BUG-02)", function (done) {
+          function onFinished(op, path) {
+            if (op !== "emptyTrash") return
+            Backend.FileOperations.finished.disconnect(onFinished)
+            var info = Backend.FileOperations.trashInfo()
+            var ok = (info.length === 0)
+            done(ok, ok ? "trash emptied cleanly: remaining=" + info.length : "items remained: " + info.length)
+          }
+          Backend.FileOperations.finished.connect(onFinished)
+          Backend.FileOperations.emptyTrash()
         })
 
         // list-archive.sh over a deterministic .tar built from listDir

@@ -98,6 +98,11 @@ public:
   // .trashinfo; on other disks it uses their .Trash-$UID as the spec mandates).
   Q_INVOKABLE void trash(const QString &path);
 
+  // Empties all active XDG trash roots (home trash + disk trashes):
+  // deletes all files in <root>/files/ and all metadata in <root>/info/*.trashinfo.
+  // Cooperative cancellation via cancel(). Emits finished("emptyTrash", "") or error.
+  Q_INVOKABLE void emptyTrash();
+
   // Restores from the trash the file `path` (inside <root>/files/):
   // reads its <root>/info/<name>.trashinfo, moves it back to its original
   // path (Path=, percent-decoded) and deletes the .trashinfo.

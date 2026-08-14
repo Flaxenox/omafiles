@@ -70,7 +70,7 @@ Item {
       { label: "Keyboard shortcuts", run: function () { DialogsState.shortcutsHelpOpen = true } }
     ]
     if (NavState.currentPath === Paths.trashDir) {
-      cmds.push({ label: "Empty trash", run: function () { if (actionEngine) actionEngine.runAction("bash " + Utils.shellQuote(Paths.resourceDir + "/empty-trash.sh"), "Emptying trash…") } })
+      cmds.push({ label: "Empty trash", run: function () { if (actionEngine) actionEngine.emptyTrash() } })
       cmds.push({ label: "Restore", enabled: hasSelection, run: function () { fileOps.restoreFromTrash() } })
     }
     if (entry && entry.type !== "dir" && archiveActions.isArchive(entry)) {
@@ -202,7 +202,7 @@ Item {
   function emptyAreaActions() {
     var actions = []
     if (NavState.currentPath === Paths.trashDir) {
-      actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.runAction("bash " + Utils.shellQuote(Paths.resourceDir + "/empty-trash.sh"), "Emptying trash…") } })
+      actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.emptyTrash() } })
     } else if (!ArchiveState.inArchive) {
       actions.push({ label: "New folder", action: function () { renameOps.startNewFolder() } })
       actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
@@ -242,7 +242,7 @@ Item {
       actions.push({ label: "Open in new tab", action: function () { tabOps.openInNewTab(bookmark.path) } })
     }
     if (bookmark.path === Paths.trashDir) {
-      actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.runAction("bash " + Utils.shellQuote(Paths.resourceDir + "/empty-trash.sh"), "Emptying trash…") } })
+      actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.emptyTrash() } })
     } else {
       actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
     }

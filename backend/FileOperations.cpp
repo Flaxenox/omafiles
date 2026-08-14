@@ -447,6 +447,43 @@ void FileOperations::trash(const QString &path) {
   });
 }
 
+void FileOperations::emptyTrash() {
+  m_cancelled.store(false);
+  run(QStringLiteral("emptyTrash"), QString(), [this]() -> Result {
+    QString err;
+    const QStringList roots = discoverTrashRoots();
+    for (const QString &root : roots) {
+      if (m_cancelled.load())
+        return {false, QStringLiteral("cancelled")};
+
+      const QString filesDir = root + QStringLiteral("/files");
+      const QString infoDir = root + QStringLiteral("/info");
+
+      if (QFileInfo(filesDir).isDir()) {
+        const QFileInfoList files = QDir(filesDir).entryInfoList(
+            QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden |
+            QDir::System);
+        for (const QFileInfo &fi : files) {
+          if (m_cancelled.load())
+            return {false, QStringLiteral("cancelled")};
+          removeTree(fi.absoluteFilePath(), m_cancelled, err);
+        }
+      }
+
+      if (QFileInfo(infoDir).isDir()) {
+        const QFileInfoList infos = QDir(infoDir).entryInfoList(
+            {QStringLiteral("*.trashinfo")}, QDir::Files | QDir::Hidden);
+        for (const QFileInfo &fi : infos) {
+          if (m_cancelled.load())
+            return {false, QStringLiteral("cancelled")};
+          QFile::remove(fi.absoluteFilePath());
+        }
+      }
+    }
+    return {true, QString()};
+  });
+}
+
 void FileOperations::restore(const QString &path) {
   run(QStringLiteral("restore"), path, [path]() -> Result {
     const QFileInfo fi(path);

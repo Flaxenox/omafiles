@@ -155,6 +155,10 @@ Item {
 
     function onFinished(op, path) {
       if (!nativeBusy) return
+      if (_nativeKind === "emptyTrash") {
+        _finishNative(true)
+        return
+      }
       _progBase += _lastItemTotal
       _lastItemTotal = 0
       _batchIdx += 1
@@ -169,7 +173,7 @@ Item {
     }
   }
 
-  // ---------- Native copy/move/trash/restore/remove ----------
+  // ---------- Native copy/move/trash/restore/remove/emptyTrash ----------
   property bool nativeBusy: false
   property string _nativeKind: "copy"
   property var _batchQueue: []
@@ -200,6 +204,25 @@ Item {
 
   function runNativeRestore(origPaths, busyLabel, onDone) {
     return _runNative("restore", _toPairs(origPaths), busyLabel, false, onDone)
+  }
+
+  function emptyTrash(onDone) {
+    if (actionProc.busy || nativeBusy) {
+      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
+      return false
+    }
+    nativeBusy = true
+    _cancelling = false
+    _nativeKind = "emptyTrash"
+    _batchQueue = []
+    _batchIdx = 0
+    _batchOverwrite = false
+    _batchOnDone = onDone || null
+    ActionState.actionLabel = "Emptying trash…"
+    ActionState.actionBusy = true
+    ActionState.actionProgressPct = -1
+    Backend.FileOperations.emptyTrash()
+    return true
   }
 
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
