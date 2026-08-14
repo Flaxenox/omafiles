@@ -39,7 +39,7 @@ Item {
   property url thumbSource: ""
   property string metaText: ""
   // Exact value for the subtitle tooltip when the counter is
-  // abbreviated (12.3k -> "12,347 items"); "" = no tooltip (Phase 23).
+  // abbreviated (12.3k -> "12,347 items"); "" = no tooltip.
   property string metaTooltip: ""
   // The active panel's rename field occupies this same slot --
   // it hides the name/subtitle but leaves the icon visible, just as

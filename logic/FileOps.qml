@@ -8,7 +8,7 @@ import "../state"
 // fifteenth component extracted from core. They all share the
 // same pattern (assemble the command(s), runAction(), pushUndo() with the
 // inverse command) without having any Process of their own -- they use the
-// central ActionEngine engine through the root wrappers
+// Central action dispatch.
 // (actionEngine.runAction/actionEngine.pushUndo/actionEngine.chainCmds).
 Item {
   property Item root: null
@@ -123,7 +123,7 @@ Item {
   function restoreFromTrash() {
     var entries = selectionOps.selectedEntries()
     if (entries.length === 0) return
-    // NATIVE restore (Phase 13.E): FileOperations.restoreByOrigPath instead
+    // NATIVE restore: FileOperations.restoreByOrigPath instead
     // of restore-by-origpath.sh. TrashState.trashInfo (see trash-info.sh) already
     // knows the absolute original path of each item, resolved even for the
     // trash of another disk (where Path= is relative to the mount point);

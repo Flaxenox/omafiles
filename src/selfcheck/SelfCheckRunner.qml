@@ -6,7 +6,7 @@ import "."
 
 // SelfCheck -- reproducible functional validation harness of Omafiles (Phase
 // 12, josema). It's loaded from main.cpp when the standalone executable
-// starts with `--selfcheck`, headless (offscreen) and without Quickshell. It exercises
+// Starts with `--selfcheck`, headless (offscreen) functional verification test harness.
 // the main subsystems of backend, frontend and integration over
 // deterministic fixtures (mounted by main.cpp in a QTemporaryDir that
 // removes itself) and ends with Qt.exit(number of failures): 0 = all PASS.
@@ -50,7 +50,7 @@ QtObject {
   property Component _dmFactory: Component { Backend.DirectoryModel {} }
 
   // SearchWorker factory (native backend, non-singleton) for the
-  // recursive search test (Phase 16).
+  // recursive search test.
   property Component _searchFactory: Component { Backend.SearchWorker {} }
 
   // hostPanelsRow stub for the background panel test: BackgroundPanel reads
@@ -180,9 +180,8 @@ QtObject {
   // ---- BUG-02: process runner for the .sh script smoke tests ----
   // Backend.ProcessRunner (real QProcess) delivers {exitCode,stdout,stderr}.
   property Component _procFactory: Component { Backend.ProcessRunner {} }
-  // Plugin root (where the .sh live), derived from this file's URL:
-  // app/ -> ../../ = root.
-  readonly property string pluginRoot: Qt.resolvedUrl("../../").toString().replace(/^file:\/\//, "").replace(/\/+$/, "")
+  // Resource root (where the .sh live), derived from this file's URL:
+  readonly property string resourceRoot: Qt.resolvedUrl("../../").toString().replace(/^file:\/\//, "").replace(/\/+$/, "")
 
   // POSIX quoting to embed paths in a setup `bash -c`.
   function _q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'" }

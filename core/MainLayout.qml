@@ -71,7 +71,7 @@ Item {
       // ---------- Sidebar: pinned shortcuts ----------
       Sidebar {
         id: sidebar
-        // A bit wider (Phase 20, josema): more space for the device
+        // A bit wider: more space for the device
         // names (an ISO like "Mafia The Old" fits before truncating) and
         // room for the future eject button on the right.
         width: 170
@@ -268,7 +268,7 @@ Item {
             }
           }
 
-          // Expandable search magnifier (Phase 19): last child of navRow,
+          // Expandable search magnifier: last child of navRow,
           // stuck to the right edge. maxWidth = what's left after reserving the
           // breadcrumb's minimum, so the path never disappears.
           SearchBar {
@@ -284,7 +284,7 @@ Item {
 
         ActivePanelInputRows {
           id: activeInputRows
-          // RHS qualified with mainLayout.* (Phase 11.B): these deps are
+          // RHS qualified with mainLayout.*: these deps are
           // properties of MainLayout, not ids -- without qualifying, `root: root`
           // self-references the root property of ActivePanelInputRows
           // itself (binding loop -> null). `list` is an id.
@@ -315,7 +315,7 @@ Item {
           ActiveFileList {
             id: list
             anchors.fill: parent
-            // RHS qualified with mainLayout.* (Phase 11.B): they are properties of
+            // RHS qualified with mainLayout.*: they are properties of
             // MainLayout, not ids -- without qualifying each `X: X`
             // self-references the homonymous property of ActiveFileList itself
             // (binding loop -> null). `card` and `list` are ids. The seven

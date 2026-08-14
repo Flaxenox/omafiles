@@ -24,8 +24,7 @@ Item {
   id: backend
 
   // Absolute path to the NAME index script. The caller sets it (logic/,
-  // which does know Paths) so as not to couple services/ to state/.
-  property string indexScript: ""
+    property string indexScript: ""
   // CONTENT search script (ripgrep). Fourth backend, triggered with
   // the `content:` prefix in the query (Phase 26 / Beta 3).
   property string contentScript: ""

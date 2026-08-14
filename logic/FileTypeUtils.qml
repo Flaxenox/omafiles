@@ -8,12 +8,6 @@ import "../state"
 // in root as they are configuration, not logic). Found in the
 // same audit as logic/SortOps.qml.
 //
-// root keeps one-line wrappers (`function iconFor(entry) {
-// return fileTypeUtils.iconFor(entry) }`, see next to each one in
-// core) because these 6 functions have 38 external
-// call sites spread across ~10 files -- touching them all would have been much
-// more risk than benefit, same criterion as ActionEngine. No existing
-// call site changed.
 Item {
   property Item root: null
 

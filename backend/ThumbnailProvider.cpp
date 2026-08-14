@@ -28,7 +28,7 @@ const QSet<QString> kThumbExts = {
     QStringLiteral("tiff"), QStringLiteral("pdf"),
 };
 
-// --- Cache maintenance policy (Phase O1) -----------------------------------
+// --- Cache maintenance policy -----------------------------------
 // They are changed here, in a single place. An age policy + a size one.
 constexpr qint64 kThumbMaxAgeSecs = 30LL * 24 * 3600;   // 30 days
 constexpr qint64 kThumbMaxBytes = 512LL * 1024 * 1024;  // 512 MB
@@ -115,7 +115,7 @@ ThumbnailProvider::ThumbnailProvider(QObject *parent) : QObject(parent) {
       QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
   m_cacheDir = base + QStringLiteral("/omafiles/thumbnails");
   QDir().mkpath(m_cacheDir);
-  // Maintenance prune once per session, in the background (Phase O1).
+  // Maintenance prune once per session, in the background.
   // Skipped under --selfcheck so as not to touch the user's real cache during
   // the tests (the harness validates the policy over a separate temp dir).
   if (!qEnvironmentVariableIsSet("OMAFILES_SELFCHECK"))

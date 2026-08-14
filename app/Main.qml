@@ -13,9 +13,8 @@ import "."
 //   · show()/hide()/close()  -- built-in of Window/ApplicationWindow.
 //   · external close          -- onClosing (WM's close button / Alt+F4).
 //   · geometry (size)         -- via HostAdapter, same persistence as
-//                               Quickshell (~/.local/state/omafiles/window.json).
+// Window size persistence.
 // The bootstrap (create the engine, load this file) is done by main.cpp; that's
-// why, unlike the Quickshell side, here the window IS the root (main.cpp
 // expects a QQuickWindow) and there is no intermediate core nor host
 // `shell` object.
 ApplicationWindow {
@@ -60,17 +59,17 @@ ApplicationWindow {
     id: content
     anchors.fill: parent
     // Esc / closing the last tab: no `shell` object to notify (there is no
-    // host to hide the plugin), so the window is closed directly.
+    // Closes the application window.
     onCloseRequested: {
       window.close()
       Qt.quit()
     }
   }
 
-  // Single instance (Phase 25): a second invocation `omafiles [path]` doesn't open
+  // Single instance: a second invocation `omafiles [path]` doesn't open
   // another window -- main.cpp delivers the payload over the local socket and here it
   // navigates/selects (content.open) and brings the window to the front. Same
-  // content.open() that the initial opening uses and that the plugin's summon used.
+  // Opens the specified path or previous session.
   Connections {
     target: SingleInstance
     function onReceived(payload) {
@@ -90,7 +89,7 @@ ApplicationWindow {
       window.height = 600
     }
     // Initial payload from the command line (main.cpp). Empty = restores the
-    // previous session (folder/tabs), same as the plugin startup.
+    // Restores previous session tabs.
     content.open(typeof omafilesInitialPayload !== "undefined" ? omafilesInitialPayload : "")
   }
 }

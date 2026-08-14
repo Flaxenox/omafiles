@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Generates the technical variants of the official icon (Phase 29) from the
+# Generates the technical variants of the official icon from the
 # SINGLE source of truth: assets/omafiles.svg (the official icon, a high-
 # resolution PNG embedded in an SVG wrapper). It does NOT redraw anything: the
 # symbolic's silhouette is EXTRACTED from the official icon's own pixels.

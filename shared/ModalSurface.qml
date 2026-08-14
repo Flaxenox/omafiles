@@ -38,7 +38,7 @@ Item {
   // Click on the scrim (outside the card).
   signal dismissed()
 
-  // Single duration/curve of the modal family (Phase 22): 120 ms OutCubic,
+  // Single duration/curve of the modal family: 120 ms OutCubic,
   // no overshoot, entry and exit equal, scrim and card synchronized.
   readonly property int transitionDuration: 120
 

@@ -247,7 +247,7 @@ Item {
               // Fading the container gives the same effect without capturing geometry,
               // so the two panels are identical. Verified live with two
               // panels over the same folder: identical row pitch (49px).
-              // Repaint fade (Phase 22) ONLY on real navigation/operation.
+              // Repaint fade ONLY on real navigation/operation.
               // On a tab switch, root.suppressListFade is set: the
               // listing was already in view as a background panel and fading it on
               // activating it was the redundant flicker on hover.

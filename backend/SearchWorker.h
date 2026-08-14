@@ -8,7 +8,7 @@
 #include <mutex>
 #include <qqmlregistration.h>
 
-// Native recursive search (Phase 16, josema). Replacement for
+// Native recursive search. Replacement for
 // search-recursive.sh: walks `root` in depth, filters by substring
 // (case-insensitive) over the file/folder NAME, skips
 // hidden ones unless showHidden, and returns up to 201 entries with the same

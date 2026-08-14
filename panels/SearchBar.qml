@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../state"
 
-// Expandable search magnifier of the top bar (Phase 19, josema). At
+// Expandable search magnifier of the top bar. At
 // rest only the magnifier is shown, stuck to the right edge of navRow; on activating it
 // (click or Ctrl+F) the field unfolds TO THE LEFT with a smooth
 // animation, eating width from the breadcrumb (which MainLayout shrinks, never to 0:
@@ -13,7 +13,7 @@ import "../state"
 //
 // It lives in panels/ (not shared/) because it reads NavState and calls searchOps: the
 // panels/ layer = can read state/ and drive injected logic/, just like
-// ActivePanelInputRows. A single component for both frontends (Quickshell
+// Search input and live filter bar.
 // and Qt6): there is nothing host-specific here.
 Item {
   id: sb

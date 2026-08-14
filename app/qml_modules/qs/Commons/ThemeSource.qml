@@ -2,7 +2,7 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Theme source of the Qt6 frontend (Phase 17, josema). SYSTEM PARITY, not
+// Theme source of the Qt6 frontend. SYSTEM PARITY, not
 // of a specific theme: instead of fixed colors, it reads EXACTLY the same
 // sources as the real Omarchy qs.Commons —
 //   ~/.local/state/omarchy/current/theme/colors.toml  (foundational palette)

@@ -2,19 +2,12 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// File paths and locations of Omafiles (Phase 14.B, josema): before they
-// lived as properties of OmafilesContent (homeDir/pluginDir/trashDir,
-// the four state *.json, the thumbnail cache and the default
-// bookmarks), read via `property Item root` from half a dozen
-// controllers. They are configuration/paths derived from $HOME, not
-// composition-root state: here they stay as the single source, without a god object.
+// Canonical XDG paths and persistent storage locations for Omafiles.
 //
 // Phase 29 (josema): Omafiles is decoupled from Omarchy and the repository. The
 // paths follow the XDG standard (honoring XDG_CONFIG_HOME / XDG_STATE_HOME /
 // XDG_CACHE_HOME with fallback to ~/.config, ~/.local/state, ~/.cache), the
-// user config moves from ~/.config/omarchy/omafiles to ~/.config/omafiles,
 // and `resourceDir` (where the .sh scripts and the QML tree live) is NO longer the
-// plugin directory: main.cpp resolves it (dev-tree vs installed) and
 // delivers it via the OMAFILES_RESOURCE_DIR environment variable.
 QtObject {
   id: paths
@@ -48,11 +41,10 @@ QtObject {
   readonly property string trashDir: xdgDataHome + "/Trash/files"
   readonly property string thumbCacheDir: cacheDir + "/thumbnails"
 
-  // User-defined actions (Phase 26): optional TOML in Omafiles' XDG
+  // User-defined custom actions config path.
   // config (Phase 29: before it lived under ~/.config/omarchy/omafiles). The app
   // doesn't write it -- the user edits it by hand; the migration from the old
-  // location is done by logic/LegacyMigration.qml on the first startup.
-  readonly property string actionsFile: configDir + "/actions.toml"
+    readonly property string actionsFile: configDir + "/actions.toml"
 
   // Persistent state (JsonStore reads/writes them via Persistence).
   readonly property string bookmarksFile: stateDir + "/bookmarks.json"

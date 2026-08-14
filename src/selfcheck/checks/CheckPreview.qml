@@ -29,7 +29,7 @@ QtObject {
           Backend.ThumbnailProvider.ready.connect(onReady)
         })
 
-        // Canonical cache hash (Phase B1): Backend.ThumbnailProvider.cacheKey is the
+        // Canonical cache hash: Backend.ThumbnailProvider.cacheKey is the
         // ONLY scheme (SHA-1 hex), shared by the image/PDF thumbnails
         // (internal to request()), the video ones (VideoThumbnails) and the
         // extraction cache (ArchiveActions). It's anchored against the known SHA-1 of a
@@ -44,7 +44,7 @@ QtObject {
                "cacheKey=" + k + (k === expected ? "" : " (expected " + expected + ")"))
         })
 
-        // Thumbnail cache pruning (Phase O1). Exercises pruneCacheDir over
+        // Thumbnail cache pruning. Exercises pruneCacheDir over
         // a temp dir (the real cache is NOT touched: the constructor's auto-prune
         // is skipped under --selfcheck) with the four policies: legacy orphan,
         // safety (foreign files intact), age and size.

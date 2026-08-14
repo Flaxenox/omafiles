@@ -5,7 +5,6 @@ import Omafiles.Backend as Backend
 
 // Rename / new folder / new file, with their undo -- seventeenth
 // component extracted from core. Same pattern as FileOps: no
-// Process of its own, everything goes through the root wrappers
 // (actionEngine.runAction/actionEngine.pushUndo).
 //
 // Phase 7 (josema): "new folder" (common case, without overwriting) is the
@@ -127,7 +126,7 @@ Item {
       })
       return
     }
-    // Common case: NATIVE mkdir (Phase 7). The undo is registered on
+    // Common case: NATIVE mkdir. The undo is registered on
     // successful completion (see the Connections below).
     renameOps._nativeMkdirPending[pending.path] = pending.name
     Backend.FileOperations.mkdir(pending.path)

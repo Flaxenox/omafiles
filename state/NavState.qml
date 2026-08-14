@@ -2,10 +2,10 @@ pragma Singleton
 import QtQuick
 import Omafiles.Backend as Backend
 
-// Hot navigation state (Phase 11.A, josema): the current path, its
+// Hot navigation state: the current path, its
 // listing and the visible search filter. It was the main coupling
 // between logic/ and root -- currentPath (59 reads), visibleEntries (24) and
-// entries (13) were the most-read properties of the whole plugin from the
+// Central navigation and directory listing state.
 // logic layer, always via `property Item root`. Moving them to a singleton
 // lets logic/ read/write NavState.* directly and lets root keep
 // only thin compatibility bindings for the visual tree (still not
@@ -40,7 +40,7 @@ QtObject {
     ? entries.filter(function (e) { return e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0 })
     : entries
 
-  // ---------- Runtime navigation/search state (Phase 14.C) ----------
+  // ---------- Runtime navigation/search state ----------
   // They were mutable properties of OmafilesContent that did not belong to the
   // composition root: they are all hot state of the same domain (nav +
   // search) that this singleton already governs. logic/ and the visual layer

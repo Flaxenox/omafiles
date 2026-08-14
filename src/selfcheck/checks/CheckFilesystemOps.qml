@@ -3,7 +3,7 @@ import Omafiles.Backend as Backend
 import "../../../state"
 import "../../../Utils.js" as Utils
 
-// Filesystem basic operations domain checks (Phase 30).
+// Filesystem basic operations domain checks.
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {

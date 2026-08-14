@@ -7,7 +7,7 @@ import "../../../Utils.js" as Utils
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
-        sc.add("Native recursive search: name, depth, hidden filter (Fase 16)", function (done) {
+        sc.add("Native recursive search: name, depth, hidden filter", function (done) {
           var base = sc.dir + "/srch-" + Date.now()
           var mk = function (p) { return function () { Backend.FileOperations.mkdir(p) } }
           var cp = function (p) { return function () { Backend.FileOperations.copy(sc.note, p) } }

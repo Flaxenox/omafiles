@@ -32,7 +32,7 @@ Item {
     Backend.Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
   }
 
-  // Block devices (USB/ISO/disks): reactive via UDisks2 (Phase 20).
+  // Block devices (USB/ISO/disks): reactive via UDisks2.
   // The native watcher (backend/UDisksWatcher, D-Bus subscription) emits
   // devicesChanged() coalesced on any connection/ejection/mount/
   // label change, and here it responds by listing again -- no polling. The

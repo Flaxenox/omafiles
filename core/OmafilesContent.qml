@@ -20,13 +20,13 @@ Item {
   id: root
 
   // homeDir/pluginDir/trashDir/thumbCacheDir, the state *.json and
-  // defaultBookmarks now live in state/Paths.qml (Phase 14.B): paths and
+  // defaultBookmarks now live in state/Paths.qml: paths and
   // configuration derived from $HOME, not composition-root state.
   // currentPath/entries/showHidden/searchQuery/visibleEntries live in
-  // state/NavState.qml (Phase 11.A) and NavState is their SOLE source of truth
-  // (Phase 14.A). The runtime nav/search state (searching/searchTruncated/
+  // state/NavState.qml and NavState is their SOLE source of truth
+  //. The runtime nav/search state (searching/searchTruncated/
   // currentPathError/pendingSelectNames/refreshTick) was also moved to
-  // NavState (Phase 14.C). tabs/activeTabIndex/navHistory/
+  // NavState. tabs/activeTabIndex/navHistory/
   // navHistoryIndex live in state/TabsState.qml.
   // Cache of listings by path, fed by the background panels every
   // time they refresh -- see _goToPath(). It stays here (view cache, not
@@ -35,7 +35,7 @@ Item {
   property bool opened: false
   property bool loaded: false
 
-  // Suppresses the list's fade micro-transition (Phase 22) for the
+  // Suppresses the list's fade micro-transition for the
   // NEXT repaint of the active panel. TabOps activates it on switching/closing
   // a tab: there the listing the active panel adopts was already in view
   // (it was a background panel), so fading it in when activated is a
@@ -64,7 +64,7 @@ Item {
 
   // undoLast/redoLast remain as thin wrappers because the visual layer
   // (menus/palette) calls them via the root facade. pushUndo no longer: its
-  // logic/ callers receive actionEngine injected (Phase 14.D).
+  // logic/ callers receive actionEngine injected.
   function undoLast() {
     registry.actionEngine.undoLast()
   }
@@ -184,13 +184,13 @@ Item {
   // bulkRenameHistoryLoaded/bookmarksLoaded live in state/BookmarksState.qml.
 
   // The extension lists (imageExt/videoExt/audioExt/archiveExt/codeExt/
-  // tarExt) now live in state/FileTypeConfig.qml (Phase 14.B).
+  // tarExt) now live in state/FileTypeConfig.qml.
 
   // ---------- File type (extension/icon) ----------
   // iconFor/isImage/isVideo/isAudio/isPdf remain as thin wrappers because
   // the visual layer (delegates/panels) calls them via the root facade.
   // extOf no longer: its logic/ callers receive fileTypeUtils injected
-  // (Phase 14.D). The real controller is logic/FileTypeUtils.qml.
+  //. The real controller is logic/FileTypeUtils.qml.
   function iconFor(entry) { return registry.fileTypeUtils.iconFor(entry) }
   function isImage(entry) { return registry.fileTypeUtils.isImage(entry) }
   function isVideo(entry) { return registry.fileTypeUtils.isVideo(entry) }
@@ -198,7 +198,7 @@ Item {
   function isPdf(entry) { return registry.fileTypeUtils.isPdf(entry) }
 
   // ---------- Video thumbnails (ffmpegthumbnailer, queued 1 at a time) ----------
-  // thumbCacheDir now lives in state/Paths.qml (Phase 14.B).
+  // thumbCacheDir now lives in state/Paths.qml.
   // videoThumbReady/thumbQueue/thumbBusy now live in
   // state/VideoThumbState.qml -- fourteenth slice of the state/ layer.
 
@@ -423,8 +423,7 @@ Item {
   // button). Before it talked to the host directly (root.shell.hide());
   // now it only emits closeRequested() -- core (the Quickshell
   // frontend bootstrap) decides whether that means notifying the host or closing
-  // directly, without this file knowing anything about Quickshell.
-  signal closeRequested()
+    signal closeRequested()
   signal pickerSubmitRequested()
 
   function requestClose() {
@@ -433,9 +432,8 @@ Item {
 
 
   // runAction/chainCmds/startCopyProgress and the native runners (copyFiles/
-  // moveFiles/removeFiles/trashFiles/restoreFiles) were thin wrappers to
-  // registry.actionEngine.*; their logic/ callers now receive
-  // actionEngine injected (Phase 14.D), so they were removed. cancelAction
+    // registry.actionEngine.*; their logic/ callers now receive
+  // actionEngine injected, so they were removed. cancelAction
   // stays: the visual layer (cancel button) calls it via the root
   // facade.
   function cancelAction() {
@@ -469,7 +467,7 @@ Item {
 
   // Self-registration as the system file manager (MimeType inode/
   // directory + org.freedesktop.FileManager1) -- launched once on
-  // loading the plugin, without waiting for the user to open the window nor
+  // Instantiated on startup.
   // having to run anything by hand. The script is idempotent (see
   // scripts/install-integrations.sh), so calling it on every shell
   // startup is cheap and safe.
@@ -499,10 +497,10 @@ Item {
     list: mainLayout.list
   }
 
-  // Action engine exposed as a reference (not wrapper): MainLayout
+  // Action engine reference for MainLayout and CommandFacade.
   // injects it into KeyboardShortcuts and the --selfcheck harness exercises its
   // native runners directly, the SAME path the app uses after
-  // dependency injection (Phase 14.D). It's an explicit seam, not the
+  // dependency injection. It's an explicit seam, not the
   // generic god-object facade.
   readonly property alias actionEngine: registry.actionEngine
 
@@ -567,7 +565,7 @@ Item {
     newFolderConflictConfirm: dialogLayer.newFolderConflictConfirm
   }
 
-  // ---------- Dialog/overlay layer (Phase 11.B) ----------
+  // ---------- Dialog/overlay layer ----------
   // Sibling of MainLayout (both anchors.fill: parent) -- before a child of the
   // card; geometrically identical (the card fills root). The seven
   // ConfirmDialog are exposed by DialogLayer and MainLayout receives them for its

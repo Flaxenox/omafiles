@@ -3,7 +3,7 @@ import Omafiles.Backend as Backend
 import "../../../state"
 import "../../../Utils.js" as Utils
 
-// ActionEngine / Undo / Redo domain checks (Phase 30).
+// ActionEngine / Undo / Redo domain checks.
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {

@@ -1,4 +1,4 @@
-// Micro-benchmark of DirectoryModel listing path (Phase 27, PERF_AUDIT_RC1).
+// Micro-benchmark of DirectoryModel listing path.
 // Uses ONLY the public async API (list + listed + entries), which is the real
 // path experienced by the UI. Measures: (a) scan+dispatch+apply up to the listed() signal,
 // (b) QVariantList construction in entries(). Reports the median of N runs

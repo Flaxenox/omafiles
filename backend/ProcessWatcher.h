@@ -6,14 +6,7 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// C++ backend for services/ProcessWatcher.qml (Phase 5, josema). Backs with
-// QProcess the SAME API as the Quickshell implementation over
-// Quickshell.Io.Process + SplitParser -- see services/ProcessWatcher.qml
-// for the contract. Unlike ProcessRunner, it watches a process that does
-// NOT end on its own (inotifywait -m): it emits lineRead for each line of
-// stdout instead of a final result. It is registered as the QML type
-// Omafiles.Backend.ProcessWatcher and consumed by the adapter
-// services/ProcessWatcher.qml.
+// Asynchronous line-by-line process output watcher backed by QProcess.
 class ProcessWatcher : public QObject {
   Q_OBJECT
   QML_ELEMENT
@@ -27,7 +20,7 @@ public:
   bool active() const;
 
   // Launches `args` (program + arguments) in monitor mode. If one was
-  // already running it restarts it (same behaviour as the Quickshell version,
+  // If already running, restarts the process.
   // which set running=false before relaunching).
   Q_INVOKABLE void start(const QVariantList &args);
 

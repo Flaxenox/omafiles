@@ -34,7 +34,7 @@ trap on_error ERR
 # forces the rewrite and re-copy in earlier installations.
 INTEGRATION_VERSION=8
 
-# RES_DIR: STABLE root of installed resources (Phase 29). The Exec point here,
+# RES_DIR: STABLE root of installed resources. The Exec point here,
 # not to the repo, so deleting the repository doesn't break opening folders nor "show in
 # file manager". Requires `cmake --install` (which copies scripts/ and assets/ here).
 RES_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omafiles"
@@ -60,7 +60,7 @@ PORTALS_DIR="$XDG_DATA/xdg-desktop-portal/portals"
 mkdir -p "$APPS_DIR" "$DBUS_SERVICES_DIR" "$ICON_DIR" "$PORTALS_DIR" "$RES_DIR"
 
 # Ensure runtime scripts are available in the canonical resource directory
-# without requiring a full cmake --install (e.g. when run from a plugin repo).
+# without requiring a full cmake --install (e.g. when run from dev tree).
 if [[ "$SELF_RES" != "$RES_DIR" && -d "$SELF_RES/scripts" ]]; then
   cp -r "$SELF_RES/scripts" "$RES_DIR/"
 fi

@@ -16,6 +16,6 @@ QtObject {
   // Pending callback of the running runAction -- see actionProc.onFinished
   // in ActionEngine.qml. (_actionCancelled disappeared in Phase 1.5:
   // ProcessRunner.finished already carries `cancelled` in the result, see
-  // services/ProcessRunner.qml.)
+  // Omafiles.Backend.ProcessRunner.)
   property var _actionOnSuccess: null
 }

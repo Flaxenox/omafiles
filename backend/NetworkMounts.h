@@ -5,7 +5,7 @@
 #include <qqmlregistration.h>
 
 // Enumeration of network locations mounted via GVfs (SFTP/SMB/WebDAV/FTP)
-// for the sidebar (Phase 16, josema). Replacement for
+// for the sidebar. Replacement for
 // list-network-mounts.sh: each active mount appears as a real, navigable
 // subdirectory under $XDG_RUNTIME_DIR/gvfs/ (gvfsd-fuse exposes it there, and
 // DirectoryModel already knows how to list it unchanged). The only thing
@@ -14,7 +14,6 @@
 //
 // Synchronous (just a readdir + stats over the gvfs dir, cheap): returns
 // a list of {label, path, scheme} objects, the same shape that
-// Utils.parseNetworkMounts produced. QML singleton. No dependency on Quickshell.
 class NetworkMounts : public QObject {
   Q_OBJECT
   QML_ELEMENT

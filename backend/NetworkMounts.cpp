@@ -29,7 +29,7 @@ QVariantList NetworkMounts::list() const {
     // The values in the gvfs mount name come percent-encoded (a
     // "My Share" resource is share=My%20Share). They are decoded natively
     // with QUrl::fromPercentEncoding (UTF-8-aware) so the sidebar label
-    // comes out readable (Phase 20, josema).
+    // comes out readable.
     QString host, share, user;
     const auto pairs = rest.split(QLatin1Char(','), Qt::SkipEmptyParts);
     for (const QString &pair : pairs) {

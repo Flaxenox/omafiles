@@ -42,7 +42,7 @@ QtObject {
           sc._sh(["bash", "-c", setup], function (r0) {
             if (r0.exitCode !== 0) { done(false, "setup failed: " + r0.stderr); return }
             var run = "env -i HOME=" + sc._q(fakeHome) + " PATH=" + sc._q(fakeBin) + ":/usr/bin:/bin bash "
-              + sc._q(sc.pluginRoot + "/empty-trash.sh")
+              + sc._q(sc.resourceRoot + "/empty-trash.sh")
             sc._sh(["bash", "-c", run], function (r1) {
               sc._sh(["bash", "-c", "ls -A " + sc._q(tFiles) + " | wc -l"], function (r2) {
                 var remaining = parseInt(String(r2.stdout).trim(), 10)
@@ -61,7 +61,7 @@ QtObject {
           var mk = "tar -cf " + sc._q(tarPath) + " -C " + sc._q(sc.listDir) + " sub alpha.txt beta.txt gamma.txt"
           sc._sh(["bash", "-c", mk], function (r0) {
             if (r0.exitCode !== 0) { done(false, "tar setup failed: " + r0.stderr); return }
-            sc._sh(["bash", sc.pluginRoot + "/list-archive.sh", tarPath, ""], function (r) {
+            sc._sh(["bash", sc.resourceRoot + "/list-archive.sh", tarPath, ""], function (r) {
               var toks = String(r.stdout).split("\0")
               var names = []
               for (var i = 0; i < toks.length; i += 2) if (toks[i]) names.push(toks[i])
@@ -77,7 +77,7 @@ QtObject {
         // nor hang -> it exits != 0 and with no stdout. Verifies that it's invoked and that
         // its guard (set -e + loopdev check) works.
         sc.add("mount-iso.sh fails safely on a bad path (BUG-02)", function (done) {
-          sc._sh(["bash", sc.pluginRoot + "/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
+          sc._sh(["bash", sc.resourceRoot + "/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
             var ok = r.exitCode !== 0 && String(r.stdout).trim() === ""
             done(ok, "exit=" + r.exitCode + " stdout='" + String(r.stdout).trim() + "'")
           })
@@ -87,7 +87,7 @@ QtObject {
         // (empty, or each line with a TAB name<TAB>id). It doesn't fix WHICH apps there are
         // (depends on the system); it does check that it's invoked and responds in its contract.
         sc.add("open-with-list.sh returns valid TSV (BUG-02)", function (done) {
-          sc._sh(["bash", sc.pluginRoot + "/open-with-list.sh", sc.note], function (r) {
+          sc._sh(["bash", sc.resourceRoot + "/open-with-list.sh", sc.note], function (r) {
             var lines = String(r.stdout).split("\n").filter(function (l) { return l.length > 0 })
             var shapeOk = lines.every(function (l) { return l.indexOf("\t") >= 0 })
             done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " lines=" + lines.length)

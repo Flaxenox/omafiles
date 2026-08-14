@@ -1,202 +1,96 @@
-# Architecture
+# OmaFiles Architecture
 
-Omafiles started as a single-file Quickshell plugin (~6900 lines) and was
-progressively decoupled into a **host-independent core** plus a thin host
-integration layer. As of **Beta 1 (v0.9.0-beta1, Fase 25)** the Quickshell
-frontend has been **removed**: the **Qt6 standalone application is the single
-official frontend**. The core (`core/`, `logic/`, `state/`, `panels/`,
-`dialogs/`, `services/`, and the C++ `Omafiles.Backend`) is unchanged — the
-migration only swapped the host that instantiates it.
+OmaFiles is a standalone Qt6/QML file manager for Linux desktop environments, engineered for speed, responsiveness, and seamless desktop integration.
 
-> **Note (RC1).** The sections below that describe
-> `integrations/quickshell/` (`HostBridge.qml`, `Omafiles.qml`) and the
-> `services/` over `Quickshell.Io.Process`/`Quickshell.env` document the
-> **original two-host contract** for historical context. Those files
-> **are no longer in the tree**: only `app/` is shipped,
-> and the `services/` wrap the C++ backend (`Omafiles.Backend`), not
-> Quickshell. The host contract (Phase 18) and the dependency rules are still
-> valid; there is only one live host implementation
-> (`app/Main.qml`).
+---
 
-The app is installed to `~/.local` (no root) and, as of **Fase 29**, is fully
-independent of both Omarchy and this repository: `cmake --install` deploys the
-binary (`~/.local/bin/omafiles`), the backend module
-(`~/.local/lib/qt6/qml/Omafiles/Backend/`) and the whole resource tree — QML,
-scripts and assets — to `$XDG_DATA_HOME/omafiles` (`~/.local/share/omafiles`).
-`main.cpp` (`resolveResourceDir`) loads from the source checkout when it exists
-(live dev editing) and otherwise from the installed tree, so **deleting the repo
-leaves a working app**. All paths follow XDG (`$XDG_CONFIG_HOME/omafiles`,
-`$XDG_STATE_HOME/omafiles`, `$XDG_CACHE_HOME/omafiles`). The live theme is still
-read from Omarchy when present (a runtime path, not a repo dependency), with a
-graceful fallback.
-
-## Folder structure
+## Directory Structure
 
 ```
-main.cpp                        Qt6 bootstrap: engine, single-instance, --selfcheck
-integrations/
-  HostAdapter.qml                 Formal host contract + shared size persistence
-  standalone/
-    Main.qml                       ApplicationWindow host (Qt6, main.cpp loads it)
-    SelfCheck.qml                  Headless validation harness (--selfcheck)
-    qml_modules/qs/                qs.Commons + qs.Ui adapters (theme/design system)
-core/
-  OmafilesContent.qml            Full visual tree + wiring (composition root)
-backend/                         C++ Omafiles.Backend plugin (shared .so, native ops)
-logic/                           Business logic (Process-based I/O, state mutation)
-state/                           pragma Singleton data holders
-panels/                          Large always-visible UI (sidebar, file lists, preview)
-dialogs/                         Modal/floating UI
-shared/                          Small reusable visual pieces
-services/                        Backend process/env/notify wrapped as an Omafiles-owned API
-scripts/, *.sh                   Backing shell scripts + desktop integration (FileManager1)
+main.cpp                        Qt6 bootstrap: single-instance IPC, QML engine, --selfcheck
+app/                            Application window host and design system adapters
+  Main.qml                      Root ApplicationWindow
+  HostAdapter.qml               Window lifecycle and geometry persistence
+  qml_modules/qs/               Theme provider and visual components (qs.Commons, qs.Ui)
+core/                           Composition root and high-level layout orchestration
+  OmafilesContent.qml           Composition root wiring all subsystems
+  ControllerRegistry.qml        Central owner of logic controllers
+  MainLayout.qml                Visual structure (Sidebar, ActiveFileList, BackgroundPanels)
+  DialogLayer.qml               Modal dialog overlays
+  CommandFacade.qml             Command palette and empty-area action facade
+  AppBindings.qml               Reactive hardware events and startup desktop integration
+backend/                        Native C++ Qt6 plugin (Omafiles.Backend)
+  FileOperations.cpp/.h         Native file I/O (copy, move, delete, trash, restore, chmod)
+  DirectoryModel.cpp/.h         Fast directory listing and inotify watching
+  ThumbnailProvider.cpp/.h      Image, PDF, and video thumbnail generation with disk cache
+  PreviewProvider.cpp/.h        Fast text preview reader
+  ProcessRunner.cpp/.h          Asynchronous process runner (QProcess)
+  ProcessWatcher.cpp/.h         Line-buffered process monitor (QProcess)
+  JsonStore.cpp/.h              Atomic JSON persistence
+  UDisksWatcher.cpp/.h          D-Bus UDisks2 device hotplug monitor
+  NetworkMounts.cpp/.h          GVfs network mount enumerator
+  FolderCounter.cpp/.h          Asynchronous directory item counter
+  PathCompleter.cpp/.h          Filesystem path tab completion
+  SearchWorker.cpp/.h           Recursive search worker thread
+logic/                          Modular operations controllers
+  NavigationController.qml      Directory navigation and history management
+  DirLister.qml                 Directory listing coordinator
+  ActionEngine.qml              File operations and undo/redo stack
+  SearchBackend.qml             Indexed and recursive search coordinator
+  DeleteOps.qml, RenameOps.qml, ClipboardOps.qml, DragDropOps.qml, FileOps.qml, ...
+state/                          Reactive state holders (pragma Singleton)
+  NavState.qml, TabsState.qml, SelectionState.qml, UndoState.qml, Paths.qml, ...
+panels/                         Persistent UI panels (ActiveFileList, BackgroundPanel, Sidebar, PreviewPanel)
+dialogs/                        Modal and floating dialogs (Chmod, Conflict, ConnectServer, etc.)
+shared/                         Reusable visual atoms and widgets
+scripts/                        D-Bus portal backends and desktop service registration
+src/selfcheck/                  Headless regression and validation test suite
 ```
 
-## Layers
+---
+
+## Architectural Layers
 
 ```mermaid
 graph TD
-  Main["main.cpp (Qt6 bootstrap, single-instance)"] --> MainQml["app/Main.qml (ApplicationWindow)"]
-  MainQml --> Adapter["integrations/HostAdapter.qml"]
+  MainCpp["main.cpp (Qt6 bootstrap, single-instance)"] --> MainQml["app/Main.qml (ApplicationWindow)"]
+  MainQml --> HostAdapter["app/HostAdapter.qml"]
   MainQml --> Content["core/OmafilesContent.qml"]
-  Adapter -.host contract.-> Content
-  Content --> panels
-  Content --> dialogs
-  Content --> logic
-  panels --> logic
-  dialogs -. props/callbacks only .-> Content
-  logic --> state
-  logic --> services
-  panels --> shared
-  services -->|wraps| Backend[(Omafiles.Backend C++ .so)]
+  Content --> Registry["core/ControllerRegistry.qml"]
+  Content --> Layout["core/MainLayout.qml"]
+  Content --> Dialogs["core/DialogLayer.qml"]
+  Registry --> Logic["logic/ (*Ops controllers)"]
+  Layout --> Panels["panels/ (ActiveFileList, Sidebar, etc.)"]
+  Panels --> Logic
+  Logic --> State["state/ (*State singletons)"]
+  Logic --> Backend["Omafiles.Backend (Native C++ Engine)"]
+  Panels --> Backend
 ```
 
-- **`main.cpp` + `app/Main.qml`** — the Qt6 host. `main.cpp`
-  creates the QML engine, handles single-instance (a second `omafiles [path]`
-  hands its payload to the running window and exits) and the `--selfcheck`
-  harness; `Main.qml` is the `ApplicationWindow` that instantiates
-  `OmafilesContent` and fulfils the host contract (`HostAdapter`: show/close +
-  geometry persistence). No business logic.
-- **`core/OmafilesContent.qml`** — the real composition root: every
-  property, every controller instantiation (`NavigationController`,
-  `DirLister`, `ActionEngine`, `TabOps`, ...), the full visual tree
-  (Sidebar, active panel, background panels, every dialog). Knows
-  nothing about Quickshell — `requestClose()` emits a `closeRequested()`
-  signal instead of talking to a host object directly.
-- **`integrations/quickshell/HostBridge.qml`** — the only file that
-  imports `Quickshell`'s `FloatingWindow` and touches the host-injected
-  `shell` object. Exposes `show()`/`hide()`/`close()` and a
-  `closedExternally()` signal; that's the entire contract `Omafiles.qml`
-  depends on.
-- **`state/`** — `pragma Singleton` data holders, no logic beyond
-  property declarations. Imports nothing but `QtQuick` (`state/TabsState.qml`
-  is the one exception, importing `services/` for `Env.get("HOME")` at
-  init).
-- **`logic/`** — business logic (`property Item root: null` pattern,
-  or `hostRoot`/`hostX` for `Repeater`/`ListView` delegates — see
-  dependency rule 6). Reads/writes `state/` by singleton name, talks to
-  the OS exclusively through `services/`.
-- **`panels/`** — large always-visible UI. Calls into `logic/`, reads
-  `state/`.
-- **`dialogs/`** — modal/floating UI. Purely presentational (local
-  `id: root`); receives data via property bindings/callbacks only.
-- **`shared/`** — small reusable visual pieces, no awareness of
-  `state/`/`logic/` at all.
-- **`services/`** — the only place `Quickshell.Io.Process`,
-  `Quickshell.execDetached`, and `Quickshell.env` are called directly.
-  Exposes an Omafiles-owned API instead (`ProcessRunner`, `ProcessWatcher`,
-  `Detached`, `Notifier`, `Env`) so callers never see Quickshell's own
-  types or naming.
+---
 
-## Dependency rules
+## Architectural Principles & Dependency Rules
 
-1. `logic/` never imports `panels/`, `dialogs/`, `shared/`, `core/`, or
-   `integrations/`.
-2. `dialogs/` and `shared/` never import `state/` or `logic/` directly.
-3. `state/` imports nothing but `QtQuick` (and `services/` where noted
-   above) — no dependency on `logic/`/`panels/`/`core/`.
-4. `core/ControllerRegistry.qml` is the single owner of every `logic/`
-   controller — the only file that instantiates them (Phase 11.C; it
-   replaced `OmafilesContent` in this role to kill the star coupling flagged
-   by the 2026-08-09 audit). `OmafilesContent` instantiates the registry and
-   the focused frontend components (`MainLayout`, `DialogLayer`,
-   `CommandFacade`, `AppBindings`), passing each only the controllers it
-   uses. One exception stands: `panels/ActiveFileList.qml` instantiates
-   `logic/KeyboardShortcuts.qml`, since every dependency it needs is already
-   a property on that panel.
-5. No circular dependencies within `logic/` — see `DEPENDENCY_GRAPH.md`.
-6. `logic/` and `panels/` never import `Quickshell` or anything under
-   `integrations/`. Only `services/` and `integrations/quickshell/` do.
-7. Only `Omafiles.qml` imports `integrations/quickshell/`. Nothing under
-   `core/`, `logic/`, `state/`, `panels/`, `dialogs/`, `shared/`, or
-   `services/` imports `integrations/` at all.
+1. **Direct Native Backend (`Omafiles.Backend`)**: QML components interact directly with native C++ singletons and instantiable types registered by `qt_add_qml_module`. There are no intermediate QML wrapper layers or pass-through proxies.
+2. **Modular Controllers (<300 Lines Limit)**: Responsibilities are divided into discrete, cohesive controllers (`DeleteOps`, `RenameOps`, `ClipboardOps`, `DragDropOps`, `FileOps`, `MountActions`, `NavigationController`, `PropertiesLoader`). No monolithic controller merges are permitted.
+3. **Controller Registry**: `core/ControllerRegistry.qml` instantiates domain controllers and passes them to `MainLayout`, `DialogLayer`, and `CommandFacade`.
+4. **Clean Layering**:
+   - `logic/` never imports `panels/`, `dialogs/`, `shared/`, or `core/`.
+   - `dialogs/` and `shared/` never import `state/` or `logic/` directly; they receive inputs via properties and callbacks.
+   - `state/` singletons contain reactive properties only, importing only `QtQuick` and `Omafiles.Backend`.
+5. **Canonical XDG Compliance**: User configuration is read from `$XDG_CONFIG_HOME/omafiles`, cache from `$XDG_CACHE_HOME/omafiles`, and state from `$XDG_STATE_HOME/omafiles`. Resources (.sh scripts, QML, assets) are located via `Paths.resourceDir` resolved at startup.
 
-## Host contract (Phase 18)
+---
 
-The core talks to its host through exactly two things, and nothing more:
-`OmafilesContent` exposes `open(payload)` / `close()` / `opened` and emits
-`closeRequested()`. That is the whole surface a host consumes.
+## Desktop Integrations & D-Bus Services
 
-Going the other way, a host frontend must provide a **window/lifecycle**
-implementation. This is the only genuinely host-specific capability and it
-is formalized in `integrations/HostAdapter.qml`:
+- **File Manager Service**: `org.freedesktop.FileManager1` integration (`scripts/dbus-filemanager1.py`) allows browsers and desktop apps to trigger "Show in folder".
+- **File Chooser Portal**: `org.freedesktop.impl.portal.FileChooser` integration (`scripts/dbus-filechooser.py`) provides native file-picker dialogs for Wayland sandboxed applications.
+- **Auto-registration**: `scripts/install-integrations.sh` idempotently registers the `.desktop` file and D-Bus services into standard XDG user directories.
 
-- **Window/lifecycle** (host-specific, one impl per frontend): `show()`,
-  `hide()`, `close()`, and a `closedExternally()` signal (the window went
-  away by a mechanism the host did not start — the WM close button).
-  Implemented by `integrations/quickshell/HostBridge.qml` over
-  `FloatingWindow` and by `app/Main.qml` over
-  `ApplicationWindow`.
-- **Geometry** (host-agnostic, shared): `HostAdapter` persists window
-  **size** to `~/.local/state/omafiles/window.json` and restores it via a
-  `sizeRestored(w, h)` signal each host applies to its own size property.
-  Position/centering are deliberately out of scope — under Wayland the
-  compositor owns window placement, so `center()` is a documented no-op.
+---
 
-Every other capability sometimes thought of as "host" is **not** routed
-through the host; each is already abstracted layer-by-layer with one
-identical API across both frontends:
+## Historical Architecture Notes (Archival)
 
-| Capability      | Where it lives                                  |
-| --------------- | ----------------------------------------------- |
-| Theme           | `qs.Commons` (FileView on Quickshell, `ThemeSource` on Qt6) |
-| Notifications   | `services/Notifier`                              |
-| Open external   | `services/Detached`                              |
-| Environment     | `services/Env`                                   |
-| Process I/O     | `services/ProcessRunner` / `ProcessWatcher` (C++ backend) |
-| JSON / files    | `services/JsonStore`, `DirectoryModel`, ...      |
-
-So "the host" is a thin window/lifecycle adapter, not a god-object the core
-depends on.
-
-## Host-independent vs. Quickshell-specific
-
-**Independent of the host** (everything a future `app/`
-would reuse untouched): `core/`, `logic/`, `state/`, `panels/`, `dialogs/`,
-`shared/`, `services/`, and the backing `.sh` scripts. None of these
-import `Quickshell` or reference a `FloatingWindow`/host `shell` object.
-
-**Per-frontend host code** (everything under `integrations/`, and nothing
-else): the Quickshell side is `Omafiles.qml` (the plugin bootstrap that the
-host loader instantiates) + `integrations/quickshell/HostBridge.qml`
-(`FloatingWindow` + the host `shell` object). The Qt6 side is
-`main.cpp` (bootstrap) + `app/Main.qml`
-(`ApplicationWindow`, no host `shell` object) + the `qs.Commons`/`qs.Ui`
-adapters under `app/qml_modules/`. Both hosts consume
-the same core surface and implement the same `HostAdapter` contract. As of
-Phase 18 the Qt6 standalone is a full production frontend, not a
-demonstration: `services/*.qml` already have a single host-agnostic
-implementation (they wrap the C++ backend, no longer `Quickshell.Io`), so a
-frontend swap touches only `integrations/`, never a caller below it.
-
-## Why this is a reusable core
-
-`core/OmafilesContent.qml` has zero references to `FloatingWindow`,
-`HostBridge`, or the host's `shell` object, and every dependency it pulls
-in (`logic/`, `state/`, `panels/`, `dialogs/`, `shared/`, `services/`) is
-equally Quickshell-free. It exposes exactly the surface a host needs:
-`open(payload)`, `close()`, `opened`, and a `closeRequested()` signal.
-Any QML host that can instantiate an `Item` and connect those four things
-can run it. Two do today: `integrations/quickshell/HostBridge.qml` backed
-by `FloatingWindow`, and `app/Main.qml` backed by
-`ApplicationWindow` — both implementing the same `HostAdapter` contract.
+- **Decoupling from Shell Plugins**: OmaFiles originally originated as a shell plugin before being decoupled into an independent Qt6 standalone application with its own native C++ core (`Omafiles.Backend`).
+- **Proxy Layer Removal (Phase 34.1)**: The intermediate `services/` QML proxy layer was retired in favor of direct namespaced QML imports (`import Omafiles.Backend as Backend`), reducing signal relay boilerplate and simplifying the call graph.

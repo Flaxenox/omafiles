@@ -51,7 +51,7 @@ Item {
     _saveJson(Paths.recentFile, BookmarksState.recentFiles)
   }
 
-  // Only called on the first open of the Quickshell session, without
+  // Called on first application startup without an explicit path argument.
   // a path requested by the host -- see open(). Async load (JsonStore.read);
   // refresh()/startDirWatch are triggered from the sessionFile handler
   // as soon as it knows the real path, not here (avoids listing homeDir extra if there
@@ -62,7 +62,7 @@ Item {
 
   // Only saves the path of each tab -- not history/preview/scroll,
   // that is "hot" session (it already survives close/reopen without leaving
-  // Quickshell thanks to keepLoaded) and it is not worth the complexity of
+  // session persistence across restarts.
   // restoring it after a real restart of the shell.
   function saveSession() {
     tabOps.saveActiveTab()

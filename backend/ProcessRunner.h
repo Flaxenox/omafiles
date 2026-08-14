@@ -7,13 +7,8 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// C++ backend for services/ProcessRunner.qml (Phase 5, josema). Backs with a
-// real QProcess the SAME API as the Quickshell implementation over
-// Quickshell.Io.Process -- see services/ProcessRunner.qml for the contract
-// and the reason for each method. It is registered as the QML type
-// Omafiles.Backend.ProcessRunner and consumed by the adapter
-// services/ProcessRunner.qml; the core (logic/) keeps
-// writing `ProcessRunner { onFinished: ... }` without noticing.
+// Asynchronous process execution backed by QProcess.
+// Delivers exitCode, stdout and stderr when finished.
 //
 // Not visual (QObject, not Item) on purpose: ProcessRunner was never a
 // UI element, it was only instantiated inside an Item.

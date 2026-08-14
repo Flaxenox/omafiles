@@ -11,7 +11,6 @@ import "../Utils.js" as Utils
 // contiguous in the file except for the functions, which now truly live
 // together). All external calls used `root.xxx(...)`, so they were
 // updated to `mountActions.xxx(...)` at their call sites -- no loose
-// wrappers remain in root.
 Item {
   property Item root: null
   property Item navController: null
@@ -23,7 +22,7 @@ Item {
   }
 
   function refreshNetworkMounts() {
-    // NATIVE enumeration of GVfs mounts (Phase 16): NetworkMounts.list()
+    // NATIVE enumeration of GVfs mounts: NetworkMounts.list()
     // replaces list-network-mounts.sh. Synchronous (readdir over gvfs).
     MountsState.networkMounts = Backend.NetworkMounts.list()
   }
@@ -84,7 +83,7 @@ Item {
     ejectProc.wasInside = wasInside
     ejectProc.tabIndex = TabsState.activeTabIndex
     ejectProc.device = mount.device
-    // Eject button spinner (Phase 21): cleared in ejectProc.onFinished.
+    // Eject button spinner: cleared in ejectProc.onFinished.
     MountsState.ejectingDevice = mount.device
     ejectProc.start(["udisksctl", "unmount", "-b", mount.device])
   }
@@ -129,7 +128,7 @@ Item {
     }
   }
 
-  // Req 4 (Phase 20): if the removable/external drive you were browsing is
+  // Req 4: if the removable/external drive you were browsing is
   // ejected (physically or from another app), UDisks2 triggers refreshMounts()
   // and here it is detected that currentPath hangs off a mount point that is no
   // longer mounted -> navigate to Home. It only looks at paths under /run/media

@@ -2,8 +2,8 @@ import QtQuick
 import Omafiles.Backend as Backend
 
 // Compares the UI-THREAD cost of the "did the folder change?" guard:
-//   BEFORE (Phase 10.A): Utils.entriesEqual -> iterates N entries, materializes all.
-//   NOW (Phase 27): compare DirectoryModel.signature (string) -> O(1).
+//   BEFORE: Utils.entriesEqual -> iterates N entries, materializes all.
+//   NOW: compare DirectoryModel.signature (string) -> O(1).
 Item {
   Backend.DirectoryModel { id: m; onListed: harness.step() }
   QtObject {

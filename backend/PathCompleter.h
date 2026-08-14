@@ -8,7 +8,6 @@
 // NATIVE path autocompletion for the address bar (Ctrl+L, Phase 26).
 // No external processes (no `ls`/`compgen`): it resolves in C++ with QDir, which
 // is instantaneous and does not fork. It is the backend of
-// services/PathCompleter.qml.
 //
 // QML singleton (Omafiles.Backend.PathCompleter): stateless, one instance is
 // enough. It is consumed as PathCompleter.complete(text, base).

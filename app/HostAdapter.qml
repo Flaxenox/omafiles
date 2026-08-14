@@ -3,10 +3,9 @@ import Omafiles.Backend as Backend
 import "../state"
 
 
-// Omafiles host contract (Phase 18, josema) -- the ONLY artifact that
+// Omafiles host contract -- the ONLY artifact that
 // formalizes what a host frontend must provide to the core. The official
 // implementation is app/Main.qml (over ApplicationWindow);
-// the former Quickshell frontend has been removed. The core
 // (core/OmafilesContent.qml) exposes open()/close()/opened + the closeRequested()
 // signal and nothing else.
 
@@ -30,7 +29,6 @@ import "../state"
 //
 // The other capabilities sometimes thought of as "host" ones (theme,
 // notifications, open-external, environment, process I/O) do NOT go through here:
-// they are already abstracted layer by layer in qs.Commons (theme) and services/ (Notifier,
 // Detached, Env, ProcessRunner...), with the same API in both frontends. See
 // ARCHITECTURE.md ("Host contract") and the Phase 18 report.
 QtObject {
@@ -38,7 +36,7 @@ QtObject {
 
   // The host window (FloatingWindow or ApplicationWindow). Both
   // expose width/height; each host applies the restored size to its own
-  // size property (implicitWidth/Height in Quickshell, width/height in
+  // Restores window geometry from persistent storage.
   // Qt6) from the sizeRestored handler.
   property var window: null
 

@@ -112,7 +112,7 @@ Item {
       }
       return
     }
-    // NavState.searching does NOT go here (Phase 19): while the search is open,
+    // NavState.searching does NOT go here: while the search is open,
     // the search field lives in the top bar and has its own focus;
     // if the user clicks a result and the list regains focus,
     // the shortcuts (navigate, copy, delete...) must work over the
@@ -147,7 +147,7 @@ Item {
       hostPreviewLoader.togglePreview()
       event.accepted = true
     } else if (event.key === Qt.Key_Slash || (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier))) {
-      // Ctrl+F (or /) opens the expandable search of the top bar (Phase 19).
+      // Ctrl+F (or /) opens the expandable search of the top bar.
       hostSearchOps.startSearch()
       event.accepted = true
     } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {

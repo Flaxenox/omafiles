@@ -6,7 +6,6 @@ import "../state"
 // depending on almost anything (root + persistence, and tabOps/mountOps only for
 // the two network-drive menu actions). Found in the same
 // audit as logic/SortOps.qml and logic/FileTypeUtils.qml. No
-// wrappers -- only 12 external call sites in total, spread across
 // 3 files (Sidebar.qml, OpenWithOps.qml, ConflictActions.qml).
 Item {
   property Item root: null
@@ -93,7 +92,7 @@ Item {
   }
 
   function iconForMount(mount) {
-    // Optical/ISO (Phase 20, josema): a mounted ISO appears as a loop device
+    // Optical/ISO: a mounted ISO appears as a loop device
     // with fstype iso9660 OR udf (Mafia: udf) -- previously only iso9660 was checked,
     // so the ISO fell to the USB icon. It is detected by optical fstype OR by
     // /dev/loop*, and uses the disc icon (same glyph as the .iso file).

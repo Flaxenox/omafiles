@@ -7,7 +7,7 @@ import QtQuick
 QtObject {
   property var mounts: []
   // Device (device path, e.g. /dev/sdb1) whose ejection is in progress --
-  // triggers the spinner of the sidebar's eject button (Phase 21). It is
+  // triggers the spinner of the sidebar's eject button. It is
   // set in MountActions.ejectMount() and cleared on completion; the row
   // disappears on its own when UDisksWatcher refreshes the listing. No timers.
   property string ejectingDevice: ""

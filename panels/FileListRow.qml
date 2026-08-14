@@ -104,7 +104,7 @@ CursorSurface {
       _requestCount(false)
     }
 
-    // Item counter (Phase 23): only folders, lazy (this row is
+    // Item counter: only folders, lazy (this row is
     // visible) and cached. force=true on invalidation (refreshTick) to
     // recount even if it was already cached.
     readonly property bool _isDir: modelData.type === "dir"

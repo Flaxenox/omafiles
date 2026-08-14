@@ -85,11 +85,11 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       if (!isCut) {
-        // NATIVE copy (Phase 13.A): FileOperations.copy instead of `cp -r`.
+        // NATIVE copy: FileOperations.copy instead of `cp -r`.
         // Copy has no undo (undoing it is ambiguous, see ActionEngine).
         actionEngine.runNativeCopy(pairs, busyLabel, mode === "overwrite")
       } else {
-        // NATIVE move (Phase 13.B): FileOperations.move. Same undo model
+        // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
         actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {

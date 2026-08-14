@@ -5,15 +5,14 @@
 #include <QVariantMap>
 #include <qqmlregistration.h>
 
-// C++ backend for previews (Phase 9, josema). Replaces the preview panel's
+// C++ backend for previews. Replaces the preview panel's
 // shell processes: the text READING (previously `head -c 4000`)
 // and the METADATA. The scaled image and the PDF are still provided by
-// ThumbnailProvider (Phase 8) at a preview size -- "cache reusing
+// ThumbnailProvider at a preview size -- "cache reusing
 // ThumbnailProvider when possible", without duplicating render/cache. The
 // highlighting (Pygments), the video thumbnail (ffmpegthumbnailer) and the
 // audio metadata (ffprobe) stay in shell for now.
 //
-// No dependency on Quickshell: only public Qt. QML singleton
 // (Omafiles.Backend.PreviewProvider).
 class PreviewProvider : public QObject {
   Q_OBJECT

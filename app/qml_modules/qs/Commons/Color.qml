@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// qs.Commons Color for the Qt6 frontend (Phase 17, josema). It's the SAME
+// qs.Commons Color for the Qt6 frontend. It's the SAME
 // real Omarchy Color.qml (same surface resolution: pick/flatColor/
 // composed + the per-surface QtObject), except that the foundational palette and
 // the shellValues dictionary are NOT read here with Quickshell.Io/FileView but

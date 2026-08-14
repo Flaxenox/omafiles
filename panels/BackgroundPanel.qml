@@ -39,7 +39,7 @@ Item {
   width: hostPanelsRow.slotWidth
   height: hostPanelsRow.height
 
-  // PER-PANEL search (Phase 26, josema): if this tab was left in GLOBAL
+  // PER-PANEL search: if this tab was left in GLOBAL
   // search mode (2+ chars) when moving to the background, the background panel
   // keeps it open -- bar + results -- until it's closed with the X. The
   // state (searching/searchQuery/searchEntries/searchTruncated) is saved by
@@ -59,7 +59,7 @@ Item {
     return bgSearchEntries.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0 })
   }
 
-  // The listing itself lives in DirLister (Phase 1.6, josema) -- same
+  // The listing itself lives in DirLister -- same
   // mechanism the active panel uses (NavigationController), but with
   // its own instance: several background tabs can be listing
   // different paths at the same time, so they can't share a single
@@ -87,7 +87,7 @@ Item {
     }
   }
 
-  // LRU of the per-path entries cache (Phase 10.A): before it grew without
+  // LRU of the per-path entries cache: before it grew without
   // limit (one entry per folder visited in ANY background
   // tab, retaining thousands of objects in long sessions with keepLoaded).
   // It's bounded to the 8 most recent paths using the insertion order of the
@@ -450,7 +450,7 @@ Item {
           _requestCount(false)
         }
 
-        // Item counter (Phase 23): same as FileListRow, with THIS background
+        // Item counter: same as FileListRow, with THIS background
         // panel's path. The FolderCountState cache is global (per path).
         readonly property bool _isDir: modelData.type === "dir"
         function _requestCount(force) {

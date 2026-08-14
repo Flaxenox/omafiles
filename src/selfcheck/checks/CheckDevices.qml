@@ -7,7 +7,7 @@ import "../../../Utils.js" as Utils
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
-        sc.add("Native trash listing: trashRoots + trashInfo (Fase 16)", function (done) {
+        sc.add("Native trash listing: trashRoots + trashInfo", function (done) {
           var home = Backend.Env.get("HOME")
           var roots = Backend.FileOperations.trashRoots()
           var homeTrash = home + "/.local/share/Trash"
@@ -38,7 +38,7 @@ QtObject {
         // active GVfs mounts in the test environment, it must return a list
         // (empty) without breaking. Smoke test: content can't be asserted without a
         // real mount, but the native path does respond with an array.
-        sc.add("Native network mounts listing returns a list (Fase 16)", function (done) {
+        sc.add("Native network mounts listing returns a list", function (done) {
           var l = Backend.NetworkMounts.list()
           done(l !== undefined && l !== null && typeof l.length === "number",
                "Backend.NetworkMounts.list() -> " + (l ? l.length : "null") + " entries")

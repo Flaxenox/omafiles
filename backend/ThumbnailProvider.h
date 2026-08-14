@@ -6,11 +6,10 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// C++ backend for thumbnails (Phase 8, josema). Generates thumbnails of images
+// C++ backend for thumbnails. Generates thumbnails of images
 // (PNG/JPEG/WebP/GIF/SVG) and PDF (first page) with QImageReader, caches
 // them on disk and serves them by file PATH -- just as the project
 // already did with the PDF/video thumbnails (Image { source: <path> }), which
-// avoids registering a QQuickImageProvider in the Quickshell engine
 // (which we do not control). See BACKEND_DESIGN.md 5.3.
 //
 // Persistent cache in ~/.cache/omafiles/thumbnails/. The key is a hash
@@ -40,14 +39,14 @@ public:
   Q_INVOKABLE QString request(const QString &path, int size = 256);
 
   // Canonical on-disk cache-key hash (SHA-1 hex of `input`). IT IS THE
-  // ONLY cache hash scheme of Omafiles (Phase B1): it is used internally by
+  // ONLY cache hash scheme of Omafiles: it is used internally by
   // request() for the image/PDF thumbnails and consumed from QML by the
   // paths that previously used Utils.simpleHash (video thumbnails in
   // logic/VideoThumbnails.qml, extraction cache in logic/ArchiveActions.
   // qml). Deterministic and stable: same `input` -> same file name.
   Q_INVOKABLE QString cacheKey(const QString &input) const;
 
-  // Maintenance prune of the on-disk cache (Phase O1). The ONLY production
+  // Maintenance prune of the on-disk cache. The ONLY production
   // entry point: it deletes (1) the orphans of the old base36 scheme
   // -without a consumer after B1-, (2) the thumbnails older than the age
   // policy and (3), if the total exceeds the size policy, the oldest ones

@@ -24,7 +24,7 @@ Item {
   property string currentPath: ""
   property string dropHoverPath: ""
   // Device path whose ejection is in progress -> eject button spinner
-  // (Phase 21). Fed by MainLayout from MountsState.ejectingDevice.
+  //. Fed by MainLayout from MountsState.ejectingDevice.
   property string ejectingDevice: ""
 
   // Item against which mapToItem() computes the context menu's
@@ -376,7 +376,7 @@ Item {
           }
         }
 
-        // Eject button (Phase 21): only on ejectable devices.
+        // Eject button: only on ejectable devices.
         // Hidden at rest; appears with a smooth fade (120 ms) + slight
         // 3 px slide on hovering the row (Quattro aesthetic,
         // no bounces). While the ejection is in progress it shows a

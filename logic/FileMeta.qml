@@ -82,7 +82,7 @@ Item {
     if (entry.type !== "dir") {
       parts.push(Utils.formatSize(entry.size))
     } else {
-      // Item counter (Phase 23): occupies the "size slot" in the
+      // Item counter: occupies the "size slot" in the
       // folders. It comes from the async FolderCountState cache (the visible
       // row requests it); while it has not arrived (or -1 = no access) nothing
       // is shown, so the row does not jump.
@@ -110,7 +110,7 @@ Item {
     return ""
   }
 
-  // Async path of the folder counter (Phase 23): the backend counts on a
+  // Async path of the folder counter: the backend counts on a
   // thread and responds via counted(); here it is dumped to the reactive cache, which
   // re-evaluates the subtitles. A single point (FileMeta is instantiated once).
   Connections {

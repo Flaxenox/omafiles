@@ -30,7 +30,7 @@ Item {
     var basePath = queued.basePath
     var src = Utils.joinPath(basePath, entry.name)
     // Cache file name by the backend's canonical hash (SHA-1),
-    // the same scheme as the image/PDF thumbnails (Phase B1). The
+    // the same scheme as the image/PDF thumbnails. The
     // invalidation key is still path|mtime (thumbKeyFor); only the
     // hash changes. .jpg extension because ffmpegthumbnailer generates it.
     var dest = Paths.thumbCacheDir + "/" + Backend.ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"

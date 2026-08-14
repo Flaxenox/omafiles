@@ -5,7 +5,7 @@ import "../state"
 import Omafiles.Backend as Backend
 
 // User-defined actions (Phase 26 / Beta 3): custom commands that
-// are read from ~/.config/omarchy/omafiles/actions.toml and appear both in the
+// are read from ~/.config/omafiles/actions.toml and appear both in the
 // command palette and in the item context menu. It is the escape hatch
 // for everything the manager does not ship out of the box (open in your editor, optimize
 // an image, convert, upload somewhere...) without having to touch the code.

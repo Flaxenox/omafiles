@@ -6,7 +6,7 @@
 Notifier::Notifier(QObject *parent) : QObject(parent) {}
 
 void Notifier::notify(const QString &text) {
-  // Detached notify-send: same command the Quickshell version built, with
+  // Detached notify-send execution.
   // "Omafiles" as the title centralized here (previously it was repeated in
   // each of the 16+ call sites).
   QProcess::startDetached(QStringLiteral("notify-send"),

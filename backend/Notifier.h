@@ -4,11 +4,8 @@
 #include <QString>
 #include <qqmlregistration.h>
 
-// C++ backend for services/Notifier.qml (Phase 5.C, josema). Desktop
-// notifications -- today it launches "notify-send" as a detached process, the
-// SAME way as the Quickshell implementation over Quickshell.execDetached().
-// See services/Notifier.qml for the contract and the reason for centralizing
-// the "Omafiles" title here.
+// Desktop notifications via notify-send.
+// QML singleton (Omafiles.Backend.Notifier): consumed as Notifier.notify("...").
 //
 // Design note (BACKEND_DESIGN.md 5.1): the idiomatic form would be
 // org.freedesktop.Notifications over QDBus (no fork, with notification IDs).

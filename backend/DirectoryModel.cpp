@@ -171,9 +171,9 @@ int gatherOne(const QByteArray &p, bool showHidden,
 // Sorts ONE group by name (case-insensitive, number-aware) with a
 // Schwartzian transform: lowercases each name ONCE, sorts
 // a vector of indices over those precomputed keys, and reorders the group with
-// a single sweep of moves at the end. Before (Phase 10.A) the toLower lived
+// a single sweep of moves at the end. Before the toLower lived
 // inside the comparator, which std::sort calls O(n log n) times -> at 100k it
-// was ~1.7M comparisons × 2 toLower = allocation storm (Phase 27, measured).
+// was ~1.7M comparisons × 2 toLower = allocation storm.
 void sortGroup(QVector<DirectoryModel::Entry> &v) {
   const int n = v.size();
   if (n < 2)

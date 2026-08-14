@@ -3,7 +3,7 @@ import Omafiles.Backend as Backend
 import "../../../state"
 import "../../../Utils.js" as Utils
 
-// Trash & conflict detection domain checks (Phase 30).
+// Trash & conflict detection domain checks.
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {

@@ -1,7 +1,7 @@
 pragma Singleton
 import QtQuick
 
-// Cache of item count per folder (Phase 23, josema). path -> number of direct
+// Cache of item count per folder. path -> number of direct
 // entries (or -1 if it could not be opened). Fed by the async path
 // FolderCounter.counted; read by the row subtitles via FileMeta.metaFor.
 //

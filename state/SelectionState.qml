@@ -3,7 +3,7 @@ import QtQuick
 
 // Row selection state (single + drag marquee) --
 // first singleton of the state/ layer, a pilot to validate the
-// pragma Singleton pattern within the plugin itself (same mechanism that
+// Selection state singleton for active file listing.
 // Util/Color/Style of qs.Commons already use) before moving more state here. The
 // logic that manipulates it stays in logic/SelectionOps.qml -- this is ONLY
 // the state, without functions.

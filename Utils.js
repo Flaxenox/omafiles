@@ -1,12 +1,6 @@
 .pragma library
 
-// Pure functions pulled out of Omafiles.qml (without references to "root" --
-// a Qt6 .js module with ".pragma library" doesn't see the scope of the
-// component that imports it, unlike Qt.include(), which in this
-// engine simply fails). thumbKeyFor/videoThumbPath no longer accept
-// optional basePath/cacheDir with implicit fallback to
-// root.currentPath/root.thumbCacheDir -- the caller has to pass them
-// always.
+// Common pure utility functions.
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + " B"
@@ -20,7 +14,7 @@ function _withThousands(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
 }
 
-// Smart formatting of the per-folder item counter (Phase 23, josema):
+// Smart formatting of the per-folder item counter:
 //   <10k -> exact with thousands separator (1 item / 2 items / 1,234 items)
 //   <1M  -> abbreviated 12.3k items
 //   >=1M -> abbreviated 1.2M items
@@ -55,10 +49,7 @@ function relativeTime(epochSeconds) {
   return Math.floor(diff / (86400 * 365)) + " yr ago"
 }
 
-// Compares numbers as numbers, not letter by letter -- without this
-// "file2.txt" came after "file10.txt" (pure lexicographic: "1" <
-// "2"), and the same with numbered dates/chapters/versions. A compact
-// well-known algorithm (splits with a regex, compares chunk by chunk).
+// Compares numbers as numbers, not letter by letter.
 function naturalCompare(a, b) {
   var ax = [], bx = []
   a.replace(/(\d+)|(\D+)/g, function (_, d, s) { ax.push([d || Infinity, s || ""]) })
@@ -71,47 +62,25 @@ function naturalCompare(a, b) {
   return ax.length - bx.length
 }
 
-// The on-disk cache-key hash lives in the C++ backend
-// (ThumbnailProvider.cacheKey, SHA-1) and is the ONLY scheme in the project
-// (Phase B1). Before there was a JS simpleHash here that coexisted with that SHA-1
-// (two file-name formats for the same cache folder); it was
-// removed. The cache paths are composed in QML by calling
-// ThumbnailProvider.cacheKey (see VideoThumbnails.qml and ArchiveActions.qml).
-
 // Joins a base directory and a name into an absolute path, treating "/"
-// as a special case (avoids "//name"). Pure function; it was a wrapper of
-// OmafilesContent (root.joinPath) that 45 sites called via the composition
-// root's facade despite it not being its own (Phase 14.D): now it lives here, next to
-// the rest of the pure utilities, and logic/ no longer depends on the root for this.
+// as a special case (avoids "//name").
 function joinPath(base, name) {
   return base === "/" ? "/" + name : base + "/" + name
 }
 
-// Absolute path of an ENTRY, resolve where it may. In a normal
-// listing (or in the recursive fallback search) the entry only carries `name`
-// relative to `base`, so it's joined with joinPath -- behavior identical to
-// the usual. In the indexed GLOBAL search the entry already carries an absolute `path`
-// (name is only the basename, it may come from any other folder): then
-// that path is used as is. A single site so as not to couple the rest of the code
-// to which backend produced the entry (see services/SearchBackend.qml).
+// Absolute path of an entry. In a normal listing (or recursive search)
+// the entry carries `name` relative to `base`. In indexed global search
+// the entry carries an absolute `path`.
 function entryPath(base, entry) {
   return entry && entry.path ? entry.path : joinPath(base, entry.name)
 }
 
-// IN-MEMORY key of the VideoThumbState.videoThumbReady dict (path|mtime) --
-// it's not a file hash, only a unique identifier per (video, mtime)
-// to deduplicate requests and read the result. The on-disk cache file
-// name is given by ThumbnailProvider.cacheKey (SHA-1), see
-// VideoThumbnails.qml.
+// In-memory key of the VideoThumbState.videoThumbReady dict (path|mtime).
 function thumbKeyFor(entry, basePath) {
   return joinPath(basePath, entry.name) + "|" + entry.mtime
 }
 
-// Compares two entry lists by CONTENT, cheap (O(n), without
-// allocations). Phase 10.A: replaces JSON.stringify(a) !== JSON.stringify(b)
-// -- which serialized ~330 KB per comparison and was done 4 times per refresh
-// (measured at 74 ms over /usr/bin). Here only the fields that the
-// UI can show and that would decide a relayout are traversed.
+// Compares two entry lists by content, O(n) without allocations.
 function entriesEqual(a, b) {
   if (a === b) return true
   if (!a || !b || a.length !== b.length) return false
@@ -123,24 +92,13 @@ function entriesEqual(a, b) {
   return true
 }
 
-// parseMounts is still alive: list-mounts.sh (device enumeration via
-// lsblk/findmnt) is a "system adapter" that is NOT migrated (see BACKEND_DESIGN.md).
-// The TSV it produces is parsed here. The NETWORK mounts, on the other hand, moved to a
-// native backend (NetworkMounts) in Phase 16, so parseNetworkMounts was
-// removed (there was no longer a consumer).
-// Decodes a device label (Phase 20, josema). findmnt -r (raw
-// mode, which list-mounts.sh uses to split fields by tab
-// reliably) escapes spaces and UTF-8 as \xNN; some providers use %NN.
-// The \xNN are converted to %NN and everything is decoded at once with
-// decodeURIComponent, which is UTF-8-aware (equivalent to QUrl::fromPercentEncoding),
-// so "Mafia\x20The\x20Old" -> "Mafia The Old" and "caf\xc3\xa9" -> "café".
+// Decodes a device label from findmnt raw format.
 function decodeDeviceLabel(s) {
   var raw = String(s || "")
   var pct = raw.replace(/\\x([0-9A-Fa-f]{2})/g, "%$1")
   try {
     return decodeURIComponent(pct)
   } catch (e) {
-    // A loose % invalid for decodeURIComponent: decode only the \xNN.
     return raw.replace(/\\x([0-9A-Fa-f]{2})/g, function (_, h) {
       return String.fromCharCode(parseInt(h, 16))
     })
@@ -151,9 +109,6 @@ function parseMounts(text) {
   var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
   return lines.map(function (l) {
     var parts = l.split("\t")
-    // path also decoded: findmnt -r escapes the spaces of the mount
-    // point (/run/media/.../Mafia\x20The\x20Old); without decoding, navigating to
-    // the drive would fail (the real directory has spaces, not \x20).
     return { label: decodeDeviceLabel(parts[0]), path: decodeDeviceLabel(parts[1]), device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
   })
 }

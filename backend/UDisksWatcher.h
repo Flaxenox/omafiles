@@ -4,7 +4,7 @@
 #include <QTimer>
 #include <qqmlregistration.h>
 
-// Reactive UDisks2 watcher (Phase 20, josema). Replaces the sidebar's 7 s
+// Reactive UDisks2 watcher. Replaces the sidebar's 7 s
 // polling with a D-Bus subscription to the signals of the SYSTEM bus of
 // org.freedesktop.UDisks2. When UDisks2 notifies ANY block-device
 // change -- plugging/ejecting a USB, mounting/unmounting an ISO,

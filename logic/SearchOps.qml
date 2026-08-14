@@ -53,14 +53,14 @@ Item {
     if (NavState.searchQuery.length < 2) return
     NavState.searchBusy = true
     list.contentY = list.originY
-    // Indexed GLOBAL search (Phase 26): SearchBackend queries the system
+    // Indexed GLOBAL search: SearchBackend queries the system
     // index (tracker3/plocate) and, if there is none, falls back to the
     // recursive SearchWorker from currentPath. Cancelable; a new search
     // invalidates the previous one. The UI doesn't know which backend responded.
     searchBackend.search(NavState.searchQuery, NavState.showHidden, NavState.currentPath)
   }
 
-  // Returns to the normal listing of currentPath without closing the searcher (Phase 19):
+  // Returns to the normal listing of currentPath without closing the searcher:
   // called by the SearchBar debounce when the query drops below 2 characters.
   function restoreListing() {
     searchBackend.cancel()

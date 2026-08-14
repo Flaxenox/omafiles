@@ -31,7 +31,7 @@ class SelfCheckReporter : public QObject {
   }
 };
 
-// Qt6 bootstrap of the standalone frontend (Phase 4, josema). In normal mode it
+// Qt6 bootstrap of the standalone frontend. In normal mode it
 // loads app/Main.qml, which instantiates the SAME
 // core/OmafilesContent.qml as the frontend, inside a real
 // ApplicationWindow.
@@ -42,7 +42,7 @@ class SelfCheckReporter : public QObject {
 // self-cleaning temporary directory and loads
 // app/SelfCheck.qml, which exercises the
 // backend/frontend/integration subsystems and ends with Qt.exit(number of
-// failures). See AUDIT-V2.md (Phase 12) and SelfCheck.qml.
+// failures). See AUDIT-V2.md and SelfCheck.qml.
 //
 // OMAFILES_SOURCE_DIR / OMAFILES_QML_IMPORT_DIR are defined by CMakeLists.txt.
 
@@ -332,7 +332,7 @@ int runNormal(int argc, char *argv[]) {
   // .desktop has a different basename (io.github.percius04.omafiles, mandatory
   // for D-Bus activation), so it is matched to this window via
   // StartupWMClass=omafiles in the .desktop itself -> the dock/taskbar resolves
-  // Icon=omafiles without changing the app_id (Phase 29).
+  // Icon=omafiles without changing the app_id.
 
 
   // First positional argument = path/URI/payload to open (empty = normal

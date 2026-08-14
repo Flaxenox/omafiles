@@ -46,7 +46,7 @@ Item {
       var name = src.substring(src.lastIndexOf("/") + 1)
       return Utils.joinPath(NavState.currentPath, name)
     })
-    // NATIVE conflict detection (Phase 13.F): FileOperations.existingPaths
+    // NATIVE conflict detection: FileOperations.existingPaths
     // (synchronous stat) instead of a `test -e` via shell. Same observable
     // result: 0 conflicts -> pastes now; if any, opens the dialog.
     var conflicts = Backend.FileOperations.existingPaths(destPaths)
@@ -73,7 +73,7 @@ Item {
     var destPaths = sourcePaths.map(function (src) {
       return Utils.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
-    // NATIVE conflict detection (Phase 13.F): same as paste().
+    // NATIVE conflict detection: same as paste().
     var conflicts = Backend.FileOperations.existingPaths(destPaths)
     if (conflicts.length === 0) {
       runDrop("all")
@@ -323,10 +323,10 @@ Item {
         ? busyVerb + "\"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\"…"
         : busyVerb + pairs.length + " items…"
       if (!isMove) {
-        // NATIVE copy (Phase 13.A): FileOperations.copy instead of `cp -r`.
+        // NATIVE copy: FileOperations.copy instead of `cp -r`.
         actionEngine.runNativeCopy(pairs, busyLabel, mode === "overwrite")
       } else {
-        // NATIVE move (Phase 13.B): FileOperations.move. Same undo model
+        // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
         actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {

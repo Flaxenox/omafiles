@@ -10,10 +10,6 @@ import Omafiles.Backend as Backend
 // commitChmod, makeLinkFor, restoreFromTrash...) call runAction()/
 // pushUndo() as if they were their own. Changing the 50+ call sites
 // would have been far more risk than the benefit -- instead, root
-// keeps one-line wrapper functions (`function runAction(...) {
-// return actionEngine.runAction(...) }`, see next to each one in
-// core) that delegate here. No existing call site
-// changed.
 Item {
   property Item root: null
   property Item navController: null
@@ -85,8 +81,7 @@ Item {
     ActionState.actionBusy = !!busyLabel
     ActionState._actionOnSuccess = onSuccess || null
     // group:true -- the command runs in its own process group instead
-    // of sharing Quickshell's. Without this, cancelAction() could only
-    // kill the "bash -c" itself -- any cp/mv/zip that bash had
+        // kill the "bash -c" itself -- any cp/mv/zip that bash had
     // launched as a child was left orphaned and kept running in the background
     // as if nothing, even though the UI had already given the action for cancelled.
     actionProc.start(["bash", "-c", cmd], true)
@@ -129,7 +124,7 @@ Item {
     NavState.refreshTick += 1
   }
 
-  // ---------- Native byte progress (Phase 13.G) ----------
+  // ---------- Native byte progress ----------
   // Replaces the `du` polling with the total size (FileOperations.totalSize,
   // once) + the backend's progress(op,path,done,total) signal, aggregated
   // over the batch. Same observable behavior: actionProgressPct 0..100
@@ -165,7 +160,7 @@ Item {
   // bar (startCopyProgress, `du` polling over destinations), same
   // cancellation (cancelAction), same refresh. Sequential (one at a time)
   // to preserve the semantics of the previous chainCmds: if one fails it is notified
-  // (only once, in services/FileOperations) and it stops. `overwrite` = the
+  // (only once, in Omafiles.Backend.FileOperations) and it stops. `overwrite` = the
   // dialog chose to overwrite (before `-f`; without it, `-n`).
   property bool nativeBusy: false
   property string _nativeKind: "copy"
@@ -183,7 +178,7 @@ Item {
     return _runNative("move", pairs, busyLabel, overwrite, onDone)
   }
 
-  // Native permanent delete (Phase 13.C): `paths` is a list of paths
+  // Native permanent delete: `paths` is a list of paths
   // (not pairs). ignoreMissing = `rm -f` semantics (a missing one is not an error).
   // The only caller (permanent delete from the Trash) passes
   // busyLabel="" -> no progress bar, like the previous `rm -rf`.
@@ -192,7 +187,7 @@ Item {
     return _runNative("remove", pairs, busyLabel, ignoreMissing, onDone)
   }
 
-  // Native send-to-trash (Phase 13.D): `paths` = paths to send. XDG Trash
+  // Native send-to-trash: `paths` = paths to send. XDG Trash
   // (QFile::moveToTrash: creates the .trashinfo, resolves collisions, respects the
   // origin disk). The caller (delete to trash from DeleteOps)
   // registers the undo in onDone (restore by original path).
@@ -201,7 +196,7 @@ Item {
     return _runNative("trash", pairs, busyLabel, false, onDone)
   }
 
-  // Native restore (Phase 13.E): `origPaths` = ORIGINAL paths to restore.
+  // Native restore: `origPaths` = ORIGINAL paths to restore.
   // Each one is located by its .trashinfo in any active trash.
   function runNativeRestore(origPaths, busyLabel, onDone) {
     var pairs = origPaths.map(function (p) { return { src: p } })
@@ -246,7 +241,7 @@ Item {
       _batchIdx += 1
       _batchNext()
     }
-    // The error was already notified by services/FileOperations (except "cancelled"); here
+    // The error was already notified by Omafiles.Backend.FileOperations (except "cancelled"); here
     // it only stops the sequence and cleans up the state.
     function bad(op, src, msg) {
       cleanup()
@@ -309,7 +304,7 @@ Item {
     }
   }
 
-  // (Phase 13.G) Removed actionProgressTotalProc / actionProgressPollProc /
+  // Removed actionProgressTotalProc / actionProgressPollProc /
   // actionProgressPollTimer: progress is no longer polled with `du`, it comes by
   // bytes from the FileOperations.progress signal (see the Connections above).
 }

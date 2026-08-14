@@ -14,7 +14,7 @@ QtObject {
           done(!!home && home.length > 0, home ? "HOME=" + home : "Backend.Env.get(HOME) empty")
         })
 
-        sc.add("Backend.UDisksWatcher reactive backend (Fase 20, no polling)", function (done) {
+        sc.add("Backend.UDisksWatcher reactive backend", function (done) {
           // The C++ watcher (QtDBus) registered and exposes available()/devicesChanged.
           // available() is true if it connected to the system bus (in headless CI it can
           // be false; what's validated is that it loads and doesn't break, not that there's a bus).
@@ -35,7 +35,7 @@ QtObject {
           Backend.FolderCounter.request(sc.listDir, false)
         })
 
-        sc.add("Item count smart formatting (Fase 23)", function (done) {
+        sc.add("Item count smart formatting", function (done) {
           var ok = Utils.formatItemCount(1) === "1 item"
             && Utils.formatItemCount(2) === "2 items"
             && Utils.formatItemCount(1234) === "1,234 items"

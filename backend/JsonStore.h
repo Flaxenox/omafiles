@@ -6,7 +6,7 @@
 #include <QVariant>
 #include <qqmlregistration.h>
 
-// C++ backend for Omafiles' JSON persistence (Phase 6.A, josema).
+// C++ backend for Omafiles' JSON persistence.
 // Replaces the pattern of reading with "cat" (one fork per file) and writing
 // with "bash -c 'mkdir -p ... && printf > ...'" (another fork) that
 // logic/Persistence.qml used. See BACKEND_DESIGN.md 5.2.
@@ -20,7 +20,7 @@
 //
 // QML singleton (Omafiles.Backend.JsonStore): no per-file state, one
 // instance routes all reads/writes. It is consumed by the adapter
-// services/JsonStore.qml; logic/ does not import it directly (rule 8).
+// Single delivery point for JSON state files.
 class JsonStore : public QObject {
   Q_OBJECT
   QML_ELEMENT

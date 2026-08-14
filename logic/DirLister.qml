@@ -3,7 +3,7 @@ import "../state"
 import Omafiles.Backend as Backend
 
 // Lists a directory and exposes the result already sorted -- twenty-third
-// component extracted from core (Phase 1.6, josema). Reused by
+// component extracted from core. Reused by
 // NavigationController (active panel, one instance) and BackgroundPanel (one
 // per background tab). Each has its instance: several tabs
 // can list different paths at once.
@@ -72,7 +72,7 @@ Item {
     }
   }
 
-  // Native watching of the current directory (Phase 6.D). Returns false if
+  // Native watching of the current directory. Returns false if
   // the model could not watch (invalid path, descriptor limit) so
   // the caller falls back to inotifywait.
   function watch(path) {
@@ -90,9 +90,9 @@ Item {
   // a visible jump reported by josema -- see the history of
   // NavigationController/BackgroundPanel before this extraction).
   function _apply() {
-    // Guard "did the folder change?" by SIGNATURE (Phase 27), not by content:
+    // Guard "did the folder change?" by SIGNATURE, not by content:
     // DirectoryModel.signature is a content hash computed on the worker
-    // thread. Previously (Phase 10.A) it was compared with Utils.entriesEqual, O(n) on
+    // thread. Previously it was compared with Utils.entriesEqual, O(n) on
     // the UI thread, which also forced materializing the WHOLE lazy array
     // (dirModel.entries) on walking it. Now dirModel.entries is only
     // read/materialized when the signature actually changed -> the watcher's

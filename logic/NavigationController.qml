@@ -9,18 +9,6 @@ import "../Utils.js" as Utils
 // central to move" in an earlier attempt; this time the CONTROLLER is
 // moved, not the state itself). refresh/navigateTo/enter/goUp/
 // navBack/navForward/startDirWatch/stopDirWatch/openWithDefault/
-// _goToPath stay exposed as thin wrappers in root -- they are called by
-// about 10 different files (KeyboardShortcuts, MountActions,
-// Persistence, BookmarkOps, SearchOps, ArchiveActions, ActionEngine,
-// BackgroundPanel, TabOps, FileListRow) and it's not worth the risk of
-// touching all those call sites.
-// The listing itself (parsing/sorting/trash-info.sh) lives in DirLister
-// (Phase 1.6, josema) -- this component no longer owns any Process
-// of its own, it only orchestrates WHEN to list and what to do with the
-// result (scroll, pending selection...). BackgroundPanel instantiates
-// its own DirLister per background tab -- same mechanism, without
-// sharing the Process (several tabs can list different paths
-// at the same time).
 Item {
   id: navCtrl
   property Item root: null
@@ -68,7 +56,7 @@ Item {
       root.loaded = true
       return
     }
-    // Cheap content comparison (Phase 10.A): before these were another two
+    // Cheap content comparison: before these were another two
     // JSON.stringify of the whole array. entriesEqual is O(n) without
     // allocations.
     var changed = !Utils.entriesEqual(parsed, NavState.entries)
@@ -225,11 +213,9 @@ Item {
   }
 
   // Used by BackgroundPanel (double click on a file in a background
-  // panel) and launchRecent() to avoid depending on Quickshell directly
-  // outside services/.
-  // Detached (real execDetached, without stdout/stderr pipes nor
+      // Detached (real execDetached, without stdout/stderr pipes nor
   // tracking) + gtk-launch, NOT xdg-open nor gio open -- third real
-  // attempt in the same session (Phase 1.5, josema) until finding something
+  // attempt in the same session until finding something
   // reliable:
   //  1. xdg-open (Detached): under Hyprland (XDG_CURRENT_DESKTOP=Hyprland,
   //     not recognized as gnome/kde/...) it falls into its "generic" branch, which
@@ -238,7 +224,7 @@ Item {
   //     hung forever without anything being shown.
   //  2. gio open (ProcessRunner, with or without a "bash -c" in between, with or
   //     without setsid): it does respect Terminal=true in manual tests from
-  //     a normal shell, but launched from the Quickshell Process the
+  // from an external process.
   //     terminal it opens internally for Terminal=true didn't survive
   //     reliably (sometimes yes, most times no) -- the exact
   //     cause wasn't found, but the usual pattern: ProcessRunner

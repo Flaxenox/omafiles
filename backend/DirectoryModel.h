@@ -12,12 +12,12 @@
 
 class QFileSystemWatcher;
 
-// C++ backend for directory listing (Phase 6.B, josema). Native
+// Asynchronous directory listing and file system watching.
 // replacement for list-dir.sh + Utils.parseEntries: it scans with direct
 // readdir/stat/lstat, without a fork per file nor a NUL-delimited shell pipe.
 // See BACKEND_DESIGN.md 5.3.
 //
-// DATA PROVIDER, not a Qt model (Phase 15, josema): the architectural
+// DATA PROVIDER, not a Qt model: the architectural
 // decision of AUDIT-V2 was Option B. The UI NEVER consumed this as
 // ListView.model -- `NavState.entries` (the real list model) is
 // fed from FOUR heterogeneous sources (normal dir, recursive search,
@@ -40,7 +40,6 @@ class QFileSystemWatcher;
 //   - error codes equivalent to the exit codes (2/3/4/1).
 //
 // It is registered as the QML type Omafiles.Backend.DirectoryModel; consumed by
-// the adapter services/DirectoryModel.qml (not a singleton: several tabs
 // list different paths at once, each its own instance).
 class DirectoryModel : public QObject {
   Q_OBJECT
@@ -95,14 +94,14 @@ public:
   Q_INVOKABLE void list(const QString &path, bool showHidden = false);
 
   // Like list() but merges the content of SEVERAL directories into a
-  // single listing (Phase 6.C, native trash). Replaces list-trash.sh,
+  // single listing. Replaces list-trash.sh,
   // which did the same by launching list-dir.sh for each XDG root and
   // concatenating. Directories that do not exist or cannot be read are
   // skipped silently (like the script's `[[ -d ]] &&`). Same
   // async contract and same listed()/entries signal.
   Q_INVOKABLE void listMany(const QStringList &paths, bool showHidden = false);
 
-  // Native watching of the last requested directory (Phase 6.D). Starts a
+  // Native watching of the last requested directory. Starts a
   // QFileSystemWatcher over `path` (kernel inotify via Qt, WITHOUT forking
   // inotifywait). Emits directoryChanged() when its content changes; the
   // debounce + the refresh are still done by NavigationController, which
@@ -152,7 +151,7 @@ private:
   QString m_signature;      // content signature of the last applied listing
   quint64 m_generation = 0; // last requested generation (scan)
 
-  // Life flag shared with the pool workers (Phase 10.A). The
+  // Life flag shared with the pool workers. The
   // scan is static, but the DELIVERY of the result does
   // invokeMethod(this): if the model is destroyed (closing a tab)
   // while a worker is still in flight, that would dereference a dead

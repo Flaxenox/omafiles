@@ -34,7 +34,7 @@ if [[ -n "$arg" ]]; then
   [[ -d "$path" ]] || path=""
 fi
 
-# Launches the standalone Qt6 binary (Phase 25). If Omafiles is already open, its
+# Launches the standalone Qt6 binary. If Omafiles is already open, its
 # single instance receives the path and navigates to it in a new tab
 # bringing the window to the front; if not, it opens it. Empty path = normal
 # startup (restores the previous session).

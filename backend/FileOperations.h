@@ -10,7 +10,7 @@
 #include <mutex>
 #include <qqmlregistration.h>
 
-// C++ backend for file operations (Phase 7, josema). Native replacement
+// C++ backend for file operations. Native replacement
 // for the shell commands (cp/mv/rm/mkdir/gio trash/...) that today
 // ActionEngine.runAction builds and executes. See BACKEND_DESIGN.md 5.3 (FileOps).
 //
@@ -25,10 +25,9 @@
 // error (failure). The `op` identifies the operation ("copy", "move", ...) and
 // `path` its main path, so the consumer can correlate.
 //
-// No dependency on Quickshell: only public Qt. The refresh after an
 // operation is NOT triggered by this type -- it is done by DirectoryModel's
-// QFileSystemWatcher (Phase 6.D) when the directory changes. The integration
-// with Notifier lives in the QML adapter (services/FileOperations.qml), which
+// QFileSystemWatcher when the directory changes. The integration
+// with Notifier lives in the QML adapter (Omafiles.Backend.FileOperations), which
 // re-emits these signals and warns on errors.
 class FileOperations : public QObject {
   Q_OBJECT
@@ -53,7 +52,7 @@ public:
   // Phase 13.A. The consumer (ActionEngine) cleans up the partial destination.
   Q_INVOKABLE void cancel();
 
-  // NATIVE conflict detection (Phase 13.F): returns the subset of
+  // NATIVE conflict detection: returns the subset of
   // `paths` that ALREADY EXIST on disk. lstat criterion (entryExists): counts a
   // file, folder or symlink -- including a BROKEN symlink -- like the
   // no-overwrite guards of copy/move (BUG-01, Hardening-1). Synchronous (only
@@ -63,7 +62,7 @@ public:
   Q_INVOKABLE QStringList existingPaths(const QStringList &paths) const;
 
   // Total size (recursive, in bytes) of a set of paths. Native, for
-  // the copy/move progress percentage without `du` (Phase 13.G) and for the
+  // the copy/move progress percentage without `du` and for the
   // size of a multiple selection in Properties without building a gigantic
   // `du -shc` line (BUG-03, Hardening-2). Synchronous (walks the tree).
   Q_INVOKABLE qint64 totalSize(const QStringList &paths) const;
@@ -106,7 +105,7 @@ public:
 
   // Restores a trash item IDENTIFIED BY ITS ORIGINAL PATH (not by the
   // name inside files/, which may carry a suffix if there was a collision).
-  // Native replica of restore-by-origpath.sh (Phase 13.E): it searches ALL the
+  // Native replica of restore-by-origpath.sh: it searches ALL the
   // active XDG roots (home trash + .Trash-$uid of other mounts) for the
   // .trashinfo whose Path= (percent-decoded; relative to the mount point in
   // disk trashes) matches `origPath`, uses the most recent, moves
@@ -114,13 +113,13 @@ public:
   // deletes the .trashinfo. Emits finished("restore", origPath) / error.
   Q_INVOKABLE void restoreByOrigPath(const QString &origPath);
 
-  // Active XDG trash roots (Phase 16): the home one (~/.local/share/
+  // Active XDG trash roots: the home one (~/.local/share/
   // Trash) plus the .Trash-$uid of any other mount point. Native
   // replacement for trash-roots.sh; the Trash view lists "<root>/files" of each
   // one with DirectoryModel.listMany. Synchronous (only stat over the mounts).
   Q_INVOKABLE QStringList trashRoots() const;
 
-  // Metadata of all the .trashinfo of all the roots (Phase 16): native
+  // Metadata of all the .trashinfo of all the roots: native
   // replacement for trash-info.sh. A list of objects {name, origPath, epoch,
   // trashRoot}: `name` = stem of the file in files/, `origPath` = Path=
   // percent-decoded (relative to the resolved mount point in disk
@@ -130,7 +129,7 @@ public:
   Q_INVOKABLE QVariantList trashInfo() const;
 
 signals:
-  // Progress by BYTES of a copy/move in progress (Phase 13.G): `done`
+  // Progress by BYTES of a copy/move in progress: `done`
   // = bytes copied of the current item, `total` = size of the item. The
   // consumer (ActionEngine) aggregates over the batch. It was a percentage before.
   void progress(const QString &op, const QString &path, qint64 done,

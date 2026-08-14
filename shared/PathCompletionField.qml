@@ -8,7 +8,7 @@ import Omafiles.Backend as Backend
 // standalone TextField that was in MainLayout: same base behaviour (Enter
 // navigates, Escape cancels) plus a live suggestions dropdown, Tab to
 // complete the segment and arrows to walk the options. All the path
-// resolution is C++ (services/PathCompleter -> QDir), without external processes:
+// resolution is C++ (Omafiles.Backend.PathCompleter -> QDir), without external processes:
 // it resolves ~, absolute paths and paths relative to the current folder.
 Item {
   id: field
