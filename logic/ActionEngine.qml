@@ -117,6 +117,10 @@ Item {
     // partial destination to clean up here (their overwrite is atomic or handled
     // by their own command).
     actionProc.cancel()
+    _resetActionState()
+  }
+
+  function _resetActionState() {
     ActionState.actionBusy = false
     ActionState.actionLabel = ""
     ActionState.actionProgressPct = -1
@@ -124,11 +128,8 @@ Item {
     NavState.refreshTick += 1
   }
 
-  // ---------- Native byte progress ----------
-  // Replaces the `du` polling with the total size (FileOperations.totalSize,
-  // once) + the backend's progress(op,path,done,total) signal, aggregated
-  // over the batch. Same observable behavior: actionProgressPct 0..100
-  // (bar) for copy/move; -1 (dots) if there is no measurable size.
+  // ---------- Native byte progress & batch lifecycle ----------
+  // Replaces du polling with totalSize + Backend.FileOperations signals.
   property real _progTotal: 0   // total bytes of the batch (all sources)
   property real _progBase: 0    // bytes already completed from previous items
   property real _lastItemTotal: 0 // total of the current item (last progress)
@@ -137,31 +138,38 @@ Item {
     _progTotal = Backend.FileOperations.totalSize(sourcePaths)
     _progBase = 0
     _lastItemTotal = 0
-    // Bar from 0% if there is something to measure; dots if the total is 0 (empty
-    // items: no progress to show).
+    // Bar from 0% if there is something to measure; dots if the total is 0 (empty items).
     ActionState.actionProgressPct = _progTotal > 0 ? 0 : -1
   }
 
+  // Static declarative signal handler for all native file operations:
+  // eliminates per-batch-item dynamic connect()/disconnect() churn.
   Connections {
     target: Backend.FileOperations
+
     function onProgress(op, path, done, total) {
       if (!nativeBusy || _progTotal <= 0) return
       _lastItemTotal = total
       ActionState.actionProgressPct = Math.min(100, (_progBase + done) * 100 / _progTotal)
     }
+
+    function onFinished(op, path) {
+      if (!nativeBusy) return
+      _progBase += _lastItemTotal
+      _lastItemTotal = 0
+      _batchIdx += 1
+      _batchNext()
+    }
+
+    function onError(op, path, msg) {
+      if (!nativeBusy) return
+      if (msg && msg !== "cancelled")
+        Backend.Notifier.notify("Action failed: " + msg)
+      _finishNative(false)
+    }
   }
 
-  // ---------- Native copy/move (Phase 13.A copy, 13.B move) ----------
-  // Replaces the shell `cp -r`/`mv` (runPaste/runDrop) with
-  // FileOperations.copy/move (C++: recursive, symlinks as symlinks,
-  // preserves permissions, byte progress, atomic rename + cross-fs fallback
-  // in move). KEEPS exactly the same observable behavior as the
-  // shell path: same busy state (actionBusy/actionLabel), same progress
-  // bar (startCopyProgress, `du` polling over destinations), same
-  // cancellation (cancelAction), same refresh. Sequential (one at a time)
-  // to preserve the semantics of the previous chainCmds: if one fails it is notified
-  // (only once, in Omafiles.Backend.FileOperations) and it stops. `overwrite` = the
-  // dialog chose to overwrite (before `-f`; without it, `-n`).
+  // ---------- Native copy/move/trash/restore/remove ----------
   property bool nativeBusy: false
   property string _nativeKind: "copy"
   property var _batchQueue: []
@@ -178,29 +186,20 @@ Item {
     return _runNative("move", pairs, busyLabel, overwrite, onDone)
   }
 
-  // Native permanent delete: `paths` is a list of paths
-  // (not pairs). ignoreMissing = `rm -f` semantics (a missing one is not an error).
-  // The only caller (permanent delete from the Trash) passes
-  // busyLabel="" -> no progress bar, like the previous `rm -rf`.
+  function _toPairs(paths) {
+    return paths.map(function (p) { return { src: p } })
+  }
+
   function runNativeRemove(paths, busyLabel, ignoreMissing, onDone) {
-    var pairs = paths.map(function (p) { return { src: p } })
-    return _runNative("remove", pairs, busyLabel, ignoreMissing, onDone)
+    return _runNative("remove", _toPairs(paths), busyLabel, ignoreMissing, onDone)
   }
 
-  // Native send-to-trash: `paths` = paths to send. XDG Trash
-  // (QFile::moveToTrash: creates the .trashinfo, resolves collisions, respects the
-  // origin disk). The caller (delete to trash from DeleteOps)
-  // registers the undo in onDone (restore by original path).
   function runNativeTrash(paths, busyLabel, onDone) {
-    var pairs = paths.map(function (p) { return { src: p } })
-    return _runNative("trash", pairs, busyLabel, false, onDone)
+    return _runNative("trash", _toPairs(paths), busyLabel, false, onDone)
   }
 
-  // Native restore: `origPaths` = ORIGINAL paths to restore.
-  // Each one is located by its .trashinfo in any active trash.
   function runNativeRestore(origPaths, busyLabel, onDone) {
-    var pairs = origPaths.map(function (p) { return { src: p } })
-    return _runNative("restore", pairs, busyLabel, false, onDone)
+    return _runNative("restore", _toPairs(origPaths), busyLabel, false, onDone)
   }
 
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
@@ -217,11 +216,6 @@ Item {
     _batchOnDone = onDone || null
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
-    // Progress bar (`du` polling) ONLY for copy/move with a label:
-    // they are the only ones with a "total size" that grows in the destination. trash/
-    // restore/remove have no measurable progress like that (restore would move to paths
-    // that don't exist yet -> du would fail and leave a fixed 0% instead of the
-    // animated dots). Without a label (undo/redo) neither, like the shell path.
     if (busyLabel && (kind === "copy" || kind === "move"))
       startCopyProgress(pairs.map(function (p) { return p.src }),
                         pairs.map(function (p) { return p.dest }))
@@ -230,31 +224,9 @@ Item {
   }
 
   function _batchNext() {
-    if (_cancelling) { _nativeDone(false); return }
-    if (_batchIdx >= _batchQueue.length) { _nativeDone(true); return }
+    if (_cancelling) { _finishNative(false); return }
+    if (_batchIdx >= _batchQueue.length) { _finishNative(true); return }
     var p = _batchQueue[_batchIdx]
-    function ok(op, src) {
-      cleanup()
-      // Aggregated progress: the finished item adds its total to the base.
-      _progBase += _lastItemTotal
-      _lastItemTotal = 0
-      _batchIdx += 1
-      _batchNext()
-    }
-    // The error was already notified by Omafiles.Backend.FileOperations (except "cancelled"); here
-    // it only stops the sequence and cleans up the state.
-    function bad(op, src, msg) {
-      cleanup()
-      if (msg && msg !== "cancelled")
-        Backend.Notifier.notify("Action failed: " + msg)
-      _nativeDone(false)
-    }
-    function cleanup() {
-      Backend.FileOperations.finished.disconnect(ok)
-      Backend.FileOperations.error.disconnect(bad)
-    }
-    Backend.FileOperations.finished.connect(ok)
-    Backend.FileOperations.error.connect(bad)
     if (_nativeKind === "remove")
       Backend.FileOperations.remove(p.src, _batchOverwrite)  // _batchOverwrite = ignoreMissing
     else if (_nativeKind === "trash")
@@ -267,38 +239,23 @@ Item {
       Backend.FileOperations.copy(p.src, p.dest, _batchOverwrite)
   }
 
-  function _nativeDone(success) {
+  function _finishNative(success) {
     nativeBusy = false
-    ActionState.actionBusy = false
-    ActionState.actionLabel = ""
-    ActionState.actionProgressPct = -1
-    navController.refresh()
-    NavState.refreshTick += 1
+    _resetActionState()
     var cb = _batchOnDone
     _batchOnDone = null
-    if (success && cb) cb()
+    if (success && cb) Qt.callLater(cb)
   }
 
   Backend.ProcessRunner {
     id: actionProc
     onFinished: function (result) {
-      ActionState.actionBusy = false
-      ActionState.actionLabel = ""
-      ActionState.actionProgressPct = -1
-      navController.refresh()
-      // An action (delete, move, paste...) can affect any
-      // panel, not just the active one -- refreshTick is the signal for the
-      // non-active panels (each with its own listing Process, see
-      // the panel Repeater) to refresh too.
-      NavState.refreshTick += 1
+      _resetActionState()
       var cb = ActionState._actionOnSuccess
       ActionState._actionOnSuccess = null
       if (result.exitCode === 0) {
         if (cb) cb()
       } else if (!result.cancelled) {
-        // Before, this was swallowed silently -- a mv/cp/chmod/zip/unzip that
-        // failed (permissions, disk full, corrupt file...) looked
-        // exactly like one that had gone well.
         Backend.Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
       }
     }
