@@ -75,10 +75,38 @@ For a stable, comparable number:
 4. Keep the invariants green around any performance change:
    `omafiles --selfcheck` and `qmllint` on the touched QML.
 
+## Reference Baseline (v0.9.0)
+
+Hardware baseline: Linux x86_64, NVMe storage, Qt 6.5+.
+
+### 1. `perfbench` (DirectoryModel C++, median of 9 runs, warm cache)
+
+| Directory Size | Row Count | Listing Time (Scan + Sort + Apply) | `entries()` Conversion | Total Latency |
+|---|---|---|---|---|
+| `1k` | 1,002 | 2.21 ms | 0.34 ms | 2.55 ms |
+| `10k` | 10,002 | 25.56 ms | 2.80 ms | 28.36 ms |
+| `50k` | 50,002 | 135.38 ms | 13.55 ms | 148.93 ms |
+| `100k` | 100,002 | 302.76 ms | 44.78 ms | 347.54 ms |
+
+### 2. `measure-ui-guard.qml` (UI-Thread Content Signature Guard)
+
+| Directory Size | 1,000 Signature Checks | Per-Call Latency | Lazy Read |
+|---|---|---|---|
+| `1k` – `100k` | ≤ 1 ms | < 0.001 ms | 0 ms |
+
+### 3. `measure-search.qml` (SearchWorker Native Recursive Search on 100,000 files)
+
+| Query | Results | Truncated | Search Latency |
+|---|---|---|---|
+| `"Report"` | 200 | Yes | 3 ms |
+| `"img"` | 200 | Yes | 3 ms |
+| `"999"` | 200 | Yes | 79 ms |
+| `"Folder_0000"` | 2 | No (full tree walk) | 77 ms |
+
 ## Where results live
 
-Recorded benchmark results, performance audits, and the surrounding
-project-direction analysis are maintained in the **private local AI workspace**
-(`.claude/omafiles/`) and are **not** part of this public repository. This
-directory ships only the *tooling*, so anyone can reproduce the measurements
-without access to that workspace.
+Recorded benchmark results, performance audits, and surrounding documentation
+are maintained in the internal maintainer docs (`PHASE35_PERFORMANCE_BASELINE_REPORT.md`).
+This directory ships the runnable tooling and reference baselines so anyone
+can reproduce and compare measurements.
+
