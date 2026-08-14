@@ -8,16 +8,11 @@ import Omafiles.Backend as Backend
 // previewHighlighted/previewPdfImage/previewImage/previewAudioInfo; this
 // component is the one that fills them.
 //
-// Phase 9 (josema): the preview goes NATIVE where it makes sense.
-//   - Plain text: PreviewProvider.requestText (QFile/QTextStream, up to
-//     256 KB, async with cancellation) -- no more `head`.
+//   - Plain text & Syntax Highlighting: PreviewProvider.requestText + SyntaxHighlighter
+//     (in-process C++, async with cancellation) -- sub-millisecond, no subprocesses.
 //   - Image and PDF: ThumbnailProvider at preview size (QImageReader/
-//     QPdfDocument + on-disk cache) -- the full image is no longer loaded
-//     nor is pdftoppm used. It reuses the thumbnail cache (keyed by
-//     path+size), without touching ThumbnailProvider.
-// Left in the shell for visual parity / out of scope: syntax highlighting
-// (Pygments, highlight-preview.sh), the video thumbnail
-// (ffmpegthumbnailer) and the audio metadata (ffprobe).
+//     QPdfDocument + on-disk cache).
+// Video thumbnail uses ffmpegthumbnailer and audio metadata uses ffprobe.
 Item {
   property Item root: null
 
@@ -52,19 +47,10 @@ Item {
     var path = Utils.entryPath(NavState.currentPath, entry)
     PreviewContentState.previewIsText = FileTypeConfig.codeExt.indexOf(ext) >= 0 || ext === "txt" || ext === "conf" || ext === ""
     if (PreviewContentState.previewIsText && !Utils.isImage(entry)) {
-      // NATIVE plain text (PreviewProvider): reads up to 256 KB on a thread,
-      // with cancellation by generation if the selection changes. The
-      // result arrives via textReady (see the Connections below).
+      // NATIVE text & syntax highlighting (PreviewProvider): reads and highlights
+      // on a worker thread in-process, with cancellation by generation.
       PreviewContentState._previewTextOwner = reqId
       Backend.PreviewProvider.requestText(path)
-      // Syntax highlighting ONLY for known code extensions --
-      // left in the shell (Pygments) to keep exactly the same
-      // highlighting; parallel to the plain text (not chained): if it fails,
-      // previewHighlighted stays empty and the plain text is shown.
-      if (FileTypeConfig.codeExt.indexOf(ext) >= 0) {
-        PreviewContentState._previewHighlightOwner = reqId
-        highlightPreviewProc.start([Paths.resourceDir + "/highlight-preview.sh", path, "4000", ext])
-      }
     }
     // Image and PDF: scaled render + cache via ThumbnailProvider.
     if (Utils.isImage(entry)) {
@@ -82,12 +68,14 @@ Item {
     }
   }
 
-  // Plain text ready (PreviewProvider).
+  // Plain text & syntax highlighted ready (PreviewProvider).
   Connections {
     target: Backend.PreviewProvider
-    function onTextReady(path, content, encoding, bytes, lines, truncated) {
-      if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId)
+    function onTextReady(path, content, highlighted, encoding, bytes, lines, truncated) {
+      if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId) {
         PreviewContentState.previewText = content
+        PreviewContentState.previewHighlighted = highlighted
+      }
     }
   }
 
@@ -105,14 +93,6 @@ Item {
         if (q) PreviewContentState.previewPdfImage = q
       }
     }
-  }
-
-  Backend.ProcessRunner {
-    id: highlightPreviewProc
-    // Empty/failed -> previewHighlighted stays "" and the UI falls back to the
-    // plain Text (previewText) without more ado -- see the "visible:" of each
-    // block in the preview panel.
-    onFinished: function (result) { if (PreviewContentState._previewHighlightOwner === PreviewContentState.previewRequestId) PreviewContentState.previewHighlighted = result.stdout }
   }
 
   Backend.ProcessRunner {

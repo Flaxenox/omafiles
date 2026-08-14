@@ -95,7 +95,7 @@ QtObject {
         })
 
         sc.add("Backend.PreviewProvider text", function (done) {
-          function onText(path, content, enc, bytes, lines, trunc) {
+          function onText(path, content, highlighted, enc, bytes, lines, trunc) {
             if (path !== sc.note) return
             Backend.PreviewProvider.textReady.disconnect(onText)
             var ok = content.indexOf("hello selfcheck") >= 0
@@ -103,6 +103,34 @@ QtObject {
           }
           Backend.PreviewProvider.textReady.connect(onText)
           Backend.PreviewProvider.requestText(sc.note, 65536)
+        })
+
+        sc.add("Backend.PreviewProvider native syntax highlighting", function (done) {
+          var cppSample = "#include <iostream>\nint main() { return 0; }\n"
+          var pySample = "def hello():\n    print('world')\n"
+          var qmlSample = "import QtQuick\nItem { id: root; property int count: 42 }\n"
+          
+          var cppHtml = Backend.PreviewProvider.highlightCode(cppSample, "main.cpp")
+          var pyHtml = Backend.PreviewProvider.highlightCode(pySample, "script.py")
+          var qmlHtml = Backend.PreviewProvider.highlightCode(qmlSample, "App.qml")
+          
+          var cppOk = cppHtml.indexOf("<pre style=\"white-space:pre-wrap; word-break:break-word\">") >= 0
+                   && cppHtml.indexOf("color:#fb4934") >= 0 // keyword (int, return)
+                   && cppHtml.indexOf("color:#8ec07c") >= 0 // preproc (#include)
+                   
+          var pyOk = pyHtml.indexOf("color:#fb4934") >= 0 // def
+                  && pyHtml.indexOf("color:#b8bb26") >= 0 // string ('world')
+                  
+          var qmlOk = qmlHtml.indexOf("color:#fb4934") >= 0 // import, property
+                   && qmlHtml.indexOf("color:#d3869b") >= 0 // number 42
+                   
+          var supported = Backend.PreviewProvider.isHighlightable("test.cpp") 
+                       && Backend.PreviewProvider.isHighlightable("test.py")
+                       && Backend.PreviewProvider.isHighlightable("test.rs")
+                       && !Backend.PreviewProvider.isHighlightable("test.unknownext123")
+                       
+          var allOk = cppOk && pyOk && qmlOk && supported
+          done(allOk, allOk ? "C++, Python, QML highlighting OK" : "highlighting check failed")
         })
 
         sc.add("Backend.PreviewProvider info", function (done) {

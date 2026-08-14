@@ -33,13 +33,19 @@ public:
   // discarded and does not repopulate the panel. It never blocks the UI thread.
   Q_INVOKABLE void requestText(const QString &path, int maxBytes = 262144);
 
+  // Highlights code in-process using SyntaxHighlighter.
+  Q_INVOKABLE QString highlightCode(const QString &source, const QString &extensionOrFilename);
+
+  // Checks if the file extension supports syntax highlighting.
+  Q_INVOKABLE bool isHighlightable(const QString &extensionOrFilename);
+
 signals:
-  // content = read text; encoding = "utf-8" | "latin1"; bytes = read;
-  // lines = approximate number of lines; truncated = whether the file was
-  // larger than maxBytes.
+  // content = read text; highlighted = HTML with inline syntax styling;
+  // encoding = "utf-8" | "latin1"; bytes = read; lines = approximate number
+  // of lines; truncated = whether the file was larger than maxBytes.
   void textReady(const QString &path, const QString &content,
-                 const QString &encoding, qint64 bytes, int lines,
-                 bool truncated);
+                 const QString &highlighted, const QString &encoding,
+                 qint64 bytes, int lines, bool truncated);
 
 private:
   quint64 m_gen = 0; // generation of the last text request (cancellation)

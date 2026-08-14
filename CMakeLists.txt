@@ -46,6 +46,8 @@ qt_add_qml_module(omafiles-backend
     backend/ThumbnailProvider.cpp
     backend/PreviewProvider.h
     backend/PreviewProvider.cpp
+    backend/SyntaxHighlighter.h
+    backend/SyntaxHighlighter.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
     backend/NetworkMounts.h
@@ -157,7 +159,7 @@ install(FILES Utils.js DESTINATION "${OMAFILES_RES_DEST}")
 install(PROGRAMS
     list-mounts.sh mount-iso.sh list-archive.sh open-with-list.sh
     thumbnail-video.sh search-index.sh content-search.sh
-    highlight-preview.sh empty-trash.sh
+    empty-trash.sh
   DESTINATION "${OMAFILES_RES_DEST}")
 
 # scripts/ (install-integrations.sh, dbus-*.py, open-path.sh) with execution

@@ -94,8 +94,7 @@ Item {
         contentWidth: width
         contentHeight: (root.highlightedText.length > 0 ? previewHighlightedItem : previewTextItem).implicitHeight
 
-        // Syntax highlighting when highlight-preview.sh
-        // (Pygments) recognized the language -- see loadPreview().
+        // Syntax highlighting when native SyntaxHighlighter recognized the language.
         // Same Flickable/position as the plain Text below,
         // one of the two is always hidden.
         Text {

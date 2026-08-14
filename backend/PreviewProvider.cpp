@@ -1,4 +1,5 @@
 #include "PreviewProvider.h"
+#include "SyntaxHighlighter.h"
 
 #include <QDateTime>
 #include <QFile>
@@ -9,6 +10,14 @@
 #include <QThreadPool>
 
 PreviewProvider::PreviewProvider(QObject *parent) : QObject(parent) {}
+
+QString PreviewProvider::highlightCode(const QString &source, const QString &extensionOrFilename) {
+  return SyntaxHighlighter::highlight(source, extensionOrFilename);
+}
+
+bool PreviewProvider::isHighlightable(const QString &extensionOrFilename) {
+  return SyntaxHighlighter::isSupported(extensionOrFilename);
+}
 
 QVariantMap PreviewProvider::info(const QString &path) {
   const QFileInfo fi(path);
@@ -65,13 +74,19 @@ void PreviewProvider::requestText(const QString &path, int maxBytes) {
         const int lines = static_cast<int>(content.count(QLatin1Char('\n'))) + 1;
         const qint64 bytes = raw.size();
 
+        // Native in-process syntax highlighting on the background worker thread.
+        QString highlighted;
+        if (SyntaxHighlighter::isSupported(path)) {
+          highlighted = SyntaxHighlighter::highlight(content, path);
+        }
+
         QMetaObject::invokeMethod(
             this,
-            [this, path, content, encoding, bytes, lines, truncated, gen]() {
+            [this, path, content, highlighted, encoding, bytes, lines, truncated, gen]() {
               // Cancellation: discard if another preview was already requested after.
               if (gen != m_gen)
                 return;
-              emit textReady(path, content, encoding, bytes, lines, truncated);
+              emit textReady(path, content, highlighted, encoding, bytes, lines, truncated);
             },
             Qt::QueuedConnection);
       }));
