@@ -90,7 +90,6 @@ Item {
   SearchBackend {
     id: searchBackend
     indexScript: Paths.resourceDir + "/search-index.sh"
-    contentScript: Paths.resourceDir + "/content-search.sh"
     onResults: function (entries, truncated) {
       NavState.searchBusy = false
       NavState.searchTruncated = truncated

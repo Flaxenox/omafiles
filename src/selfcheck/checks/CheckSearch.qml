@@ -43,5 +43,29 @@ QtObject {
             sw.search(base, "alpha", false)
           })
         })
+        sc.add("Native recursive content search: line matching, snippets, binary filter", function (done) {
+          var base = sc.dir + "/content-srch-" + Date.now()
+          var mk = function (p) { return function () { Backend.FileOperations.mkdir(p) } }
+          var cp = function (p) { return function () { Backend.FileOperations.copy(sc.note, p) } }
+          
+          sc._seqOps([
+            mk(base), mk(base + "/src"),
+            cp(base + "/src/main.txt"),
+            cp(base + "/readme.txt")
+          ], done, function () {
+            var sw = sc._searchFactory.createObject(sc)
+            function onResults(entries, truncated) {
+              sw.results.disconnect(onResults)
+              sw.destroy()
+              var ok = entries.length === 2
+                    && entries[0].line === 1
+                    && entries[0].snippet.indexOf("hello selfcheck") >= 0
+                    && entries[0].path.length > 0
+              done(ok, ok ? "content search matches=2 with line numbers OK" : "unexpected results: " + JSON.stringify(entries))
+            }
+            sw.results.connect(onResults)
+            sw.searchContent(base, "hello selfcheck", false)
+          })
+        })
   }
 }

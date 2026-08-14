@@ -160,7 +160,7 @@ install(FILES Utils.js DESTINATION "${OMAFILES_RES_DEST}")
 # System scripts at the root (invoked by logic/ as <resourceDir>/X.sh).
 install(PROGRAMS
     list-mounts.sh mount-iso.sh list-archive.sh open-with-list.sh
-    thumbnail-video.sh search-index.sh content-search.sh
+    thumbnail-video.sh search-index.sh
     empty-trash.sh
   DESTINATION "${OMAFILES_RES_DEST}")
 

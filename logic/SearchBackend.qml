@@ -73,7 +73,7 @@ Item {
     _hidden = showHidden
     // CONTENT mode: `content:` prefix. The term goes after, without enclosing
     // quotes (`content:"foo bar"` -> foo bar). Searches INSIDE the files
-    // of the fallbackRoot tree (the current folder), like `rg` in its cwd.
+    // of the fallbackRoot tree (the current folder) via native SearchWorker.
     if (query.indexOf("content:") === 0) {
       _mode = "content"
       var term = query.substring(8)
@@ -84,7 +84,7 @@ Item {
         backend.results([], false)
         return
       }
-      indexProc.start([contentScript, term, fallbackRoot, String(maxResults + 1)])
+      recursive.searchContent(fallbackRoot, term, showHidden)
       return
     }
     // NAME mode (system index). We request maxResults+1 to mark
@@ -111,64 +111,20 @@ Item {
       if (result.cancelled)
         return
       if (result.exitCode === 2) {
-        // No backend available. In NAME: recursive from the current folder.
-        // In CONTENT: ripgrep not installed, no fallback -> empty.
-        if (backend._mode === "content")
-          backend.results([], false)
-        else
-          recursive.search(backend._root, backend._query, backend._hidden)
+        // No system index available -> recursive search from the current folder.
+        recursive.search(backend._root, backend._query, backend._hidden)
         return
       }
-      var parsed = backend._mode === "content"
-        ? backend._parseContent(String(result.stdout || ""))
-        : backend._rank(String(result.stdout || ""), backend._query)
+      var parsed = backend._rank(String(result.stdout || ""), backend._query)
       backend.results(parsed.entries, parsed.truncated)
     }
   }
 
   Backend.SearchWorker {
     id: recursive
-    // Degraded mode: it is re-emitted as is (relative paths, without re-sorting).
     onResults: function (entries, truncated) {
       backend.results(entries, truncated)
     }
-  }
-
-  // Parses the TSV of content-search.sh ("PATH\tLINE\tSNIPPET" per line). The
-  // order is given by ripgrep (tree walk); it is not re-sorted. Each line is an
-  // independent result (the same file appears once per match,
-  // with its line) -> jump to that specific line. It carries {line, snippet} extra.
-  function _parseContent(stdout) {
-    var lines = stdout.split("\n")
-    var out = []
-    for (var i = 0; i < lines.length && out.length < maxResults; i++) {
-      var line = lines[i]
-      if (line === "")
-        continue
-      var t1 = line.indexOf("\t")
-      if (t1 < 0)
-        continue
-      var t2 = line.indexOf("\t", t1 + 1)
-      if (t2 < 0)
-        continue
-      var path = line.substring(0, t1)
-      var lineNo = parseInt(line.substring(t1 + 1, t2), 10) || 0
-      var snippet = line.substring(t2 + 1)
-      var slash = path.lastIndexOf("/")
-      out.push({
-        "type": "file",
-        "name": slash >= 0 ? path.substring(slash + 1) : path,
-        "path": path,
-        "parent": slash > 0 ? path.substring(0, slash) : "/",
-        "size": 0,
-        "mtime": 0,
-        "link": false,
-        "line": lineNo,
-        "snippet": snippet
-      })
-    }
-    var truncated = out.length >= maxResults
-    return { "entries": out, "truncated": truncated }
   }
 
   // Parses the script's TSV ("type\tABSOLUTE_PATH" per line) and sorts it by

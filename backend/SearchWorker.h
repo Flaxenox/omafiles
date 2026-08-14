@@ -32,11 +32,16 @@ public:
   explicit SearchWorker(QObject *parent = nullptr);
   ~SearchWorker() override;
 
-  // Launches a recursive search under `root`. Returns immediately; the
-  // result arrives via results() on the UI thread. An empty query does not
-  // search.
+  // Launches a recursive search by file/folder name under `root`.
   Q_INVOKABLE void search(const QString &root, const QString &query,
                           bool showHidden);
+
+  // Launches a recursive content search INSIDE files under `root`.
+  // Searches for text matches line by line (case-insensitive).
+  // Skips binary files and files larger than 5 MB.
+  Q_INVOKABLE void searchContent(const QString &root, const QString &query,
+                                 bool showHidden);
+
   // Cancels the search in progress (invalidates its generation): no result
   // is emitted. Idempotent.
   Q_INVOKABLE void cancel();
