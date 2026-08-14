@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 
 // Navigation buttons (back/forward/up) -- fourteenth component
-// extracted from Omafiles.qml, shared between the active and background panels.
+// extracted from core, shared between the active and background panels.
 // Previously each button existed twice (one in navRow, another in bgHeaderRow)
 // with the same glyph/size, and only what function of root
 // they called and from what property they got the "disabled" (grey) changed. Here that

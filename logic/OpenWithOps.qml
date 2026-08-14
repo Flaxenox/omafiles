@@ -4,7 +4,7 @@ import "../state"
 import "../services"
 
 // "Open with..." dialog -- twenty-first component extracted from
-// Omafiles.qml.
+// core.
 Item {
   property Item root: null
   property Item bookmarkOps: null

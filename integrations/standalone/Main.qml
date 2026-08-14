@@ -16,7 +16,7 @@ import ".."
 //                               Quickshell (~/.local/state/omafiles/window.json).
 // The bootstrap (create the engine, load this file) is done by main.cpp; that's
 // why, unlike the Quickshell side, here the window IS the root (main.cpp
-// expects a QQuickWindow) and there is no intermediate Omafiles.qml nor host
+// expects a QQuickWindow) and there is no intermediate core nor host
 // `shell` object.
 ApplicationWindow {
   id: window

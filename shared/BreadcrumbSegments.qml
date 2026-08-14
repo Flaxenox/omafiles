@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 
 // Breadcrumb row (path segments) -- fifteenth component
-// extracted from Omafiles.qml, shared between the active and background panels.
+// extracted from core, shared between the active and background panels.
 // Previously they were two nearly identical Repeaters (breadcrumbRow and bgBreadcrumbRow)
 // that compared each segment against a different "current" path depending on the
 // panel -- here that "current" is a single parameter (activePath) that the caller

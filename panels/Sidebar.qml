@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 
 // Sidebar (bookmarks/recents/drives/network). Tenth component
-// extracted from Omafiles.qml, and the first that is not a modal dialog --
+// extracted from core, and the first that is not a modal dialog --
 // it's always visible, so no property needs to be forced by
 // hand to test it live, just restart the shell and look.
 //
@@ -28,7 +28,7 @@ Item {
   property string ejectingDevice: ""
 
   // Item against which mapToItem() computes the context menu's
-  // position -- in Omafiles.qml it's "card" (the panel's root BorderSurface),
+  // position -- in core it's "card" (the panel's root BorderSurface),
   // which a separate component cannot see on its own.
   property Item positionRelativeTo: null
 
@@ -378,7 +378,7 @@ Item {
 
         // Eject button (Phase 21): only on ejectable devices.
         // Hidden at rest; appears with a smooth fade (120 ms) + slight
-        // 3 px slide on hovering the row (Omarchy Quattro aesthetic,
+        // 3 px slide on hovering the row (Quattro aesthetic,
         // no bounces). While the ejection is in progress it shows a
         // spinner and accepts no more clicks; the row disappears on its own when
         // UDisksWatcher refreshes the listing (no timers). Reuses
@@ -407,7 +407,7 @@ Item {
             fontFamily: Style.font.family
             fontSize: Style.font.icon
             color: ejectSlot.isCurrent ? Color.menu.selectedText : Color.menu.text
-            // Always visible but discreet at rest (Omarchy Quattro), more
+            // Always visible but discreet at rest (Quattro), more
             // bright on hovering the row -- fully hidden (0.0)
             // was impossible to discover.
             opacity: ejectSlot.hovered ? 0.95 : Style.emphasis.muted

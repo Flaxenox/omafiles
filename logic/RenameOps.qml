@@ -4,7 +4,7 @@ import "../state"
 import "../services"
 
 // Rename / new folder / new file, with their undo -- seventeenth
-// component extracted from Omafiles.qml. Same pattern as FileOps: no
+// component extracted from core. Same pattern as FileOps: no
 // Process of its own, everything goes through the root wrappers
 // (actionEngine.runAction/actionEngine.pushUndo).
 //

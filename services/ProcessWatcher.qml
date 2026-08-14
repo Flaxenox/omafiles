@@ -7,7 +7,7 @@ import Omafiles.Backend as Backend
 // backend/ProcessWatcher.cpp) under the name Omafiles.Services.ProcessWatcher.
 //
 // Phase 5.C (josema): a SINGLE implementation for both frontends, like
-// ProcessRunner -- the Quickshell version (Quickshell.Io) is retired and
+// ProcessRunner -- 
 // only this QML<->C++ seam remains. Only current use: watching
 // changes in the active folder (see logic/NavigationController.qml).
 Backend.ProcessWatcher {}

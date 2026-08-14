@@ -7,9 +7,9 @@ import Omafiles.Backend as Backend
 // name Omafiles.Services.ProcessRunner that logic/ expects.
 //
 // Phase 5.C (josema): a SINGLE implementation for both frontends. Previously
-// there were two -- this one (Quickshell.Io.Process) and services/+standalone/ over
+// there were two -- this one (ProcessRunner) and services/+standalone/ over
 // the C++ backend; now Quickshell also loads the .so by import path,
-// so the Quickshell version is retired and only this QML<->C++ seam
+// so  only this QML<->C++ seam
 // remains. The API (start/busy/cancel/finished) is identical; logic/ keeps
 // writing `ProcessRunner { onFinished: ... }` without noticing.
 //

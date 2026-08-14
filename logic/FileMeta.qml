@@ -5,7 +5,7 @@ import "../Utils.js" as Utils
 
 // File metadata: row subtitle (size + date, or trash
 // info) and audio info for the preview -- twenty-second
-// component extracted from Omafiles.qml.
+// component extracted from core.
 Item {
   property Item root: null
 

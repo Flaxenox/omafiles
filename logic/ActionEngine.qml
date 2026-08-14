@@ -5,14 +5,14 @@ import "../services"
 // The central file action engine (rename/delete/copy/move/
 // compress/extract/chmod/link, everything goes through here) + undo/redo +
 // the copy/move progress bar -- thirteenth component
-// extracted from Omafiles.qml, and the most impactful: dozens of functions in
-// Omafiles.qml (commitNewFolder, requestDelete, runPaste, runDrop,
+// extracted from core, and the most impactful: dozens of functions in
+// core (commitNewFolder, requestDelete, runPaste, runDrop,
 // commitChmod, makeLinkFor, restoreFromTrash...) call runAction()/
 // pushUndo() as if they were their own. Changing the 50+ call sites
 // would have been far more risk than the benefit -- instead, root
 // keeps one-line wrapper functions (`function runAction(...) {
 // return actionEngine.runAction(...) }`, see next to each one in
-// Omafiles.qml) that delegate here. No existing call site
+// core) that delegate here. No existing call site
 // changed.
 Item {
   property Item root: null

@@ -3,7 +3,7 @@ import "../state"
 
 // Tab/panel lifecycle: create, close, switch active,
 // navigate/undo-history of a tab that is NOT the active one --
-// twenty-fourth component extracted from Omafiles.qml. `_goToPath()` (the
+// twenty-fourth component extracted from core. `_goToPath()` (the
 // navigation of the ACTIVE tab itself) stays in root -- it's the core
 // of the real navigation, too central to move, and these functions
 // already call it as `navController._goToPath(...)` without any problem.
@@ -11,7 +11,7 @@ Item {
   property Item root: null
   property Item navController: null
 
-  // The main ListView (id "list" in Omafiles.qml) -- save/restore
+  // The main ListView (id "list" in core) -- save/restore
   // scroll when switching tabs.
   property Item list: null
   property Item archiveActions: null

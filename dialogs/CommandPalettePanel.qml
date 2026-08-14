@@ -3,9 +3,9 @@ import qs.Commons
 import qs.Ui
 
 // Command palette (":" or Ctrl+P). Ninth component extracted from
-// Omafiles.qml -- the most interactive of all (live text field +
+// core -- the most interactive of all (live text field +
 // arrow navigation + mouse selection), so it exposes more
-// signals than the previous ones, but the pattern is the same: Omafiles.qml
+// signals than the previous ones, but the pattern is the same: core
 // is still the real owner of paletteQuery/paletteIndex, and
 // `commands` already arrives filtered from outside (root.filteredPaletteCommands()
 // is still evaluated in the parent, where "root" really is the real root

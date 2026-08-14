@@ -4,7 +4,7 @@ import qs.Ui
 import "../shared"
 
 // "Properties" dialog of the selection. Third component extracted
-// from Omafiles.qml -- read-only (no TextField nor own Process,
+// from core -- read-only (no TextField nor own Process,
 // the parent already resolves size/permissions/owner/date on its
 // own with the propertiesRequestId race guard), so it only
 // needs a close signal, just as simple as ShortcutsHelp.qml.

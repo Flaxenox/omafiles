@@ -3,7 +3,7 @@ import "../state"
 import "../services"
 
 // Lists a directory and exposes the result already sorted -- twenty-third
-// component extracted from Omafiles.qml (Phase 1.6, josema). Reused by
+// component extracted from core (Phase 1.6, josema). Reused by
 // NavigationController (active panel, one instance) and BackgroundPanel (one
 // per background tab). Each has its instance: several tabs
 // can list different paths at once.

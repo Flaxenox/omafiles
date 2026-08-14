@@ -5,7 +5,7 @@ import "../state"
 
 // Loose file operations with their own undo: bulk rename,
 // chmod, create symbolic link, restore from trash --
-// fifteenth component extracted from Omafiles.qml. They all share the
+// fifteenth component extracted from core. They all share the
 // same pattern (assemble the command(s), runAction(), pushUndo() with the
 // inverse command) without having any Process of their own -- they use the
 // central ActionEngine engine through the root wrappers

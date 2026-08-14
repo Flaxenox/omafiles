@@ -4,13 +4,13 @@ import qs.Ui
 import "../shared"
 
 // Permissions (chmod) dialog. Fifth component extracted from
-// Omafiles.qml. root.chmodBitSet()/toggleChmodBit() read and wrote
+// core. root.chmodBitSet()/toggleChmodBit() read and wrote
 // root.chmodMode directly -- since a separate component does not see that
 // "root" (it is its own), the computation of which cell is checked is
 // reproduced here locally from the received `mode` property
 // (same exact logic as chmodDigit()/chmodBitSet(), only
 // parameterized), and changing a cell is requested outward with a
-// signal instead of writing the mode directly -- Omafiles.qml is still
+// signal instead of writing the mode directly -- core is still
 // the only real owner of root.chmodMode.
 //
 // The modal wrapper (scrim + card + animation + padding) is
@@ -102,7 +102,7 @@ Item {
     // Owner (you) / Group / Other -- each row with its 3 rwx cells,
     // instead of writing the octal by hand. root.mode is still the
     // source of truth (a 3-digit string, real owner in
-    // Omafiles.qml); each cell queries a bit of it directly and
+    // core); each cell queries a bit of it directly and
     // requests changing it with bitToggled().
     Repeater {
       model: [

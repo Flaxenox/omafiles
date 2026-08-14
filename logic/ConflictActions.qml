@@ -5,7 +5,7 @@ import "../state"
 import "../services"
 
 // Conflict check before executing an action that may
-// overwrite something -- nineteenth component extracted from Omafiles.qml,
+// overwrite something -- nineteenth component extracted from core,
 // and the first one to touch an action that actually moves/overwrites
 // the user's files (unlike Persistence/PreviewLoader/
 // PropertiesLoader, which only read). That's why one function was
@@ -14,7 +14,7 @@ import "../services"
 //
 // commitRename() checks the conflict here (native existingPaths, BUG-01)
 // -- but runPendingRename() (the real "mv", with its undo) stays in
-// Omafiles.qml untouched: besides responding to the check result
+// core untouched: besides responding to the check result
 // ("0 conflicts" -> renames now), it is called directly by
 // ConflictResolveDialog.onConfirmed, and moving it here would only have moved
 // that single call site without joining anything else.

@@ -4,7 +4,7 @@ import QtQuick
 // State of the Properties panel (size/permissions/owner/date) --
 // ninth singleton of the state/ layer. dialogs/PropertiesPanel.qml is
 // purely presentational (its own local `id: root`, fed by
-// binding from Omafiles.qml), so it does not need to import this
+// binding from core), so it does not need to import this
 // directly. The loading itself (stat/du) stays in logic/PropertiesLoader.qml.
 QtObject {
   property bool propertiesOpen: false

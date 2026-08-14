@@ -4,11 +4,11 @@ import qs.Ui
 import "../shared"
 
 // "Connect to server" dialog (SFTP/SMB/WebDAV/FTP). Second
-// component extracted from Omafiles.qml -- a bit more coupled than
+// component extracted from core -- a bit more coupled than
 // ShortcutsHelp.qml (it has editable text + an intermediate "connecting"
 // state with two different cancellations: close the dialog vs.
 // abort only the current attempt), so it exposes signals instead of
-// calling root functions directly. Omafiles.qml is still the
+// calling root functions directly. core is still the
 // real owner of connectServerUri/networkConnecting/connectServerError.
 //
 // The modal wrapper (scrim + card + animation + padding) is

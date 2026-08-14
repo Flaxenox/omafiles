@@ -4,7 +4,7 @@ import qs.Ui
 import "../shared"
 
 // Keyboard shortcuts help overlay ("?" key). Extracted from
-// Omafiles.qml as the first step of an incremental componentization --
+// core as the first step of an incremental componentization --
 // this one was chosen for being the most isolated piece of the file: no
 // Process/async, no touching disk, a single external property (whether it is
 // open) and a single action outward (request closing). The rest of the

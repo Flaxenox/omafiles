@@ -4,11 +4,11 @@ import "../services"
 
 // On-disk persistence (bookmarks, recents, tab session,
 // bulk-rename history) -- sixteenth component extracted
-// from Omafiles.qml, and the first that takes a group of Process out of the
+// from core, and the first that takes a group of Process out of the
 // main file. Only the pure I/O functions were moved here
 // (read/write the JSON on disk); the business logic that decides WHAT
 // to save (addRecent, removeBookmark, addBulkRenameHistory...) stays in
-// Omafiles.qml and simply calls "persistence.saveX()" instead of
+// core and simply calls "persistence.saveX()" instead of
 // "root.saveX()" -- same pattern as the rest of the components: root.xxx
 // to read/write app state, passed as a property instead of
 // looking it up with its own id.

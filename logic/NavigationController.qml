@@ -4,7 +4,7 @@ import "../services"
 import "../Utils.js" as Utils
 
 // Navigation/history of the active panel -- twenty-second component
-// extracted from Omafiles.qml. currentPath/tabEntriesCache/entries still
+// extracted from core. currentPath/tabEntriesCache/entries still
 // live in root (state/TabsState.qml already documented that they were "too
 // central to move" in an earlier attempt; this time the CONTROLLER is
 // moved, not the state itself). refresh/navigateTo/enter/goUp/
@@ -241,7 +241,7 @@ Item {
   //     a normal shell, but launched from the Quickshell Process the
   //     terminal it opens internally for Terminal=true didn't survive
   //     reliably (sometimes yes, most times no) -- the exact
-  //     cause wasn't found, but the usual pattern: Quickshell.Io.Process
+  //     cause wasn't found, but the usual pattern: ProcessRunner
   //     with StdioCollector is not to be trusted to launch something that in turn
   //     forks a long-running app.
   //  3. gtk-launch via Detached (this one): same mechanism ALREADY verified

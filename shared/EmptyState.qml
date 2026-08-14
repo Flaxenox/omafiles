@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 
 // Empty state ("Nothing here yet" / "Trash is empty" / "No results
-// for...") -- thirteenth component extracted from Omafiles.qml, and the second
+// for...") -- thirteenth component extracted from core, and the second
 // (after FileRowVisual.qml) that unifies the active and background panels
 // instead of just relocating code.
 //

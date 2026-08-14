@@ -5,7 +5,7 @@ import QtQuick
 // of 4 handlers was repeated 4 times before this extraction (the
 // top empty area of the ListView, footer/bottom empty area, and the two gutters
 // left/right of each row in FileListRow.qml). Found
-// auditing Omafiles.qml against rule 4 of the architecture prompt
+// auditing core against rule 4 of the architecture prompt
 // ("avoid code duplication even if it means creating a new
 // component").
 //

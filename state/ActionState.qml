@@ -4,7 +4,7 @@ import QtQuick
 // State of the action engine (runAction/cancelAction/copy/move
 // progress) -- twelfth singleton of the state/ layer, completes
 // the migration of logic/ActionEngine.qml (whose undoStack/redoStack already
-// live in state/UndoState.qml). actionBusyDots stays in Omafiles.qml
+// live in state/UndoState.qml). actionBusyDots stays in core
 // on purpose -- it is a purely visual animation (a Timer in the UI
 // itself), ActionEngine.qml neither reads nor writes it.
 QtObject {

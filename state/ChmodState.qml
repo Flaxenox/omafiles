@@ -3,7 +3,7 @@ import QtQuick
 
 // State of the permissions (chmod) dialog -- eighth singleton of the
 // state/ layer. dialogs/ChmodPanel.qml is purely presentational (its own
-// local `id: root`, fed by binding from Omafiles.qml), so it
+// local `id: root`, fed by binding from core), so it
 // does not need to import this directly.
 QtObject {
   property bool chmodOpen: false

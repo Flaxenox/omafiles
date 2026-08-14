@@ -2,7 +2,7 @@ import QtQuick
 import "../state"
 
 // File type detection by extension (icon + is Image/Video/
-// Audio/Pdf) -- pure business logic that lived in Omafiles.qml despite
+// Audio/Pdf) -- pure business logic that lived in core despite
 // not depending on any Process nor another subsystem, only on the extension
 // lists (imageExt/videoExt/audioExt/archiveExt/codeExt, which stay
 // in root as they are configuration, not logic). Found in the
@@ -10,7 +10,7 @@ import "../state"
 //
 // root keeps one-line wrappers (`function iconFor(entry) {
 // return fileTypeUtils.iconFor(entry) }`, see next to each one in
-// Omafiles.qml) because these 6 functions have 38 external
+// core) because these 6 functions have 38 external
 // call sites spread across ~10 files -- touching them all would have been much
 // more risk than benefit, same criterion as ActionEngine. No existing
 // call site changed.

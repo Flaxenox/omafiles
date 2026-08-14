@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 
 // Context menu (right-click). Eighth component extracted from
-// Omafiles.qml. The actions already arrive as a list of objects
+// core. The actions already arrive as a list of objects
 // { label, action, enabled, destructive } built by
 // root.itemActions()/emptyAreaActions()/etc. -- each `action` is already a
 // function ready to call, so this component does not need

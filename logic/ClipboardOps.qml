@@ -6,7 +6,7 @@ import "../services"
 
 // Copy/cut/paste (internal clipboard + synced with the system's
 // wl-copy/wl-paste) -- eighteenth component extracted from
-// Omafiles.qml.
+// core.
 Item {
   property Item root: null
   property Item actionEngine: null

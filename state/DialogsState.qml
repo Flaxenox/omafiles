@@ -6,7 +6,7 @@ import QtQuick
 // "dialog" singleton of the state/ layer. Each of
 // dialogs/BulkRenamePanel.qml, dialogs/ShortcutsHelp.qml and
 // dialogs/ConnectServer.qml is purely presentational (its own
-// local `id: root`, fed by binding from Omafiles.qml), so
+// local `id: root`, fed by binding from core), so
 // none of them needs to import this directly.
 QtObject {
   property bool bulkRenameOpen: false

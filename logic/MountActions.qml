@@ -4,7 +4,7 @@ import "../services"
 import "../Utils.js" as Utils
 
 // Mount/eject drives (udisksctl) + connect/disconnect network drives
-// (gio mount) -- twelfth component extracted from Omafiles.qml, and the
+// (gio mount) -- twelfth component extracted from core, and the
 // first to move Process + the functions that orchestrate them together out
 // of the "Active panel" zone (same criterion as ConflictActions:
 // related code that lived scattered; here it was already physically

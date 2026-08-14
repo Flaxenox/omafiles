@@ -7,7 +7,7 @@ import "../Utils.js" as Utils
 // "Inside an archive" mode (zip/7z/rar/tar, read-only navigation
 // without extracting anything to disk) + confirm/cancel compress and extract after
 // resolving conflicts -- fourteenth component extracted from
-// Omafiles.qml. isArchive/isIso are also used outside the archive mode
+// core. isArchive/isIso are also used outside the archive mode
 // itself (to choose an icon, decide what double-click does, context menu...),
 // but they are pure predicates without their own Process, so they travel here with
 // the rest instead of staying loose in root.
@@ -17,7 +17,7 @@ Item {
   property Item navController: null
   property Item fileTypeUtils: null
 
-  // The main ListView (id "list" in Omafiles.qml) -- refreshArchiveListing()
+  // The main ListView (id "list" in core) -- refreshArchiveListing()
   // resets its scroll just like refresh() does with a normal folder.
   property Item list: null
   property Item selectionOps: null

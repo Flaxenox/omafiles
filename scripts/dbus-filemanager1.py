@@ -67,15 +67,15 @@ def summon(folder, select_name=""):
 
 def handle_show(uris, select_item):
     # Real bug (audit 2026-08-05): this called summon() once PER
-    # URI. Since the plugin is keepLoaded, each summon after the first
-    # falls into the "already loaded" branch of Omafiles.qml open(), which
+    # URI. Each summon after the first
+    # falls into the "already loaded" branch of core open(), which
     # ALWAYS opens a new tab -- so selecting several
     # files from the SAME folder in another app (e.g. several downloads in
     # Firefox, "Show in file manager") opened a duplicate
     # tab per file, with only the last one actually highlighted.
     # Now they are grouped by containing folder and a single
     # summon is sent per folder, with all the names of that folder in the
-    # payload (separated by \x1f -- see Omafiles.qml open()).
+    # payload (separated by \x1f -- see core open()).
     if select_item:
         # ShowItems/ShowItemProperties always mean "show it
         # inside its containing folder", whether file or folder.

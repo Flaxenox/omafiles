@@ -4,7 +4,7 @@ import "../services"
 import "../Utils.js" as Utils
 
 // File metadata loading (permissions and properties) -- eighteenth
-// component extracted from Omafiles.qml. Bundles startChmod()/showProperties()/
+// component extracted from core. Bundles startChmod()/showProperties()/
 // showPropertiesForSelection() with the three Process that feed them (stat of
 // permissions, stat of properties, du), which used to live over a thousand
 // lines away from the function that launched them. ChmodPanel.qml/
@@ -12,7 +12,7 @@ import "../Utils.js" as Utils
 // PropertiesState.propertiesSize/etc. -- this component is the one that fills them.
 //
 // Deliberately does NOT include commitChmod/chmodDigit/chmodBitSet/
-// toggleChmodBit (they stay in Omafiles.qml) -- those don't touch any
+// toggleChmodBit (they stay in core) -- those don't touch any
 // Process, they only read/write ChmodState.chmodMode and go through runAction() (the
 // central action/undo system), so moving them here wouldn't have
 // eliminated any duplication nor brought anything closer to what does launch.

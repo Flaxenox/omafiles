@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// "Open with..." dialog. Fourth component extracted from Omafiles.qml --
+// "Open with..." dialog. Fourth component extracted from core --
 // as with ConnectServer.qml, the real action (launch the chosen app) is
 // exposed as a parameterized signal instead of calling root.launchWith()
 // directly from within the component.

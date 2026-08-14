@@ -3,9 +3,9 @@ import qs.Commons
 import qs.Ui
 import "../shared"
 
-// "Bulk rename..." dialog. Sixth component extracted from Omafiles.qml.
+// "Bulk rename..." dialog. Sixth component extracted from core.
 // The chosen pattern is requested outward with a parameterized signal
-// (like ConnectServer.qml/ChmodPanel.qml) -- Omafiles.qml is still
+// (like ConnectServer.qml/ChmodPanel.qml) -- core is still
 // the real owner of root.bulkRenamePattern.
 //
 // The modal wrapper (scrim + card + animation + padding) is

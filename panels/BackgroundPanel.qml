@@ -8,10 +8,10 @@ import "../logic"
 import "../Utils.js" as Utils
 
 // Delegate of the "background" panels (all tabs except the active one),
-// nineteenth component extracted from Omafiles.qml. Each one has its
+// nineteenth component extracted from core. Each one has its
 // own listing (its own Process), without a selection lasso nor its own context
 // menu -- only navigate with double click and drag, the active
-// panel (which stays in Omafiles.qml) already has everything else.
+// panel (which stays in core) already has everything else.
 // hostPanelsRow is passed as a property separate from hostRoot -- it's the one that computes
 // x/width/height of this panel (slotX/slotWidth), and without passing it explicitly
 // it isn't visible from this file.

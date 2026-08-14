@@ -45,17 +45,7 @@ SELF_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"
 
-# Phase 29: idempotent migration of the inherited config. actions.toml moved from
-# ~/.config/omarchy/omafiles/ to its own XDG config (~/.config/omafiles/). It goes
-# BEFORE the version early-exit, so it runs even if the integrations are already
-# up to date. It only copies if the old one exists and the new one doesn't yet, and does NOT
-# delete the old one (in case the user still runs an old version in parallel).
-LEGACY_ACTIONS="$HOME/.config/omarchy/omafiles/actions.toml"
-NEW_ACTIONS="${XDG_CONFIG_HOME:-$HOME/.config}/omafiles/actions.toml"
-if [[ -f "$LEGACY_ACTIONS" && ! -e "$NEW_ACTIONS" ]]; then
-  mkdir -p "$(dirname "$NEW_ACTIONS")"
-  cp "$LEGACY_ACTIONS" "$NEW_ACTIONS" 2>/dev/null || true
-fi
+
 
 mkdir -p "$STATE_DIR"
 if [[ -f $STATE_FILE ]] && [[ "$(cat "$STATE_FILE" 2>/dev/null)" == "$INTEGRATION_VERSION" ]]; then
@@ -102,7 +92,7 @@ cat >"$APPS_DIR/$APP_ID.desktop" <<EOF
 Type=Application
 Name=Omafiles
 GenericName=File manager
-Comment=Custom file manager for Omarchy
+Comment=Custom Qt6 file manager
 Exec=$RES_DIR/scripts/open-path.sh %u
 Icon=omafiles
 Terminal=false
@@ -140,7 +130,7 @@ cat >"$PORTALS_DIR/omafiles.portal" <<EOF
 [portal]
 DBusName=org.freedesktop.impl.portal.desktop.omafiles
 Interfaces=org.freedesktop.impl.portal.FileChooser;
-UseIn=omarchy;Hyprland;
+UseIn=Hyprland;
 EOF
 
 # User portal configuration
@@ -185,7 +175,7 @@ systemctl --user restart xdg-desktop-portal >/dev/null 2>&1 || true
 
 echo -n "$INTEGRATION_VERSION" >"$STATE_FILE"
 
-# Standard notify-send (freedesktop), independent of Omarchy. The icon is the
+# Standard notify-send (freedesktop), independent. The icon is the
 # app's own (Icon=omafiles already installed in hicolor).
 command -v notify-send >/dev/null 2>&1 && notify-send -i omafiles \
   "Omafiles" "Set as the default file manager and FileChooser portal." >/dev/null 2>&1

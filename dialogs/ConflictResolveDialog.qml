@@ -4,7 +4,7 @@ import qs.Ui
 import "../shared"
 
 // "Already exists, overwrite/skip/cancel?" dialog. Seventh
-// component extracted from Omafiles.qml -- unlike the
+// component extracted from core -- unlike the
 // previous ones, this is not just a relocation: "Paste conflict" and
 // "Drop conflict" were two ~55-line blocks IDENTICAL except for
 // which function they called, so they are unified into a single

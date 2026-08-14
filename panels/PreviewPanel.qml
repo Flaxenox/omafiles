@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 
 // Preview panel (Space). Eleventh component extracted from
-// Omafiles.qml -- purely read-only (no clicks of its own beyond
+// core -- purely read-only (no clicks of its own beyond
 // "don't let the tap pass through to what's behind"), so unlike
 // Sidebar.qml it doesn't even need a signal: everything that used to be
 // calls to root.isImage(root.previewEntry)/etc. repeated several

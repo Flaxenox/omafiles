@@ -4,7 +4,7 @@ import QtQuick
 // Current sort criterion (name/size/date/type, asc/desc) --
 // thirteenth singleton of the state/ layer, completes the migration of
 // logic/SortOps.qml (its logic was already extracted; this was the only
-// state it manipulated and that still lived in Omafiles.qml).
+// state it manipulated and that still lived in core).
 QtObject {
   property string sortKey: "name"
   property bool sortDesc: false

@@ -6,7 +6,7 @@ import QtQuick
 // logic/Persistence.qml (which already had the logic extracted, but
 // manipulated this state through root). The file paths
 // (bookmarksFile/recentFile/sessionFile/bulkRenameHistoryFile) stay
-// in Omafiles.qml -- they are config derived from homeDir, not mutable state.
+// in core -- they are config derived from homeDir, not mutable state.
 QtObject {
   property var bookmarks: []
   // { path, name } -- most recent first, cap 20. Persisted separately

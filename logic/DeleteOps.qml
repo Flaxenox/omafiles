@@ -3,7 +3,7 @@ import QtQuick
 import "../state"
 
 // Delete (to trash, or permanent if already viewing the trash) --
-// twenty-third component extracted from Omafiles.qml.
+// twenty-third component extracted from core.
 Item {
   property Item root: null
   property Item actionEngine: null

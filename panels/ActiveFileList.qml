@@ -10,20 +10,20 @@ import "../Utils.js" as Utils
 // drop, keyboard shortcuts, inline rename, per-row context menu) +
 // everything around it within listContainer (separator, mouse wheel,
 // lasso gutters, empty state, visual lasso rectangle, preview)
-// -- twenty-first component extracted from Omafiles.qml, and the
-// largest so far. listContainer stays in Omafiles.qml with its height
+// -- twenty-first component extracted from core, and the
+// largest so far. listContainer stays in core with its height
 // calculation (pixel-tuned, see its own comments) intact; this
 // component only paints its content with anchors.fill: parent.
 //
 // The inner ListView was renamed from "list" to "listView" (with id: list
 // there would be no way to give the SAME id "list" to the instance of this
-// component without colliding) -- but dozens of sites in Omafiles.qml
+// component without colliding) -- but dozens of sites in core
 // (root functions, other dialogs with onFocusReturnRequested, the
 // MouseArea of the side gap between sidebar and mainColumn) still
 // write `list.contentY`/`list.forceActiveFocus()`/etc. by direct
 // id, and changing all those call sites would have been much more
 // risky than resolving it here: the instance of this component is still
-// called "list" in Omafiles.qml (same id as always), and these aliases +
+// called "list" in core (same id as always), and these aliases +
 // shadow functions re-expose exactly the subset of the ListView API that
 // is used from outside (contentY/originY/contentHeight/contentItem,
 // forceActiveFocus()/positionViewAtBeginning()) -- nothing more, it's not a

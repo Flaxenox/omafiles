@@ -3,7 +3,7 @@ import QtQuick
 
 // State of the context menu (right-click on an item or empty area) --
 // fifth singleton of the state/ layer, same pattern as Selection/
-// Clipboard/Undo/Conflict. contextMenuActions is computed in Omafiles.qml
+// Clipboard/Undo/Conflict. contextMenuActions is computed in core
 // (itemActions()/emptyAreaActions(), which need to see almost all the rest
 // of the state) just before opening the menu.
 QtObject {

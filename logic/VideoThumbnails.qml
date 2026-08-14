@@ -4,7 +4,7 @@ import "../services"
 import "../Utils.js" as Utils
 
 // Video thumbnails (ffmpegthumbnailer, queued 1 at a time) --
-// sixteenth component extracted from Omafiles.qml. The three panels that
+// sixteenth component extracted from core. The three panels that
 // paint rows (active panel, background panel, PreviewLoader) request a
 // thumbnail with requestVideoThumb() and wait for videoThumbReady (still
 // a property of root, read from many places) to fill on its own.

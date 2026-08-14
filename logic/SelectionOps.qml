@@ -2,7 +2,7 @@ import QtQuick
 import "../state"
 
 // Row selection (single, range, drag marquee) -- twenty-fifth
-// component extracted from Omafiles.qml.
+// component extracted from core.
 Item {
   property Item root: null
   property Item previewLoader: null

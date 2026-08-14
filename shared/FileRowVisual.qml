@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 
 // Visual content of a file/folder row (icon/thumbnail +
-// name + subtitle) -- twelfth component extracted from Omafiles.qml,
+// name + subtitle) -- twelfth component extracted from core,
 // and the first truly shared between the active panel and the background
 // ones. Previously they were two nearly identical blocks (rowContent/thumbSlot/
 // nameCol and bgRowContent/bgThumbSlot/bgNameCol) that had been

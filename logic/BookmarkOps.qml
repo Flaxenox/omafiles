@@ -2,7 +2,7 @@ import QtQuick
 import "../state"
 
 // Bookmarks, recents, bulk-rename history and drive/network
-// icons -- business logic that lived in Omafiles.qml despite not
+// icons -- business logic that lived in core despite not
 // depending on almost anything (root + persistence, and tabOps/mountOps only for
 // the two network-drive menu actions). Found in the same
 // audit as logic/SortOps.qml and logic/FileTypeUtils.qml. No
@@ -52,7 +52,7 @@ Item {
   // ---------- Bookmarks / drive icons ----------
   function removeBookmark(path) {
     // Trash is fixed -- it cannot be removed (see the twin guard in
-    // bookmarkActions() of Omafiles.qml, which does not even offer the
+    // bookmarkActions() of core, which does not even offer the
     // option; this is the real guard, in case it is one day called from
     // somewhere else).
     if (path === Paths.trashDir) return

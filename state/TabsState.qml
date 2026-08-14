@@ -5,7 +5,7 @@ import "../services"
 // Tabs (each one a visible panel, side by side) + back/forward history
 // of the ACTIVE tab -- twenty-first and last
 // singleton of the state/ layer. The most central of all: currentPath/
-// _goToPath/refresh (which do stay in Omafiles.qml, too
+// _goToPath/refresh (which do stay in core, too
 // central to move) read/write this constantly. The initial values
 // are just a placeholder -- open() always rewrites them
 // before the user sees anything (with the real payload, or restoring

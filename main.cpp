@@ -33,7 +33,7 @@ class SelfCheckReporter : public QObject {
 
 // Qt6 bootstrap of the standalone frontend (Phase 4, josema). In normal mode it
 // loads integrations/standalone/Main.qml, which instantiates the SAME
-// core/OmafilesContent.qml as the Quickshell frontend, inside a real
+// core/OmafilesContent.qml as the frontend, inside a real
 // ApplicationWindow.
 //
 // Phase 12 (josema): adds `--selfcheck`. In that mode the executable stops
@@ -336,7 +336,7 @@ int runNormal(int argc, char *argv[]) {
 
 
   // First positional argument = path/URI/payload to open (empty = normal
-  // start, which restores the previous session like the Quickshell frontend).
+  // start, which restores the previous session ).
   QString payload;
   for (int i = 1; i < argc; ++i) {
     const QString a = QString::fromLocal8Bit(argv[i]);
@@ -395,9 +395,8 @@ int main(int argc, char *argv[]) {
   // Qt6 blocks, for security, file:// reads via XMLHttpRequest unless
   // they are explicitly enabled. The standalone's qs.Commons/ThemeSource
   // adapter reads Omarchy's live theme files this way
-  // (colors.toml/shell.toml), just like the Quickshell FileView in the
-  // real frontend. Without this, ThemeSource falls back to grey and the palette
-  // does NOT match Quickshell (Phase 17, theme parity). It must go before
+  // (colors.toml/shell.toml). Without this, ThemeSource falls back to grey.
+  // It must go before
   // creating the QML engine.
   qputenv("QML_XHR_ALLOW_FILE_READ", "1");
   for (int i = 1; i < argc; ++i) {

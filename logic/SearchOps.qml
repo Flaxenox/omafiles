@@ -4,12 +4,12 @@ import "../services"
 
 // Search (live filter + deep search in subfolders), hidden files,
 // edit path by hand, go all the way up/down -- twentieth component
-// extracted from Omafiles.qml.
+// extracted from core.
 Item {
   property Item root: null
   property Item navController: null
 
-  // The main ListView (id "list" in Omafiles.qml) -- these actions
+  // The main ListView (id "list" in core) -- these actions
   // reset its scroll just like refresh()/navigateTo() with a normal
   // folder.
   property Item list: null

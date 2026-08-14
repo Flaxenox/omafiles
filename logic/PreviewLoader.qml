@@ -4,7 +4,7 @@ import "../state"
 import "../services"
 
 // Preview loading (Space) -- seventeenth component extracted from
-// Omafiles.qml. PreviewPanel.qml paints PreviewContentState.previewText/
+// core. PreviewPanel.qml paints PreviewContentState.previewText/
 // previewHighlighted/previewPdfImage/previewImage/previewAudioInfo; this
 // component is the one that fills them.
 //

@@ -4,7 +4,7 @@ import qs.Commons
 import "../state"
 
 // Drag and drop (within the app, and from/to others) --
-// nineteenth component extracted from Omafiles.qml.
+// nineteenth component extracted from core.
 Item {
   property Item root: null
   // conflictActions.startDropInto() is the one that actually checks

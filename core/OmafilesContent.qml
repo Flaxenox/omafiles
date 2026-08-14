@@ -9,9 +9,9 @@ import "../state"
 
 // OmafilesContent -- the complete visual tree + all the wiring of
 // Omafiles (Phase 3, josema: separate the composition root from the
-// Quickshell frontend). It contains EVERYTHING that used to live directly in Omafiles.qml
+// Quickshell frontend). It contains EVERYTHING that used to live directly in core
 // except the host-specific bits: no FloatingWindow, no HostBridge, no
-// the `shell` property. Omafiles.qml (now a thin bootstrap of the
+// the `shell` property. core (now a thin bootstrap of the
 // Quickshell frontend) instantiates this inside a HostBridge and connects
 // open()/close()/opened/closeRequested() from outside -- see that file
 // for the Quickshell side of the contract.
@@ -420,7 +420,7 @@ Item {
 
   // User-initiated close (Esc, closing the last tab, the window's close
   // button). Before it talked to the host directly (root.shell.hide());
-  // now it only emits closeRequested() -- Omafiles.qml (the Quickshell
+  // now it only emits closeRequested() -- core (the Quickshell
   // frontend bootstrap) decides whether that means notifying the host or closing
   // directly, without this file knowing anything about Quickshell.
   signal closeRequested()

@@ -3,9 +3,9 @@ import "../state"
 import "../Utils.js" as Utils
 
 // List sorting (name/size/date/type, asc/desc) -- pure business
-// logic that lived loose in Omafiles.qml despite not touching any
+// logic that lived loose in core despite not touching any
 // Process nor needing to see other subsystems, only SortState.sortKey/sortDesc/
-// entries. Found auditing Omafiles.qml against rule 3
+// entries. Found auditing core against rule 3
 // ("all business logic outside the UI") of the architecture prompt.
 Item {
   property Item root: null
