@@ -32,7 +32,7 @@ class SelfCheckReporter : public QObject {
 };
 
 // Qt6 bootstrap of the standalone frontend (Phase 4, josema). In normal mode it
-// loads integrations/standalone/Main.qml, which instantiates the SAME
+// loads app/Main.qml, which instantiates the SAME
 // core/OmafilesContent.qml as the frontend, inside a real
 // ApplicationWindow.
 //
@@ -40,7 +40,7 @@ class SelfCheckReporter : public QObject {
 // being an alternative host and becomes the OFFICIAL environment for automatic
 // validation: it starts headless (offscreen), sets up fixtures in a
 // self-cleaning temporary directory and loads
-// integrations/standalone/SelfCheck.qml, which exercises the
+// app/SelfCheck.qml, which exercises the
 // backend/frontend/integration subsystems and ends with Qt.exit(number of
 // failures). See AUDIT-V2.md (Phase 12) and SelfCheck.qml.
 //
@@ -70,7 +70,7 @@ QString resolveResourceDir() {
                                : QDir::homePath() + "/.local/share";
   candidates << dataHome + "/omafiles";
   for (const QString &c : candidates) {
-    if (QFileInfo::exists(c + "/integrations/standalone/Main.qml"))
+    if (QFileInfo::exists(c + "/app/Main.qml"))
       return c;
   }
   // Fallback: the standard installation (clear error message if it is not there either).
@@ -83,7 +83,7 @@ QString resolveResourceDir() {
 // development build/ and the stable installation in ~/.local/lib/qt6/qml -- and
 // Qt ignores the one that does not exist, so it works in both modes.
 void addImportPaths(QQmlApplicationEngine &engine, const QString &resourceDir) {
-  engine.addImportPath(resourceDir + "/integrations/standalone/qml_modules");
+  engine.addImportPath(resourceDir + "/app/qml_modules");
   engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));  // dev build/qml
   engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // installed
 }
@@ -307,7 +307,7 @@ int runSelfCheck(int argc, char *argv[]) {
       Qt::QueuedConnection);
 
   engine.load(QUrl::fromLocalFile(resourceDir +
-                                  "/integrations/standalone/SelfCheck.qml"));
+                                  "/app/SelfCheck.qml"));
   if (failedToCreate || engine.rootObjects().isEmpty()) {
     fprintf(stderr, "[selfcheck] could not load SelfCheck.qml\n");
     return 2;
@@ -383,7 +383,7 @@ int runNormal(int argc, char *argv[]) {
       []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
   engine.load(
-      QUrl::fromLocalFile(resourceDir + "/integrations/standalone/Main.qml"));
+      QUrl::fromLocalFile(resourceDir + "/app/Main.qml"));
   if (engine.rootObjects().isEmpty()) return -1;
 
   return app.exec();

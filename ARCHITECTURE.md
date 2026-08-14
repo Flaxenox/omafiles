@@ -12,11 +12,11 @@ migration only swapped the host that instantiates it.
 > `integrations/quickshell/` (`HostBridge.qml`, `Omafiles.qml`) and the
 > `services/` over `Quickshell.Io.Process`/`Quickshell.env` document the
 > **original two-host contract** for historical context. Those files
-> **are no longer in the tree**: only `integrations/standalone/` is shipped,
+> **are no longer in the tree**: only `app/` is shipped,
 > and the `services/` wrap the C++ backend (`Omafiles.Backend`), not
 > Quickshell. The host contract (Phase 18) and the dependency rules are still
 > valid; there is only one live host implementation
-> (`integrations/standalone/Main.qml`).
+> (`app/Main.qml`).
 
 The app is installed to `~/.local` (no root) and, as of **Fase 29**, is fully
 independent of both Omarchy and this repository: `cmake --install` deploys the
@@ -56,7 +56,7 @@ scripts/, *.sh                   Backing shell scripts + desktop integration (Fi
 
 ```mermaid
 graph TD
-  Main["main.cpp (Qt6 bootstrap, single-instance)"] --> MainQml["integrations/standalone/Main.qml (ApplicationWindow)"]
+  Main["main.cpp (Qt6 bootstrap, single-instance)"] --> MainQml["app/Main.qml (ApplicationWindow)"]
   MainQml --> Adapter["integrations/HostAdapter.qml"]
   MainQml --> Content["core/OmafilesContent.qml"]
   Adapter -.host contract.-> Content
@@ -71,7 +71,7 @@ graph TD
   services -->|wraps| Backend[(Omafiles.Backend C++ .so)]
 ```
 
-- **`main.cpp` + `integrations/standalone/Main.qml`** — the Qt6 host. `main.cpp`
+- **`main.cpp` + `app/Main.qml`** — the Qt6 host. `main.cpp`
   creates the QML engine, handles single-instance (a second `omafiles [path]`
   hands its payload to the running window and exits) and the `--selfcheck`
   harness; `Main.qml` is the `ApplicationWindow` that instantiates
@@ -145,7 +145,7 @@ is formalized in `integrations/HostAdapter.qml`:
   `hide()`, `close()`, and a `closedExternally()` signal (the window went
   away by a mechanism the host did not start — the WM close button).
   Implemented by `integrations/quickshell/HostBridge.qml` over
-  `FloatingWindow` and by `integrations/standalone/Main.qml` over
+  `FloatingWindow` and by `app/Main.qml` over
   `ApplicationWindow`.
 - **Geometry** (host-agnostic, shared): `HostAdapter` persists window
   **size** to `~/.local/state/omafiles/window.json` and restores it via a
@@ -171,7 +171,7 @@ depends on.
 
 ## Host-independent vs. Quickshell-specific
 
-**Independent of the host** (everything a future `integrations/standalone/`
+**Independent of the host** (everything a future `app/`
 would reuse untouched): `core/`, `logic/`, `state/`, `panels/`, `dialogs/`,
 `shared/`, `services/`, and the backing `.sh` scripts. None of these
 import `Quickshell` or reference a `FloatingWindow`/host `shell` object.
@@ -180,9 +180,9 @@ import `Quickshell` or reference a `FloatingWindow`/host `shell` object.
 else): the Quickshell side is `Omafiles.qml` (the plugin bootstrap that the
 host loader instantiates) + `integrations/quickshell/HostBridge.qml`
 (`FloatingWindow` + the host `shell` object). The Qt6 side is
-`main.cpp` (bootstrap) + `integrations/standalone/Main.qml`
+`main.cpp` (bootstrap) + `app/Main.qml`
 (`ApplicationWindow`, no host `shell` object) + the `qs.Commons`/`qs.Ui`
-adapters under `integrations/standalone/qml_modules/`. Both hosts consume
+adapters under `app/qml_modules/`. Both hosts consume
 the same core surface and implement the same `HostAdapter` contract. As of
 Phase 18 the Qt6 standalone is a full production frontend, not a
 demonstration: `services/*.qml` already have a single host-agnostic
@@ -198,5 +198,5 @@ equally Quickshell-free. It exposes exactly the surface a host needs:
 `open(payload)`, `close()`, `opened`, and a `closeRequested()` signal.
 Any QML host that can instantiate an `Item` and connect those four things
 can run it. Two do today: `integrations/quickshell/HostBridge.qml` backed
-by `FloatingWindow`, and `integrations/standalone/Main.qml` backed by
+by `FloatingWindow`, and `app/Main.qml` backed by
 `ApplicationWindow` — both implementing the same `HostAdapter` contract.

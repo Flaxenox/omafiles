@@ -70,7 +70,7 @@ target_link_libraries(omafiles-backend PRIVATE
 )
 
 # ---------------------------------------------------------------------------
-# integrations/standalone : Qt6 frontend
+# app : Qt6 frontend
 # ---------------------------------------------------------------------------
 qt_add_executable(omafiles-standalone main.cpp)
 
@@ -145,7 +145,7 @@ set(OMAFILES_RES_DEST "${OMAFILES_DATA_INSTALL_DIR}/omafiles")
 
 # Complete QML tree that the engine loads at runtime.
 install(DIRECTORY
-    core logic state panels dialogs shared services integrations
+    core logic state panels dialogs shared services app src
   DESTINATION "${OMAFILES_RES_DEST}"
   FILES_MATCHING
     PATTERN "*.qml"
@@ -189,7 +189,7 @@ endforeach()
 # `cmake --build build --target selfcheck` compiles the standalone and runs its
 # --selfcheck mode (headless, without Quickshell, auto-cleans its temporaries).
 # It exits 0 if everything passes, 1 if something fails -> usable as a CI step. See
-# integrations/standalone/SelfCheck.qml.
+# app/SelfCheck.qml.
 add_custom_target(selfcheck
   COMMAND omafiles-standalone --selfcheck
   DEPENDS omafiles-standalone

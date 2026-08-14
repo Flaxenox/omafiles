@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import qs.Commons
 import Omafiles.Backend as Backend
-import "../../core"
-import ".."
+import "../core"
+import "."
 
 // Standalone Qt6 host adapter (Phase 4 → Phase 18, josema). It is the
 // single official host frontend for Omafiles: it instantiates

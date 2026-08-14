@@ -80,7 +80,7 @@ underneath there is Quickshell, QProcess or a test mock.
 ```mermaid
 graph TD
   QSHost["integrations/quickshell<br/>HostBridge (FloatingWindow)"]
-  SAHost["integrations/standalone<br/>Main.qml + main.cpp (ApplicationWindow)"]
+  SAHost["app<br/>Main.qml + main.cpp (ApplicationWindow)"]
   Core["core/OmafilesContent.qml<br/>(composition root, host-agnostic)"]
   UI["panels/ · dialogs/ · shared/"]
   Logic["logic/ (controllers)"]

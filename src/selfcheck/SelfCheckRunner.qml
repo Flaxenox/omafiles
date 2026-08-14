@@ -182,7 +182,7 @@ QtObject {
   // Backend.ProcessRunner (real QProcess) delivers {exitCode,stdout,stderr}.
   property Component _procFactory: Component { Backend.ProcessRunner {} }
   // Plugin root (where the .sh live), derived from this file's URL:
-  // integrations/standalone/ -> ../../ = root.
+  // app/ -> ../../ = root.
   readonly property string pluginRoot: Qt.resolvedUrl("../../").toString().replace(/^file:\/\//, "").replace(/\/+$/, "")
 
   // POSIX quoting to embed paths in a setup `bash -c`.

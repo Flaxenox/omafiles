@@ -5,7 +5,7 @@ import "../state"
 
 // Omafiles host contract (Phase 18, josema) -- the ONLY artifact that
 // formalizes what a host frontend must provide to the core. The official
-// implementation is integrations/standalone/Main.qml (over ApplicationWindow);
+// implementation is app/Main.qml (over ApplicationWindow);
 // the former Quickshell frontend has been removed. The core
 // (core/OmafilesContent.qml) exposes open()/close()/opened + the closeRequested()
 // signal and nothing else.

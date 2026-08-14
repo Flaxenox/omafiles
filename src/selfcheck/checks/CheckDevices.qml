@@ -4,7 +4,7 @@ import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
-// Domain checks extracted from integrations/standalone/SelfCheck.qml (_register).
+// Domain checks extracted from app/SelfCheck.qml (_register).
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
