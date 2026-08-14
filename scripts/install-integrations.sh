@@ -97,7 +97,7 @@ Type=Application
 Name=Omafiles
 GenericName=File manager
 Comment=Custom file manager for Omarchy
-Exec=$RES_DIR/scripts/open-path.sh %u
+Exec=$SELF_RES/scripts/open-path.sh %u
 Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
@@ -111,7 +111,7 @@ EOF
 cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
 [D-BUS Service]
 Name=$APP_ID
-Exec=$RES_DIR/scripts/dbus-app-open.py
+Exec=$SELF_RES/scripts/dbus-app-open.py
 EOF
 
 # D-Bus service org.freedesktop.FileManager1 ("Show in file manager" of
@@ -119,14 +119,14 @@ EOF
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.FileManager1.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.FileManager1
-Exec=$RES_DIR/scripts/dbus-filemanager1.py
+Exec=$SELF_RES/scripts/dbus-filemanager1.py
 EOF
 
 # D-Bus service org.freedesktop.impl.portal.desktop.omafiles
 cat >"$DBUS_SERVICES_DIR/org.freedesktop.impl.portal.desktop.omafiles.service" <<EOF
 [D-BUS Service]
 Name=org.freedesktop.impl.portal.desktop.omafiles
-Exec=$RES_DIR/scripts/dbus-filechooser.py
+Exec=$SELF_RES/scripts/dbus-filechooser.py
 EOF
 
 # xdg-desktop-portal backend configuration file
