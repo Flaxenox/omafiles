@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -11,12 +10,12 @@ QtObject {
         sc.add("Trash removes item from source", function (done) {
           var work = sc.opsDir + "/trash-src.txt"
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, work) },
-            function () { FileOperations.trash(work) }
+            function () { Backend.FileOperations.copy(sc.note, work) },
+            function () { Backend.FileOperations.trash(work) }
           ], done, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var gone = !sc._has(e, "trash-src.txt")
-              sc._seqOps([function () { FileOperations.restoreByOrigPath(work) }], done, function () {
+              sc._seqOps([function () { Backend.FileOperations.restoreByOrigPath(work) }], done, function () {
                 sc._listOnce(sc.opsDir, function (e2) {
                   done(gone && sc._has(e2, "trash-src.txt"),
                        gone ? "sent and restored" : "didn't leave the source")
@@ -34,7 +33,7 @@ QtObject {
           if (!ae) { done(false, "couldn't create ActionEngine"); return }
           var work = sc.opsDir + "/ae-trash-" + Date.now() + ".txt"
           var wname = work.substring(work.lastIndexOf("/") + 1)
-          sc._seqOps([function () { FileOperations.copy(sc.note, work) }], done, function () {
+          sc._seqOps([function () { Backend.FileOperations.copy(sc.note, work) }], done, function () {
             ae.runNativeTrash([work], "", function () {
               sc._listOnce(sc.opsDir, function (e) {
                 var gone = !sc._has(e, wname)
@@ -54,9 +53,9 @@ QtObject {
         sc.add("Trash + restore directory (round-trip)", function (done) {
           var dir = sc.opsDir + "/trashdir"
           sc._seqOps([
-            function () { FileOperations.copy(sc.listDir, dir) },
-            function () { FileOperations.trash(dir) },
-            function () { FileOperations.restoreByOrigPath(dir) }
+            function () { Backend.FileOperations.copy(sc.listDir, dir) },
+            function () { Backend.FileOperations.trash(dir) },
+            function () { Backend.FileOperations.restoreByOrigPath(dir) }
           ], done, function () {
             sc._listOnce(dir, function (e) {
               done(e.length === 4 && sc._has(e, "sub"), "tree restored: " + e.length)
@@ -67,9 +66,9 @@ QtObject {
         sc.add("Trash + restore symlink (round-trip)", function (done) {
           var lnk = sc.opsDir + "/trashlink"
           sc._seqOps([
-            function () { FileOperations.copy(sc.dir + "/link.txt", lnk) },
-            function () { FileOperations.trash(lnk) },
-            function () { FileOperations.restoreByOrigPath(lnk) }
+            function () { Backend.FileOperations.copy(sc.dir + "/link.txt", lnk) },
+            function () { Backend.FileOperations.trash(lnk) },
+            function () { Backend.FileOperations.restoreByOrigPath(lnk) }
           ], done, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var ok = false
@@ -83,9 +82,9 @@ QtObject {
         sc.add("Trash + restore Unicode name (round-trip)", function (done) {
           var uni = sc.opsDir + "/café ñ 文件.txt"
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, uni) },
-            function () { FileOperations.trash(uni) },
-            function () { FileOperations.restoreByOrigPath(uni) }
+            function () { Backend.FileOperations.copy(sc.note, uni) },
+            function () { Backend.FileOperations.trash(uni) },
+            function () { Backend.FileOperations.restoreByOrigPath(uni) }
           ], done, function () {
             sc._listOnce(sc.opsDir, function (e) {
               done(sc._has(e, "café ñ 文件.txt"), "unicode round-trip OK")
@@ -98,13 +97,13 @@ QtObject {
           var a = sc.opsDir + "/coll.txt"
           var b = csub + "/coll.txt"
           sc._seqOps([
-            function () { FileOperations.mkdir(csub) },
-            function () { FileOperations.copy(sc.note, a) },
-            function () { FileOperations.copy(sc.note, b) },
-            function () { FileOperations.trash(a) },
-            function () { FileOperations.trash(b) },
-            function () { FileOperations.restoreByOrigPath(a) },
-            function () { FileOperations.restoreByOrigPath(b) }
+            function () { Backend.FileOperations.mkdir(csub) },
+            function () { Backend.FileOperations.copy(sc.note, a) },
+            function () { Backend.FileOperations.copy(sc.note, b) },
+            function () { Backend.FileOperations.trash(a) },
+            function () { Backend.FileOperations.trash(b) },
+            function () { Backend.FileOperations.restoreByOrigPath(a) },
+            function () { Backend.FileOperations.restoreByOrigPath(b) }
           ], done, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var aBack = sc._has(e, "coll.txt")
@@ -119,23 +118,23 @@ QtObject {
         sc.add("Restore collision (destination exists -> error)", function (done) {
           var work = sc.opsDir + "/restcoll.txt"
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, work) },
-            function () { FileOperations.trash(work) },
-            function () { FileOperations.copy(sc.note, work) }
+            function () { Backend.FileOperations.copy(sc.note, work) },
+            function () { Backend.FileOperations.trash(work) },
+            function () { Backend.FileOperations.copy(sc.note, work) }
           ], done, function () {
             function onErr(op, path, msg) {
               if (path !== work) return
               cleanup()
               sc._seqOps([
-                function () { FileOperations.remove(work) },
-                function () { FileOperations.restoreByOrigPath(work) }
+                function () { Backend.FileOperations.remove(work) },
+                function () { Backend.FileOperations.restoreByOrigPath(work) }
               ], done, function () { done(true, "error if the destination exists: " + msg) })
             }
             function onFin(op, path) { if (path !== work) return; cleanup(); done(false, "should not restore over an existing destination") }
-            function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
-            FileOperations.error.connect(onErr)
-            FileOperations.finished.connect(onFin)
-            FileOperations.restoreByOrigPath(work)
+            function cleanup() { Backend.FileOperations.error.disconnect(onErr); Backend.FileOperations.finished.disconnect(onFin) }
+            Backend.FileOperations.error.connect(onErr)
+            Backend.FileOperations.finished.connect(onFin)
+            Backend.FileOperations.restoreByOrigPath(work)
           })
         })
 
@@ -143,11 +142,11 @@ QtObject {
           var psub = sc.opsDir + "/psub"
           var item = psub + "/child.txt"
           sc._seqOps([
-            function () { FileOperations.mkdir(psub) },
-            function () { FileOperations.copy(sc.note, item) },
-            function () { FileOperations.trash(item) },
-            function () { FileOperations.remove(psub) },
-            function () { FileOperations.restoreByOrigPath(item) }
+            function () { Backend.FileOperations.mkdir(psub) },
+            function () { Backend.FileOperations.copy(sc.note, item) },
+            function () { Backend.FileOperations.trash(item) },
+            function () { Backend.FileOperations.remove(psub) },
+            function () { Backend.FileOperations.restoreByOrigPath(item) }
           ], done, function () {
             sc._listOnce(psub, function (e) {
               done(sc._has(e, "child.txt"), "parent recreated and file restored")
@@ -176,7 +175,7 @@ QtObject {
             })
             if (!started) done(false, "runNativeTrash returned false")
           })
-          FileOperations.copy(sc.note, work)
+          Backend.FileOperations.copy(sc.note, work)
         })
 
         sc.add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
@@ -185,11 +184,11 @@ QtObject {
           var l = sc.opsDir + "/cd-link"
           var missing = sc.opsDir + "/cd-missing-" + Date.now()
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, f) },
-            function () { FileOperations.copy(sc.listDir, d) },
-            function () { FileOperations.copy(sc.dir + "/link.txt", l) }
+            function () { Backend.FileOperations.copy(sc.note, f) },
+            function () { Backend.FileOperations.copy(sc.listDir, d) },
+            function () { Backend.FileOperations.copy(sc.dir + "/link.txt", l) }
           ], done, function () {
-            var res = FileOperations.existingPaths([f, d, l, missing])
+            var res = Backend.FileOperations.existingPaths([f, d, l, missing])
             var ok = res.length === 3 && res.indexOf(f) >= 0 && res.indexOf(d) >= 0 &&
                      res.indexOf(l) >= 0 && res.indexOf(missing) < 0
             done(ok, "detected " + res.length + "/3 (without the nonexistent one)")
@@ -200,9 +199,9 @@ QtObject {
           var src = sc.opsDir + "/ccd-src"
           var dst = sc.opsDir + "/ccd-dst"
           sc._seqOps([
-            function () { FileOperations.copy(sc.listDir, src) },
-            function () { FileOperations.mkdir(dst) },
-            function () { FileOperations.copy(src, dst, true) }
+            function () { Backend.FileOperations.copy(sc.listDir, src) },
+            function () { Backend.FileOperations.mkdir(dst) },
+            function () { Backend.FileOperations.copy(src, dst, true) }
           ], done, function () {
             sc._listOnce(dst, function (e) {
               done(e.length === 4 && sc._has(e, "sub"), "dir replaced: " + e.length + " entries")
@@ -212,13 +211,13 @@ QtObject {
 
         sc.add("Copy conflict without overwrite errors (skip semantics)", function (done) {
           var dst = sc.opsDir + "/ccs.txt"
-          sc._seqOps([function () { FileOperations.copy(sc.note, dst) }], done, function () {
+          sc._seqOps([function () { Backend.FileOperations.copy(sc.note, dst) }], done, function () {
             function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
             function onFin(op, path) { cleanup(); done(false, "should not copy over existing without overwrite") }
-            function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
-            FileOperations.error.connect(onErr)
-            FileOperations.finished.connect(onFin)
-            FileOperations.copy(sc.note, dst)
+            function cleanup() { Backend.FileOperations.error.disconnect(onErr); Backend.FileOperations.finished.disconnect(onFin) }
+            Backend.FileOperations.error.connect(onErr)
+            Backend.FileOperations.finished.connect(onFin)
+            Backend.FileOperations.copy(sc.note, dst)
           })
         })
 
@@ -226,23 +225,23 @@ QtObject {
           var work = sc.opsDir + "/mcs-work.txt"
           var dst = sc.opsDir + "/mcs-dst.txt"
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, work) },
-            function () { FileOperations.copy(sc.note, dst) }
+            function () { Backend.FileOperations.copy(sc.note, work) },
+            function () { Backend.FileOperations.copy(sc.note, dst) }
           ], done, function () {
             function onErr(op, path, msg) { cleanup(); done(msg.indexOf("exists") >= 0, "error: " + msg) }
             function onFin(op, path) { cleanup(); done(false, "should not move over existing without overwrite") }
-            function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
-            FileOperations.error.connect(onErr)
-            FileOperations.finished.connect(onFin)
-            FileOperations.move(work, dst)
+            function cleanup() { Backend.FileOperations.error.disconnect(onErr); Backend.FileOperations.finished.disconnect(onFin) }
+            Backend.FileOperations.error.connect(onErr)
+            Backend.FileOperations.finished.connect(onFin)
+            Backend.FileOperations.move(work, dst)
           })
         })
 
         sc.add("Conflict overwrite replaces symlink dest", function (done) {
           var l = sc.opsDir + "/cos-link"
           sc._seqOps([
-            function () { FileOperations.copy(sc.dir + "/link.txt", l) },
-            function () { FileOperations.copy(sc.note, l, true) }
+            function () { Backend.FileOperations.copy(sc.dir + "/link.txt", l) },
+            function () { Backend.FileOperations.copy(sc.note, l, true) }
           ], done, function () {
             sc._listOnce(sc.opsDir, function (e) {
               var isFileNow = false

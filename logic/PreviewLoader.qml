@@ -1,7 +1,7 @@
 import "../Utils.js" as Utils
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Preview loading (Space) -- seventeenth component extracted from
 // core. PreviewPanel.qml paints PreviewContentState.previewText/
@@ -57,7 +57,7 @@ Item {
       // with cancellation by generation if the selection changes. The
       // result arrives via textReady (see the Connections below).
       PreviewContentState._previewTextOwner = reqId
-      PreviewProvider.requestText(path)
+      Backend.PreviewProvider.requestText(path)
       // Syntax highlighting ONLY for known code extensions --
       // left in the shell (Pygments) to keep exactly the same
       // highlighting; parallel to the plain text (not chained): if it fails,
@@ -74,11 +74,11 @@ Item {
     // the list).
     if (fileTypeUtils.isImage(entry)) {
       PreviewContentState._previewImageOwner = reqId
-      PreviewContentState.previewImage = ThumbnailProvider.request(path, previewSize)
+      PreviewContentState.previewImage = Backend.ThumbnailProvider.request(path, previewSize)
     }
     if (fileTypeUtils.isPdf(entry)) {
       PreviewContentState._previewPdfOwner = reqId
-      PreviewContentState.previewPdfImage = ThumbnailProvider.request(path, previewSize)
+      PreviewContentState.previewPdfImage = Backend.ThumbnailProvider.request(path, previewSize)
     }
     if (fileTypeUtils.isVideo(entry)) videoThumbs.requestVideoThumb(entry)
     if (fileTypeUtils.isAudio(entry)) {
@@ -91,7 +91,7 @@ Item {
   // moved to another item, it is discarded (and PreviewProvider already
   // cancels it on its own via the generation).
   Connections {
-    target: PreviewProvider
+    target: Backend.PreviewProvider
     function onTextReady(path, content, encoding, bytes, lines, truncated) {
       if (PreviewContentState._previewTextOwner === PreviewContentState.previewRequestId)
         PreviewContentState.previewText = content
@@ -102,21 +102,21 @@ Item {
   // carry the size, so it is re-requested at previewSize: it returns the path
   // only when THAT size is cached (ignores the 256px one of the list).
   Connections {
-    target: ThumbnailProvider
+    target: Backend.ThumbnailProvider
     function onReady(path, thumbPath) {
       var e = PreviewContentState.previewEntry
       if (!e || path !== Utils.entryPath(NavState.currentPath, e)) return
       if (fileTypeUtils.isImage(e) && PreviewContentState._previewImageOwner === PreviewContentState.previewRequestId) {
-        var p = ThumbnailProvider.request(path, previewSize)
+        var p = Backend.ThumbnailProvider.request(path, previewSize)
         if (p) PreviewContentState.previewImage = p
       } else if (fileTypeUtils.isPdf(e) && PreviewContentState._previewPdfOwner === PreviewContentState.previewRequestId) {
-        var q = ThumbnailProvider.request(path, previewSize)
+        var q = Backend.ThumbnailProvider.request(path, previewSize)
         if (q) PreviewContentState.previewPdfImage = q
       }
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: highlightPreviewProc
     // Empty/failed -> previewHighlighted stays "" and the UI falls back to the
     // plain Text (previewText) without more ado -- see the "visible:" of each
@@ -124,7 +124,7 @@ Item {
     onFinished: function (result) { if (PreviewContentState._previewHighlightOwner === PreviewContentState.previewRequestId) PreviewContentState.previewHighlighted = result.stdout }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: audioInfoProc
     onFinished: function (result) { if (PreviewContentState._previewAudioOwner === PreviewContentState.previewRequestId) PreviewContentState.previewAudioInfo = fileMeta.parseAudioInfo(result.stdout) }
   }

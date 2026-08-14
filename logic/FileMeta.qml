@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // File metadata: row subtitle (size + date, or trash
@@ -114,7 +114,7 @@ Item {
   // thread and responds via counted(); here it is dumped to the reactive cache, which
   // re-evaluates the subtitles. A single point (FileMeta is instantiated once).
   Connections {
-    target: FolderCounter
+    target: Backend.FolderCounter
     function onCounted(path, n) { FolderCountState.set(path, n) }
   }
 }

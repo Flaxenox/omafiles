@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // On-disk persistence (bookmarks, recents, tab session,
 // bulk-rename history) -- sixteenth component extracted
@@ -32,11 +32,11 @@ Item {
   // atomically. None of the 4 calls below needs to know when
   // it finishes, so the return value and the saved signal are ignored.
   function _saveJson(path, data) {
-    JsonStore.write(path, data)
+    Backend.JsonStore.write(path, data)
   }
 
   function loadBookmarks() {
-    JsonStore.read(Paths.bookmarksFile)
+    Backend.JsonStore.read(Paths.bookmarksFile)
   }
 
   function saveBookmarks() {
@@ -44,7 +44,7 @@ Item {
   }
 
   function loadRecent() {
-    JsonStore.read(Paths.recentFile)
+    Backend.JsonStore.read(Paths.recentFile)
   }
 
   function saveRecent() {
@@ -57,7 +57,7 @@ Item {
   // as soon as it knows the real path, not here (avoids listing homeDir extra if there
   // was a session).
   function loadSession() {
-    JsonStore.read(Paths.sessionFile)
+    Backend.JsonStore.read(Paths.sessionFile)
   }
 
   // Only saves the path of each tab -- not history/preview/scroll,
@@ -71,7 +71,7 @@ Item {
   }
 
   function loadBulkRenameHistory() {
-    JsonStore.read(Paths.bulkRenameHistoryFile)
+    Backend.JsonStore.read(Paths.bulkRenameHistoryFile)
   }
 
   function saveBulkRenameHistory() {
@@ -85,7 +85,7 @@ Item {
   // same "valid or default value" logic that the four
   // separate ProcessRunner had.
   Connections {
-    target: JsonStore
+    target: Backend.JsonStore
 
     function onLoaded(path, data, ok) {
       var parsed = ok ? data : null

@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import "../services"
+import Omafiles.Backend as Backend
 
 // Hot navigation state (Phase 11.A, josema): the current path, its
 // listing and the visible search filter. It was the main coupling
@@ -15,7 +15,7 @@ import "../services"
 // rewrites it before the user sees anything (real payload or session
 // restoration via Persistence), like TabsState.
 QtObject {
-  property string currentPath: Env.get("HOME")
+  property string currentPath: Backend.Env.get("HOME")
 
   // Listing of the current folder, already sorted (DirectoryModel in C++
   // returns it by naturalCompare; logic/ only re-sorts if the user requested

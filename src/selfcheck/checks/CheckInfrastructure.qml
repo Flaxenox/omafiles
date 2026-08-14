@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -12,28 +11,28 @@ QtObject {
 
         sc.add("Backend module loaded (Omafiles.Backend)", function (done) {
           var home = Backend.Env.get("HOME")
-          done(!!home && home.length > 0, home ? "HOME=" + home : "Env.get(HOME) empty")
+          done(!!home && home.length > 0, home ? "HOME=" + home : "Backend.Env.get(HOME) empty")
         })
 
-        sc.add("UDisksWatcher reactive backend (Fase 20, no polling)", function (done) {
+        sc.add("Backend.UDisksWatcher reactive backend (Fase 20, no polling)", function (done) {
           // The C++ watcher (QtDBus) registered and exposes available()/devicesChanged.
           // available() is true if it connected to the system bus (in headless CI it can
           // be false; what's validated is that it loads and doesn't break, not that there's a bus).
-          var a = UDisksWatcher.available()
+          var a = Backend.UDisksWatcher.available()
           var ok = (a === true || a === false)
-            && typeof UDisksWatcher.devicesChanged === "function"
+            && typeof Backend.UDisksWatcher.devicesChanged === "function"
           done(ok, "available=" + a)
         })
 
-        sc.add("FolderCounter counts a directory (async, Fase 23)", function (done) {
+        sc.add("Backend.FolderCounter counts a directory (async, Fase 23)", function (done) {
           // list/ = sub/ + alpha/beta/gamma.txt = 4 entries.
           function on(path, n) {
             if (path !== sc.listDir) return
-            FolderCounter.counted.disconnect(on)
+            Backend.FolderCounter.counted.disconnect(on)
             done(n === 4, "n=" + n + " (expected 4)")
           }
-          FolderCounter.counted.connect(on)
-          FolderCounter.request(sc.listDir, false)
+          Backend.FolderCounter.counted.connect(on)
+          Backend.FolderCounter.request(sc.listDir, false)
         })
 
         sc.add("Item count smart formatting (Fase 23)", function (done) {

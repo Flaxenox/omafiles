@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Address bar with NATIVE autocompletion (Ctrl+L, Phase 26). Replaces the
 // standalone TextField that was in MainLayout: same base behaviour (Enter
@@ -39,7 +39,7 @@ Item {
   }
 
   function refresh() {
-    suggestions = PathCompleter.complete(input.text, NavState.currentPath)
+    suggestions = Backend.PathCompleter.complete(input.text, NavState.currentPath)
     highlight = suggestions.length > 0 ? 0 : -1
   }
 
@@ -58,7 +58,7 @@ Item {
   }
 
   function navigate(target) {
-    root.navigateTo(PathCompleter.expandTilde(target))
+    root.navigateTo(Backend.PathCompleter.expandTilde(target))
     EditModeState.editingPath = false
   }
 

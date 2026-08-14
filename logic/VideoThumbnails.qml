@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // Video thumbnails (ffmpegthumbnailer, queued 1 at a time) --
@@ -33,13 +33,13 @@ Item {
     // the same scheme as the image/PDF thumbnails (Phase B1). The
     // invalidation key is still path|mtime (thumbKeyFor); only the
     // hash changes. .jpg extension because ffmpegthumbnailer generates it.
-    var dest = Paths.thumbCacheDir + "/" + ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
+    var dest = Paths.thumbCacheDir + "/" + Backend.ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
     thumbProc.start(["bash", Paths.resourceDir + "/thumbnail-video.sh", src, dest])
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: thumbProc
     property string currentKey: ""
     property string currentDest: ""

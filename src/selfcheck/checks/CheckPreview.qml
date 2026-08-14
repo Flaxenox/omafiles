@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -8,39 +7,39 @@ import "../../../Utils.js" as Utils
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
-        sc.add("ThumbnailProvider PNG", function (done) {
-          var immediate = ThumbnailProvider.request(sc.png, 128)
+        sc.add("Backend.ThumbnailProvider PNG", function (done) {
+          var immediate = Backend.ThumbnailProvider.request(sc.png, 128)
           if (immediate && immediate.length > 0) { done(true, "cache hit"); return }
           function onReady(path, thumbPath) {
             if (path !== sc.png) return
-            ThumbnailProvider.ready.disconnect(onReady)
+            Backend.ThumbnailProvider.ready.disconnect(onReady)
             done(thumbPath.length > 0, thumbPath ? "" : "thumbPath empty")
           }
-          ThumbnailProvider.ready.connect(onReady)
+          Backend.ThumbnailProvider.ready.connect(onReady)
         })
 
-        sc.add("ThumbnailProvider PDF (qpdf plugin)", function (done) {
-          var immediate = ThumbnailProvider.request(sc.pdf, 128)
+        sc.add("Backend.ThumbnailProvider PDF (qpdf plugin)", function (done) {
+          var immediate = Backend.ThumbnailProvider.request(sc.pdf, 128)
           if (immediate && immediate.length > 0) { done(true, "cache hit"); return }
           function onReady(path, thumbPath) {
             if (path !== sc.pdf) return
-            ThumbnailProvider.ready.disconnect(onReady)
+            Backend.ThumbnailProvider.ready.disconnect(onReady)
             done(thumbPath.length > 0, thumbPath ? "" : "no thumbnail (is qpdf missing?)")
           }
-          ThumbnailProvider.ready.connect(onReady)
+          Backend.ThumbnailProvider.ready.connect(onReady)
         })
 
-        // Canonical cache hash (Phase B1): ThumbnailProvider.cacheKey is the
+        // Canonical cache hash (Phase B1): Backend.ThumbnailProvider.cacheKey is the
         // ONLY scheme (SHA-1 hex), shared by the image/PDF thumbnails
         // (internal to request()), the video ones (VideoThumbnails) and the
         // extraction cache (ArchiveActions). It's anchored against the known SHA-1 of a
         // fixed entry so that any scheme change (which would invalidate the whole
         // on-disk cache) breaks the harness instead of going unnoticed.
         sc.add("Thumbnail cache key is canonical SHA-1 (B1)", function (done) {
-          var k = ThumbnailProvider.cacheKey("omafiles-b1|42")
+          var k = Backend.ThumbnailProvider.cacheKey("omafiles-b1|42")
           var expected = "244adfd729888c0a4499250ebb2e9f41d7243600" // sha1("omafiles-b1|42")
           var hexOk = /^[0-9a-f]{40}$/.test(k)
-          var stable = ThumbnailProvider.cacheKey("omafiles-b1|42") === k
+          var stable = Backend.ThumbnailProvider.cacheKey("omafiles-b1|42") === k
           done(hexOk && stable && k === expected,
                "cacheKey=" + k + (k === expected ? "" : " (expected " + expected + ")"))
         })
@@ -52,12 +51,12 @@ QtObject {
         sc.add("Thumbnail cache pruning: orphans, safety, age, size (O1)", function (done) {
           var TP = Backend.ThumbnailProvider
           var pd = sc.dir + "/prunecache-" + Date.now()
-          var h1 = ThumbnailProvider.cacheKey("o1-a")   // valid 40-hex name
-          var h2 = ThumbnailProvider.cacheKey("o1-b")
+          var h1 = Backend.ThumbnailProvider.cacheKey("o1-a")   // valid 40-hex name
+          var h2 = Backend.ThumbnailProvider.cacheKey("o1-b")
           var BIG_AGE = 999999999, BIG_SIZE = 999999999999
-          var mk = function (name) { return function () { FileOperations.copy(sc.note, pd + "/" + name) } }
+          var mk = function (name) { return function () { Backend.FileOperations.copy(sc.note, pd + "/" + name) } }
 
-          FileOperations.mkdir(pd)
+          Backend.FileOperations.mkdir(pd)
           sc._fileOp(done, function () {
             sc._seqOps([
               mk(h1 + ".png"),      // current thumbnail (.png)
@@ -95,19 +94,19 @@ QtObject {
           })
         })
 
-        sc.add("PreviewProvider text", function (done) {
+        sc.add("Backend.PreviewProvider text", function (done) {
           function onText(path, content, enc, bytes, lines, trunc) {
             if (path !== sc.note) return
-            PreviewProvider.textReady.disconnect(onText)
+            Backend.PreviewProvider.textReady.disconnect(onText)
             var ok = content.indexOf("hello selfcheck") >= 0
             done(ok, ok ? enc + ", " + lines + " lines" : "unexpected content")
           }
-          PreviewProvider.textReady.connect(onText)
-          PreviewProvider.requestText(sc.note, 65536)
+          Backend.PreviewProvider.textReady.connect(onText)
+          Backend.PreviewProvider.requestText(sc.note, 65536)
         })
 
-        sc.add("PreviewProvider info", function (done) {
-          var info = PreviewProvider.info(sc.note)
+        sc.add("Backend.PreviewProvider info", function (done) {
+          var info = Backend.PreviewProvider.info(sc.note)
           var ok = info && typeof info === "object" && Object.keys(info).length > 0
           done(ok, ok ? "keys=[" + Object.keys(info).join(",") + "]" : "info empty")
         })

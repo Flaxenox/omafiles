@@ -1,4 +1,5 @@
 import QtQuick
+import Omafiles.Backend as Backend
 import qs.Commons
 import qs.Ui
 import "../dialogs"
@@ -349,7 +350,7 @@ Item {
       var reqId = PickerState.requestId
       PickerState.active = false
       PickerState.requestId = ""
-      Detached.run([
+      Backend.Detached.run([
         "dbus-send",
         "--session",
         "--type=method_call",
@@ -370,7 +371,7 @@ Item {
       var reqId = PickerState.requestId
       PickerState.active = false
       PickerState.requestId = ""
-      Detached.run([
+      Backend.Detached.run([
         "dbus-send",
         "--session",
         "--type=method_call",

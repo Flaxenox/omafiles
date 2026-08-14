@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../services"
 import "../../state"
 import "../../Utils.js" as Utils
 import "."
@@ -48,7 +47,7 @@ QtObject {
 
   // DirectoryModel factory for the existence/listing checks
   // (non-singleton service wrapped over the C++ backend).
-  property Component _dmFactory: Component { DirectoryModel {} }
+  property Component _dmFactory: Component { Backend.DirectoryModel {} }
 
   // SearchWorker factory (native backend, non-singleton) for the
   // recursive search test (Phase 16).
@@ -149,11 +148,11 @@ QtObject {
     function ok(op, path) { cleanup(); then(op, path) }
     function bad(op, path, msg) { cleanup(); done(false, op + " error: " + msg) }
     function cleanup() {
-      FileOperations.finished.disconnect(ok)
-      FileOperations.error.disconnect(bad)
+      Backend.FileOperations.finished.disconnect(ok)
+      Backend.FileOperations.error.disconnect(bad)
     }
-    FileOperations.finished.connect(ok)
-    FileOperations.error.connect(bad)
+    Backend.FileOperations.finished.connect(ok)
+    Backend.FileOperations.error.connect(bad)
   }
 
   property Timer _pollTimer: Timer { interval: 16; repeat: true }

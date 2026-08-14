@@ -2,7 +2,7 @@ import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Conflict check before executing an action that may
 // overwrite something -- nineteenth component extracted from core,
@@ -49,7 +49,7 @@ Item {
     // NATIVE conflict detection (Phase 13.F): FileOperations.existingPaths
     // (synchronous stat) instead of a `test -e` via shell. Same observable
     // result: 0 conflicts -> pastes now; if any, opens the dialog.
-    var conflicts = FileOperations.existingPaths(destPaths)
+    var conflicts = Backend.FileOperations.existingPaths(destPaths)
     if (conflicts.length === 0) {
       clipboardOps.runPaste("all")
     } else {
@@ -74,7 +74,7 @@ Item {
       return Utils.joinPath(destDir, src.substring(src.lastIndexOf("/") + 1))
     })
     // NATIVE conflict detection (Phase 13.F): same as paste().
-    var conflicts = FileOperations.existingPaths(destPaths)
+    var conflicts = Backend.FileOperations.existingPaths(destPaths)
     if (conflicts.length === 0) {
       runDrop("all")
     } else {
@@ -105,7 +105,7 @@ Item {
       + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
-    if (FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
+    if (Backend.FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
       ConflictState.compressConflictOpen = true
     else
       archiveActions.runPendingCompress()
@@ -146,7 +146,7 @@ Item {
     // dupes of the selection itself, same as before.
     var checkPaths = pairs.filter(function (p) { return p.newName !== p.oldName })
                           .map(function (p) { return p.newPath })
-    var total = FileOperations.existingPaths(checkPaths).length + ConflictState.bulkRenameInternalDupes
+    var total = Backend.FileOperations.existingPaths(checkPaths).length + ConflictState.bulkRenameInternalDupes
     if (total === 0) {
       fileOps.runPendingBulkRename()
     } else {
@@ -205,7 +205,7 @@ Item {
     var newPath = Utils.joinPath(NavState.currentPath, newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
-    if (FileOperations.existingPaths([newPath]).length > 0) ConflictState.renameConflictOpen = true
+    if (Backend.FileOperations.existingPaths([newPath]).length > 0) ConflictState.renameConflictOpen = true
     else renameOps.runPendingRename(false)
   }
 
@@ -224,7 +224,7 @@ Item {
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFile = { path: path, name: name }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
-    if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFileConflictOpen = true
+    if (Backend.FileOperations.existingPaths([path]).length > 0) ConflictState.newFileConflictOpen = true
     else renameOps.runPendingNewFile(false)
   }
 
@@ -236,11 +236,11 @@ Item {
     var path = Utils.joinPath(NavState.currentPath, name)
     ConflictState.pendingNewFolder = { path: path, name: name }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
-    if (FileOperations.existingPaths([path]).length > 0) ConflictState.newFolderConflictOpen = true
+    if (Backend.FileOperations.existingPaths([path]).length > 0) ConflictState.newFolderConflictOpen = true
     else renameOps.runPendingNewFolder(false)
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: systemClipboardReadProc
     onFinished: function (result) {
       // Real bug: RFC 2483 requires CRLF between URIs of a text/uri-list, and
@@ -264,7 +264,7 @@ Item {
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: extractListProc
     onFinished: function (result) {
       var top = {}
@@ -280,7 +280,7 @@ Item {
       // elements of the archive, instead of a `test -e` per name. (The archive
       // LISTING -- list_raw above -- is still shell: that is not conflict
       // detection and is out of BUG-01's scope.)
-      var conflicts = FileOperations.existingPaths(names.map(function (n) {
+      var conflicts = Backend.FileOperations.existingPaths(names.map(function (n) {
         return Utils.joinPath(NavState.currentPath, n)
       })).map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
       if (conflicts.length === 0) {

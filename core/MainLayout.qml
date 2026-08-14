@@ -1,10 +1,10 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import Omafiles.Backend as Backend
 import "../panels"
 import "../shared"
 import "../state"
-import "../services"
 
 // MainLayout -- main visual tree of Omafiles (Phase 11.B, josema:
 // decompose the god object core/OmafilesContent.qml). The card
@@ -391,7 +391,7 @@ Item {
               selectionOps: mainLayout.selectionOps
               onResponseSubmitted: function(requestId, responseCode, results) {
                 var resultsJson = JSON.stringify(results)
-                Detached.run([
+                Backend.Detached.run([
                   "dbus-send",
                   "--session",
                   "--type=method_call",

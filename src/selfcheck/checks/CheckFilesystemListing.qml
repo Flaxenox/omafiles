@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -8,7 +7,7 @@ import "../../../Utils.js" as Utils
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
-        sc.add("DirectoryModel list + natural order", function (done) {
+        sc.add("Backend.DirectoryModel list + natural order", function (done) {
           sc._listOnce(sc.listDir, function (e) {
             var names = e.map(function (x) { return x.name })
             // 3 files + 1 subfolder; folders first, then naturalCompare.
@@ -38,7 +37,7 @@ QtObject {
           m.directoryChanged.connect(onChanged)
           sc._fileOp(function (ok, msg) { finish(false, "mkdir trigger: " + msg) },
                      function () { gotFinish = true; maybe() })
-          FileOperations.mkdir(sc.watchDir + "/trigger")
+          Backend.FileOperations.mkdir(sc.watchDir + "/trigger")
         })
   }
 }

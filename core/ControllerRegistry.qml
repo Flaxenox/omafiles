@@ -1,6 +1,6 @@
 import QtQuick
 import "../logic"
-import "../services"
+import Omafiles.Backend as Backend
 
 // ControllerRegistry -- SOLE owner of all the logic/ controllers
 // (Phase 11.C, josema: eradicate the scattered ownership that the
@@ -170,7 +170,7 @@ Item {
   // above. ProcessRunner (with tracking), not Detached: real bug
   // documented there (gio open vs xdg-open under Hyprland, wrapped in
   // bash -c).
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: openProc
   }
 

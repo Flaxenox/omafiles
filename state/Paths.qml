@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import "../services"
+import Omafiles.Backend as Backend
 
 // File paths and locations of Omafiles (Phase 14.B, josema): before they
 // lived as properties of OmafilesContent (homeDir/pluginDir/trashDir,
@@ -16,18 +16,14 @@ import "../services"
 // and `resourceDir` (where the .sh scripts and the QML tree live) is NO longer the
 // plugin directory: main.cpp resolves it (dev-tree vs installed) and
 // delivers it via the OMAFILES_RESOURCE_DIR environment variable.
-//
-// It imports services/ (Env) like NavState/TabsState -- a pattern already
-// documented for the state/ layer. Env.get resolves the C++ backend
-// (services/Env.qml -> Omafiles.Backend.Env), not a QML env var.
 QtObject {
   id: paths
 
-  readonly property string homeDir: Env.get("HOME")
+  readonly property string homeDir: Backend.Env.get("HOME")
 
   // --- XDG base (with fallback to the spec's default values) ---------
   function _xdg(varName, fallbackSubdir) {
-    var v = Env.get(varName)
+    var v = Backend.Env.get(varName)
     return (v && v.charAt(0) === "/") ? v : homeDir + fallbackSubdir
   }
   readonly property string xdgConfigHome: _xdg("XDG_CONFIG_HOME", "/.config")
@@ -45,7 +41,7 @@ QtObject {
   // $XDG_DATA_HOME/omafiles. Defensive fallback to the standard installed path
   // in case the env didn't arrive (it shouldn't).
   readonly property string resourceDir: {
-    var r = Env.get("OMAFILES_RESOURCE_DIR")
+    var r = Backend.Env.get("OMAFILES_RESOURCE_DIR")
     return (r && r.charAt(0) === "/") ? r : xdgDataHome + "/omafiles"
   }
 

@@ -1,6 +1,5 @@
 import QtQuick
 import "../state"
-import "../services"
 
 // Search (live filter + deep search in subfolders), hidden files,
 // edit path by hand, go all the way up/down -- twentieth component

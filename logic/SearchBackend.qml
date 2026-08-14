@@ -1,4 +1,5 @@
 import QtQuick
+import Omafiles.Backend as Backend
 
 // GLOBAL search service. Abstracts three backends behind a SINGLE contract
 // (search / cancel / results signal), identical to SearchWorker's, so the
@@ -99,7 +100,7 @@ Item {
     recursive.cancel()
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: indexProc
     onFinished: function (result) {
       if (backend._pending) {
@@ -126,7 +127,7 @@ Item {
     }
   }
 
-  SearchWorker {
+  Backend.SearchWorker {
     id: recursive
     // Degraded mode: it is re-emitted as is (relative paths, without re-sorting).
     onResults: function (entries, truncated) {

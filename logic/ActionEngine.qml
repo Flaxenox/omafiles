@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // The central file action engine (rename/delete/copy/move/
 // compress/extract/chmod/link, everything goes through here) + undo/redo +
@@ -43,14 +43,14 @@ Item {
     var started = entry.undo()
     if (started === false) {
       UndoState.undoStack = UndoState.undoStack.concat([entry])
-      Notifier.notify("Couldn't undo \"" + entry.label + "\": still busy with another action")
+      Backend.Notifier.notify("Couldn't undo \"" + entry.label + "\": still busy with another action")
       return
     }
     // It only goes to the redo stack if it really has a way to be redone
     // -- not every undoStack entry has a redoFn (see the
     // comment next to pushUndo).
     if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
-    Notifier.notify("Undoing: " + entry.label)
+    Backend.Notifier.notify("Undoing: " + entry.label)
   }
 
   function redoLast() {
@@ -60,14 +60,14 @@ Item {
     var started = entry.redo()
     if (started === false) {
       UndoState.redoStack = UndoState.redoStack.concat([entry])
-      Notifier.notify("Couldn't redo \"" + entry.label + "\": still busy with another action")
+      Backend.Notifier.notify("Couldn't redo \"" + entry.label + "\": still busy with another action")
       return
     }
     // Back to undoStack WITHOUT going through pushUndo() -- that would empty
     // redoStack, which is exactly what we don't want in the middle of an
     // undo/redo/undo cycle.
     UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
-    Notifier.notify("Redoing: " + entry.label)
+    Backend.Notifier.notify("Redoing: " + entry.label)
   }
 
   function runAction(cmd, busyLabel, onSuccess) {
@@ -78,7 +78,7 @@ Item {
     // changed its command and restarted it, cutting off the ongoing operation
     // mid-copy without any notice.
     if (actionProc.busy || nativeBusy) {
-      Notifier.notify("Still busy with the previous action — try again in a moment")
+      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
     }
     ActionState.actionLabel = busyLabel || ""
@@ -114,7 +114,7 @@ Item {
     // a shell `rm -rf`: the backend is self-sufficient to clean up.
     if (nativeBusy) {
       _cancelling = true
-      FileOperations.cancel()
+      Backend.FileOperations.cancel()
       return
     }
     // Actions still in shell (compress/extract/rename/create): actionProc.
@@ -139,7 +139,7 @@ Item {
   property real _lastItemTotal: 0 // total of the current item (last progress)
 
   function startCopyProgress(sourcePaths, destPaths) {
-    _progTotal = FileOperations.totalSize(sourcePaths)
+    _progTotal = Backend.FileOperations.totalSize(sourcePaths)
     _progBase = 0
     _lastItemTotal = 0
     // Bar from 0% if there is something to measure; dots if the total is 0 (empty
@@ -148,7 +148,7 @@ Item {
   }
 
   Connections {
-    target: FileOperations
+    target: Backend.FileOperations
     function onProgress(op, path, done, total) {
       if (!nativeBusy || _progTotal <= 0) return
       _lastItemTotal = total
@@ -210,7 +210,7 @@ Item {
 
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
     if (actionProc.busy || nativeBusy) {
-      Notifier.notify("Still busy with the previous action — try again in a moment")
+      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
       return false
     }
     nativeBusy = true
@@ -248,23 +248,28 @@ Item {
     }
     // The error was already notified by services/FileOperations (except "cancelled"); here
     // it only stops the sequence and cleans up the state.
-    function bad(op, src, msg) { cleanup(); _nativeDone(false) }
-    function cleanup() {
-      FileOperations.finished.disconnect(ok)
-      FileOperations.error.disconnect(bad)
+    function bad(op, src, msg) {
+      cleanup()
+      if (msg && msg !== "cancelled")
+        Backend.Notifier.notify("Action failed: " + msg)
+      _nativeDone(false)
     }
-    FileOperations.finished.connect(ok)
-    FileOperations.error.connect(bad)
+    function cleanup() {
+      Backend.FileOperations.finished.disconnect(ok)
+      Backend.FileOperations.error.disconnect(bad)
+    }
+    Backend.FileOperations.finished.connect(ok)
+    Backend.FileOperations.error.connect(bad)
     if (_nativeKind === "remove")
-      FileOperations.remove(p.src, _batchOverwrite)  // _batchOverwrite = ignoreMissing
+      Backend.FileOperations.remove(p.src, _batchOverwrite)  // _batchOverwrite = ignoreMissing
     else if (_nativeKind === "trash")
-      FileOperations.trash(p.src)
+      Backend.FileOperations.trash(p.src)
     else if (_nativeKind === "restore")
-      FileOperations.restoreByOrigPath(p.src)
+      Backend.FileOperations.restoreByOrigPath(p.src)
     else if (_nativeKind === "move")
-      FileOperations.move(p.src, p.dest, _batchOverwrite)
+      Backend.FileOperations.move(p.src, p.dest, _batchOverwrite)
     else
-      FileOperations.copy(p.src, p.dest, _batchOverwrite)
+      Backend.FileOperations.copy(p.src, p.dest, _batchOverwrite)
   }
 
   function _nativeDone(success) {
@@ -279,7 +284,7 @@ Item {
     if (success && cb) cb()
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: actionProc
     onFinished: function (result) {
       ActionState.actionBusy = false
@@ -299,7 +304,7 @@ Item {
         // Before, this was swallowed silently -- a mv/cp/chmod/zip/unzip that
         // failed (permissions, disk full, corrupt file...) looked
         // exactly like one that had gone well.
-        Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
+        Backend.Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
       }
     }
   }

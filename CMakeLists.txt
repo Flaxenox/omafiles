@@ -145,7 +145,7 @@ set(OMAFILES_RES_DEST "${OMAFILES_DATA_INSTALL_DIR}/omafiles")
 
 # Complete QML tree that the engine loads at runtime.
 install(DIRECTORY
-    core logic state panels dialogs shared services app src
+    core logic state panels dialogs shared app src
   DESTINATION "${OMAFILES_RES_DEST}"
   FILES_MATCHING
     PATTERN "*.qml"

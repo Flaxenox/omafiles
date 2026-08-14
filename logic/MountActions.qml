@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // Mount/eject drives (udisksctl) + connect/disconnect network drives
@@ -25,12 +25,12 @@ Item {
   function refreshNetworkMounts() {
     // NATIVE enumeration of GVfs mounts (Phase 16): NetworkMounts.list()
     // replaces list-network-mounts.sh. Synchronous (readdir over gvfs).
-    MountsState.networkMounts = NetworkMounts.list()
+    MountsState.networkMounts = Backend.NetworkMounts.list()
   }
 
   function disconnectNetworkMount(mount) {
     if (networkUnmountProc.busy) {
-      Notifier.notify("Still disconnecting a network location — try again in a moment")
+      Backend.Notifier.notify("Still disconnecting a network location — try again in a moment")
       return
     }
     networkUnmountProc.wasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
@@ -76,7 +76,7 @@ Item {
     // click did nothing visible and it looked like the app had ignored the
     // press, same as used to happen to runAction() (see there).
     if (ejectProc.busy) {
-      Notifier.notify("Still ejecting a drive — try again in a moment")
+      Backend.Notifier.notify("Still ejecting a drive — try again in a moment")
       return
     }
     var wasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
@@ -94,7 +94,7 @@ Item {
   // guessing which is the newly mounted drive.
   function mountDevice(mount) {
     if (mountProc.busy) {
-      Notifier.notify("Still mounting a drive — try again in a moment")
+      Backend.Notifier.notify("Still mounting a drive — try again in a moment")
       return
     }
     // Captured here (not re-read in onFinished) -- if the mouse moves to
@@ -114,14 +114,14 @@ Item {
   // fstype=iso9660) and is ejected the same way.
   function mountIso(entry) {
     if (mountIsoProc.busy) {
-      Notifier.notify("Still mounting an ISO — try again in a moment")
+      Backend.Notifier.notify("Still mounting an ISO — try again in a moment")
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
     mountIsoProc.start(["bash", Paths.resourceDir + "/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: mountsProc
     onFinished: function (result) {
       MountsState.mounts = Utils.parseMounts(result.stdout)
@@ -145,7 +145,7 @@ Item {
     if (!covered) tabOps.navigateTabTo(TabsState.activeTabIndex, Paths.homeDir)
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: ejectProc
     property string mountPath: ""
     property bool wasInside: false
@@ -160,16 +160,16 @@ Item {
         // "in use" (can't be moved/deleted) and each one would use up a loop
         // device forever until reboot.
         if (ejectProc.device.indexOf("/dev/loop") === 0) {
-          Detached.run(["udisksctl", "loop-delete", "-b", ejectProc.device])
+          Backend.Detached.run(["udisksctl", "loop-delete", "-b", ejectProc.device])
         }
         refreshMounts()
       } else {
-        Notifier.notify("Could not eject: " + (result.stderr || "device busy"))
+        Backend.Notifier.notify("Could not eject: " + (result.stderr || "device busy"))
       }
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: mountProc
     property int tabIndex: -1
     onFinished: function (result) {
@@ -178,12 +178,12 @@ Item {
         var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountProc.tabIndex, match[1])
       } else {
-        Notifier.notify("Could not mount: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify("Could not mount: " + (result.stderr || "unknown error"))
       }
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: mountIsoProc
     property int tabIndex: -1
     onFinished: function (result) {
@@ -192,12 +192,12 @@ Item {
         var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountIsoProc.tabIndex, match[1])
       } else {
-        Notifier.notify("Could not mount ISO: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify("Could not mount ISO: " + (result.stderr || "unknown error"))
       }
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: networkUnmountProc
     property bool wasInside: false
     property int tabIndex: -1
@@ -206,7 +206,7 @@ Item {
         if (networkUnmountProc.wasInside) tabOps.navigateTabTo(networkUnmountProc.tabIndex, Paths.homeDir)
         refreshNetworkMounts()
       } else {
-        Notifier.notify("Could not disconnect: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify("Could not disconnect: " + (result.stderr || "unknown error"))
       }
     }
   }
@@ -220,7 +220,7 @@ Item {
   // example) -- if it gets stuck waiting for a password that never arrives,
   // the user has the dialog's Cancel button
   // (cancelNetworkConnect/setsid, same mechanism as cancelAction()).
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: networkMountProc
     onFinished: function (result) {
       DialogsState.networkConnecting = false
@@ -231,7 +231,7 @@ Item {
         // there before (the one that just appeared) instead of parsing the
         // output of "gio mount".
         var before = MountsState.networkMounts.map(function (m) { return m.path })
-        var parsed = NetworkMounts.list()
+        var parsed = Backend.NetworkMounts.list()
         MountsState.networkMounts = parsed
         var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
         if (fresh.length > 0) navController.navigateTo(fresh[0].path)

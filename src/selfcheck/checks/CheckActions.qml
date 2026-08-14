@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -36,7 +35,7 @@ QtObject {
               c.undoLast()
             })
           })
-          FileOperations.copy(sc.note, work)
+          Backend.FileOperations.copy(sc.note, work)
         })
 
         sc.add("Undo + redo trash (full cycle)", function (done) {
@@ -64,7 +63,7 @@ QtObject {
               c.undoLast()
             })
           })
-          FileOperations.copy(sc.note, work)
+          Backend.FileOperations.copy(sc.note, work)
         })
 
         sc.add("Undo sequence (LIFO: reverts the last one first)", function (done) {
@@ -75,8 +74,8 @@ QtObject {
           var da = sc.opsDir + "/lifo-da.txt"
           var db = sc.opsDir + "/lifo-db.txt"
           sc._seqOps([
-            function () { FileOperations.copy(sc.note, a) },
-            function () { FileOperations.copy(sc.note, b) }
+            function () { Backend.FileOperations.copy(sc.note, a) },
+            function () { Backend.FileOperations.copy(sc.note, b) }
           ], done, function () {
             c.actionEngine.runNativeMove([{ src: a, dest: da }], "", false, function () {
               c.actionEngine.pushUndo("move A",
@@ -130,14 +129,14 @@ QtObject {
                 c.undoLast()
               }
               function onFin(op, path) { if (path !== sc.dir + "/big.bin") return; cleanup(); done(false, "big copy didn't cancel") }
-              function cleanup() { FileOperations.error.disconnect(onErr); FileOperations.finished.disconnect(onFin) }
-              FileOperations.error.connect(onErr)
-              FileOperations.finished.connect(onFin)
-              FileOperations.copy(sc.dir + "/big.bin", bigDst)
-              FileOperations.cancel()
+              function cleanup() { Backend.FileOperations.error.disconnect(onErr); Backend.FileOperations.finished.disconnect(onFin) }
+              Backend.FileOperations.error.connect(onErr)
+              Backend.FileOperations.finished.connect(onFin)
+              Backend.FileOperations.copy(sc.dir + "/big.bin", bigDst)
+              Backend.FileOperations.cancel()
             })
           })
-          FileOperations.copy(sc.note, work)
+          Backend.FileOperations.copy(sc.note, work)
         })
 
         sc.add("Undo registry consistency (UndoState stacks)", function (done) {
@@ -165,10 +164,10 @@ QtObject {
               })
             })
           })
-          FileOperations.copy(sc.note, work)
+          Backend.FileOperations.copy(sc.note, work)
         })
 
-        sc.add("FileOperations move", function (done) {
+        sc.add("Backend.FileOperations move", function (done) {
           sc._fileOp(done, function () {
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e) {
@@ -176,12 +175,12 @@ QtObject {
                 done(ok, ok ? "" : "move not reflected")
               })
             })
-            FileOperations.move(sc.opsDir + "/move-src.txt", sc.opsDir + "/move-dst.txt")
+            Backend.FileOperations.move(sc.opsDir + "/move-src.txt", sc.opsDir + "/move-dst.txt")
           })
-          FileOperations.copy(sc.note, sc.opsDir + "/move-src.txt")
+          Backend.FileOperations.copy(sc.note, sc.opsDir + "/move-src.txt")
         })
 
-        sc.add("FileOperations remove", function (done) {
+        sc.add("Backend.FileOperations remove", function (done) {
           sc._fileOp(done, function () {
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e) {
@@ -189,12 +188,12 @@ QtObject {
                 done(ok, ok ? "" : "file still exists")
               })
             })
-            FileOperations.remove(sc.opsDir + "/del-me.txt")
+            Backend.FileOperations.remove(sc.opsDir + "/del-me.txt")
           })
-          FileOperations.copy(sc.note, sc.opsDir + "/del-me.txt")
+          Backend.FileOperations.copy(sc.note, sc.opsDir + "/del-me.txt")
         })
 
-        sc.add("FileOperations trash + restore (net-zero)", function (done) {
+        sc.add("Backend.FileOperations trash + restore (net-zero)", function (done) {
           sc._fileOp(done, function () {
             sc._fileOp(done, function () {
               sc._listOnce(sc.opsDir, function (e) {
@@ -205,12 +204,12 @@ QtObject {
                     done(ok, ok ? "restored to its place" : "didn't restore")
                   })
                 })
-                FileOperations.restoreByOrigPath(sc.opsDir + "/to-trash.txt")
+                Backend.FileOperations.restoreByOrigPath(sc.opsDir + "/to-trash.txt")
               })
             })
-            FileOperations.trash(sc.opsDir + "/to-trash.txt")
+            Backend.FileOperations.trash(sc.opsDir + "/to-trash.txt")
           })
-          FileOperations.copy(sc.note, sc.opsDir + "/to-trash.txt")
+          Backend.FileOperations.copy(sc.note, sc.opsDir + "/to-trash.txt")
         })
   }
 }

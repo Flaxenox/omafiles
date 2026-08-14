@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // "Inside an archive" mode (zip/7z/rar/tar, read-only navigation
@@ -52,7 +52,7 @@ Item {
   function openFileInArchive(entry) {
     var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
     var ext = fileTypeUtils.extOf(ArchiveState.archivePath)
-    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
+    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Backend.ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
     var outDir = out.substring(0, out.lastIndexOf("/"))
     var cmd
     if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
@@ -107,7 +107,7 @@ Item {
     ConflictState.extractConflictNames = []
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: archiveListProc
     onFinished: function (result) {
       var s = String(result.stdout || "")
@@ -123,12 +123,12 @@ Item {
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: archiveOpenProc
     property string outPath: ""
     onFinished: function (result) {
       if (result.exitCode !== 0) {
-        Notifier.notify("Couldn't open file from archive: " + (result.stderr.trim() || "unknown error"))
+        Backend.Notifier.notify("Couldn't open file from archive: " + (result.stderr.trim() || "unknown error"))
         return
       }
       navController.openWithDefault(archiveOpenProc.outPath)

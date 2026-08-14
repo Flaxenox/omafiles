@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -13,7 +12,7 @@ QtObject {
           if (!c) { done(false, "no _content"); return }
           var bgDir = sc.dir + "/bgpanel-" + Date.now()
 
-          FileOperations.mkdir(bgDir)
+          Backend.FileOperations.mkdir(bgDir)
           sc._fileOp(done, function () {                    // bgDir created (empty)
             // Real SortOps: with default SortState (name/asc) isDefaultOrder is
             // true, so _sorted returns the entries as is without touching
@@ -43,7 +42,7 @@ QtObject {
             sc._poll(function () { return cache() !== undefined && cache().length === 0 }, function (ok0) {
               if (!ok0) { cleanup(); done(false, "the panel didn't list the initial empty folder"); return }
               // 2) mutate the folder and trigger the refresh ONLY via refreshTick.
-              FileOperations.copy(sc.note, bgDir + "/appeared.txt")
+              Backend.FileOperations.copy(sc.note, bgDir + "/appeared.txt")
               sc._fileOp(done, function () {
                 NavState.refreshTick += 1
                 // 3) the background panel must re-list and reflect the new file.

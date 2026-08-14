@@ -1,9 +1,9 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
-import "../services"
 import "../Utils.js" as Utils
 
 // Row delegate of the main ListView (visual + drag/drop +
@@ -94,13 +94,13 @@ CursorSurface {
     // the delegates: when reusing a row for another entry the
     // thumbnail of the new path must be requested again.
     onMyPathChanged: {
-      imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+      imgThumb = wantsThumb ? Backend.ThumbnailProvider.request(myPath, 256) : ""
       _requestCount(false)
     }
 
     Component.onCompleted: {
       if (isVid) hostVideoThumbs.requestVideoThumb(modelData)
-      if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+      if (wantsThumb) imgThumb = Backend.ThumbnailProvider.request(myPath, 256)
       _requestCount(false)
     }
 
@@ -112,11 +112,11 @@ CursorSurface {
       if (!_isDir) return
       if (!force && !FolderCountState.needsRequest(myPath)) return
       FolderCountState.markPending(myPath)
-      FolderCounter.request(myPath, NavState.showHidden)
+      Backend.FolderCounter.request(myPath, NavState.showHidden)
     }
 
     Connections {
-      target: ThumbnailProvider
+      target: Backend.ThumbnailProvider
       function onReady(path, thumbPath) {
         if (path === rowContent.myPath) rowContent.imgThumb = thumbPath
       }

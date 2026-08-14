@@ -1,6 +1,6 @@
 pragma Singleton
 import QtQuick
-import "../services"
+import Omafiles.Backend as Backend
 
 // Tabs (each one a visible panel, side by side) + back/forward history
 // of the ACTIVE tab -- twenty-first and last
@@ -11,7 +11,7 @@ import "../services"
 // before the user sees anything (with the real payload, or restoring
 // the previous session via Persistence.loadSession()).
 QtObject {
-  readonly property string _initialHome: Env.get("HOME")
+  readonly property string _initialHome: Backend.Env.get("HOME")
   property var tabs: [{ path: _initialHome, history: [_initialHome], historyIndex: 0 }]
   property int activeTabIndex: 0
   // Back/forward history of the ACTIVE tab -- each tab keeps

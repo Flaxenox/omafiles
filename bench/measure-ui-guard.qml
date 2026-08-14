@@ -1,19 +1,19 @@
 import QtQuick
-import Omafiles.Backend
+import Omafiles.Backend as Backend
 
 // Compares the UI-THREAD cost of the "did the folder change?" guard:
 //   BEFORE (Phase 10.A): Utils.entriesEqual -> iterates N entries, materializes all.
 //   NOW (Phase 27): compare DirectoryModel.signature (string) -> O(1).
 Item {
-  DirectoryModel { id: m; onListed: harness.step() }
+  Backend.DirectoryModel { id: m; onListed: harness.step() }
   QtObject {
     id: harness
     // Portable dataset location: explicit override, else the XDG cache dir
     // (fallback $HOME/.cache). No hardcoded home or username; runs on any clone.
-    readonly property string cacheHome: Env.get("XDG_CACHE_HOME") !== ""
-      ? Env.get("XDG_CACHE_HOME") : Env.get("HOME") + "/.cache"
-    readonly property string base: Env.get("OMAFILES_PERFBENCH_DIR") !== ""
-      ? Env.get("OMAFILES_PERFBENCH_DIR") : cacheHome + "/omafiles-perfbench"
+    readonly property string cacheHome: Backend.Env.get("XDG_CACHE_HOME") !== ""
+      ? Backend.Env.get("XDG_CACHE_HOME") : Backend.Env.get("HOME") + "/.cache"
+    readonly property string base: Backend.Env.get("OMAFILES_PERFBENCH_DIR") !== ""
+      ? Backend.Env.get("OMAFILES_PERFBENCH_DIR") : cacheHome + "/omafiles-perfbench"
     property var dirs: [base + "/1k", base + "/10k", base + "/50k", base + "/100k"]
     property int i: -1
     property string last: ""

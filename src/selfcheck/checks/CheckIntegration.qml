@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -12,7 +11,7 @@ QtObject {
           var link = sc.opsDir + "/bug01-broken-" + Date.now()
           sc._sh(["ln", "-s", "/omafiles-no-such-target-xyz", link], function (r) {
             if (r.exitCode !== 0) { done(false, "couldn't create the broken symlink: " + r.stderr); return }
-            var hit = FileOperations.existingPaths([link])
+            var hit = Backend.FileOperations.existingPaths([link])
             done(hit.length === 1 && hit[0] === link,
                  hit.length === 1 ? "broken symlink detected as a conflict"
                                   : "existingPaths did NOT detect the broken symlink (n=" + hit.length + ")")
@@ -100,7 +99,7 @@ QtObject {
         // Properties/chmod built `du -shc -- <all>` and `stat -c%a -- <all>`
         // in a single bash line -> with a huge selection it blew the length
         // limit (ARG_MAX / 128 KiB per argument) and the dialog was left without
-        // size/permissions. Now they use FileOperations.totalSize/octalModes (native,
+        // size/permissions. Now they use Backend.FileOperations.totalSize/octalModes (native,
         // no command line). The test builds a list that DOES overflow that
         // line: the native path handles it; the old shell fails. It fails with the
         // previous code (octalModes didn't exist -> TypeError).
@@ -109,13 +108,13 @@ QtObject {
           // long nonexistent paths until the `stat/du -- <all>` line that
           // the old code used would overflow the per-argument limit (128 KiB).
           var reals = [sc.note, sc.png]
-          var expected = FileOperations.totalSize(reals)
+          var expected = Backend.FileOperations.totalSize(reals)
           var pad = new Array(160).join("x")
           var big = reals.slice()
           while (big.length < 2000) big.push(sc.opsDir + "/" + pad + big.length)
           // NATIVE: doesn't build a command line -> handles the huge list.
-          var total = FileOperations.totalSize(big)      // sums only the 2 real ones
-          var modes = FileOperations.octalModes(big)     // aligned with big, "" if missing
+          var total = Backend.FileOperations.totalSize(big)      // sums only the 2 real ones
+          var modes = Backend.FileOperations.octalModes(big)     // aligned with big, "" if missing
           var nativeOk = total === expected
             && modes.length === big.length && modes[0].length > 0 && modes[2] === ""
           if (!nativeOk) { done(false, "native: total=" + total + " exp=" + expected

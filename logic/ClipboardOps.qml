@@ -2,7 +2,7 @@ import "../Utils.js" as Utils
 import QtQuick
 import qs.Commons
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Copy/cut/paste (internal clipboard + synced with the system's
 // wl-copy/wl-paste) -- eighteenth component extracted from
@@ -45,12 +45,12 @@ Item {
   function copyPathFor(entries) {
     if (!entries || entries.length === 0) return
     var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
-    Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
+    Backend.Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
   }
 
   function syncClipboardToSystem() {
     if (ClipboardState.clipboardPaths.length === 0) {
-      Detached.run(["wl-copy", "-c"])
+      Backend.Detached.run(["wl-copy", "-c"])
       return
     }
     // \r\n between URIs (RFC 2483), not plain \n -- the DnD mimeData
@@ -60,7 +60,7 @@ Item {
     var uris = ClipboardState.clipboardPaths.map(function (p) {
       return "file://" + p.split("/").map(encodeURIComponent).join("/")
     }).join("\r\n")
-    Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
+    Backend.Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
   }
 
   // mode: "all" (no conflicts, as is) | "overwrite" | "skip"

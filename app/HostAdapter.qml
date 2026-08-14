@@ -1,5 +1,5 @@
 import QtQuick
-import "../services"
+import Omafiles.Backend as Backend
 import "../state"
 
 
@@ -45,7 +45,7 @@ QtObject {
   // Window state file, shared by the two frontends (the size
   // is an "Omafiles window" preference, not a host one). Same directory
   // ~/.local/state/omafiles/ as the rest of the persistence.
-  readonly property string _file: Env.get("HOME") + "/.local/state/omafiles/window.json"
+  readonly property string _file: Backend.Env.get("HOME") + "/.local/state/omafiles/window.json"
 
   // Emitted by restore() when there is a valid saved size -- the host applies it
   // to its concrete size property.
@@ -54,7 +54,7 @@ QtObject {
   // Reads the saved size (async: arrives via onLoaded). The host calls this
   // in Component.onCompleted.
   function restore() {
-    JsonStore.read(adapter._file)
+    Backend.JsonStore.read(adapter._file)
   }
 
   // Persists the current size (debounced, so as not to write on every pixel of
@@ -71,7 +71,7 @@ QtObject {
 
   function _write() {
     if (!adapter.window) return
-    JsonStore.write(adapter._file, {
+    Backend.JsonStore.write(adapter._file, {
       width: Math.round(adapter.window.width),
       height: Math.round(adapter.window.height)
     })
@@ -83,7 +83,7 @@ QtObject {
   }
 
   property Connections _js: Connections {
-    target: JsonStore
+    target: Backend.JsonStore
     function onLoaded(path, data, ok) {
       if (path !== adapter._file) return
       if (ok && data && data.width > 0 && data.height > 0)

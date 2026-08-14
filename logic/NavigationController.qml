@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // Navigation/history of the active panel -- twenty-second component
@@ -249,7 +249,7 @@ Item {
   //     respect Terminal=true. It only remains to first resolve the id of the
   //     default .desktop (gtk-launch needs an id, not a path).
   function openWithDefault(path) {
-    Detached.run(["bash", "-c", 'id=$(xdg-mime query default "$(xdg-mime query filetype "$1")"); [ -n "$id" ] && exec gtk-launch "$id" "$1"', "_", path])
+    Backend.Detached.run(["bash", "-c", 'id=$(xdg-mime query default "$(xdg-mime query filetype "$1")"); [ -n "$id" ] && exec gtk-launch "$id" "$1"', "_", path])
   }
 
   function enter(entry) {
@@ -316,7 +316,7 @@ Item {
   // ready. inotifywait -m never ends on its own (monitor mode); it is killed
   // explicitly (stop()) when navigating to another folder or closing the
   // window, see startDirWatch()/stopDirWatch().
-  ProcessWatcher {
+  Backend.ProcessWatcher {
     id: dirWatchProc
     onLineRead: dirWatchDebounce.restart()
   }

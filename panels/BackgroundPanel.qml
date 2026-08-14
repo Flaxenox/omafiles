@@ -1,9 +1,9 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
-import "../services"
 import "../logic"
 import "../Utils.js" as Utils
 
@@ -440,13 +440,13 @@ Item {
           || modelData.name.toLowerCase().slice(-4) === ".svg"
         property string imgThumb: ""
         onMyPathChanged: {
-          imgThumb = wantsThumb ? ThumbnailProvider.request(myPath, 256) : ""
+          imgThumb = wantsThumb ? Backend.ThumbnailProvider.request(myPath, 256) : ""
           _requestCount(false)
         }
 
         Component.onCompleted: {
           if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
-          if (wantsThumb) imgThumb = ThumbnailProvider.request(myPath, 256)
+          if (wantsThumb) imgThumb = Backend.ThumbnailProvider.request(myPath, 256)
           _requestCount(false)
         }
 
@@ -457,11 +457,11 @@ Item {
           if (!_isDir) return
           if (!force && !FolderCountState.needsRequest(myPath)) return
           FolderCountState.markPending(myPath)
-          FolderCounter.request(myPath, NavState.showHidden)
+          Backend.FolderCounter.request(myPath, NavState.showHidden)
         }
 
         Connections {
-          target: ThumbnailProvider
+          target: Backend.ThumbnailProvider
           function onReady(path, thumbPath) {
             if (path === bgRowContent.myPath) bgRowContent.imgThumb = thumbPath
           }

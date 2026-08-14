@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Commons
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Rename / new folder / new file, with their undo -- seventeenth
 // component extracted from core. Same pattern as FileOps: no
@@ -130,14 +130,14 @@ Item {
     // Common case: NATIVE mkdir (Phase 7). The undo is registered on
     // successful completion (see the Connections below).
     renameOps._nativeMkdirPending[pending.path] = pending.name
-    FileOperations.mkdir(pending.path)
+    Backend.FileOperations.mkdir(pending.path)
   }
 
   // Closes the loop of the native "new folder": refreshes and registers the
   // undo when mkdir finishes well. Declarative like Persistence with
   // JsonStore.
   Connections {
-    target: FileOperations
+    target: Backend.FileOperations
     function onFinished(op, path) {
       if (op !== "mkdir") return
       // Immediate refresh (like actionProc.onFinished): the active panel is
@@ -152,14 +152,15 @@ Item {
         // rmdir (not rm -rf): if there is already something inside, it fails instead of deleting it.
         return actionEngine.runAction("rmdir -- " + Util.shellQuote(path))
       }, function () {
-        FileOperations.mkdir(path) // redo: without re-registering
+        Backend.FileOperations.mkdir(path) // redo: without re-registering
         return true
       })
     }
     function onError(op, path, message) {
-      // The notice to the user was already given by the adapter (Notifier). Just clean up.
       if (op === "mkdir" && renameOps._nativeMkdirPending[path] !== undefined)
         delete renameOps._nativeMkdirPending[path]
+      if (op === "mkdir" && message && message !== "cancelled")
+        Backend.Notifier.notify("Action failed: " + message)
     }
   }
 

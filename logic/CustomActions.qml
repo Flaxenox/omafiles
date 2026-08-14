@@ -2,7 +2,7 @@ import QtQuick
 import qs.Commons
 import "../Utils.js" as Utils
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // User-defined actions (Phase 26 / Beta 3): custom commands that
 // are read from ~/.config/omarchy/omafiles/actions.toml and appear both in the
@@ -144,8 +144,8 @@ Item {
     // cd to the item's folder (or the current one) so the command's relative
     // output lands where the user expects, like "Terminal here".
     var cwd = first ? firstDir : NavState.currentPath
-    Detached.run(["bash", "-lc", "cd -- " + Util.shellQuote(cwd) + " && " + cmd])
-    Notifier.notify("Running: " + action.label)
+    Backend.Detached.run(["bash", "-lc", "cd -- " + Util.shellQuote(cwd) + " && " + cmd])
+    Backend.Notifier.notify("Running: " + action.label)
   }
 
   // Entries for the PALETTE (form {label, run}). entries = current selection.

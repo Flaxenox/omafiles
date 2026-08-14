@@ -1,6 +1,6 @@
 import "../state"
 import QtQuick
-import "../services"
+import Omafiles.Backend as Backend
 
 // AppBindings -- lifecycle and timer wiring of Omafiles (Phase
 // 11.C, josema: complete the frontend decoupling). It gathers the
@@ -28,8 +28,8 @@ Item {
     // many times and must not have side effects on the system. On a
     // normal startup OMAFILES_SELFCHECK does not exist and the behavior is the
     // usual one.
-    if (Env.get("OMAFILES_SELFCHECK") === "1") return
-    Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
+    if (Backend.Env.get("OMAFILES_SELFCHECK") === "1") return
+    Backend.Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
   }
 
   // Block devices (USB/ISO/disks): reactive via UDisks2 (Phase 20).
@@ -46,7 +46,7 @@ Item {
   // internal event or reopening. Future improvement: a GVfs-specific watcher
   // (D-Bus signals of org.gtk.vfs), never polling.
   Connections {
-    target: UDisksWatcher
+    target: Backend.UDisksWatcher
     enabled: root.opened
     function onDevicesChanged() { mountOps.refreshMounts() }
   }

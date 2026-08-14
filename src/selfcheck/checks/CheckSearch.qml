@@ -1,6 +1,5 @@
 import QtQuick
 import Omafiles.Backend as Backend
-import "../../../services"
 import "../../../state"
 import "../../../Utils.js" as Utils
 
@@ -10,8 +9,8 @@ QtObject {
   function register(sc) {
         sc.add("Native recursive search: name, depth, hidden filter (Fase 16)", function (done) {
           var base = sc.dir + "/srch-" + Date.now()
-          var mk = function (p) { return function () { FileOperations.mkdir(p) } }
-          var cp = function (p) { return function () { FileOperations.copy(sc.note, p) } }
+          var mk = function (p) { return function () { Backend.FileOperations.mkdir(p) } }
+          var cp = function (p) { return function () { Backend.FileOperations.copy(sc.note, p) } }
           // Tree: match at root, match in subfolder, match inside a hidden folder.
           sc._seqOps([
             mk(base), mk(base + "/sub"), mk(base + "/.hid"),

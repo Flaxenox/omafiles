@@ -1,7 +1,7 @@
 import "../Utils.js" as Utils
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // "Open with..." dialog -- twenty-first component extracted from
 // core.
@@ -20,7 +20,7 @@ Item {
   function launchWith(desktopId) {
     if (PreviewState.openWithEntry) {
       var openPath = Utils.entryPath(NavState.currentPath, PreviewState.openWithEntry)
-      Detached.run(["gtk-launch", desktopId, openPath])
+      Backend.Detached.run(["gtk-launch", desktopId, openPath])
       bookmarkOps.addRecent(openPath, PreviewState.openWithEntry.name)
     }
     PreviewState.openWithOpen = false
@@ -35,7 +35,7 @@ Item {
     })
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: openWithProc
     onFinished: function (result) { PreviewState.openWithApps = parseOpenWithApps(result.stdout) }
   }

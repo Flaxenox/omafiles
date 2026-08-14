@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 
 // Lists a directory and exposes the result already sorted -- twenty-third
 // component extracted from core (Phase 1.6, josema). Reused by
@@ -63,7 +63,7 @@ Item {
       // discovers them (native, Phase 16: replaces trash-roots.sh); then the
       // content of all is merged with listMany. It is not a single folder,
       // which is why it does not go through dirModel.list plainly.
-      var paths = FileOperations.trashRoots().map(function (r) { return r + "/files" })
+      var paths = Backend.FileOperations.trashRoots().map(function (r) { return r + "/files" })
       _dirMode = "trash"
       dirModel.listMany(paths, showHidden)
     } else {
@@ -121,7 +121,7 @@ Item {
   // (list) and the Trash (listMany). The dirModel.entries array has the
   // same shape {type,name,size,mtime,link} that Utils.parseEntries produced,
   // and goes through the same sortOps.sortEntries + _apply.
-  DirectoryModel {
+  Backend.DirectoryModel {
     id: dirModel
     // Qualified with the id: dirModel ALSO has a directoryChanged
     // signal, so without qualifying, the model's own one would be re-emitted
@@ -142,7 +142,7 @@ Item {
         // async dance (nor flicker). TrashState.trashInfo is shared by
         // the active panel and the background ones; DeleteOps/FileOps use it to
         // know the physical root of each item on restore/delete.
-        var arr = FileOperations.trashInfo()
+        var arr = Backend.FileOperations.trashInfo()
         var info = {}
         for (var i = 0; i < arr.length; i++)
           info[arr[i].name] = { origPath: arr[i].origPath, epoch: arr[i].epoch, trashRoot: arr[i].trashRoot }

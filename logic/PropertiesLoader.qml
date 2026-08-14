@@ -1,6 +1,6 @@
 import QtQuick
 import "../state"
-import "../services"
+import Omafiles.Backend as Backend
 import "../Utils.js" as Utils
 
 // File metadata loading (permissions and properties) -- eighteenth
@@ -30,7 +30,7 @@ Item {
     // the paths>` on a single bash line, which blew ARG_MAX with a huge
     // selection. It returns the mode in the SAME order as the paths ("" if it
     // fails), so the mapping with chmodNames (for undo) stays aligned.
-    var modes = FileOperations.octalModes(entries.map(function (e) {
+    var modes = Backend.FileOperations.octalModes(entries.map(function (e) {
       return Utils.joinPath(NavState.currentPath, e.name)
     }))
     var valid = modes.filter(function (m) { return m.length > 0 })
@@ -69,7 +69,7 @@ Item {
     // paths>` on a single bash line (ARG_MAX with a huge selection). Sum of
     // apparent bytes of the tree, formatted the same; synchronous, no process nor
     // race (that's why the _propertiesDuOwner guard is no longer needed here).
-    var bytes = FileOperations.totalSize(entries.map(function (e) {
+    var bytes = Backend.FileOperations.totalSize(entries.map(function (e) {
       return Utils.joinPath(NavState.currentPath, e.name)
     }))
     PropertiesState.propertiesSize = Utils.formatSize(bytes)
@@ -101,7 +101,7 @@ Item {
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: propertiesStatProc
     onFinished: function (result) {
       // Discards the response if the user already switched to another item
@@ -114,7 +114,7 @@ Item {
     }
   }
 
-  ProcessRunner {
+  Backend.ProcessRunner {
     id: propertiesDuProc
     onFinished: function (result) {
       // Same guard as propertiesStatProc -- this is the one that really
