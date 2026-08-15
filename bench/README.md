@@ -29,7 +29,34 @@ Dataset paths are hardcoded in the `.qml` / `.cpp` sources to
 - A configured CMake/Ninja build tree under `build/` (the C++ bench links
   against the compiled backend and its generated MOC source).
 
-## Running the benchmarks
+## Automated Performance Regression Gate (`bench-gate.py`)
+
+To automate performance verification before releases and detect regressions deterministically, use `bench/bench-gate.py`:
+
+```sh
+# 1) Generate canonical baseline snapshot (saved to bench/baseline.json)
+python3 bench/bench-gate.py --generate-baseline
+
+# 2) Run current benchmarks and compare against stored baseline
+python3 bench/bench-gate.py --compare
+
+# 3) Check regression gate in CI/CD (exits 0 on pass, 1 on regression > 8%)
+python3 bench/bench-gate.py --check-gate --threshold 8.0
+
+# 4) Generate release markdown report
+python3 bench/bench-gate.py --report PHASE38_PERFORMANCE_REGRESSION_REPORT.md
+```
+
+### Threshold Classification
+
+| Classification | Threshold | Policy |
+|---|---|---|
+| **UNCHANGED** | < 3% delta | Statistical noise / normal variance |
+| **WARNING** | 3% – 8% delta | Minor machine variation; monitor |
+| **REGRESSION** | 8% – 15% delta | Actionable performance regression |
+| **SEVERE REGRESSION** | > 15% delta | Release blocker |
+
+## Manual Benchmark Execution
 
 ```sh
 # 1) Generate the datasets (~161k files under ~/.cache/omafiles-perfbench/)
@@ -75,7 +102,9 @@ For a stable, comparable number:
 4. Keep the invariants green around any performance change:
    `omafiles --selfcheck` and `qmllint` on the touched QML.
 
-## Reference Baseline (v0.9.0)
+## Reference Baseline (v0.9.0-rc1-pre2)
+
+Canonical baseline data is version-controlled in `bench/baseline.json`.
 
 Hardware baseline: Linux x86_64, NVMe storage, Qt 6.5+.
 
@@ -83,10 +112,10 @@ Hardware baseline: Linux x86_64, NVMe storage, Qt 6.5+.
 
 | Directory Size | Row Count | Listing Time (Scan + Sort + Apply) | `entries()` Conversion | Total Latency |
 |---|---|---|---|---|
-| `1k` | 1,002 | 2.21 ms | 0.34 ms | 2.55 ms |
-| `10k` | 10,002 | 25.56 ms | 2.80 ms | 28.36 ms |
-| `50k` | 50,002 | 135.38 ms | 13.55 ms | 148.93 ms |
-| `100k` | 100,002 | 302.76 ms | 44.78 ms | 347.54 ms |
+| `1k` | 1,002 | 2.22 ms | 0.34 ms | 2.56 ms |
+| `10k` | 10,002 | 25.55 ms | 2.88 ms | 28.43 ms |
+| `50k` | 50,002 | 136.64 ms | 13.78 ms | 150.42 ms |
+| `100k` | 100,002 | 306.38 ms | 45.68 ms | 352.06 ms |
 
 ### 2. `measure-ui-guard.qml` (UI-Thread Content Signature Guard)
 
@@ -100,13 +129,13 @@ Hardware baseline: Linux x86_64, NVMe storage, Qt 6.5+.
 |---|---|---|---|
 | `"Report"` | 200 | Yes | 3 ms |
 | `"img"` | 200 | Yes | 3 ms |
-| `"999"` | 200 | Yes | 79 ms |
-| `"Folder_0000"` | 2 | No (full tree walk) | 77 ms |
+| `"999"` | 200 | Yes | 77 ms |
+| `"Folder_0000"` | 2 | No (full tree walk) | 79 ms |
 
 ## Where results live
 
 Recorded benchmark results, performance audits, and surrounding documentation
-are maintained in the internal maintainer docs (`PHASE35_PERFORMANCE_BASELINE_REPORT.md`).
+are maintained in `PHASE38_PERFORMANCE_REGRESSION_REPORT.md` and `bench/baseline.json`.
 This directory ships the runnable tooling and reference baselines so anyone
 can reproduce and compare measurements.
 

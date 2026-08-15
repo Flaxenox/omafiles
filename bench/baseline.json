@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-08-15T00:14:43Z",
+  "version": "v0.9.0-rc1-pre2",
+  "startup": {
+    "startup_wall_ms": 726.73,
+    "startup_cpu_ms": 436.7,
+    "peak_rss_mb": 93.97
+  },
+  "directory_navigation": {
+    "1k": {
+      "listing_ms": 2.22,
+      "entries_ms": 0.34,
+      "total_ms": 2.56
+    },
+    "10k": {
+      "listing_ms": 25.55,
+      "entries_ms": 2.88,
+      "total_ms": 28.43
+    },
+    "50k": {
+      "listing_ms": 136.64,
+      "entries_ms": 13.78,
+      "total_ms": 150.42
+    },
+    "100k": {
+      "listing_ms": 306.38,
+      "entries_ms": 45.68,
+      "total_ms": 352.06
+    }
+  },
+  "ui_guard": {
+    "rows_1002": {
+      "guard_ms_per_call": 0.0
+    },
+    "rows_10002": {
+      "guard_ms_per_call": 0.001
+    },
+    "rows_50002": {
+      "guard_ms_per_call": 0.0
+    },
+    "rows_100002": {
+      "guard_ms_per_call": 0.0
+    }
+  },
+  "search": {
+    "query_Report_ms": 3.0,
+    "query_img_ms": 3.0,
+    "query_999_ms": 77.0,
+    "query_Folder_0000_ms": 79.0
+  },
+  "file_operations": {
+    "copy_100mb_ms": 32.5,
+    "copy_100mb_mb_s": 3077.27,
+    "copy_5k_small_files_ms": 198.2,
+    "copy_5k_small_files_items_per_sec": 25227.0,
+    "delete_5k_small_files_ms": 21.05,
+    "delete_5k_small_files_items_per_sec": 237476.8
+  }
+}
