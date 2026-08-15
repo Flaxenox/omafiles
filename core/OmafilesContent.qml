@@ -12,6 +12,7 @@ import "../state"
 Item {
   id: root
 
+  // --- Properties & State ---
   property var tabEntriesCache: ({})
   property bool opened: false
   property bool loaded: false
@@ -217,6 +218,7 @@ Item {
     mountOps: registry.mountOps
   }
 
+  // --- UI Components & Dialogs ---
   MainLayout {
     id: mainLayout
     anchors.fill: parent

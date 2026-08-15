@@ -228,126 +228,19 @@ Item {
     onDropped: function (drop) { hostDragDropOps.handleFilesDropped(drop, bgPanel.modelData.path) }
   }
 
-  Row {
+  BackgroundHeader {
     id: bgHeaderRow
     anchors.top: parent.top
-    width: parent.width
-    height: Style.spacing.controlHeight
-    spacing: Style.spacing.controlGap
-
-    // Same header as the active panel (back/forward/home/up) --
-    // josema asked that the two look the same, not just the active panel
-    // with full navigation.
-    PanelNavButtons {
-      id: bgNavButtons
-      canGoBack: (bgPanel.modelData.historyIndex || 0) > 0
-      canGoForward: (bgPanel.modelData.historyIndex || 0) < (bgPanel.modelData.history || [bgPanel.modelData.path]).length - 1
-      canGoUp: bgPanel.modelData.path !== "/"
-      onBackRequested: hostTabOps.navTabBack(bgPanel.index)
-      onForwardRequested: hostTabOps.navTabForward(bgPanel.index)
-      onUpRequested: {
-        var p = bgPanel.modelData.path
-        var idx = p.lastIndexOf("/")
-        hostTabOps.navigateTabTo(bgPanel.index, idx > 0 ? p.substring(0, idx) : "/")
-      }
-    }
-
-    // Full breadcrumbs, same as in the active panel -- before only
-    // the current folder's name was shown, without the rest of the path.
-    BreadcrumbSegments {
-      id: bgBreadcrumbRow
-      // Same width as the active panel's breadcrumb (pathArea in
-      // MainLayout): reserves the gap of the collapsed magnifier (collapsedW =
-      // controlHeight) + its separation, even though there is NO magnifier here (the search
-      // belongs only to the active panel). So the breadcrumb doesn't change width when
-      // the panel becomes active -- no horizontal shift when switching
-      // panels (Visual Sprint 3, B-06).
-      width: parent.width - bgNavButtons.width - bgSearchPlaceholder.width - 2 * Style.spacing.controlGap
-      height: parent.height
-      segments: hostCommandFacade ? hostCommandFacade.pathSegmentsFor(bgPanel.modelData.path) : []
-      activePath: bgPanel.modelData.path
-    }
-
-    // Magnifier slot. At rest it's empty (it only reserves the width of the collapsed
-    // magnifier of the active panel, so the header has the same geometry
-    // in both states). If THIS background panel has a search open,
-    // it grows into a read-only bar: query + X to close it. It's read-
-    // only because to EDIT you activate the panel (by hovering), which already
-    // brings the full interactive magnifier.
-    Item {
-      id: bgSearchPlaceholder
-      // Same expanded width as the active SearchBar (core/MainLayout): 300 px
-      // literal (NOT Style.space, which would scale it and made it wider than the
-      // original), clamped by what's left after reserving 120 px of breadcrumb
-      // (pathArea.minPathW). At rest, only the width of the collapsed magnifier.
-      width: bgPanel.bgSearching
-        ? Math.max(Style.spacing.controlHeight, Math.min(300, bgHeaderRow.width - bgNavButtons.width - 120 - 2 * Style.spacing.controlGap))
-        : Style.spacing.controlHeight
-      height: parent.height
-
-      // READ-ONLY indicator of the search open in this background
-      // panel (magnifier + query). It carries no controls of its own: with "activate on
-      // hover", any button here would become unreachable (the
-      // hover would activate the panel and replace this bar with the interactive
-      // magnifier before you could press it). To edit or CLOSE the search
-      // you activate the panel (by hovering) and use the usual interactive
-      // magnifier (Escape, or click on the magnifier itself).
-      // Same geometry and tokens as the active SearchBar expanded (background
-      // selectedBackground + border menu.border, magnifier CENTERED in a slot of
-      // controlHeight, text starting at iconSlot.right + xs) so the two
-      // bars look identical -- before the magnifier was stuck to the text and
-      // misaligned relative to the original.
-      Rectangle {
-        anchors.fill: parent
-        visible: bgPanel.bgSearching
-        radius: Style.cornerRadius
-        color: Color.menu.selectedBackground
-        border.width: Style.spacing.hairline
-        border.color: Color.menu.border
-
-        Item {
-          id: bgSearchIconSlot
-          anchors.left: parent.left
-          anchors.verticalCenter: parent.verticalCenter
-          width: Style.spacing.controlHeight
-          height: Style.spacing.controlHeight
-
-          OpticalGlyph {
-            anchors.centerIn: parent
-            text: "\u{F0349}" // nf-md-magnify
-            fontFamily: Style.font.family
-            fontSize: Style.font.icon
-            color: Color.menu.selectedText
-          }
-        }
-
-        Text {
-          anchors.left: bgSearchIconSlot.right
-          // The active TextField starts the text at xs + its internal leftPadding
-          // (Style.spacing.controlPaddingX). A plain Text has no such padding,
-          // so it's replicated here so "steam" starts at the SAME x as in
-          // the active bar (otherwise, it's more to the left).
-          anchors.leftMargin: Style.spacing.xs + Style.spacing.controlPaddingX
-          anchors.right: parent.right
-          anchors.rightMargin: Style.spacing.sm
-          anchors.verticalCenter: parent.verticalCenter
-          text: bgPanel.modelData.searchQuery || ""
-          elide: Text.ElideRight
-          color: Color.menu.selectedText
-          font.family: Style.font.family
-          font.pixelSize: Style.font.subtitle
-        }
-      }
-    }
+    modelData: bgPanel.modelData
+    index: bgPanel.index
+    hostTabOps: bgPanel.hostTabOps
+    hostCommandFacade: bgPanel.hostCommandFacade
+    bgSearching: bgPanel.bgSearching
   }
 
   PanelSeparator {
     id: bgHeaderSep
     anchors.top: bgHeaderRow.bottom
-    // Same gap that separates navRow from listContainer in the active panel
-    // (Style.spacing.rowGap, the same mainColumn spacing -- not
-    // Style.spacing.sm) -- with sm it was visibly taller than the
-    // active panel's line.
     anchors.topMargin: Style.spacing.rowGap
     width: parent.width
     foreground: Color.menu.text
@@ -356,17 +249,9 @@ Item {
 
   Text {
     id: bgErrorText
-    // Same anchor and margin as the active panel's error notice
-    // (ActiveFileList): right under the header separator, at
-    // Style.spacing.md -- so the same error appears in the SAME position in the
-    // two panels (Visual Sprint 3, C-05). Before it was sm and didn't match
-    // the active panel's.
     visible: dirLister.pathError !== "" && !bgPanel.bgSearching
     anchors.top: bgHeaderSep.bottom
     anchors.topMargin: Style.spacing.md
-    // Same alignment as the active panel's notice (ActiveFileList): icon
-    // column (no leftMargin) and centered in a row's height, to
-    // stay at the height of the glyph with the same top spacing as the rest.
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.rightMargin: Style.spacing.rowPaddingX
@@ -387,137 +272,21 @@ Item {
     anchors.left: parent.left
     anchors.right: parent.right
     clip: true
-    // Results of THIS panel's search if it has one open; otherwise, its
-    // normal folder listing.
     model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
     boundsBehavior: Flickable.StopAtBounds
     onMovementEnded: bgPanel._saveScroll()
 
-    delegate: CursorSurface {
-      id: bgRowSurface
-      required property var modelData
-      required property int index
-      width: bgList.width
-      implicitHeight: bgRowContent.implicitHeight + Style.spacing.md * 2
-      foreground: Color.menu.text
-      accent: Color.accent
-      hasCursor: bgRowMouse.containsMouse
-      // The hover fill/border is already semi-transparent on its own
-      // (Style.hoverFillFor) -- the whole bgPanel goes to opacity:0.72 to
-      // mark itself as "not the active panel", and without this that opacity is
-      // multiplied ALSO over the hover, ending up doubly weak/
-      // faded instead of the same look it has in the active panel.
-      // 1/0.72 cancels exactly the parent's opacity only while this
-      // specific row has the cursor over it.
-      opacity: hasCursor ? 1 / 0.72 : 1
-
-      DropArea {
-        visible: modelData.type === "dir"
-        anchors.fill: parent
-        keys: ["text/uri-list"]
-        onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
-        onDropped: function (drop) {
-          hostDragDropOps.handleFilesDropped(drop, Utils.entryPath(bgPanel.modelData.path, modelData))
-        }
-      }
-
-      Item {
-        id: bgRowContent
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-        anchors.leftMargin: 0
-        anchors.rightMargin: Style.spacing.rowPaddingX
-        implicitHeight: bgFileRow.implicitHeight
-
-        readonly property bool isVid: Utils.isVideo(modelData)
-        readonly property string vidKey: isVid ? Utils.thumbKeyFor(modelData, bgPanel.modelData.path) : ""
-        readonly property string vidThumb: vidKey ? (VideoThumbState.videoThumbReady[vidKey] || "") : ""
-
-        // Native thumbnail (images/SVG/PDF) via ThumbnailProvider
-        readonly property string myPath: Utils.entryPath(bgPanel.modelData.path, modelData)
-        readonly property bool wantsThumb: Utils.isImage(modelData) || Utils.isPdf(modelData)
-          || modelData.name.toLowerCase().slice(-4) === ".svg"
-        property string imgThumb: ""
-        onMyPathChanged: {
-          imgThumb = wantsThumb ? Backend.ThumbnailProvider.request(myPath, 256) : ""
-          _requestCount(false)
-        }
-
-        Component.onCompleted: {
-          if (isVid) hostVideoThumbs.requestVideoThumb(modelData, bgPanel.modelData.path)
-          if (wantsThumb) imgThumb = Backend.ThumbnailProvider.request(myPath, 256)
-          _requestCount(false)
-        }
-
-        // Item counter: same as FileListRow, with THIS background
-        // panel's path. The FolderCountState cache is global (per path).
-        readonly property bool _isDir: modelData.type === "dir"
-        function _requestCount(force) {
-          if (!_isDir) return
-          if (!force && !FolderCountState.needsRequest(myPath)) return
-          FolderCountState.markPending(myPath)
-          Backend.FolderCounter.request(myPath, NavState.showHidden)
-        }
-
-        Connections {
-          target: Backend.ThumbnailProvider
-          function onReady(path, thumbPath) {
-            if (path === bgRowContent.myPath) bgRowContent.imgThumb = thumbPath
-          }
-        }
-
-        Connections {
-          target: NavState
-          function onRefreshTickChanged() { bgRowContent._requestCount(true) }
-        }
-
-        FileRowVisual {
-          id: bgFileRow
-          anchors.fill: parent
-          name: modelData.name
-          isDir: modelData.type === "dir"
-          isBroken: modelData.link === "broken"
-          fileIconGlyph: Utils.iconFor(modelData)
-          thumbSource: bgRowContent.imgThumb ? Util.fileUrl(bgRowContent.imgThumb)
-            : (bgRowContent.vidThumb ? Util.fileUrl(bgRowContent.vidThumb) : "")
-          metaText: hostFileMeta ? hostFileMeta.metaFor(modelData, bgPanel.modelData.path) : ""
-          metaTooltip: hostFileMeta ? hostFileMeta.metaTooltipFor(modelData, bgPanel.modelData.path) : ""
-        }
-      }
-
-      MouseArea {
-        id: bgRowMouse
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        drag.target: bgDragProxy
-        drag.axis: Drag.XAndYAxis
-        onDoubleClicked: {
-          if (bgPanel.bgSearching) {
-            hostTabOps.navigateTabTo(bgPanel.index, modelData.type === "dir" ? modelData.path : modelData.parent)
-          } else if (modelData.type === "dir") {
-            hostTabOps.navigateTabTo(bgPanel.index, Utils.joinPath(bgPanel.modelData.path, modelData.name))
-          } else {
-            if (hostNavController) hostNavController.openWithDefault(Utils.entryPath(bgPanel.modelData.path, modelData))
-          }
-        }
-      }
-
-      Item {
-        id: bgDragProxy
-        width: 1
-        height: 1
-        Drag.active: bgRowMouse.drag.active
-        Drag.dragType: Drag.Automatic
-        Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
-        Drag.proposedAction: Qt.MoveAction
-        Drag.mimeData: {
-          var data = {}
-          data["text/uri-list"] = Util.fileUrl(Utils.joinPath(bgPanel.modelData.path, modelData.name))
-          return data
-        }
-      }
+    delegate: BackgroundListDelegate {
+      modelData: model
+      index: model.index
+      panelPath: bgPanel.modelData.path || ""
+      bgSearching: bgPanel.bgSearching
+      hostDragDropOps: bgPanel.hostDragDropOps
+      hostVideoThumbs: bgPanel.hostVideoThumbs
+      hostFileMeta: bgPanel.hostFileMeta
+      hostTabOps: bgPanel.hostTabOps
+      hostNavController: bgPanel.hostNavController
+      bgPanelIndex: bgPanel.index
     }
   }
 

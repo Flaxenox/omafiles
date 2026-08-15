@@ -42,14 +42,31 @@ qt_add_qml_module(omafiles-backend
     backend/DirectoryModel.cpp
     backend/FileOperations.h
     backend/FileOperations.cpp
+    backend/FileOperations_Copy.cpp
+    backend/FileOperations_Move.cpp
+    backend/FileOperations_Remove.cpp
+    backend/FileOperations_Trash.cpp
     backend/ThumbnailProvider.h
     backend/ThumbnailProvider.cpp
     backend/PreviewProvider.h
     backend/PreviewProvider.cpp
     backend/SyntaxHighlighter.h
     backend/SyntaxHighlighter.cpp
+    backend/SyntaxHighlighter_CFamily.cpp
+    backend/SyntaxHighlighter_Python.cpp
+    backend/SyntaxHighlighter_JavaScript.cpp
+    backend/SyntaxHighlighter_Shell.cpp
+    backend/SyntaxHighlighter_Config.cpp
+    backend/SyntaxHighlighter_Markup.cpp
+    backend/SyntaxHighlighter_CSS.cpp
+    backend/SyntaxHighlighter_SQL.cpp
     backend/MediaInfo.h
     backend/MediaInfo.cpp
+    backend/MediaInfo_Mp3.cpp
+    backend/MediaInfo_Flac.cpp
+    backend/MediaInfo_Wav.cpp
+    backend/MediaInfo_Ogg.cpp
+    backend/MediaInfo_Mp4.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
     backend/NetworkMounts.h
