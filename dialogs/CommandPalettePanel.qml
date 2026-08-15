@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../shared"
 
 // Command palette (":" or Ctrl+P). Ninth component extracted from
 // core -- the most interactive of all (live text field +
@@ -129,6 +130,13 @@ Item {
             onClicked: root.commandActivated(index)
           }
         }
+      }
+      
+      EmptyState {
+        visible: root.commands.length === 0
+        centerOn: paletteList
+        message: root.query ? "No results for “" + root.query + "”" : "No commands available"
+        subMessage: root.query ? "Try a broader search" : ""
       }
     }
   }

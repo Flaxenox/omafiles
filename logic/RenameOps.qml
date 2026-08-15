@@ -159,7 +159,7 @@ Item {
       if (op === "mkdir" && renameOps._nativeMkdirPending[path] !== undefined)
         delete renameOps._nativeMkdirPending[path]
       if (op === "mkdir" && message && message !== "cancelled")
-        Backend.Notifier.notify("Action failed: " + message)
+        Backend.Notifier.notify(message || "Rename failed")
     }
   }
 

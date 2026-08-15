@@ -168,7 +168,7 @@ Item {
     function onError(op, path, msg) {
       if (!nativeBusy) return
       if (msg && msg !== "cancelled")
-        Backend.Notifier.notify("Action failed: " + msg)
+        Backend.Notifier.notify(msg || "Action failed")
       _finishNative(false)
     }
   }
@@ -279,7 +279,7 @@ Item {
       if (result.exitCode === 0) {
         if (cb) cb()
       } else if (!result.cancelled) {
-        Backend.Notifier.notify("Action failed: " + (result.stderr.trim() || "unknown error"))
+        Backend.Notifier.notify(result.stderr.trim() || "Couldn't restore from trash")
       }
     }
   }

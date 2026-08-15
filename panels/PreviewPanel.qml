@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../shared"
 
 // Preview panel (Space). Eleventh component extracted from
 // core -- purely read-only (no clicks of its own beyond
@@ -177,7 +178,7 @@ Item {
         Text {
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
-          text: "No preview"
+          text: "No preview available"
           font.pixelSize: Style.font.title
           font.family: Style.font.family
           color: Color.menu.text
@@ -187,12 +188,19 @@ Item {
         Text {
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
-          text: root.fallbackSizeText
-          font.pixelSize: Style.font.title
+          text: "Press Enter to open with default app"
+          font.pixelSize: Style.font.subtitle
           font.family: Style.font.family
           color: Color.menu.text
           opacity: Style.emphasis.secondary
         }
+      }
+
+      EmptyState {
+        visible: !root.hasEntry
+        centerOn: parent
+        message: "No file selected"
+        subMessage: "Select a file to preview its contents"
       }
     }
   }

@@ -9,8 +9,8 @@ import "../Utils.js" as Utils
 CursorSurface {
   id: bgRowSurface
 
-  property var modelData: null
-  property int index: -1
+  required property var modelData
+  required property int index
   property string panelPath: ""
   property bool bgSearching: false
   property Item hostDragDropOps: null

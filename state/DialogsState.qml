@@ -18,4 +18,7 @@ QtObject {
   property string connectServerUri: ""
   property string connectServerError: ""
   property bool networkConnecting: false
+  property bool networkAuthRequested: false
+  property string networkAuthMessage: ""
+  property string networkAuthUser: ""
 }

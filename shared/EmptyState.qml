@@ -19,6 +19,7 @@ Column {
 
   property Item centerOn: null
   property string message: ""
+  property string subMessage: ""
 
   anchors.centerIn: root.centerOn
   width: root.centerOn ? root.centerOn.width : 0
@@ -40,6 +41,17 @@ Column {
     opacity: Style.emphasis.strong
     font.family: Style.font.family
     font.pixelSize: Style.font.title
+    horizontalAlignment: Text.AlignHCenter
+    width: parent.width
+  }
+
+  Text {
+    visible: root.subMessage !== ""
+    text: root.subMessage
+    color: Color.menu.text
+    opacity: Style.emphasis.secondary
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
     horizontalAlignment: Text.AlignHCenter
     width: parent.width
   }

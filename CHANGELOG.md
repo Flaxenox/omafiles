@@ -1,5 +1,25 @@
 # OmaFiles Changelog
 
+## [0.9.0-rc2] - 2026-08-15
+
+OmaFiles v0.9.0-rc2 is the final polish and stabilization release before v0.9.0 stable.
+
+This release ruthlessly eliminates friction, standardizes native C++ implementations for external tools, and refines the interaction flow according to DHH's design philosophy: less configuration, fewer decisions, and highly actionable UI.
+
+---
+
+### Highlights
+
+* **Native Mime & App Resolution (`MimeResolver`):** Completely replaced shell-based `xdg-mime` lookups with a high-performance C++ backend utilizing `gio-2.0` APIs. Desktop file parsing and association lookups are now native and instant.
+* **Native Terminal Detection (`TerminalResolver`):** Eliminated `xdg-terminal-exec` wrappers. Automatically detects and launches available Linux terminals (`kitty`, `foot`, `alacritty`, `wezterm`, `ghostty`, etc.) via `QProcess` and `QStandardPaths` seamlessly.
+* **Intelligent Network Behavior (`NetworkResolver`):** Upgraded `gio mount` wrapper calls to a pure C++ GIO integration. Features asynchronous mounting of `sftp://`, `smb://`, `dav://` URLs and includes ephemeral, native auth dialogs without blocking the UI or relying on external password managers.
+* **Zero-Friction UI Audit:**
+  - Radically simplified all Empty States ("Folder is empty", "Trash is empty") with actionable, informative sub-messages ("Drop files here to add them").
+  - Stripped "bureaucratic" prefixes from Error Messages. Native errors ("Permission denied") are surfaced directly and concisely.
+  - Hardened interaction consistency across panels, ensuring a 100% keyboard-only workflow without dead ends.
+
+---
+
 ## [0.9.0-rc1] - 2026-08-15
 
 OmaFiles v0.9.0-rc1 is the first release candidate of the standalone Qt6 generation of OmaFiles.

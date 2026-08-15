@@ -119,7 +119,7 @@ Item {
     property string outPath: ""
     onFinished: function (result) {
       if (result.exitCode !== 0) {
-        Backend.Notifier.notify("Couldn't open file from archive: " + (result.stderr.trim() || "unknown error"))
+        Backend.Notifier.notify(result.stderr.trim() || "Couldn't open archive")
         return
       }
       navController.openWithDefault(archiveOpenProc.outPath)

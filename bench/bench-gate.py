@@ -200,8 +200,9 @@ def bench_ui_guard():
     env["QT_QPA_PLATFORM"] = "offscreen"
     qml_import = str(Path.home() / ".local" / "lib" / "qt6" / "qml")
 
+    qml_import2 = str(ROOT_DIR / "build" / "imports")
     res = measure_command([
-        "qml6", "-I", qml_import, str(SCRIPT_DIR / "measure-ui-guard.qml")
+        "qml6", "-I", qml_import, "-I", qml_import2, str(SCRIPT_DIR / "measure-ui-guard.qml")
     ], env=env, runs=2)
 
     results = {}

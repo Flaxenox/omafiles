@@ -247,20 +247,15 @@ Item {
               font.pixelSize: Style.font.subtitle
               color: Color.urgent
             }
-
             EmptyState {
-              // `root.loaded` (listing confirmed at least once) prepended
-              // for the same reason as in BackgroundPanel: on startup, and
-              // at any instant when entries is empty but STILL not
-              // confirmed, the empty-folder logo must not appear as a
-              // transient frame. loaded doesn't go back to false and stays true during the
-              // search, so the real "No results"/"Nothing here yet" is
-              // still shown as soon as visibleEntries is truly at 0.
               visible: root.loaded && NavState.currentPathError === "" && NavState.visibleEntries.length === 0
               centerOn: listView
               message: NavState.searchQuery
                 ? "No results for “" + NavState.searchQuery + "”"
-                : (NavState.currentPath === Paths.trashDir ? "Trash is empty" : "Nothing here yet")
+                : (NavState.currentPath === Paths.trashDir ? "Trash is empty" : "Folder is empty")
+              subMessage: NavState.searchQuery
+                ? "Try a broader search or check spelling"
+                : (NavState.currentPath === Paths.trashDir ? "Deleted items will appear here" : "Drop files here to add them")
             }
 
             // Visual lasso rectangle -- after the ListView in the

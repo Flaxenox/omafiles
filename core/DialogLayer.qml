@@ -57,10 +57,21 @@ Item {
     connecting: DialogsState.networkConnecting
     uri: DialogsState.connectServerUri
     errorText: DialogsState.connectServerError
+
+    authRequested: DialogsState.networkAuthRequested
+    authMessage: DialogsState.networkAuthMessage
+    authUser: DialogsState.networkAuthUser
+
     onConnectRequested: function (uri) {
       DialogsState.connectServerUri = uri
       if (controllers && controllers.mountOps) controllers.mountOps.commitConnectToServer()
     }
+
+    onAuthSubmitted: function (user, password, remember) {
+      DialogsState.networkConnecting = true
+      Backend.NetworkResolver.submitAuth(user, password, remember)
+    }
+
     onCancelConnectingRequested: if (controllers && controllers.mountOps) controllers.mountOps.cancelNetworkConnect()
     onCloseRequested: if (controllers && controllers.mountOps) controllers.mountOps.cancelConnectToServer()
     onFocusReturnRequested: list.forceActiveFocus()

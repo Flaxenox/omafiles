@@ -28,41 +28,40 @@ Item {
   }
 
   function disconnectNetworkMount(mount) {
-    if (networkUnmountProc.busy) {
-      Backend.Notifier.notify("Still disconnecting a network location — try again in a moment")
-      return
-    }
-    networkUnmountProc.wasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
-    networkUnmountProc.tabIndex = TabsState.activeTabIndex
-    networkUnmountProc.start(["gio", "mount", "-u", mount.path])
+    // We pass the context info directly to the signal handler via a state object
+    // if we needed to, but we can just use the state variable.
+    MountsState.ejectingDevice = mount.path // Using ejectingDevice to signify busy state
+    _lastNetworkUnmountWasInside = NavState.currentPath === mount.path || NavState.currentPath.indexOf(mount.path + "/") === 0
+    _lastNetworkUnmountTabIndex = TabsState.activeTabIndex
+    Backend.NetworkResolver.disconnectMount(mount.path)
   }
+
+  property bool _lastNetworkUnmountWasInside: false
+  property int _lastNetworkUnmountTabIndex: -1
 
   function startConnectToServer() {
     DialogsState.connectServerUri = ""
     DialogsState.connectServerError = ""
+    DialogsState.networkAuthRequested = false
     DialogsState.connectServerOpen = true
   }
 
   function cancelConnectToServer() {
     DialogsState.connectServerOpen = false
+    DialogsState.networkAuthRequested = false
+    cancelNetworkConnect()
   }
 
-  // "setsid" + kill the whole group on cancel, same reason as
-  // runAction()/cancelAction(): gio mount can get stuck waiting for
-  // credentials that are never going to arrive (this app has no
-  // user/password dialog -- see the long comment on connectServerOpen further
-  // down in the file, next to the dialog), and without this Cancel wouldn't
-  // actually manage to kill the process.
   function commitConnectToServer() {
     var uri = DialogsState.connectServerUri.trim()
     if (!uri) return
     DialogsState.connectServerError = ""
     DialogsState.networkConnecting = true
-    networkMountProc.start(["gio", "mount", "--", uri], true)
+    Backend.NetworkResolver.mountUrl(uri)
   }
 
   function cancelNetworkConnect() {
-    networkMountProc.cancel()
+    Backend.NetworkResolver.cancelAuth()
     DialogsState.networkConnecting = false
   }
 
@@ -163,7 +162,7 @@ Item {
         }
         refreshMounts()
       } else {
-        Backend.Notifier.notify("Could not eject: " + (result.stderr || "device busy"))
+        Backend.Notifier.notify(result.stderr || "Couldn't eject drive")
       }
     }
   }
@@ -177,7 +176,7 @@ Item {
         var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountProc.tabIndex, match[1])
       } else {
-        Backend.Notifier.notify("Could not mount: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify(result.stderr || "Couldn't mount drive")
       }
     }
   }
@@ -191,53 +190,45 @@ Item {
         var match = result.stdout.match(/ at (\/[^\s.]+)/)
         if (match) tabOps.navigateTabTo(mountIsoProc.tabIndex, match[1])
       } else {
-        Backend.Notifier.notify("Could not mount ISO: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify(result.stderr || "Couldn't mount ISO")
       }
     }
   }
 
-  Backend.ProcessRunner {
-    id: networkUnmountProc
-    property bool wasInside: false
-    property int tabIndex: -1
-    onFinished: function (result) {
-      if (result.exitCode === 0) {
-        if (networkUnmountProc.wasInside) tabOps.navigateTabTo(networkUnmountProc.tabIndex, Paths.homeDir)
+  Connections {
+    target: Backend.NetworkResolver
+    function onDisconnectFinished(success, errorMessage) {
+      MountsState.ejectingDevice = ""
+      if (success) {
+        if (_lastNetworkUnmountWasInside) tabOps.navigateTabTo(_lastNetworkUnmountTabIndex, Paths.homeDir)
         refreshNetworkMounts()
       } else {
-        Backend.Notifier.notify("Could not disconnect: " + (result.stderr || "unknown error"))
+        Backend.Notifier.notify(errorMessage || "Couldn't disconnect")
       }
     }
-  }
 
-  // Without -a/--anonymous nor any way to pass a password: if the server asks
-  // for credentials, gio needs an interactive GMountOperation that this
-  // app does not implement (it would be a sub-project in itself, like the
-  // "Connect to server" dialog + keyring of Nautilus). It works fine for SFTP
-  // with an SSH key already set up, or any server with credentials already
-  // saved in the keyring from a previous connection (with Nautilus, for
-  // example) -- if it gets stuck waiting for a password that never arrives,
-  // the user has the dialog's Cancel button
-  // (cancelNetworkConnect/setsid, same mechanism as cancelAction()).
-  Backend.ProcessRunner {
-    id: networkMountProc
-    onFinished: function (result) {
+    function onMountFinished(success, errorMessage, localPath) {
       DialogsState.networkConnecting = false
-      if (result.exitCode === 0) {
+      if (success) {
         DialogsState.connectServerOpen = false
-        // gio does not print the local path the way udisksctl does -- it is
-        // re-listed (native, synchronous) and we enter the mount that wasn't
-        // there before (the one that just appeared) instead of parsing the
-        // output of "gio mount".
         var before = MountsState.networkMounts.map(function (m) { return m.path })
         var parsed = Backend.NetworkMounts.list()
         MountsState.networkMounts = parsed
         var fresh = parsed.filter(function (m) { return before.indexOf(m.path) < 0 })
         if (fresh.length > 0) navController.navigateTo(fresh[0].path)
+        else if (localPath) navController.navigateTo(localPath)
       } else {
-        DialogsState.connectServerError = result.stderr.trim() || "Could not connect"
+        DialogsState.connectServerError = errorMessage || "Connection failed"
       }
     }
-  }
 
+    function onAuthRequested(message, defaultUser) {
+      // The backend needs credentials. We can use the same dialog but show auth fields.
+      // Since DialogsState.connectServerOpen is already true, we can signal the UI to show password fields.
+      DialogsState.networkConnecting = false
+      DialogsState.networkAuthRequested = true
+      DialogsState.networkAuthMessage = message
+      if (defaultUser) DialogsState.networkAuthUser = defaultUser
+    }
+  }
 }

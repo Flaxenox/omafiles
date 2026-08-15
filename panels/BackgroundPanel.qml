@@ -277,8 +277,6 @@ Item {
     onMovementEnded: bgPanel._saveScroll()
 
     delegate: BackgroundListDelegate {
-      modelData: model
-      index: model.index
       panelPath: bgPanel.modelData.path || ""
       bgSearching: bgPanel.bgSearching
       hostDragDropOps: bgPanel.hostDragDropOps
@@ -291,19 +289,14 @@ Item {
   }
 
   EmptyState {
-    // `dirLister.loaded` (not just entries.length === 0): the empty-folder
-    // logo ONLY when the listing is confirmed. A background panel that
-    // just became visible (on switching tabs or on hovering)
-    // starts with entries=[] and loaded=false until refreshMe() finishes
-    // listing asynchronously -- without this guard, EmptyState met
-    // entries.length===0 && pathError==="" and flickered a frame even though the
-    // folder wasn't empty. loaded is set to true on the first _apply
-    // (including that of a truly empty folder) and doesn't go back to false, and
-    // list() never empties entries on a refresh, so this never hides
-    // a real empty nor flickers on refreshing.
-    visible: dirLister.loaded && dirLister.pathError === "" && dirLister.entries.length === 0
+    visible: dirLister.loaded && dirLister.pathError === "" && ((bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content).length === 0)
     centerOn: bgList
-    message: bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Nothing here yet"
+    message: bgPanel.bgSearching
+      ? "No results for “" + bgPanel.bgSearchQuery + "”"
+      : (bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Folder is empty")
+    subMessage: bgPanel.bgSearching
+      ? "Try a broader search or check spelling"
+      : (bgPanel.modelData.path === Paths.trashDir ? "Deleted items will appear here" : "Drop files here to add them")
   }
 
   Text {
