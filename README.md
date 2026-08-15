@@ -252,23 +252,30 @@ Because it's a normal Wayland window, it tiles under Hyprland like any app, open
 
 ## Architecture
 
-Omafiles is a thin QML front-end over a shared native backend:
+Omafiles is a thin, declarative QML front-end over a shared high-performance native C++ backend:
 
-- **QML (front-end)** — the UI, split into `core/` (composition root, controller registry, main layout), `panels/` (the file lists and background panels), `dialogs/`, `shared/` (reusable visuals), `logic/` (controllers: navigation, selection, search, file ops, custom actions…), and `state/` (singletons holding hot state — current path, entries, selection, tabs…). No god object: controllers are owned by a single `ControllerRegistry` and receive their dependencies by property.
-- **C++ (`Omafiles.Backend`)** — one shared QML module (`libomafiles-backend.so`) doing the native work, so there are no shell-outs where a native call suffices:
-  - `DirectoryModel` — a native `readdir`/`stat` lister that exposes the sorted directory as an entries array (plus a content signature), with a `QFileSystemWatcher` for live refresh.
-  - `FileOperations` — copy/move/trash/remove with real progress and cancellation, no partial residue.
-  - `SearchBackend` (QML) over `SearchWorker` (C++, `QDirIterator` + `QThreadPool`) plus the indexed and `ripgrep` content backends.
-  - `ThumbnailProvider` / `PreviewProvider` — cached image/video thumbnails and native text preview.
-  - `UDisksWatcher` / `NetworkMounts` — reactive drive and GVfs mount listings.
+- **QML (Front-End)** — the UI, split into `core/` (composition root, controller registry, main layout), `panels/` (file lists and background panels), `dialogs/`, `shared/` (reusable visuals), `logic/` (controllers: navigation, selection, search, file ops, custom actions…), and `state/` (singletons holding hot state — current path, entries, selection, tabs…). No monolithic god objects: controllers are owned by a single `ControllerRegistry` and receive explicit dependencies.
+- **C++ (`Omafiles.Backend`)** — a shared QML plugin (`libomafiles-backend.so`) doing the heavy lifting natively without shell-out overhead:
+  - `DirectoryModel` — asynchronous directory scanning (`readdir`/`stat`) exposing natural-sorted entries and a 64-bit FNV-1a content signature with in-process `QFileSystemWatcher` live reload.
+  - `FileOperations` — copy, move, trash, restore, delete, and `emptyTrash` with byte-accurate progress, cancellation, and canonical multi-mount path normalization.
+  - `SearchWorker` — native multithreaded recursive name search and in-process content search (`content:`) with binary auto-detection, line matching, and snippet extraction.
+  - `PreviewProvider` & `ThumbnailProvider` — asynchronous image/video thumbnail caching and native text previews.
+  - `SyntaxHighlighter` — in-process native syntax highlighting for C++, Python, QML, JSON, and Shell scripts.
+  - `MediaInfo` — in-process native audio and video metadata extraction (WAV, MP3 ID3v1/ID3v2, FLAC, MP4/MOV, OGG, MKV/WebM) with $< 0.1\text{ ms}$ latency.
+  - `UDisksWatcher` & `NetworkMounts` — reactive drive monitoring and GVfs mount listings.
   - `PathCompleter` — native `QDir`-based path completion for `Ctrl+L`.
-  - Plus `ProcessRunner`/`ProcessWatcher`/`Detached` (process handling), `FolderCounter`, `JsonStore`, `Env`, and `Notifier`.
+  - Plus `ProcessRunner`, `ProcessWatcher`, `Detached`, `FolderCounter`, `JsonStore`, `Env`, and `Notifier`.
 
-A `--selfcheck` mode runs a headless test harness over the backend runners (82 checks at the time of this release).
+## Testing & Quality Gates
+
+Omafiles enforces strict automated quality and performance gates before every release:
+
+- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **82/82** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, and UI instantiation.
+- **Performance Regression Gate:** `python3 bench/bench-gate.py --check-gate` validates cold startup, memory usage, large directory listings (up to 100k files), search latency, and I/O throughput against the canonical baseline (`bench/baseline.json`).
 
 ## Status
 
-Under active development (`v0.9.0-rc1`) — feedback and issues welcome.
+Active Release Candidate (`v0.9.0-rc1`) — feedback, issues, and packaging contributions are welcome.
 
 ## License
 
