@@ -226,6 +226,20 @@ bool parseTrashInfo(const QFileInfo &infoFile, const QString &root,
   return true;
 }
 
+// Resolves a path to its canonical form, handling non-existent target files by
+// resolving their existing parent directory symlinks (e.g. ~/Descargas -> /mnt/Almacen/Descargas).
+QString canonicalPathForFile(const QString &path) {
+  const QFileInfo fi(path);
+  const QString canonical = fi.canonicalFilePath();
+  if (!canonical.isEmpty())
+    return canonical;
+  const QDir parentDir(fi.absolutePath());
+  const QString parentCanonical = parentDir.canonicalPath();
+  if (!parentCanonical.isEmpty())
+    return parentCanonical + QLatin1Char('/') + fi.fileName();
+  return QDir::cleanPath(path);
+}
+
 } // namespace
 
 FileOperations::FileOperations(QObject *parent) : QObject(parent) {}
@@ -528,11 +542,15 @@ void FileOperations::restore(const QString &path) {
 void FileOperations::restoreByOrigPath(const QString &origPath) {
   m_cancelled.store(false);
   run(QStringLiteral("restore"), origPath, [this, origPath]() -> Result {
-    // Search in ALL the XDG roots for the .trashinfo whose Path= == origPath,
-    // keeping the most recent one (same file deleted several times).
+    // Search in ALL the XDG roots for the .trashinfo whose Path= matches origPath,
+    // matching exact, canonical (symlink-resolved), or clean paths,
+    // and keeping the most recent one (same file deleted several times).
     QString bestInfo;
     qint64 bestMtime = -1;
     QString bestRoot;
+    const QString origCanonical = canonicalPathForFile(origPath);
+    const QString origClean = QDir::cleanPath(origPath);
+
     for (const QString &root : discoverTrashRoots()) {
       QDir infoDir(root + QStringLiteral("/info"));
       if (!infoDir.exists())
@@ -540,27 +558,17 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
       const QFileInfoList infos = infoDir.entryInfoList(
           {QStringLiteral("*.trashinfo")}, QDir::Files);
       for (const QFileInfo &fi : infos) {
-        QFile f(fi.absoluteFilePath());
-        if (!f.open(QIODevice::ReadOnly))
+        QString name, decoded;
+        qint64 epoch = 0;
+        if (!parseTrashInfo(fi, root, name, decoded, epoch))
           continue;
-        QString enc;
-        while (!f.atEnd()) {
-          const QByteArray line = f.readLine();
-          if (line.startsWith("Path=")) {
-            enc = QString::fromUtf8(line.mid(5)).trimmed();
-            break;
-          }
-        }
-        f.close();
-        if (enc.isEmpty())
+
+        const bool matches = (decoded == origPath) ||
+                             (QDir::cleanPath(decoded) == origClean) ||
+                             (canonicalPathForFile(decoded) == origCanonical);
+        if (!matches)
           continue;
-        // Correct XDG decoding (percent-decoding; without the `+`->space
-        // that the script did, which corrupted names with a literal `+`).
-        QString decoded = QUrl::fromPercentEncoding(enc.toUtf8());
-        if (!decoded.startsWith(QLatin1Char('/')))
-          decoded = QFileInfo(root).absolutePath() + QLatin1Char('/') + decoded;
-        if (decoded != origPath)
-          continue;
+
         const qint64 m = fi.lastModified().toSecsSinceEpoch();
         if (m > bestMtime) {
           bestMtime = m;

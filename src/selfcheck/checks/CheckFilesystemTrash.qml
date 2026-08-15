@@ -178,6 +178,37 @@ QtObject {
           Backend.FileOperations.copy(sc.note, work)
         })
 
+        sc.add("Trash + restore from symlinked directory (path normalization)", function (done) {
+          var realTargetDir = sc.dir + "/sym-real-dir"
+          var symlinkDir = sc.dir + "/sym-link-dir"
+          var symFile = symlinkDir + "/sym-target.txt"
+          var realFile = realTargetDir + "/sym-target.txt"
+          sc._seqOps([
+            function () { Backend.FileOperations.mkdir(realTargetDir) },
+            function () {
+              sc._sh(["ln", "-s", realTargetDir, symlinkDir], function (r) {
+                if (r.exitCode !== 0) { done(false, "symlink setup failed"); return }
+                Backend.FileOperations.copy(sc.note, realFile)
+              })
+            }
+          ], done, function () {
+            Backend.FileOperations.trash(symFile)
+            var timer = Qt.createQmlObject('import QtQuick; Timer { interval: 40; repeat: false }', sc)
+            timer.triggered.connect(function () {
+              Backend.FileOperations.restoreByOrigPath(symFile)
+              var timer2 = Qt.createQmlObject('import QtQuick; Timer { interval: 40; repeat: false }', sc)
+              timer2.triggered.connect(function () {
+                sc._listOnce(realTargetDir, function (entries) {
+                  var restored = sc._has(entries, "sym-target.txt")
+                  done(restored, restored ? "restored via symlink path OK" : "restore by symlink path failed")
+                })
+              })
+              timer2.start()
+            })
+            timer.start()
+          })
+        })
+
         sc.add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
           var f = sc.opsDir + "/cd-file.txt"
           var d = sc.opsDir + "/cd-dir"
