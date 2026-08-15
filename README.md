@@ -225,22 +225,18 @@ Run it from the terminal (`omafiles`, or `omafiles <folder>`), or bind a key in 
 o.bind("SUPER + SHIFT + F", "Omafiles (file manager)", { launch = "omafiles" })
 ```
 
-### Dependencies
+### Optional dependencies
 
-Required (all present on a stock Omarchy install): Qt 6, `gio`, `udisksctl`, `wl-clipboard`, standard coreutils. Omafiles reads Omarchy 4's `qs.Commons`/`qs.Ui` theme files live for its look.
-
-Optional — each feature degrades gracefully if its tool is missing:
+OmaFiles works fully without these packages. When installed, they enable additional integrations or faster backends.
 
 | Tool | Enables |
 | --- | --- |
-| `ripgrep` | content search (`content:`) |
-| `tracker3` / `plocate` | fast global name search (falls back to a recursive walk) |
-| `ffmpegthumbnailer` | video thumbnails |
-| `ffmpeg` (`ffprobe`) | audio metadata in preview |
-| `python-pygments` (`pygmentize`) | syntax-highlighted text preview |
-| `poppler` (`pdftoppm`) | PDF preview |
-| `gvfs` / `gvfs-smb` | network locations (SFTP/FTP/WebDAV / SMB) |
-| `python-gobject` (Gio) | the D-Bus services ("Show in file manager" and FileChooser portal) |
+| **tracker3** / **plocate** | Faster global filename search (otherwise falls back to the built-in recursive search engine) |
+| **ffmpegthumbnailer** | Video thumbnails |
+| **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
+| **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
+
+**No longer required:** `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
 
 ## System integration
 
@@ -268,7 +264,7 @@ Omafiles is a thin QML front-end over a shared native backend:
   - `PathCompleter` — native `QDir`-based path completion for `Ctrl+L`.
   - Plus `ProcessRunner`/`ProcessWatcher`/`Detached` (process handling), `FolderCounter`, `JsonStore`, `Env`, and `Notifier`.
 
-A `--selfcheck` mode runs a headless test harness over the backend runners (77 checks at the time of this release).
+A `--selfcheck` mode runs a headless test harness over the backend runners (82 checks at the time of this release).
 
 ## Status
 
