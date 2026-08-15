@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0-rc2`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -236,7 +236,7 @@ OmaFiles works fully without these packages. When installed, they enable additio
 | **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
 | **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
 
-**No longer required:** `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
+**No longer required:** `xdg-mime`, `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
 
 ## System integration
 
@@ -264,18 +264,19 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
   - `MediaInfo` — in-process native audio and video metadata extraction (WAV, MP3 ID3v1/ID3v2, FLAC, MP4/MOV, OGG, MKV/WebM) with $< 0.1\text{ ms}$ latency.
   - `UDisksWatcher` & `NetworkMounts` — reactive drive monitoring and GVfs mount listings.
   - `PathCompleter` — native `QDir`-based path completion for `Ctrl+L`.
+  - `MimeResolver`, `TerminalResolver` & `NetworkResolver` — native association, terminal detection, and socket status checks without spawning shell subprocesses.
   - Plus `ProcessRunner`, `ProcessWatcher`, `Detached`, `FolderCounter`, `JsonStore`, `Env`, and `Notifier`.
 
 ## Testing & Quality Gates
 
 Omafiles enforces strict automated quality and performance gates before every release:
 
-- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **82/82** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, and UI instantiation.
+- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **85/85** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, and UI instantiation.
 - **Performance Regression Gate:** `python3 bench/bench-gate.py --check-gate` validates cold startup, memory usage, large directory listings (up to 100k files), search latency, and I/O throughput against the canonical baseline (`bench/baseline.json`).
 
 ## Status
 
-Active Release Candidate (`v0.9.0-rc1`) — feedback, issues, and packaging contributions are welcome.
+Stable Release (`v0.9.0`) — ready for production use.
 
 ## License
 
