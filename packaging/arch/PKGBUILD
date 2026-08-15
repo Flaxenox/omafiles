@@ -9,7 +9,7 @@ license=('GPL3')
 depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'glib2')
 makedepends=('cmake' 'ninja' 'qt6-tools')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/omafiles/omafiles/archive/v${pkgver}.tar.gz")
-sha256sums=('00d71a5656e939668a2369fb628679bbbbca558434a7515d530fe5a83362e721')
+sha256sums=('1aba2d05bc06e8e72575c6e624c351caf0ce3135ffe349fd6919e3f7b56846c9')
 
 build() {
   cd "${pkgname}-${pkgver}"
