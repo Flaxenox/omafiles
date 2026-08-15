@@ -1,0 +1,5 @@
+AGENT_BOOTSTRAP.md export-ignore
+CLAUDE.md export-ignore
+.claude/ export-ignore
+bench/ export-ignore
+scratch/ export-ignore
