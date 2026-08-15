@@ -36,7 +36,7 @@ Item {
       { label: "Rename", enabled: SelectionState.selectedIndices.length === 1, run: function () { renameOps.startRename(SelectionState.selectedIndex) } },
       { label: "Copy", enabled: hasSelection, run: function () { clipboardOps.copySelected() } },
       { label: "Cut", enabled: hasSelection, run: function () { clipboardOps.cutSelected() } },
-      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathFor(selectionOps.selectedEntries()) } },
+      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathAbsoluteFor(selectionOps.selectedEntries()) } },
       { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { deleteOps.requestDelete() } },
       { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i }) } },
@@ -53,7 +53,7 @@ Item {
         enabled: UndoState.undoStack.length > 0, run: function () { if (actionEngine) actionEngine.undoLast() } },
       { label: UndoState.redoStack.length > 0 ? "Redo: " + UndoState.redoStack[UndoState.redoStack.length - 1].label : "Redo",
         enabled: UndoState.redoStack.length > 0, run: function () { if (actionEngine) actionEngine.redoLast() } },
-      { label: "Terminal here", run: function () { if (openProc) openProc.start(["xdg-terminal-exec", "--dir=" + NavState.currentPath]) } },
+      { label: "Terminal here", run: function () { Backend.TerminalResolver.launchTerminal(NavState.currentPath) } },
       { label: "Go to Home", run: function () { if (navController) navController.navigateTo(Paths.homeDir) } },
       { label: "Connect to server...", run: function () { mountOps.startConnectToServer() } },
       { label: "New panel", run: function () { tabOps.newTab() } },
@@ -167,7 +167,9 @@ Item {
 
     actions.push({ label: "Copy" + suffix, action: function () { clipboardOps.copySelected() } })
     actions.push({ label: "Cut" + suffix, action: function () { clipboardOps.cutSelected() } })
-    actions.push({ label: "Copy path" + suffix, action: function () { clipboardOps.copyPathFor(entries) } })
+    actions.push({ label: "Copy path" + suffix, action: function () { clipboardOps.copyPathAbsoluteFor(entries) } })
+    actions.push({ label: "Copy relative path" + suffix, action: function () { clipboardOps.copyPathRelativeFor(entries) } })
+    actions.push({ label: "Copy URI" + suffix, action: function () { clipboardOps.copyPathUriFor(entries) } })
     if (ClipboardState.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
 
     if (!multi) {

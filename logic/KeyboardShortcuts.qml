@@ -108,8 +108,9 @@ Item {
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 
+    // Shift+Return: Open terminal here
     if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.openProc) hostControllers.openProc.start(["xdg-terminal-exec", "--dir=" + NavState.currentPath])
+      Backend.TerminalResolver.launchTerminal(NavState.currentPath)
       event.accepted = true
     } else if (event.key === Qt.Key_Escape) {
       if (NavState.searching) { if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.exitSearch() }

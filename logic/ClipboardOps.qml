@@ -42,25 +42,34 @@ Item {
   // terminal/chat/another app, not to be confused with copySelected() (which copies
   // the FILES to paste them with paste()). Several selected ->
   // one path per line.
-  function copyPathFor(entries) {
+  function copyPathAbsoluteFor(entries) {
     if (!entries || entries.length === 0) return
     var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
-    Backend.Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(paths.join("\n")) + " | wl-copy"])
+    Backend.TerminalResolver.copyPathsAbsolute(paths)
+  }
+
+  function copyPathRelativeFor(entries) {
+    if (!entries || entries.length === 0) return
+    var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
+    Backend.TerminalResolver.copyPathsRelative(paths, NavState.currentPath)
+  }
+
+  function copyPathUriFor(entries) {
+    if (!entries || entries.length === 0) return
+    var paths = entries.map(function (e) { return Utils.entryPath(NavState.currentPath, e) })
+    Backend.TerminalResolver.copyPathsUri(paths)
   }
 
   function syncClipboardToSystem() {
     if (ClipboardState.clipboardPaths.length === 0) {
-      Backend.Detached.run(["wl-copy", "-c"])
+      Backend.TerminalResolver.copyText("")
       return
     }
     // \r\n between URIs (RFC 2483), not plain \n -- the DnD mimeData
     // below (dragMimeDataFor) already did it right; this matches it so
     // any external app that reads the clipboard receives the same
     // spec-correct format whichever path (copy or drag).
-    var uris = ClipboardState.clipboardPaths.map(function (p) {
-      return "file://" + p.split("/").map(encodeURIComponent).join("/")
-    }).join("\r\n")
-    Backend.Detached.run(["bash", "-c", "printf '%s' " + Util.shellQuote(uris) + " | wl-copy -t text/uri-list"])
+    Backend.TerminalResolver.copyPathsUri(ClipboardState.clipboardPaths)
   }
 
   // mode: "all" (no conflicts, as is) | "overwrite" | "skip"
