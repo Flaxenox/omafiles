@@ -261,6 +261,7 @@ CursorSurface {
     anchors.left: parent.left
     width: 24
     catcherListView: hostListView
+    measuredRowHeight: hostRoot.measuredRowHeight
   }
 
   MarqueeCatcher {
@@ -269,5 +270,6 @@ CursorSurface {
     anchors.right: parent.right
     width: Style.spacing.rowPaddingX
     catcherListView: hostListView
+    measuredRowHeight: hostRoot.measuredRowHeight
   }
 }

@@ -21,6 +21,7 @@ import "../state"
 
 MouseArea {
   property Item catcherListView: null
+  property real measuredRowHeight: 32
 
   acceptedButtons: Qt.LeftButton
   onPressed: function (mouse) {
@@ -31,7 +32,7 @@ MouseArea {
   onPositionChanged: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
-    SelectionState.moveMarquee(p.x, p.y, vp.y, 32)
+    SelectionState.moveMarquee(p.x, p.y, vp.y, measuredRowHeight)
   }
   onReleased: SelectionState.endMarquee()
   onCanceled: SelectionState.endMarquee()
