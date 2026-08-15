@@ -140,6 +140,7 @@ Item {
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               catcherListView: listView
+              measuredRowHeight: root.measuredRowHeight
             }
 
             ListView {
@@ -176,6 +177,7 @@ Item {
                 MarqueeCatcher {
                   anchors.fill: parent
                   catcherListView: listView
+                  measuredRowHeight: root.measuredRowHeight
                 }
               }
 
