@@ -22,7 +22,6 @@ Item {
   id: dirLister
   property string trashDir: ""
   property bool showHidden: false
-  property Item sortOps: null
 
   property var entries: []
   property string pathError: ""
@@ -111,7 +110,7 @@ Item {
   // criterion (size/date/type or descending). Phase 10.A: eliminates the ~31 ms
   // of re-sorting on the UI thread what C++ already sorted.
   function _sorted(raw) {
-    return sortOps.isDefaultOrder ? raw : sortOps.sortEntries(raw)
+    return SortState.isDefaultOrder ? raw : SortState.sortEntries(raw)
   }
 
   // Native listing backend (Phase 6.C/6.D). Serves both normal folders

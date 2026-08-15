@@ -1,7 +1,7 @@
 import QtQuick
 import Omafiles.Backend as Backend
 import "../../../state"
-import "../../../Utils.js" as Utils
+import "../../../shared/Utils.js" as Utils
 
 // Domain checks extracted from app/SelfCheck.qml (_register).
 // Structural refactor only — behavior unchanged.

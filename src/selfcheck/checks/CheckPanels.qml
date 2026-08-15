@@ -1,7 +1,7 @@
 import QtQuick
 import Omafiles.Backend as Backend
 import "../../../state"
-import "../../../Utils.js" as Utils
+import "../../../shared/Utils.js" as Utils
 
 // Domain checks extracted from app/SelfCheck.qml (_register).
 // Structural refactor only — behavior unchanged.
@@ -19,9 +19,6 @@ QtObject {
             // fileTypeUtils/root (that's why they can be null). panelsRow is a stub
             // for the geometries; slotWidth/height 0 => the ListView doesn't instantiate
             // delegates and no null visual dependencies are touched.
-            var soC = Qt.createComponent(Qt.resolvedUrl("../../../logic/SortOps.qml"))
-            if (soC.status !== Component.Ready) { done(false, "SortOps: " + soC.errorString()); return }
-            var sortOps = soC.createObject(sc)
             var panelsRow = sc._panelsRowStub.createObject(sc)
             var bgC = Qt.createComponent(Qt.resolvedUrl("../../../panels/BackgroundPanel.qml"))
             if (bgC.status !== Component.Ready) { done(false, "BackgroundPanel: " + bgC.errorString()); return }
@@ -29,12 +26,11 @@ QtObject {
             // exactly the condition of the refreshMe() guard.
             TabsState.activeTabIndex = 0
             var bg = bgC.createObject(sc, {
-              modelData: { path: bgDir }, index: 1,
-              hostRoot: c, hostSortOps: sortOps, hostPanelsRow: panelsRow
+              modelData: { path: bgDir }, index: 1, hostRoot: sc._content, hostPanelsRow: panelsRow,
             })
-            if (!bg) { sortOps.destroy(); panelsRow.destroy(); done(false, "BackgroundPanel null"); return }
+            if (!bg) { panelsRow.destroy(); done(false, "BackgroundPanel null"); return }
 
-            function cleanup() { bg.destroy(); sortOps.destroy(); panelsRow.destroy() }
+            function cleanup() { bg.destroy(); panelsRow.destroy() }
             function cache() { return c.tabEntriesCache[bgDir] }
 
             // 1) wait for the initial listing (onCompleted -> refreshMe, a direct

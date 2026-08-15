@@ -1,7 +1,7 @@
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Mount/eject drives (udisksctl) + connect/disconnect network drives
 // (gio mount) -- twelfth component extracted from core, and the
@@ -18,7 +18,7 @@ Item {
   property Item tabOps: null
 
   function refreshMounts() {
-    mountsProc.start([Paths.resourceDir + "/list-mounts.sh"])
+    mountsProc.start([Paths.resourceDir + "/scripts/runtime/list-mounts.sh"])
   }
 
   function refreshNetworkMounts() {
@@ -116,7 +116,7 @@ Item {
       return
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
-    mountIsoProc.start(["bash", Paths.resourceDir + "/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
+    mountIsoProc.start(["bash", Paths.resourceDir + "/scripts/runtime/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
   }
 
   Backend.ProcessRunner {

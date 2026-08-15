@@ -5,7 +5,7 @@ import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
 import "../logic"
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Delegate of the "background" panels (all tabs except the active one),
 // nineteenth component extracted from core. Each one has its
@@ -25,7 +25,6 @@ Item {
   property Item hostDragDropOps: null
   property Item hostFileMeta: null
   property Item hostTabOps: null
-  property Item hostSortOps: null
   required property var modelData
   required property int index
   // ALWAYS rendered (not `visible:false`): an invisible ListView doesn't do its
@@ -71,7 +70,6 @@ Item {
     id: dirLister
     trashDir: Paths.trashDir
     showHidden: NavState.showHidden
-    sortOps: hostSortOps
     // hostRoot.tabEntriesCache is what _goToPath() consults when entering
     // a path that a background panel already had listed -- only the
     // background panels fill it (see NavigationController, which does NOT
@@ -306,7 +304,7 @@ Item {
     anchors.right: parent.right
     // Same format as the active panel's footer (statusText in
     // MainLayout): "N items · sort: <criterion>". The sort criterion is
-    // global (SortState, via hostSortOps.sortLabel()), so the background
+    // global (SortState, via SortState.sortLabel()), so the background
     // panel lists with the SAME order -- omitting it made the two views
     // look different when moving the cursor. The active panel's extras
     // (selection/clipboard/search) are states that only exist there, not
@@ -319,7 +317,7 @@ Item {
          + " of " + bgPanel.bgSearchEntries.length
          + (bgPanel.modelData.searchTruncated ? " · showing first 200" : ""))
       : (dirLister.entries.length + (dirLister.entries.length === 1 ? " item" : " items")
-         + " · sort: " + (hostSortOps ? hostSortOps.sortLabel() : ""))
+         + " · sort: " + SortState.sortLabel())
     font.pixelSize: Style.font.subtitle
     font.family: Style.font.family
     color: Color.menu.text

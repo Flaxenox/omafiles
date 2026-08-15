@@ -1,6 +1,6 @@
 import QtQuick
 import qs.Commons
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 import "../state"
 import Omafiles.Backend as Backend
 

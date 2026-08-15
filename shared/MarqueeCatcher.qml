@@ -19,19 +19,14 @@ import QtQuick
 // BackgroundPanel.qml/KeyboardShortcuts.qml).
 MouseArea {
   property Item catcherListView: null
-  property Item catcherSelectionOps: null
 
   acceptedButtons: Qt.LeftButton
   onPressed: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
-    catcherSelectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
   }
   onPositionChanged: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
-    catcherSelectionOps.moveMarquee(p.x, p.y, vp.y)
   }
-  onReleased: catcherSelectionOps.endMarquee()
-  onCanceled: catcherSelectionOps.endMarquee()
 }

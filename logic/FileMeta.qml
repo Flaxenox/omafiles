@@ -1,7 +1,7 @@
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // File metadata: row subtitle (size + date, or trash
 // info) and audio info for the preview -- twenty-second

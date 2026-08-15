@@ -29,7 +29,7 @@ Item {
     // normal startup OMAFILES_SELFCHECK does not exist and the behavior is the
     // usual one.
     if (Backend.Env.get("OMAFILES_SELFCHECK") === "1") return
-    Backend.Detached.run([Paths.resourceDir + "/scripts/install-integrations.sh"])
+    Backend.Detached.run([Paths.resourceDir + "/scripts/runtime/scripts/install-integrations.sh"])
   }
 
   // Block devices (USB/ISO/disks): reactive via UDisks2.
@@ -49,6 +49,13 @@ Item {
     target: Backend.UDisksWatcher
     enabled: root.opened
     function onDevicesChanged() { mountOps.refreshMounts() }
+  }
+
+  Connections {
+    target: Backend.TerminalResolver
+    function onError(message) {
+      Backend.Notifier.notify(message)
+    }
   }
 
   // Debounce of the `g` key (pressing `g` twice in a row = go to the very

@@ -45,7 +45,7 @@ Item {
     onCloseRequested: DialogsState.bulkRenameOpen = false
     onRenameRequested: function (pattern) {
       DialogsState.bulkRenamePattern = pattern
-      if (controllers && controllers.conflictActions) controllers.conflictActions.commitBulkRename()
+      if (controllers && controllers.actionEngine) controllers.actionEngine.commitBulkRename()
     }
     onFocusReturnRequested: list.forceActiveFocus()
   }
@@ -87,9 +87,9 @@ Item {
     hasDir: ChmodState.chmodHasDir
     recursive: ChmodState.chmodRecursive
     onCloseRequested: ChmodState.chmodOpen = false
-    onBitToggled: function (ownerIdx, bit) { if (controllers && controllers.fileOps) controllers.fileOps.toggleChmodBit(ownerIdx, bit) }
+    onBitToggled: function (ownerIdx, bit) { if (controllers && controllers.actionEngine) controllers.actionEngine.toggleChmodBit(ownerIdx, bit) }
     onRecursiveToggled: ChmodState.chmodRecursive = !ChmodState.chmodRecursive
-    onApplyRequested: function (mode) { if (controllers && controllers.fileOps) controllers.fileOps.commitChmod(mode) }
+    onApplyRequested: function (mode) { if (controllers && controllers.actionEngine) controllers.actionEngine.commitChmod(mode) }
   }
 
   // ---------- Properties ----------
@@ -198,7 +198,7 @@ Item {
     entry: PreviewState.openWithEntry
     apps: PreviewState.openWithApps
     onCloseRequested: PreviewState.openWithOpen = false
-    onAppSelected: function (appId) { if (controllers && controllers.openWithOps) controllers.openWithOps.launchWith(appId) }
+    onAppSelected: function (appId) { if (controllers && controllers.commandFacade) controllers.commandFacade.launchWith(appId) }
   }
 
   // ---------- Context menu ----------
@@ -228,7 +228,7 @@ Item {
     background: Color.menu.background
     foreground: Color.menu.text
     onCanceled: if (root) root.pendingDeleteNames = []
-    onConfirmed: if (controllers && controllers.deleteOps) controllers.deleteOps.confirmDelete()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.confirmDelete()
   }
 
   ConfirmDialog {
@@ -243,8 +243,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingRename()
-    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingRename(true)
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingRename()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingRename(true)
   }
 
   ConfirmDialog {
@@ -259,8 +259,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingNewFile()
-    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingNewFile(true)
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingNewFile()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingNewFile(true)
   }
 
   ConfirmDialog {
@@ -275,8 +275,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.renameOps) controllers.renameOps.cancelPendingNewFolder()
-    onConfirmed: if (controllers && controllers.renameOps) controllers.renameOps.runPendingNewFolder(true)
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingNewFolder()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingNewFolder(true)
   }
 
   ConfirmDialog {
@@ -291,8 +291,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.archiveActions) controllers.archiveActions.cancelPendingExtract()
-    onConfirmed: if (controllers && controllers.archiveActions) controllers.archiveActions.runPendingExtract()
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingExtract()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingExtract()
   }
 
   ConfirmDialog {
@@ -305,8 +305,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.archiveActions) controllers.archiveActions.cancelPendingCompress()
-    onConfirmed: if (controllers && controllers.archiveActions) controllers.archiveActions.runPendingCompress()
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingCompress()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingCompress()
   }
 
   ConfirmDialog {
@@ -321,8 +321,8 @@ Item {
     cancelText: "Cancel"
     background: Color.menu.background
     foreground: Color.menu.text
-    onCanceled: if (controllers && controllers.fileOps) controllers.fileOps.cancelPendingBulkRename()
-    onConfirmed: if (controllers && controllers.fileOps) controllers.fileOps.runPendingBulkRename()
+    onCanceled: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPendingBulkRename()
+    onConfirmed: if (controllers && controllers.actionEngine) controllers.actionEngine.runPendingBulkRename()
   }
 
   // ---------- Paste conflict ----------
@@ -330,9 +330,9 @@ Item {
     anchors.fill: parent
     open: ConflictState.pasteConflictOpen
     names: ConflictState.pasteConflictNames
-    onOverwriteRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.runPaste("overwrite")
-    onSkipRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.runPaste("skip")
-    onCancelRequested: if (controllers && controllers.clipboardOps) controllers.clipboardOps.cancelPasteConflict()
+    onOverwriteRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.runPaste("overwrite")
+    onSkipRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.runPaste("skip")
+    onCancelRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelPasteConflict()
   }
 
   // ---------- Drop conflict (drag & drop) ----------
@@ -340,9 +340,9 @@ Item {
     anchors.fill: parent
     open: ConflictState.dropConflictOpen
     names: ConflictState.dropConflictNames
-    onOverwriteRequested: if (controllers && controllers.conflictActions) controllers.conflictActions.runDrop("overwrite")
-    onSkipRequested: if (controllers && controllers.conflictActions) controllers.conflictActions.runDrop("skip")
-    onCancelRequested: if (controllers && controllers.dragDropOps) controllers.dragDropOps.cancelDropConflict()
+    onOverwriteRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.runDrop("overwrite")
+    onSkipRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.runDrop("skip")
+    onCancelRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelDropConflict()
   }
 
   // ---------- Command palette (: or Ctrl+P) ----------

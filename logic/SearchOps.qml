@@ -12,8 +12,6 @@ Item {
   // reset its scroll just like refresh()/navigateTo() with a normal
   // folder.
   property Item list: null
-  property Item selectionOps: null
-  property Item sortOps: null
 
   function toggleHidden() {
     NavState.showHidden = !NavState.showHidden
@@ -43,7 +41,7 @@ Item {
     NavState.searchTruncated = false
     list.contentY = list.originY
     navController.refresh()
-    selectionOps.selectOnly(-1)
+    SelectionState.selectOnly(-1)
   }
 
   function runDeepSearch() {
@@ -72,14 +70,14 @@ Item {
 
   function goTop() {
     if (NavState.visibleEntries.length === 0) return
-    selectionOps.selectOnly(0)
+    SelectionState.selectOnly(0)
     list.positionViewAtBeginning()
   }
 
   function goBottom() {
     if (NavState.visibleEntries.length === 0) return
     var last = NavState.visibleEntries.length - 1
-    selectionOps.selectOnly(last)
+    SelectionState.selectOnly(last)
     list.positionViewAtIndex(last, ListView.Contain)
   }
 
@@ -89,13 +87,13 @@ Item {
   // (they are not passed through sortOps: that would break that order).
   SearchBackend {
     id: searchBackend
-    indexScript: Paths.resourceDir + "/search-index.sh"
+    indexScript: Paths.resourceDir + "/scripts/runtime/search-index.sh"
     onResults: function (entries, truncated) {
       NavState.searchBusy = false
       NavState.searchTruncated = truncated
       NavState.entries = entries
       list.positionViewAtBeginning()
-      selectionOps.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
+      SelectionState.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
     }
   }
 }

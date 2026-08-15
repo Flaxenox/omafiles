@@ -192,19 +192,9 @@ Item {
   CommandFacade {
     id: commandFacade
     root: root
-    archiveActions: registry.archiveActions
-    bookmarkOps: registry.bookmarkOps
-    clipboardOps: registry.clipboardOps
-    conflictActions: registry.conflictActions
-    deleteOps: registry.deleteOps
-    fileOps: registry.fileOps
     mountOps: registry.mountOps
-    openWithOps: registry.openWithOps
     propertiesLoader: registry.propertiesLoader
-    renameOps: registry.renameOps
     searchOps: registry.searchOps
-    selectionOps: registry.selectionOps
-    sortOps: registry.sortOps
     tabOps: registry.tabOps
     customActions: registry.customActions
     navController: registry.navController

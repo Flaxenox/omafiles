@@ -45,10 +45,13 @@ void TerminalResolver::launchTerminal(const QString &directory) {
       return;
     }
   }
+
+  emit error(QStringLiteral("No supported terminal emulator found."));
 }
 
 void TerminalResolver::copyText(const QString &text) {
-  if (qgetenv("OMAFILES_SELFCHECK") == "1") return;
+  emit copied(text);
+  if (qEnvironmentVariable("OMAFILES_SELFCHECK") == "1") return;
   if (QClipboard *clipboard = QGuiApplication::clipboard()) {
     clipboard->setText(text);
   }
@@ -71,11 +74,11 @@ void TerminalResolver::copyPathsAbsolute(const QStringList &paths) {
 
 void TerminalResolver::copyPathsRelative(const QStringList &paths, const QString &baseDir) {
   QDir dir(baseDir);
-  QStringList relPaths;
+  QStringList quoted;
   for (const QString &p : paths) {
-    relPaths << dir.relativeFilePath(p);
+    quoted << quoteShell(dir.relativeFilePath(p));
   }
-  copyText(relPaths.join(QLatin1Char('\n')));
+  copyText(quoted.join(QLatin1Char(' ')));
 }
 
 #include <QMimeData>

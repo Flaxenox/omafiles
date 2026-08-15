@@ -176,12 +176,8 @@ install(DIRECTORY
     PATTERN "*.qml"
     PATTERN "*.js"
     PATTERN "qmldir")
-install(FILES Utils.js DESTINATION "${OMAFILES_RES_DEST}")
 
-# System scripts at the root (invoked by logic/ as <resourceDir>/X.sh).
-install(PROGRAMS
-    list-mounts.sh mount-iso.sh list-archive.sh thumbnail-video.sh search-index.sh
-  DESTINATION "${OMAFILES_RES_DEST}")
+
 
 # scripts/ (install-integrations.sh, dbus-*.py, open-path.sh) with execution
 # permissions preserved.

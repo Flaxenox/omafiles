@@ -1,7 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Sidebar network mounts section.
 Column {

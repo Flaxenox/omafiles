@@ -22,7 +22,6 @@ Item {
   property Item list: null
   property var searchOps: null
   property var navController: null
-  property var selectionOps: null
 
   // Maximum width that MainLayout leaves for the expanded field (what's left
   // after reserving a minimum for the breadcrumb) -- so in narrow windows
@@ -109,11 +108,11 @@ Item {
         event.accepted = true
       } else if (event.key === Qt.Key_Down) {
         var d = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
-        if (d >= 0) { sb.selectionOps.selectOnly(d); if (sb.list) sb.list.positionViewAtIndex(d, ListView.Contain) }
+        if (d >= 0) { sb.SelectionState.selectOnly(d); if (sb.list) sb.list.positionViewAtIndex(d, ListView.Contain) }
         event.accepted = true
       } else if (event.key === Qt.Key_Up) {
         var u = Math.max(0, SelectionState.selectedIndex - 1)
-        if (NavState.visibleEntries.length > 0) { sb.selectionOps.selectOnly(u); if (sb.list) sb.list.positionViewAtIndex(u, ListView.Contain) }
+        if (NavState.visibleEntries.length > 0) { sb.SelectionState.selectOnly(u); if (sb.list) sb.list.positionViewAtIndex(u, ListView.Contain) }
         event.accepted = true
       }
     }

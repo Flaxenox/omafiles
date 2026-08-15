@@ -1,7 +1,7 @@
 import QtQuick
 import Omafiles.Backend as Backend
 import "../../../state"
-import "../../../Utils.js" as Utils
+import "../../../shared/Utils.js" as Utils
 
 // Filesystem basic operations domain checks.
 // Structural refactor only — behavior unchanged.

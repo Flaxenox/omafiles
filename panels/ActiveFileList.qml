@@ -4,7 +4,7 @@ import qs.Ui
 import "../shared"
 import "../logic"
 import "../state"
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // The main ListView of the active panel (lasso selection, drag and
 // drop, keyboard shortcuts, inline rename, per-row context menu) +
@@ -108,7 +108,7 @@ Item {
               keys: ["text/uri-list"]
               onEntered: function (drag) { if (!drag.hasUrls) drag.accepted = false }
               onDropped: function (drop) {
-                if (controllers && controllers.dragDropOps) controllers.dragDropOps.handleFilesDropped(drop, NavState.currentPath)
+                if (controllers && controllers.actionEngine) controllers.actionEngine.handleFilesDropped(drop, NavState.currentPath)
               }
             }
 
@@ -140,7 +140,6 @@ Item {
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               catcherListView: listView
-              catcherSelectionOps: controllers ? controllers.selectionOps : null
             }
 
             ListView {
@@ -177,7 +176,6 @@ Item {
                 MarqueeCatcher {
                   anchors.fill: parent
                   catcherListView: listView
-                  catcherSelectionOps: controllers ? controllers.selectionOps : null
                 }
               }
 
@@ -197,7 +195,7 @@ Item {
                     listView.contentY = Math.min(maxY, listView.contentY + step)
                     SelectionState.marqueeCurrentY = listView.contentY + listView.height
                   }
-                  if (controllers && controllers.selectionOps) controllers.selectionOps.updateMarqueeSelection(SelectionState.marqueeAdditive, SelectionState.marqueeBaseSelection)
+                  if (true) SelectionState.updateMarqueeSelection(SelectionState.marqueeAdditive, SelectionState.marqueeBaseSelection)
                 }
               }
 
@@ -209,11 +207,10 @@ Item {
                 hostCard: card
                 hostNavController: controllers ? controllers.navController : null
                 hostCommandFacade: commandFacade
-                hostDragDropOps: controllers ? controllers.dragDropOps : null
+                hostDragDropOps: controllers ? controllers.actionEngine : null
                 hostVideoThumbs: controllers ? controllers.videoThumbs : null
                 hostFileMeta: controllers ? controllers.fileMeta : null
-                hostConflictActions: controllers ? controllers.conflictActions : null
-                hostSelectionOps: controllers ? controllers.selectionOps : null
+                hostConflictActions: controllers ? controllers.actionEngine : null
               }
             }
 

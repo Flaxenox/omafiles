@@ -1,4 +1,4 @@
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
@@ -8,19 +8,9 @@ Item {
   id: commandFacade
 
   property Item root
-  property var archiveActions
-  property var bookmarkOps
-  property var clipboardOps
-  property var conflictActions
-  property var deleteOps
-  property var fileOps
   property var mountOps
-  property var openWithOps
   property var propertiesLoader
-  property var renameOps
   property var searchOps
-  property var selectionOps
-  property var sortOps
   property var tabOps
   property var customActions
   property var navController
@@ -31,24 +21,24 @@ Item {
     var hasSelection = SelectionState.selectedIndices.length > 0
     var entry = SelectionState.selectedIndices.length === 1 ? NavState.visibleEntries[SelectionState.selectedIndex] : null
     var cmds = [
-      { label: "New folder", run: function () { renameOps.startNewFolder() } },
-      { label: "New file", run: function () { renameOps.startNewFile() } },
-      { label: "Rename", enabled: SelectionState.selectedIndices.length === 1, run: function () { renameOps.startRename(SelectionState.selectedIndex) } },
-      { label: "Copy", enabled: hasSelection, run: function () { clipboardOps.copySelected() } },
-      { label: "Cut", enabled: hasSelection, run: function () { clipboardOps.cutSelected() } },
-      { label: "Copy path", enabled: hasSelection, run: function () { clipboardOps.copyPathAbsoluteFor(selectionOps.selectedEntries()) } },
-      { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { conflictActions.paste() } },
-      { label: "Delete", enabled: hasSelection, run: function () { deleteOps.requestDelete() } },
+      { label: "New folder", run: function () { actionEngine.startNewFolder() } },
+      { label: "New file", run: function () { actionEngine.startNewFile() } },
+      { label: "Rename", enabled: SelectionState.selectedIndices.length === 1, run: function () { actionEngine.startRename(SelectionState.selectedIndex) } },
+      { label: "Copy", enabled: hasSelection, run: function () { actionEngine.copySelected() } },
+      { label: "Cut", enabled: hasSelection, run: function () { actionEngine.cutSelected() } },
+      { label: "Copy path", enabled: hasSelection, run: function () { actionEngine.copyPathAbsoluteFor(SelectionState.selectedEntries()) } },
+      { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { actionEngine.paste() } },
+      { label: "Delete", enabled: hasSelection, run: function () { actionEngine.requestDelete() } },
       { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i }) } },
-      { label: "Select none", enabled: hasSelection, run: function () { selectionOps.selectNone() } },
-      { label: "Invert selection", run: function () { selectionOps.invertSelection() } },
+      { label: "Select none", enabled: hasSelection, run: function () { SelectionState.selectNone() } },
+      { label: "Invert selection", run: function () { SelectionState.invertSelection() } },
       { label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
       { label: "Refresh", run: function () { if (navController) navController.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
-      { label: "Sort by name", run: function () { sortOps.setSort("name") } },
-      { label: "Sort by size", run: function () { sortOps.setSort("size") } },
-      { label: "Sort by date", run: function () { sortOps.setSort("mtime") } },
-      { label: "Sort by type", run: function () { sortOps.setSort("type") } },
-      { label: "Reverse order", run: function () { sortOps.reverseSort() } },
+      { label: "Sort by name", run: function () { SortState.setSort("name") } },
+      { label: "Sort by size", run: function () { SortState.setSort("size") } },
+      { label: "Sort by date", run: function () { SortState.setSort("mtime") } },
+      { label: "Sort by type", run: function () { SortState.setSort("type") } },
+      { label: "Reverse order", run: function () { SortState.reverseSort() } },
       { label: UndoState.undoStack.length > 0 ? "Undo: " + UndoState.undoStack[UndoState.undoStack.length - 1].label : "Undo",
         enabled: UndoState.undoStack.length > 0, run: function () { if (actionEngine) actionEngine.undoLast() } },
       { label: UndoState.redoStack.length > 0 ? "Redo: " + UndoState.redoStack[UndoState.redoStack.length - 1].label : "Redo",
@@ -62,27 +52,27 @@ Item {
       { label: "Forward", enabled: TabsState.navHistoryIndex < TabsState.navHistory.length - 1, run: function () { if (navController) navController.navForward() } },
       { label: "Edit path", run: function () { searchOps.startEditPath() } },
       { label: "Search", run: function () { searchOps.startSearch() } },
-      { label: "Compress to .zip", enabled: hasSelection, run: function () { conflictActions.compressSelected() } },
-      { label: "Bulk rename...", enabled: SelectionState.selectedIndices.length > 1, run: function () { fileOps.startBulkRename() } },
-      { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(selectionOps.selectedEntries()) } },
-      { label: "Make link", enabled: !!entry, run: function () { if (entry) fileOps.makeLinkFor(entry) } },
+      { label: "Compress to .zip", enabled: hasSelection, run: function () { actionEngine.compressSelected() } },
+      { label: "Bulk rename...", enabled: SelectionState.selectedIndices.length > 1, run: function () { actionEngine.startBulkRename() } },
+      { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(SelectionState.selectedEntries()) } },
+      { label: "Make link", enabled: !!entry, run: function () { if (entry) actionEngine.makeLinkFor(entry) } },
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
       { label: "Keyboard shortcuts", run: function () { DialogsState.shortcutsHelpOpen = true } }
     ]
     if (NavState.currentPath === Paths.trashDir) {
       cmds.push({ label: "Empty trash", run: function () { if (actionEngine) actionEngine.emptyTrash() } })
-      cmds.push({ label: "Restore", enabled: hasSelection, run: function () { fileOps.restoreFromTrash() } })
+      cmds.push({ label: "Restore", enabled: hasSelection, run: function () { actionEngine.restoreFromTrash() } })
     }
-    if (entry && entry.type !== "dir" && archiveActions.isArchive(entry)) {
-      cmds.push({ label: "Extract here", run: function () { conflictActions.extractHere(entry) } })
+    if (entry && entry.type !== "dir" && actionEngine.isArchive(entry)) {
+      cmds.push({ label: "Extract here", run: function () { actionEngine.extractHere(entry) } })
     }
-    if (entry && archiveActions.isIso(entry)) {
+    if (entry && actionEngine.isIso(entry)) {
       cmds.push({ label: "Mount ISO", run: function () { mountOps.mountIso(entry) } })
     }
     if (entry) {
       var fullPath = Utils.joinPath(NavState.currentPath, entry.name)
-      if (!bookmarkOps.isBookmarked(fullPath)) {
-        cmds.push({ label: "Add to bookmarks", run: function () { bookmarkOps.addBookmark(fullPath, entry.name, entry.type) } })
+      if (!BookmarksState.isBookmarked(fullPath)) {
+        cmds.push({ label: "Add to bookmarks", run: function () { BookmarksState.addBookmark(fullPath, entry.name, entry.type) } })
       }
       if (entry.type === "dir") {
         cmds.push({ label: "Open in new tab", run: function () { tabOps.openInNewTab(fullPath) } })
@@ -95,7 +85,7 @@ Item {
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
     if (!ArchiveState.inArchive && customActions) {
-      cmds = cmds.concat(customActions.paletteEntries(selectionOps.selectedEntries()))
+      cmds = cmds.concat(customActions.paletteEntries(SelectionState.selectedEntries()))
     }
     return cmds
   }
@@ -136,7 +126,7 @@ Item {
 
   function itemActions() {
     if (customActions) customActions.reload()
-    var entries = selectionOps.selectedEntries()
+    var entries = SelectionState.selectedEntries()
     if (entries.length === 0) return []
     if (ArchiveState.inArchive) {
       if (entries.length !== 1) return []
@@ -148,8 +138,8 @@ Item {
     var actions = []
 
     if (inTrash) {
-      actions.push({ label: "Restore" + suffix, action: function () { fileOps.restoreFromTrash() } })
-      actions.push({ label: "Delete permanently" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
+      actions.push({ label: "Restore" + suffix, action: function () { actionEngine.restoreFromTrash() } })
+      actions.push({ label: "Delete permanently" + suffix, destructive: true, action: function () { actionEngine.requestDelete() } })
       return actions
     }
 
@@ -161,38 +151,38 @@ Item {
           tabOps.openInNewTab(dirFullPath)
         } })
       } else {
-        actions.push({ label: "Open with...", action: function () { openWithOps.showOpenWith(entries[0]) } })
+        actions.push({ label: "Open with...", action: function () { commandFacade.showOpenWith(entries[0]) } })
       }
     }
 
-    actions.push({ label: "Copy" + suffix, action: function () { clipboardOps.copySelected() } })
-    actions.push({ label: "Cut" + suffix, action: function () { clipboardOps.cutSelected() } })
-    actions.push({ label: "Copy path" + suffix, action: function () { clipboardOps.copyPathAbsoluteFor(entries) } })
-    actions.push({ label: "Copy relative path" + suffix, action: function () { clipboardOps.copyPathRelativeFor(entries) } })
-    actions.push({ label: "Copy URI" + suffix, action: function () { clipboardOps.copyPathUriFor(entries) } })
-    if (ClipboardState.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { conflictActions.paste() } })
+    actions.push({ label: "Copy" + suffix, action: function () { actionEngine.copySelected() } })
+    actions.push({ label: "Cut" + suffix, action: function () { actionEngine.cutSelected() } })
+    actions.push({ label: "Copy path" + suffix, action: function () { actionEngine.copyPathAbsoluteFor(entries) } })
+    actions.push({ label: "Copy relative path" + suffix, action: function () { actionEngine.copyPathRelativeFor(entries) } })
+    actions.push({ label: "Copy URI" + suffix, action: function () { actionEngine.copyPathUriFor(entries) } })
+    if (ClipboardState.clipboardPaths.length > 0) actions.push({ label: "Paste here", action: function () { actionEngine.paste() } })
 
     if (!multi) {
-      actions.push({ label: "Rename", action: function () { renameOps.startRename(SelectionState.selectedIndex) } })
-      actions.push({ label: "Make link", action: function () { fileOps.makeLinkFor(entries[0]) } })
+      actions.push({ label: "Rename", action: function () { actionEngine.startRename(SelectionState.selectedIndex) } })
+      actions.push({ label: "Make link", action: function () { actionEngine.makeLinkFor(entries[0]) } })
       var fullPath = Utils.joinPath(NavState.currentPath, entries[0].name)
-      if (!bookmarkOps.isBookmarked(fullPath)) {
-        actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(fullPath, entries[0].name, entries[0].type) } })
+      if (!BookmarksState.isBookmarked(fullPath)) {
+        actions.push({ label: "Add to bookmarks", action: function () { BookmarksState.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
-      actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
-      if (archiveActions.isArchive(entries[0])) {
-        actions.push({ label: "Extract here", action: function () { conflictActions.extractHere(entries[0]) } })
+      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected() } })
+      if (actionEngine.isArchive(entries[0])) {
+        actions.push({ label: "Extract here", action: function () { actionEngine.extractHere(entries[0]) } })
       }
-      if (archiveActions.isIso(entries[0])) {
+      if (actionEngine.isIso(entries[0])) {
         actions.push({ label: "Mount", action: function () { mountOps.mountIso(entries[0]) } })
       }
     } else {
-      actions.push({ label: "Bulk rename...", action: function () { fileOps.startBulkRename() } })
-      actions.push({ label: "Compress to .zip", action: function () { conflictActions.compressSelected() } })
+      actions.push({ label: "Bulk rename...", action: function () { actionEngine.startBulkRename() } })
+      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected() } })
     }
 
     actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })
-    actions.push({ label: "Delete" + suffix, destructive: true, action: function () { deleteOps.requestDelete() } })
+    actions.push({ label: "Delete" + suffix, destructive: true, action: function () { actionEngine.requestDelete() } })
     actions.push({ label: "Properties" + suffix, action: function () { propertiesLoader.showPropertiesForSelection() } })
     actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     if (customActions) {
@@ -206,9 +196,9 @@ Item {
     if (NavState.currentPath === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.emptyTrash() } })
     } else if (!ArchiveState.inArchive) {
-      actions.push({ label: "New folder", action: function () { renameOps.startNewFolder() } })
-      actions.push({ label: "New file", action: function () { renameOps.startNewFile() } })
-      actions.push({ label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, action: function () { conflictActions.paste() } })
+      actions.push({ label: "New folder", action: function () { actionEngine.startNewFolder() } })
+      actions.push({ label: "New file", action: function () { actionEngine.startNewFile() } })
+      actions.push({ label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, action: function () { actionEngine.paste() } })
     }
     actions.push({ label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", action: function () { searchOps.toggleHidden() } })
     actions.push({ label: "Refresh", action: function () { if (navController) navController.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } })
@@ -233,7 +223,7 @@ Item {
 
   function launchRecent(item) {
     if (navController) navController.openWithDefault(item.path)
-    bookmarkOps.addRecent(item.path, item.name)
+    BookmarksState.addRecent(item.path, item.name)
   }
 
   function bookmarkActions(bookmark) {
@@ -246,9 +236,35 @@ Item {
     if (bookmark.path === Paths.trashDir) {
       actions.push({ label: "Empty trash", destructive: true, action: function () { if (actionEngine) actionEngine.emptyTrash() } })
     } else {
-      actions.push({ label: "Remove bookmark", destructive: true, action: function () { bookmarkOps.removeBookmark(bookmark.path) } })
+      actions.push({ label: "Remove bookmark", destructive: true, action: function () { BookmarksState.removeBookmark(bookmark.path) } })
     }
     return actions
+  }
+
+  function networkMountActions(mount) {
+    return [
+      { label: "Open", action: function () { navController.navigateTo(mount.path) } },
+      { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } },
+      { label: "Disconnect", destructive: true, action: function () { mountOps.disconnectNetworkMount(mount) } }
+    ]
+  }
+
+  function showOpenWith(entry) {
+    if (!entry || entry.type === "dir") return
+    PreviewState.openWithEntry = entry
+    var openPath = Utils.entryPath(NavState.currentPath, entry)
+    PreviewState.openWithApps = Backend.MimeResolver.getAppsForFile(openPath)
+    PreviewState.openWithOpen = true
+  }
+
+  function launchWith(desktopId) {
+    if (PreviewState.openWithEntry) {
+      var openPath = Utils.entryPath(NavState.currentPath, PreviewState.openWithEntry)
+      Backend.MimeResolver.launchApp(desktopId, openPath)
+      BookmarksState.addRecent(openPath, PreviewState.openWithEntry.name)
+    }
+    PreviewState.openWithOpen = false
+    PreviewState.openWithEntry = null
   }
 
   function mountActions(mount) {
@@ -259,8 +275,8 @@ Item {
       { label: "Open", action: function () { if (navController) navController.navigateTo(mount.path) } },
       { label: "Open in new tab", action: function () { tabOps.openInNewTab(mount.path) } }
     ]
-    if (!bookmarkOps.isBookmarked(mount.path)) {
-      actions.push({ label: "Add to bookmarks", action: function () { bookmarkOps.addBookmark(mount.path, mount.label, "dir") } })
+    if (!BookmarksState.isBookmarked(mount.path)) {
+      actions.push({ label: "Add to bookmarks", action: function () { BookmarksState.addBookmark(mount.path, mount.label, "dir") } })
     }
     if (mount.removable) {
       actions.push({ label: "Eject", destructive: true, action: function () { mountOps.ejectMount(mount) } })

@@ -1,7 +1,7 @@
 import QtQuick
 import Omafiles.Backend as Backend
 import "../../../state"
-import "../../../Utils.js" as Utils
+import "../../../shared/Utils.js" as Utils
 
 // ActionEngine / Undo / Redo domain checks.
 // Structural refactor only — behavior unchanged.
@@ -219,7 +219,7 @@ QtObject {
           var newFile = sc.opsDir + "/ren-new.txt"
           sc._fileOp(done, function () {
             ConflictState.pendingRename = { oldPath: oldFile, newPath: newFile }
-            c.controllers.renameOps.runPendingRename(false)
+            c.controllers.actionEngine.runPendingRename(false)
             var timeout = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
             timeout.triggered.connect(function () {
               sc._listOnce(sc.opsDir, function (e1) {

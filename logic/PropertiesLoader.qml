@@ -1,7 +1,7 @@
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // File metadata loading (permissions and properties) -- eighteenth
 // component extracted from core. Bundles startChmod()/showProperties()/
@@ -18,7 +18,6 @@ import "../Utils.js" as Utils
 // eliminated any duplication nor brought anything closer to what does launch.
 Item {
   property Item root: null
-  property Item selectionOps: null
 
   function startChmod(entries) {
     if (ArchiveState.inArchive) return
@@ -52,7 +51,7 @@ Item {
     // with a real file of that name in the containing folder and
     // show data of ANOTHER file without the error being noticed).
     if (ArchiveState.inArchive) return
-    var entries = selectionOps.selectedEntries()
+    var entries = SelectionState.selectedEntries()
     if (entries.length === 0) return
     if (entries.length === 1) { showProperties(entries[0]); return }
     PropertiesState.propertiesRequestId += 1

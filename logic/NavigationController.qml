@@ -1,7 +1,7 @@
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Navigation/history of the active panel -- twenty-second component
 // extracted from core. currentPath/tabEntriesCache/entries still
@@ -13,11 +13,8 @@ Item {
   id: navCtrl
   property Item root: null
   property Item list: null
-  property Item archiveActions: null
+  property Item actionEngine: null
   property Item mountOps: null
-  property Item bookmarkOps: null
-  property Item selectionOps: null
-  property Item sortOps: null
 
   // ---------- Directory refresh / watching ----------
   function refresh() {
@@ -25,7 +22,7 @@ Item {
     // toggle, the palette's "Refresh", the onExited of the file
     // actions...) reloads the correct thing without having to remember to
     // check inArchive at every site.
-    if (ArchiveState.inArchive) { archiveActions.refreshArchiveListing(); return }
+    if (ArchiveState.inArchive) { actionEngine.refreshArchiveListing(); return }
     dirLister.list(NavState.currentPath)
   }
 
@@ -153,7 +150,7 @@ Item {
     // runs it means the user went somewhere else for real.
     if (ArchiveState.inArchive) { ArchiveState.inArchive = false; ArchiveState.archivePath = ""; ArchiveState.archiveSubPath = "" }
     NavState.currentPath = path
-    selectionOps.selectOnly(-1)
+    SelectionState.selectOnly(-1)
     EditModeState.renamingIndex = -1
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
@@ -244,17 +241,17 @@ Item {
     if (ArchiveState.inArchive) {
       if (entry.type === "dir") {
         ArchiveState.archiveSubPath = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-        archiveActions.refreshArchiveListing()
+        actionEngine.refreshArchiveListing()
       } else {
-        archiveActions.openFileInArchive(entry)
+        actionEngine.openFileInArchive(entry)
       }
       return
     }
     if (entry.type === "dir") {
       navigateTo(Utils.joinPath(NavState.currentPath, entry.name))
-    } else if (archiveActions.isArchive(entry)) {
-      archiveActions.enterArchive(Utils.joinPath(NavState.currentPath, entry.name))
-    } else if (archiveActions.isIso(entry)) {
+    } else if (actionEngine.isArchive(entry)) {
+      actionEngine.enterArchive(Utils.joinPath(NavState.currentPath, entry.name))
+    } else if (actionEngine.isIso(entry)) {
       mountOps.mountIso(entry)
     } else {
       var openPath = Utils.joinPath(NavState.currentPath, entry.name)
@@ -262,17 +259,17 @@ Item {
         navCtrl.root.pickerSubmitRequested()
       } else {
         openWithDefault(openPath)
-        bookmarkOps.addRecent(openPath, entry.name)
+        BookmarksState.addRecent(openPath, entry.name)
       }
     }
   }
 
   function goUp() {
     if (ArchiveState.inArchive) {
-      if (ArchiveState.archiveSubPath === "") { archiveActions.exitArchive(); return }
+      if (ArchiveState.archiveSubPath === "") { actionEngine.exitArchive(); return }
       var slash = ArchiveState.archiveSubPath.lastIndexOf("/")
       ArchiveState.archiveSubPath = slash > 0 ? ArchiveState.archiveSubPath.substring(0, slash) : ""
-      archiveActions.refreshArchiveListing()
+      actionEngine.refreshArchiveListing()
       return
     }
     if (NavState.currentPath === "/") return
@@ -298,7 +295,6 @@ Item {
     id: dirLister
     trashDir: Paths.trashDir
     showHidden: NavState.showHidden
-    sortOps: navCtrl.sortOps
     onPathErrorChanged: NavState.currentPathError = dirLister.pathError
     onListed: _applyEntries(dirLister.entries)
     // Native watching: the model's QFileSystemWatcher signals a change -> debounced refresh.

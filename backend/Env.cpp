@@ -7,3 +7,7 @@ QString Env::get(const QString &name) const {
   // exactly what the callers expect (homeDir, TabsState._initialHome).
   return qEnvironmentVariable(name.toLocal8Bit().constData());
 }
+
+void Env::set(const QString &name, const QString &value) {
+  qputenv(name.toLocal8Bit().constData(), value.toLocal8Bit());
+}

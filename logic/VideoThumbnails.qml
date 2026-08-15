@@ -1,7 +1,7 @@
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Video thumbnails (ffmpegthumbnailer, queued 1 at a time) --
 // sixteenth component extracted from core. The three panels that
@@ -36,7 +36,7 @@ Item {
     var dest = Paths.thumbCacheDir + "/" + Backend.ThumbnailProvider.cacheKey(Utils.thumbKeyFor(entry, basePath)) + ".jpg"
     thumbProc.currentKey = Utils.thumbKeyFor(entry, basePath)
     thumbProc.currentDest = dest
-    thumbProc.start(["bash", Paths.resourceDir + "/thumbnail-video.sh", src, dest])
+    thumbProc.start(["bash", Paths.resourceDir + "/scripts/runtime/thumbnail-video.sh", src, dest])
   }
 
   Backend.ProcessRunner {

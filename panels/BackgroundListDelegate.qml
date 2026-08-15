@@ -4,7 +4,7 @@ import qs.Ui
 import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 CursorSurface {
   id: bgRowSurface

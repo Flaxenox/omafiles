@@ -1,7 +1,7 @@
 import QtQuick
 import Omafiles.Backend as Backend
 import "../../../state"
-import "../../../Utils.js" as Utils
+import "../../../shared/Utils.js" as Utils
 
 // Domain checks extracted from app/SelfCheck.qml (_register).
 // Structural refactor only — behavior unchanged.
@@ -49,7 +49,7 @@ QtObject {
           var mk = "tar -cf " + sc._q(tarPath) + " -C " + sc._q(sc.listDir) + " sub alpha.txt beta.txt gamma.txt"
           sc._sh(["bash", "-c", mk], function (r0) {
             if (r0.exitCode !== 0) { done(false, "tar setup failed: " + r0.stderr); return }
-            sc._sh(["bash", sc.resourceRoot + "/list-archive.sh", tarPath, ""], function (r) {
+            sc._sh(["bash", sc.resourceRoot + "/scripts/runtime/list-archive.sh", tarPath, ""], function (r) {
               var toks = String(r.stdout).split("\0")
               var names = []
               for (var i = 0; i < toks.length; i += 2) if (toks[i]) names.push(toks[i])
@@ -65,7 +65,7 @@ QtObject {
         // nor hang -> it exits != 0 and with no stdout. Verifies that it's invoked and that
         // its guard (set -e + loopdev check) works.
         sc.add("mount-iso.sh fails safely on a bad path (BUG-02)", function (done) {
-          sc._sh(["bash", sc.resourceRoot + "/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
+          sc._sh(["bash", sc.resourceRoot + "/scripts/runtime/mount-iso.sh", sc.dir + "/no-such-file.iso"], function (r) {
             var ok = r.exitCode !== 0 && String(r.stdout).trim() === ""
             done(ok, "exit=" + r.exitCode + " stdout='" + String(r.stdout).trim() + "'")
           })
@@ -145,6 +145,60 @@ QtObject {
               })
             })
           })
+        })
+        // ======================= BUG-06 (Phase 43 Regression) =======================
+        sc.add("Terminal resolver error path (BUG-06)", function (done) {
+          var signaled = false
+          var onErr = function (msg) {
+            if (msg === "No supported terminal emulator found.") signaled = true
+          }
+          Backend.TerminalResolver.error.connect(onErr)
+          var oldPath = Backend.Env.get("PATH")
+          var oldTerm = Backend.Env.get("TERMINAL")
+          Backend.Env.set("PATH", "/dev/null/fake")
+          Backend.Env.set("TERMINAL", "omafiles-fake-terminal")
+          Backend.TerminalResolver.launchTerminal("/tmp")
+          Backend.Env.set("PATH", oldPath)
+          Backend.Env.set("TERMINAL", oldTerm)
+          Backend.TerminalResolver.error.disconnect(onErr)
+          done(signaled, signaled ? "error signal emitted" : "error signal NOT emitted")
+        })
+
+        sc.add("Relative path quoting test (BUG-06)", function (done) {
+          var lastCopied = ""
+          var onCopied = function (text) { lastCopied = text }
+          Backend.TerminalResolver.copied.connect(onCopied)
+          Backend.TerminalResolver.copyPathsRelative(["/tmp/a b.txt", "/tmp/c'd.txt"], "/tmp")
+          Backend.TerminalResolver.copied.disconnect(onCopied)
+          var ok = (lastCopied === "'a b.txt' 'c'\\''d.txt'")
+          done(ok, ok ? "paths quoted properly" : "got: " + lastCopied)
+        })
+
+        sc.add("Keyboard shortcut integration test (BUG-06)", function (done) {
+          var kbdComp = Qt.createComponent("../../../logic/KeyboardShortcuts.qml")
+          if (kbdComp.status !== Component.Ready) { done(false, "kbd comp not ready: " + kbdComp.errorString()); return }
+          var called = {}
+          var stubEngine = {
+            startRename: function() { called.F2 = true },
+            requestDelete: function() { called.Del = true },
+            copySelected: function() { called.CtrlC = true },
+            cutSelected: function() { called.CtrlX = true },
+            paste: function() { called.CtrlV = true }
+          }
+          var kbd = kbdComp.createObject(sc, {
+            "hostControllers": { "actionEngine": stubEngine, "navController": {} },
+            "hostRoot": { "pendingDeleteNames": [] }
+          })
+          var ev = function(k, mod) { return { "key": k, "modifiers": mod || Qt.NoModifier, "accepted": false } }
+          kbd.handlePress(ev(Qt.Key_F2))
+          kbd.handlePress(ev(Qt.Key_Delete))
+          kbd.handlePress(ev(Qt.Key_C, Qt.ControlModifier))
+          kbd.handlePress(ev(Qt.Key_X, Qt.ControlModifier))
+          kbd.handlePress(ev(Qt.Key_V, Qt.ControlModifier))
+          kbd.destroy()
+
+          var ok = called.F2 && called.Del && called.CtrlC && called.CtrlX && called.CtrlV
+          done(ok, ok ? "all 5 shortcuts routed correctly" : JSON.stringify(called))
         })
   }
 }

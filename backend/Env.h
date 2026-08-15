@@ -19,4 +19,5 @@ public:
 
   // Value of the variable `name`, or "" if it does not exist (same contract as
   Q_INVOKABLE QString get(const QString &name) const;
+  Q_INVOKABLE void set(const QString &name, const QString &value);
 };

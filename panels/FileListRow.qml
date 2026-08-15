@@ -4,7 +4,7 @@ import qs.Ui
 import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // Row delegate of the main ListView (visual + drag/drop +
 // inline rename + lasso gutters) -- second cut of
@@ -30,13 +30,12 @@ CursorSurface {
   property Item hostVideoThumbs: null
   property Item hostFileMeta: null
   property Item hostConflictActions: null
-  property Item hostSelectionOps: null
 
   width: hostListView.width
   implicitHeight: rowContent.implicitHeight + Style.spacing.md * 2
   Accessible.role: Accessible.ListItem
   Accessible.name: modelData.name + (modelData.type === "dir" ? ", folder" : ", file")
-  Accessible.selected: hostSelectionOps.isSelected(index)
+  Accessible.selected: SelectionState.isSelected(index)
   // When recycling delegates (recreates rows on scroll),
   // implicitHeight may pass through 0 for a frame before
   // the text layout settles -- if that transient
@@ -52,7 +51,7 @@ CursorSurface {
   foreground: Color.menu.text
   accent: Color.accent
   hasCursor: mouseArea.containsMouse
-  current: hostSelectionOps.isSelected(index) || DropHoverState.dropHoverIndex === index
+  current: SelectionState.isSelected(index) || DropHoverState.dropHoverIndex === index
 
   DropArea {
     // Only folders are a valid destination for a drop --
@@ -205,8 +204,8 @@ CursorSurface {
       // Nautilus) -- but only on a simple click: Ctrl/Shift+click
       // still decide the selection in onClicked, without touching
       // the range anchor here (selectRange).
-      if (mouse.button === Qt.LeftButton && mouse.modifiers === Qt.NoModifier && !hostSelectionOps.isSelected(index)) {
-        hostSelectionOps.selectOnly(index)
+      if (mouse.button === Qt.LeftButton && mouse.modifiers === Qt.NoModifier && !SelectionState.isSelected(index)) {
+        SelectionState.selectOnly(index)
       }
       // Drag thumbnail: captured here (not in
       // Drag.onActiveChanged) to give it time to
@@ -219,14 +218,14 @@ CursorSurface {
     }
     onClicked: function (mouse) {
       if (mouse.button === Qt.RightButton) {
-        if (!hostSelectionOps.isSelected(index)) hostSelectionOps.selectOnly(index)
+        if (!SelectionState.isSelected(index)) SelectionState.selectOnly(index)
         var pos = mapToItem(hostCard, mouse.x, mouse.y)
         if (hostCommandFacade) hostCommandFacade.openContextMenu(pos.x, pos.y, hostCommandFacade.itemActions())
         return
       }
-      if (mouse.modifiers & Qt.ControlModifier) hostSelectionOps.toggleSelect(index)
-      else if (mouse.modifiers & Qt.ShiftModifier) hostSelectionOps.selectRange(index)
-      else hostSelectionOps.selectOnly(index)
+      if (mouse.modifiers & Qt.ControlModifier) SelectionState.toggleSelect(index)
+      else if (mouse.modifiers & Qt.ShiftModifier) SelectionState.selectRange(index)
+      else SelectionState.selectOnly(index)
     }
     // hasPendingEdit: don't enter while there is an unconfirmed rename/new-folder/new-file
     onDoubleClicked: if ((!hostRoot || !hostRoot.hasPendingEdit) && hostNavController) hostNavController.enter(modelData)
@@ -262,7 +261,6 @@ CursorSurface {
     anchors.left: parent.left
     width: 24
     catcherListView: hostListView
-    catcherSelectionOps: hostSelectionOps
   }
 
   MarqueeCatcher {
@@ -271,6 +269,5 @@ CursorSurface {
     anchors.right: parent.right
     width: Style.spacing.rowPaddingX
     catcherListView: hostListView
-    catcherSelectionOps: hostSelectionOps
   }
 }

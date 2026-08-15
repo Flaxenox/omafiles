@@ -3,7 +3,7 @@ import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 import "../state"
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 
 // FilePickerBar - visual controls for the FileChooser portal session.
 // Shows at the bottom of the window when PickerState.active is true.
@@ -14,8 +14,6 @@ Rectangle {
   border.color: Color.menu.border
   border.width: Style.spacing.hairline
   radius: Style.cornerRadius
-
-  property Item selectionOps: null
 
   signal responseSubmitted(string requestId, int responseCode, var results)
 
@@ -29,7 +27,7 @@ Rectangle {
         return // don't submit empty name for save
       }
     } else if (PickerState.mode === "open-dir") {
-      var selected = selectionOps.selectedEntries()
+      var selected = SelectionState.selectedEntries()
       if (selected.length > 0) {
         for (var i = 0; i < selected.length; i++) {
           if (selected[i].type === "dir") {
@@ -41,7 +39,7 @@ Rectangle {
         uris.push("file://" + NavState.currentPath)
       }
     } else { // open-file
-      var selected = selectionOps.selectedEntries()
+      var selected = SelectionState.selectedEntries()
       for (var i = 0; i < selected.length; i++) {
         uris.push("file://" + Utils.joinPath(NavState.currentPath, selected[i].name))
       }

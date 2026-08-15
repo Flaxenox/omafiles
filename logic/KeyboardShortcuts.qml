@@ -26,7 +26,7 @@ Item {
     if (ChmodState.chmodOpen) {
       if (event.key === Qt.Key_Escape) { ChmodState.chmodOpen = false; event.accepted = true }
       else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-        if (hostControllers && hostControllers.fileOps) hostControllers.fileOps.commitChmod(ChmodState.chmodMode)
+        if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.commitChmod(ChmodState.chmodMode)
         event.accepted = true
       }
       return
@@ -65,14 +65,14 @@ Item {
     }
     if (ConflictState.pasteConflictOpen) {
       if (event.key === Qt.Key_Escape) {
-        if (hostControllers && hostControllers.clipboardOps) hostControllers.clipboardOps.cancelPasteConflict()
+        if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.cancelPasteConflict()
         event.accepted = true
       }
       return
     }
     if (ConflictState.dropConflictOpen) {
       if (event.key === Qt.Key_Escape) {
-        if (hostControllers && hostControllers.dragDropOps) hostControllers.dragDropOps.cancelDropConflict()
+        if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.cancelDropConflict()
         event.accepted = true
       }
       return
@@ -145,48 +145,48 @@ Item {
       event.accepted = true
     } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
       var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
-      if (extend) { if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.selectRange(down) }
-      else { if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.selectOnly(down) }
+      if (extend) { if (true) SelectionState.selectRange(down) }
+      else { if (true) SelectionState.selectOnly(down) }
       hostListView.positionViewAtIndex(down, ListView.Contain)
       event.accepted = true
     } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && event.modifiers === Qt.NoModifier)) {
       var up = Math.max(0, SelectionState.selectedIndex - 1)
-      if (extend) { if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.selectRange(up) }
-      else { if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.selectOnly(up) }
+      if (extend) { if (true) SelectionState.selectRange(up) }
+      else { if (true) SelectionState.selectOnly(up) }
       hostListView.positionViewAtIndex(up, ListView.Contain)
       event.accepted = true
     } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.selectNone()
+      if (true) SelectionState.selectNone()
       event.accepted = true
     } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
       SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
       event.accepted = true
     } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.selectionOps) hostControllers.selectionOps.invertSelection()
+      if (true) SelectionState.invertSelection()
       event.accepted = true
     } else if (event.key === Qt.Key_F2) {
-      if (hostControllers && hostControllers.renameOps) hostControllers.renameOps.startRename(SelectionState.selectedIndex)
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startRename(SelectionState.selectedIndex)
       event.accepted = true
     } else if (event.key === Qt.Key_Delete) {
-      if (hostControllers && hostControllers.deleteOps) hostControllers.deleteOps.requestDelete()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.requestDelete()
       event.accepted = true
     } else if (event.key === Qt.Key_F5) {
       if (hostControllers && hostControllers.navController) hostControllers.navController.refresh()
       event.accepted = true
     } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.sortOps) hostControllers.sortOps.reverseSort()
+      SortState.reverseSort()
       event.accepted = true
     } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
-      if (hostControllers && hostControllers.sortOps) hostControllers.sortOps.cycleSort()
+      SortState.cycleSort()
       event.accepted = true
     } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
       if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.startEditPath()
       event.accepted = true
     } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.renameOps) hostControllers.renameOps.startNewFolder()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFolder()
       event.accepted = true
     } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.renameOps) hostControllers.renameOps.startNewFile()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFile()
       event.accepted = true
     } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
       if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.newTab()
@@ -210,13 +210,13 @@ Item {
       if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.toggleHidden()
       event.accepted = true
     } else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.clipboardOps) hostControllers.clipboardOps.copySelected()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.copySelected()
       event.accepted = true
     } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.clipboardOps) hostControllers.clipboardOps.cutSelected()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.cutSelected()
       event.accepted = true
     } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.conflictActions) hostControllers.conflictActions.paste()
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.paste()
       event.accepted = true
     } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
       if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.redoLast()

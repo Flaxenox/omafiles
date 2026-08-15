@@ -1,4 +1,4 @@
-import "../Utils.js" as Utils
+import "../shared/Utils.js" as Utils
 import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
@@ -22,6 +22,20 @@ Item {
   // Max side (px) of the image/PDF render of the preview -- generous so it
   // looks sharp in the panel (≈45% width) of a large monitor.
   readonly property int previewSize: 1600
+
+  Connections {
+    target: SelectionState
+    function onSelectedIndexChanged() {
+      if (PreviewState.previewOpen) {
+        var idx = SelectionState.selectedIndex
+        if (idx >= 0 && idx < NavState.visibleEntries.length && NavState.visibleEntries[idx].type !== "dir") {
+          loadPreview(NavState.visibleEntries[idx])
+        } else {
+          PreviewState.previewOpen = false
+        }
+      }
+    }
+  }
 
   function togglePreview() {
     if (PreviewState.previewOpen) {

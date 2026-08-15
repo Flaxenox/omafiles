@@ -47,18 +47,18 @@ Item {
         dropHoverPath: DropHoverState.dropHoverPath
         ejectingDevice: MountsState.ejectingDevice
         positionRelativeTo: card
-        iconForBookmark: controllers ? controllers.bookmarkOps.iconForBookmark : null
-        iconForMount: controllers ? controllers.bookmarkOps.iconForMount : null
-        iconForNetworkMount: controllers ? controllers.bookmarkOps.iconForNetworkMount : null
+        iconForBookmark: BookmarksState.iconForBookmark
+        iconForMount: BookmarksState.iconForMount
+        iconForNetworkMount: BookmarksState.iconForNetworkMount
         openContextMenu: commandFacade ? commandFacade.openContextMenu : null
         bookmarkActionsFor: commandFacade ? commandFacade.bookmarkActions : null
         mountActionsFor: commandFacade ? commandFacade.mountActions : null
-        networkMountActionsFor: controllers ? controllers.bookmarkOps.networkMountActions : null
+        networkMountActionsFor: commandFacade ? commandFacade.networkMountActions : null
         onBookmarkOpened: function (bookmark) { if (commandFacade) commandFacade.openBookmark(bookmark) }
         onRecentOpened: function (item) { if (commandFacade) commandFacade.openRecent(item) }
         onRecentLaunched: function (item) { if (commandFacade) commandFacade.launchRecent(item) }
-        onRecentRemoveRequested: function (path) { if (controllers) controllers.bookmarkOps.removeRecent(path) }
-        onRecentClearRequested: if (controllers) controllers.bookmarkOps.clearRecent()
+        onRecentRemoveRequested: function (path) { if (controllers) controllers.BookmarksState.removeRecent(path) }
+        onRecentClearRequested: if (controllers) controllers.BookmarksState.clearRecent()
         onMountActivated: function (mount) {
           if (!mount.mounted) { if (controllers) controllers.mountOps.mountDevice(mount) }
           else { if (controllers) controllers.navController.navigateTo(mount.path) }
@@ -66,7 +66,7 @@ Item {
         onMountEjectRequested: function (mount) { if (controllers) controllers.mountOps.ejectMount(mount) }
         onNetworkMountOpened: function (mount) { if (controllers) controllers.navController.navigateTo(mount.path) }
         onConnectRequested: if (controllers) controllers.mountOps.startConnectToServer()
-        onFilesDropped: function (drop, destPath) { if (controllers) controllers.dragDropOps.handleFilesDropped(drop, destPath) }
+        onFilesDropped: function (drop, destPath) { if (controllers) controllers.actionEngine.handleFilesDropped(drop, destPath) }
         onDropHoverChanged: function (path) { DropHoverState.dropHoverPath = path }
       }
 
@@ -117,10 +117,9 @@ Item {
               hostNavController: controllers ? controllers.navController : null
               hostCommandFacade: commandFacade
               hostVideoThumbs: controllers ? controllers.videoThumbs : null
-              hostDragDropOps: controllers ? controllers.dragDropOps : null
+              hostDragDropOps: controllers ? controllers.actionEngine : null
               hostFileMeta: controllers ? controllers.fileMeta : null
               hostTabOps: controllers ? controllers.tabOps : null
-              hostSortOps: controllers ? controllers.sortOps : null
             }
           }
 
@@ -194,7 +193,6 @@ Item {
             list: list
             searchOps: controllers ? controllers.searchOps : null
             navController: controllers ? controllers.navController : null
-            selectionOps: controllers ? controllers.selectionOps : null
           }
         }
 
@@ -202,7 +200,7 @@ Item {
           id: activeInputRows
           root: mainLayout.root
           list: list
-          conflictActions: controllers ? controllers.conflictActions : null
+          conflictActions: controllers ? controllers.actionEngine : null
         }
 
         Item {
@@ -238,7 +236,7 @@ Item {
                 + (!NavState.searchQuery && NavState.entries.length > 5000 ? " · large folder, may be slow" : "")
                 + (SelectionState.selectedIndices.length > 1 ? " · " + SelectionState.selectedIndices.length + " selected" : "")
                 + (ClipboardState.clipboardPaths.length > 0 ? " · clipboard: " + ClipboardState.clipboardPaths.length + (ClipboardState.clipboardPaths.length === 1 ? " item" : " items") + (ClipboardState.clipboardMode === "cut" ? " (cut)" : " (copied)") : "")
-                + " · sort: " + (controllers ? controllers.sortOps.sortLabel() : "")
+                + " · sort: " + (controllers ? controllers.SortState.sortLabel() : "")
               font.pixelSize: Style.font.subtitle
               font.family: Style.font.family
               color: Color.menu.text
@@ -251,7 +249,6 @@ Item {
               anchors.left: parent.left
               anchors.right: parent.right
               visible: PickerState.active
-              selectionOps: controllers ? controllers.selectionOps : null
               onResponseSubmitted: function(requestId, responseCode, results) {
                 var resultsJson = JSON.stringify(results)
                 Backend.Detached.run([
@@ -283,15 +280,15 @@ Item {
       onPressed: function (mouse) {
         var p = mapToItem(list.contentItem, mouse.x, mouse.y)
         var vp = mapToItem(list, mouse.x, mouse.y)
-        if (controllers) controllers.selectionOps.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+        if (controllers) controllers.SelectionState.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
       }
       onPositionChanged: function (mouse) {
         var p = mapToItem(list.contentItem, mouse.x, mouse.y)
         var vp = mapToItem(list, mouse.x, mouse.y)
-        if (controllers) controllers.selectionOps.moveMarquee(p.x, p.y, vp.y)
+        if (controllers) controllers.SelectionState.moveMarquee(p.x, p.y, vp.y, root.measuredRowHeight)
       }
-      onReleased: if (controllers) controllers.selectionOps.endMarquee()
-      onCanceled: if (controllers) controllers.selectionOps.endMarquee()
+      onReleased: if (controllers) controllers.SelectionState.endMarquee()
+      onCanceled: if (controllers) controllers.SelectionState.endMarquee()
     }
   }
 

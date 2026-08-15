@@ -94,3 +94,19 @@ graph TD
 
 - **Decoupling from Shell Plugins**: OmaFiles originally originated as a shell plugin before being decoupled into an independent Qt6 standalone application with its own native C++ core (`Omafiles.Backend`).
 - **Proxy Layer Removal (Phase 34.1)**: The intermediate `services/` QML proxy layer was retired in favor of direct namespaced QML imports (`import Omafiles.Backend as Backend`), reducing signal relay boilerplate and simplifying the call graph.
+
+## Post-Phase 43 Module Guidelines
+
+### `logic/` vs `engine/`
+In Phase 43, `ActionEngine.qml` absorbed the vast majority of the application's file operation logic, effectively replacing a multitude of `*Ops.qml` components. `logic/` is no longer a loose collection of operations but rather the core orchestration tier. In future major versions (e.g., v1.0), this directory may be renamed to `engine/` or `actions/` to better reflect its singular orchestration purpose. For the 0.9.x series, the `logic/` nomenclature is retained for stability.
+
+### `shared/` Contract
+The `shared/` directory is strictly governed by the following contract to prevent it from devolving into a catch-all directory:
+1. **Visual and Utility Reusability Only**: Contains only `Utils.js` and visual components (like `ModalSurface.qml`, `EmptyState.qml`) that are consumed by *multiple* independent panels or views.
+2. **No Business Logic**: Components in `shared/` must never contain business logic, invoke backend services directly, or orchestrate file operations.
+3. **No State Management**: Components in `shared/` must be entirely stateless, receiving their context exclusively via properties (props) and broadcasting events via signals.
+
+### `scripts/runtime/` Policy
+The `scripts/runtime/` directory contains external integrations (shell scripts wrapping CLI utilities like `tar`, `udisksctl`, `ffmpegthumbnailer`) that are **accepted temporarily** to avoid monolithic C++ dependencies (e.g., `libarchive`, `libavformat`) or excessively complex native implementations (e.g., race-condition workarounds for D-Bus). 
+
+**The long-term objective (v1.0+) is to progressively reduce the surface area of these scripts through native implementations whenever the cost/complexity ratio becomes justifiable.** This directory must not become a dumping ground for convenience scripts; any new system capability should default to being natively implemented in C++ unless doing so introduces a severe architectural or dependency penalty.
