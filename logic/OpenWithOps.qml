@@ -3,8 +3,7 @@ import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
 
-// "Open with..." dialog -- twenty-first component extracted from
-// core.
+// "Open with..." dialog
 Item {
   property Item root: null
   property Item bookmarkOps: null
@@ -12,31 +11,19 @@ Item {
   function showOpenWith(entry) {
     if (!entry || entry.type === "dir") return
     PreviewState.openWithEntry = entry
-    PreviewState.openWithApps = []
-    openWithProc.start([Paths.resourceDir + "/open-with-list.sh", Utils.entryPath(NavState.currentPath, entry)])
+    
+    var openPath = Utils.entryPath(NavState.currentPath, entry)
+    PreviewState.openWithApps = Backend.MimeResolver.getAppsForFile(openPath)
     PreviewState.openWithOpen = true
   }
 
   function launchWith(desktopId) {
     if (PreviewState.openWithEntry) {
       var openPath = Utils.entryPath(NavState.currentPath, PreviewState.openWithEntry)
-      Backend.Detached.run(["gtk-launch", desktopId, openPath])
+      Backend.MimeResolver.launchApp(desktopId, openPath)
       bookmarkOps.addRecent(openPath, PreviewState.openWithEntry.name)
     }
     PreviewState.openWithOpen = false
     PreviewState.openWithEntry = null
-  }
-
-  function parseOpenWithApps(text) {
-    var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-    return lines.map(function (l) {
-      var parts = l.split("\t")
-      return { name: parts[0], id: parts[1] }
-    })
-  }
-
-  Backend.ProcessRunner {
-    id: openWithProc
-    onFinished: function (result) { PreviewState.openWithApps = parseOpenWithApps(result.stdout) }
   }
 }

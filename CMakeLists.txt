@@ -69,6 +69,8 @@ qt_add_qml_module(omafiles-backend
     backend/MediaInfo_Mp4.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
+    backend/MimeResolver.h
+    backend/MimeResolver.cpp
     backend/NetworkMounts.h
     backend/NetworkMounts.cpp
     backend/UDisksWatcher.h
@@ -176,8 +178,7 @@ install(FILES Utils.js DESTINATION "${OMAFILES_RES_DEST}")
 
 # System scripts at the root (invoked by logic/ as <resourceDir>/X.sh).
 install(PROGRAMS
-    list-mounts.sh mount-iso.sh list-archive.sh open-with-list.sh
-    thumbnail-video.sh search-index.sh
+    list-mounts.sh mount-iso.sh list-archive.sh thumbnail-video.sh search-index.sh
   DESTINATION "${OMAFILES_RES_DEST}")
 
 # scripts/ (install-integrations.sh, dbus-*.py, open-path.sh) with execution

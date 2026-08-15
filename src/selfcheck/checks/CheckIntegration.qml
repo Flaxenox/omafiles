@@ -71,15 +71,22 @@ QtObject {
           })
         })
 
-        // open-with-list.sh over a .txt: exit 0 and output with valid TSV shape
-        // (empty, or each line with a TAB name<TAB>id). It doesn't fix WHICH apps there are
-        // (depends on the system); it does check that it's invoked and responds in its contract.
-        sc.add("open-with-list.sh returns valid TSV (BUG-02)", function (done) {
-          sc._sh(["bash", sc.resourceRoot + "/open-with-list.sh", sc.note], function (r) {
-            var lines = String(r.stdout).split("\n").filter(function (l) { return l.length > 0 })
-            var shapeOk = lines.every(function (l) { return l.indexOf("\t") >= 0 })
-            done(r.exitCode === 0 && shapeOk, "exit=" + r.exitCode + " lines=" + lines.length)
-          })
+        // MimeResolver: getting apps for a .txt file should return at least one app
+        sc.add("MimeResolver.getAppsForFile returns valid list (BUG-02)", function (done) {
+          var apps = Backend.MimeResolver.getAppsForFile(sc.note)
+          if (!apps || apps.length === 0) {
+            done(false, "No apps returned for text file")
+            return
+          }
+          if (apps[0].id === undefined) {
+            done(false, "App must have an ID")
+            return
+          }
+          if (apps[0].name === undefined) {
+            done(false, "App must have a Name")
+            return
+          }
+          done(true, "Returned " + apps.length + " apps")
         })
 
         // ======================= BUG-03 (Hardening-2) =======================
