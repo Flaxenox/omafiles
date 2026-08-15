@@ -1,0 +1,25 @@
+# Maintainer: Josema <josema@example.com>
+pkgname=omafiles
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="A high-performance, native Qt6 file manager designed around the DHH philosophy"
+arch=('x86_64')
+url="https://github.com/omafiles/omafiles"
+license=('GPL3')
+depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'glib2')
+makedepends=('cmake' 'ninja' 'qt6-tools')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/omafiles/omafiles/archive/v${pkgver}.tar.gz")
+sha256sums=('00d71a5656e939668a2369fb628679bbbbca558434a7515d530fe5a83362e721')
+
+build() {
+  cd "${pkgname}-${pkgver}"
+  cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release
+  cmake --build build
+}
+
+package() {
+  cd "${pkgname}-${pkgver}"
+  DESTDIR="${pkgdir}" cmake --install build
+}
