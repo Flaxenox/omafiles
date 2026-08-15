@@ -41,13 +41,13 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 ### Content search (`content:`)
 
 - Search *inside* files, not just by name — type `content:` followed by your text in the search bar (e.g. `content:TODO`, `content:"struct Foo"`).
-- Powered by `ripgrep` as a fourth search backend (`rg --json`), so it respects `.gitignore` and skips hidden/`.git` noise; async and cancelable, so it stays responsive as you type.
+- Powered by a native multithreaded C++ search worker (`SearchWorker`), streaming results asynchronously with zero shell-out overhead, binary file auto-detection, line matching, and snippet extraction.
 - Each hit shows the file icon, name, parent folder, and the matched **line number + snippet**; opening a result reveals the file with it selected.
 
 ### Preview (Quick Look with `Space`)
 
 - Press `Space` to toggle a quick preview of the selected item — the same "peek without opening" flow you'd expect from Quick Look.
-- Handles images, video thumbnails, syntax-highlighted text (Pygments), first-page PDF render (`pdftoppm`), and audio metadata (duration / codec / bitrate / tags via `ffprobe`).
+- Handles images, video thumbnails, native C++ syntax highlighting (C++, Python, QML, JSON, Shell), first-page PDF rendering (`QQuickPdfDocument`/`pdftoppm`), and native C++ audio/video metadata extraction (`MediaInfo`: duration, bitrate, sample rate, channels, codec).
 - Preview state is tracked per panel.
 
 ### File operations

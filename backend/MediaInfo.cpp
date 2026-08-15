@@ -36,7 +36,7 @@ QString decodeId3String(const uchar *data, int len, uchar encoding) {
     return QString::fromLatin1(reinterpret_cast<const char *>(data), len).trimmed();
   } else if (encoding == 1) { // UTF-16 with BOM
     if (len < 2) return QString();
-    const ushort *u16 = reinterpret_cast<const ushort *>(data);
+    const char16_t *u16 = reinterpret_cast<const char16_t *>(data);
     int charCount = len / 2;
     if (u16[0] == 0xFEFF || u16[0] == 0xFFFE) {
       return QString::fromUtf16(u16, charCount).trimmed();
