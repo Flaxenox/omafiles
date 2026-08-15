@@ -17,6 +17,8 @@ import QtQuick
 // to itself instead of to the passed value (see
 // [[project_omafiles_architecture_rules]], same bug as
 // BackgroundPanel.qml/KeyboardShortcuts.qml).
+import "../state"
+
 MouseArea {
   property Item catcherListView: null
 
@@ -24,9 +26,13 @@ MouseArea {
   onPressed: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
+    SelectionState.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
   }
   onPositionChanged: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
+    SelectionState.moveMarquee(p.x, p.y, vp.y, 32)
   }
+  onReleased: SelectionState.endMarquee()
+  onCanceled: SelectionState.endMarquee()
 }
