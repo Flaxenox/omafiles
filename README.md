@@ -236,7 +236,7 @@ OmaFiles works fully without these packages. When installed, they enable additio
 | **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
 | **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
 
-**No longer required:** `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
+**No longer required:** `xdg-mime`, `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
 
 ## System integration
 
