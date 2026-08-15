@@ -22,6 +22,10 @@ Following the DHH design philosophy of "less code, fewer abstractions, obvious b
   - Hardened interaction consistency across panels, ensuring a 100% keyboard-only workflow without dead ends.
 * **85/85 Passing SelfChecks:** Comprehensive automated headless test suite validating filesystem operations, terminal error paths, keyboard routing, undo/redo stacks, and UI instantiation.
 
+### Bug Fixes since RC1
+
+* **Selection:** Fixed an issue where the lasso/marquee selection did not work in the main file lists due to broken `SelectionState` connections in `MarqueeCatcher`.
+
 ### Linux & Desktop Integration
 
 * **Desktop File Manager Specification (`org.freedesktop.FileManager1`):** Native implementation of `ShowFolders`, `ShowItems`, and `ShowItemProperties` over the D-Bus session bus.
