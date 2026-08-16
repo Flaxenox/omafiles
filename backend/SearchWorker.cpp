@@ -15,16 +15,17 @@ SearchWorker::~SearchWorker() {
   m_life->alive = false;
 }
 
-void SearchWorker::cancel() { m_gen.fetch_add(1); }
+void SearchWorker::cancel() { m_gen->fetch_add(1); }
 
 void SearchWorker::search(const QString &root, const QString &query,
                           bool showHidden) {
   // Invalidates any previous search and opens this one's generation.
-  const quint64 gen = m_gen.fetch_add(1) + 1;
+  const quint64 gen = m_gen->fetch_add(1) + 1;
   if (query.isEmpty())
     return;
 
   auto life = m_life;
+  auto genPtr = m_gen; // shared_ptr copy: `this`-independent, see m_gen's doc comment
   const QString rootPath = root;
   // Phase 27 (PERF_AUDIT_RC1): the query is NOT lowercased to then do
   // fileName().toLower().contains(q) -> that allocated a new QString
@@ -33,7 +34,7 @@ void SearchWorker::search(const QString &root, const QString &query,
   // materializing the lowercased name.
   const QString q = query;
 
-  QThreadPool::globalInstance()->start(QRunnable::create([this, life, gen,
+  QThreadPool::globalInstance()->start(QRunnable::create([this, life, genPtr, gen,
                                                           rootPath, q,
                                                           showHidden]() {
     // Without QDir::Hidden in the filter, QDirIterator does NOT emit hidden
@@ -48,7 +49,7 @@ void SearchWorker::search(const QString &root, const QString &query,
     QVariantList out;
     while (it.hasNext()) {
       // Cancelled or superseded by another search -> abort without emitting.
-      if (m_gen.load() != gen)
+      if (genPtr->load() != gen)
         return;
       it.next();
       const QFileInfo fi = it.fileInfo();
@@ -75,31 +76,37 @@ void SearchWorker::search(const QString &root, const QString &query,
     if (truncated)
       out.erase(out.begin() + 200, out.end());
 
+    // Safe delivery (P0 concurrency audit, forensic audit 2026-08-16): the
+    // alive/generation checks now happen BEFORE invokeMethod is called, not
+    // inside the deferred functor -- calling QMetaObject::invokeMethod(this,
+    // ...) at all needs to dereference `this` (to find its thread affinity)
+    // regardless of what the deferred functor later does, so it must never
+    // be reached once the object might already be dead. Holding `life->mtx`
+    // across the call blocks the destructor (which needs the same lock)
+    // until we're done, exactly like FileOperations/DirectoryModel.
+    std::lock_guard<std::mutex> lk(life->mtx);
+    if (!life->alive)
+      return;
+    if (genPtr->load() != gen)
+      return; // superseded while delivering
     QMetaObject::invokeMethod(
-        this,
-        [this, life, gen, out, truncated]() {
-          std::lock_guard<std::mutex> lk(life->mtx);
-          if (!life->alive)
-            return;
-          if (m_gen.load() != gen)
-            return; // superseded while delivering
-          emit results(out, truncated);
-        },
+        this, [this, out, truncated]() { emit results(out, truncated); },
         Qt::QueuedConnection);
   }));
 }
 
 void SearchWorker::searchContent(const QString &root, const QString &query,
                                  bool showHidden) {
-  const quint64 gen = m_gen.fetch_add(1) + 1;
+  const quint64 gen = m_gen->fetch_add(1) + 1;
   if (query.isEmpty())
     return;
 
   auto life = m_life;
+  auto genPtr = m_gen; // shared_ptr copy: `this`-independent, see m_gen's doc comment
   const QString rootPath = root;
   const QString q = query;
 
-  QThreadPool::globalInstance()->start(QRunnable::create([this, life, gen,
+  QThreadPool::globalInstance()->start(QRunnable::create([this, life, genPtr, gen,
                                                           rootPath, q,
                                                           showHidden]() {
     QDir::Filters filters = QDir::Files | QDir::NoDotAndDotDot;
@@ -112,7 +119,7 @@ void SearchWorker::searchContent(const QString &root, const QString &query,
     constexpr qint64 kMaxFileSize = 5LL * 1024 * 1024; // 5 MB limit
 
     while (it.hasNext()) {
-      if (m_gen.load() != gen)
+      if (genPtr->load() != gen)
         return;
 
       it.next();
@@ -151,7 +158,7 @@ void SearchWorker::searchContent(const QString &root, const QString &query,
       int lineNo = 0;
 
       while (!in.atEnd()) {
-        if (m_gen.load() != gen) {
+        if (genPtr->load() != gen) {
           file.close();
           return;
         }
@@ -192,16 +199,14 @@ void SearchWorker::searchContent(const QString &root, const QString &query,
     if (truncated)
       out.erase(out.begin() + 200, out.end());
 
+    // Safe delivery -- see the identical comment in search() above.
+    std::lock_guard<std::mutex> lk(life->mtx);
+    if (!life->alive)
+      return;
+    if (genPtr->load() != gen)
+      return;
     QMetaObject::invokeMethod(
-        this,
-        [this, life, gen, out, truncated]() {
-          std::lock_guard<std::mutex> lk(life->mtx);
-          if (!life->alive)
-            return;
-          if (m_gen.load() != gen)
-            return;
-          emit results(out, truncated);
-        },
+        this, [this, out, truncated]() { emit results(out, truncated); },
         Qt::QueuedConnection);
   }));
 }

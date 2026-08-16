@@ -13,25 +13,27 @@ FileOperations::~FileOperations() {
   m_life->alive = false;
 }
 
-void FileOperations::emitProgress(const QString &op, const QString &path,
-                                  qint64 done, qint64 total) {
-  // Called from the worker: safe delivery only if the singleton is still alive.
-  auto life = m_life;
-  std::lock_guard<std::mutex> lk(life->mtx);
-  if (!life->alive)
-    return;
-  QMetaObject::invokeMethod(
-      this,
-      [this, op, path, done, total]() { emit progress(op, path, done, total); },
-      Qt::QueuedConnection);
-}
-
 void FileOperations::run(const QString &op, const QString &path,
-                         std::function<Result()> job) {
+                         std::function<Result(const ProgressFn &)> job) {
   auto life = m_life; // copy of the control block, outlives the singleton
+  // Built here on the calling thread (this is still guaranteed valid): the
+  // returned closure captures `life` by value, so when the WORKER thread
+  // calls it later it never needs to re-read anything through `this` to
+  // find out whether it is still safe to proceed -- it only ever touches
+  // `this` (the invokeMethod call) while holding `life->mtx`, which the
+  // destructor also takes before it lets the object's memory go.
+  ProgressFn progressFn = [this, life, op, path](qint64 done, qint64 total) {
+    std::lock_guard<std::mutex> lk(life->mtx);
+    if (!life->alive)
+      return;
+    QMetaObject::invokeMethod(
+        this,
+        [this, op, path, done, total]() { emit progress(op, path, done, total); },
+        Qt::QueuedConnection);
+  };
   QThreadPool::globalInstance()->start(QRunnable::create(
-      [this, life, op, path, job = std::move(job)]() {
-        Result r = job();
+      [this, life, op, path, job = std::move(job), progressFn]() {
+        Result r = job(progressFn);
         // Safe delivery: the destructor takes this same lock, so either we
         // see alive=false (and do not touch the dead object) or we hold
         // it and the destructor waits for us to release.
@@ -50,7 +52,7 @@ void FileOperations::run(const QString &op, const QString &path,
       }));
 }
 
-void FileOperations::cancel() { m_cancelled.store(true); }
+void FileOperations::cancel() { m_cancelled->store(true); }
 
 QStringList FileOperations::existingPaths(const QStringList &paths) const {
   QStringList out;
@@ -87,7 +89,7 @@ QStringList FileOperations::octalModes(const QStringList &paths) const {
 
 void FileOperations::rename(const QString &path, const QString &newName) {
   const QString dst = QFileInfo(path).absolutePath() + QLatin1Char('/') + newName;
-  run(QStringLiteral("rename"), path, [path, dst]() -> Result {
+  run(QStringLiteral("rename"), path, [path, dst](const auto &) -> Result {
     if (!QFileInfo::exists(path))
       return {false, QStringLiteral("source does not exist")};
     if (QFileInfo::exists(dst))
@@ -100,7 +102,7 @@ void FileOperations::rename(const QString &path, const QString &newName) {
 }
 
 void FileOperations::mkdir(const QString &path) {
-  run(QStringLiteral("mkdir"), path, [path]() -> Result {
+  run(QStringLiteral("mkdir"), path, [path](const auto &) -> Result {
     if (!QDir().mkpath(path))
       return {false, QStringLiteral("cannot create %1").arg(path)};
     return {true, QString()};

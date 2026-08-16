@@ -5,9 +5,10 @@
 using namespace FileOpsPrivate;
 void FileOperations::move(const QString &source, const QString &destination,
                           bool overwrite) {
-  m_cancelled.store(false);
+  m_cancelled->store(false);
+  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
   run(QStringLiteral("move"), source,
-      [this, source, destination, overwrite]() -> Result {
+      [source, destination, overwrite, cancelled](const auto &progressFn) -> Result {
     if (!QFileInfo::exists(source))
       return {false, QStringLiteral("source does not exist")};
     if (entryExists(destination)) {
@@ -16,7 +17,7 @@ void FileOperations::move(const QString &source, const QString &destination,
       // "overwrite" (= mv -f): deletes the destination and continues. This way the
       // atomic rename below does not fail with ENOTEMPTY (folder) nor leave a mix.
       QString rmErr;
-      if (!removeTree(destination, m_cancelled, rmErr))
+      if (!removeTree(destination, *cancelled, rmErr))
         return {false, rmErr};
     }
     // Atomic attempt (same filesystem): a single rename(2), works
@@ -35,20 +36,20 @@ void FileOperations::move(const QString &source, const QString &destination,
       const double pct = qMin(100.0, done * 100.0 / pctTotal);
       if (pct - lastPct >= 1.0) {
         lastPct = pct;
-        emitProgress(QStringLiteral("move"), source, done, realTotal);
+        progressFn(done, realTotal);
       }
     };
     QString err;
-    if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
-      // Cancelled mid cross-fs copy: clean up the partial copy at the
-      // destination. The source stays intact (removeTree only runs after copying).
-      if (err == QLatin1String("cancelled"))
-        forceRemove(destination);
+    if (!copyTree(source, destination, copied, cb, *cancelled, err)) {
+      // Clean up the partial copy at the destination on ANY failure (P0-2,
+      // forensic audit 2026-08-16), not just cancellation. The source stays
+      // intact either way (removeTree only runs after copying succeeds).
+      forceRemove(destination);
       return {false, err};
     }
-    if (!removeTree(source, m_cancelled, err))
+    if (!removeTree(source, *cancelled, err))
       return {false, err};
-    emitProgress(QStringLiteral("move"), source, realTotal, realTotal);
+    progressFn(realTotal, realTotal);
     return {true, QString()};
   });
 }

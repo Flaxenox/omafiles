@@ -4,7 +4,7 @@
 #include <QRunnable>
 using namespace FileOpsPrivate;
 void FileOperations::trash(const QString &path) {
-  run(QStringLiteral("trash"), path, [path]() -> Result {
+  run(QStringLiteral("trash"), path, [path](const auto &) -> Result {
     if (!QFileInfo(path).exists() && !QFileInfo(path).isSymLink())
       return {false, QStringLiteral("path does not exist")};
     QString trashPath;
@@ -15,12 +15,13 @@ void FileOperations::trash(const QString &path) {
 }
 
 void FileOperations::emptyTrash() {
-  m_cancelled.store(false);
-  run(QStringLiteral("emptyTrash"), QString(), [this]() -> Result {
+  m_cancelled->store(false);
+  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  run(QStringLiteral("emptyTrash"), QString(), [cancelled](const auto &) -> Result {
     QString err;
     const QStringList roots = discoverTrashRoots();
     for (const QString &root : roots) {
-      if (m_cancelled.load())
+      if (cancelled->load())
         return {false, QStringLiteral("cancelled")};
 
       const QString filesDir = root + QStringLiteral("/files");
@@ -31,9 +32,9 @@ void FileOperations::emptyTrash() {
             QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden |
             QDir::System);
         for (const QFileInfo &fi : files) {
-          if (m_cancelled.load())
+          if (cancelled->load())
             return {false, QStringLiteral("cancelled")};
-          removeTree(fi.absoluteFilePath(), m_cancelled, err);
+          removeTree(fi.absoluteFilePath(), *cancelled, err);
         }
       }
 
@@ -41,7 +42,7 @@ void FileOperations::emptyTrash() {
         const QFileInfoList infos = QDir(infoDir).entryInfoList(
             {QStringLiteral("*.trashinfo")}, QDir::Files | QDir::Hidden);
         for (const QFileInfo &fi : infos) {
-          if (m_cancelled.load())
+          if (cancelled->load())
             return {false, QStringLiteral("cancelled")};
           QFile::remove(fi.absoluteFilePath());
         }
@@ -52,7 +53,7 @@ void FileOperations::emptyTrash() {
 }
 
 void FileOperations::restore(const QString &path) {
-  run(QStringLiteral("restore"), path, [path]() -> Result {
+  run(QStringLiteral("restore"), path, [path](const auto &) -> Result {
     const QFileInfo fi(path);
     const QString name = fi.fileName();
     const QString filesDir = fi.absolutePath();       // <root>/files
@@ -93,8 +94,9 @@ void FileOperations::restore(const QString &path) {
 }
 
 void FileOperations::restoreByOrigPath(const QString &origPath) {
-  m_cancelled.store(false);
-  run(QStringLiteral("restore"), origPath, [this, origPath]() -> Result {
+  m_cancelled->store(false);
+  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  run(QStringLiteral("restore"), origPath, [origPath, cancelled](const auto &) -> Result {
     // Search in ALL the XDG roots for the .trashinfo whose Path= matches origPath,
     // matching exact, canonical (symlink-resolved), or clean paths,
     // and keeping the most recent one (same file deleted several times).
@@ -154,9 +156,9 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
       qint64 copied = 0;
       QString e;
       const auto noop = [](qint64) {};
-      if (!copyTree(src, origPath, copied, noop, m_cancelled, e))
+      if (!copyTree(src, origPath, copied, noop, *cancelled, e))
         return {false, e};
-      if (!removeTree(src, m_cancelled, e))
+      if (!removeTree(src, *cancelled, e))
         return {false, e};
     }
     QFile::remove(bestInfo);

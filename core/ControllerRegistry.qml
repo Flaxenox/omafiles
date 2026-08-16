@@ -90,6 +90,7 @@ Item {
     id: actionEngine
     root: registry.root
     navController: navController
+    list: registry.list
   }
 
 

@@ -55,7 +55,20 @@ private:
   // Generation of the active search. search() increments and captures it;
   // the worker discards (does not emit) if it stopped being the active one --
   // covers both cancel() and a search that supersedes another.
-  std::atomic<quint64> m_gen{0};
+  //
+  // Heap-allocated and shared (not a plain member), P0 concurrency audit
+  // (forensic audit 2026-08-16): the scan loop below used to check
+  // `this->m_gen` directly, on every single iterated entry, for the ENTIRE
+  // duration of a potentially long recursive scan -- all of it BEFORE the
+  // Life/mutex guard is ever consulted (that only guards the final result
+  // delivery). Destroying the worker (e.g. closing the tab/panel that owns
+  // it) while a scan was still walking a large tree was a confirmed
+  // use-after-free (reproduced with AddressSanitizer). The worker lambda now
+  // captures its own shared_ptr copy of this counter and never needs `this`
+  // to check it, so the check stays valid regardless of whether the
+  // SearchWorker itself still exists.
+  std::shared_ptr<std::atomic<quint64>> m_gen =
+      std::make_shared<std::atomic<quint64>>(0);
 
   // Life guard against the dangling `this` (same pattern as
   // DirectoryModel/FileOperations): a worker that finishes after the object is

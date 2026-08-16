@@ -85,6 +85,15 @@ inline bool copyFile(const QString &src, const QString &dst, qint64 &copied,
     copied += n;
     cb(copied);
   }
+  // QFile::read() returns 0 on clean EOF and -1 on a real I/O error -- the
+  // loop condition `> 0` exits identically for both, so without this check a
+  // mid-copy read failure (dropped network share, failing disk sector) was
+  // reported as a successful copy with a silently truncated destination
+  // (P0-2, forensic audit 2026-08-16).
+  if (n < 0) {
+    err = QStringLiteral("read failed on %1: %2").arg(src, in.errorString());
+    return false;
+  }
   out.close();
   in.close();
   out.setPermissions(in.permissions()); // preserve mode

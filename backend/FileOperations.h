@@ -150,16 +150,40 @@ private:
     QString message;
   };
 
-  // Launches `job` on the pool and emits finished/error according to its Result, on the
-  // UI thread. `op`/`path` for the signals.
-  void run(const QString &op, const QString &path, std::function<Result()> job);
-  // Emits progress(op, path, done, total) safely from the worker.
-  void emitProgress(const QString &op, const QString &path, qint64 done,
-                    qint64 total);
+  // Progress callback handed to `job` (see run()): safe to call from the
+  // worker thread even if `this` has meanwhile been destroyed -- see the
+  // comment on run() below.
+  using ProgressFn = std::function<void(qint64 done, qint64 total)>;
 
-  // Cooperative cancellation flag (see cancel()/copy()). Atomic because it is
-  // written by the UI thread and read by the pool worker.
-  std::atomic<bool> m_cancelled{false};
+  // Launches `job` on the pool and emits finished/error according to its
+  // Result, on the UI thread. `op`/`path` for the signals.
+  //
+  // `job` receives a ProgressFn instead of calling back into `this` itself
+  // (P0 concurrency audit, forensic audit 2026-08-16): every job body used
+  // to capture `[this, ...]` and read `this->m_cancelled` / call
+  // `this->emitProgress(...)` for the ENTIRE duration of the job -- e.g. the
+  // whole copyTree() loop over a large tree -- which runs BEFORE the
+  // Life/mutex guard below is ever checked. Destroying the singleton (app
+  // quitting mid-copy) while that loop was still running was a confirmed
+  // use-after-free (reproduced with AddressSanitizer). `job` lambdas are now
+  // required to be `this`-free: cancellation is threaded through as a
+  // shared_ptr<atomic<bool>> capture (see m_cancelled below and copy()/
+  // move()/remove()/emptyTrash()/restoreByOrigPath()), and progress goes
+  // through the ProgressFn parameter, which is built here (in run(), on the
+  // calling/UI thread, `this` still guaranteed valid) and only ever touches
+  // `this` itself while holding the SAME `life->mtx` the destructor takes --
+  // exactly the delivery pattern already used for finished/error below and
+  // for DirectoryModel's listed().
+  void run(const QString &op, const QString &path,
+          std::function<Result(const ProgressFn &)> job);
+
+  // Cooperative cancellation flag (see cancel()/copy()). Heap-allocated and
+  // shared (not a plain member) so that a job lambda can hold its own
+  // shared_ptr copy and keep reading/writing the SAME flag safely even if
+  // the FileOperations singleton itself is destroyed while the job is still
+  // running on a pool thread (same reasoning as ProgressFn above).
+  std::shared_ptr<std::atomic<bool>> m_cancelled =
+      std::make_shared<std::atomic<bool>>(false);
 
   // Life guard against the dangling `this` (same pattern as
   // DirectoryModel, Phase 10.A): a pool worker that finishes AFTER the
