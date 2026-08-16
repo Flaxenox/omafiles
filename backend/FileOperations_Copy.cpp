@@ -5,9 +5,14 @@
 using namespace FileOpsPrivate;
 void FileOperations::copy(const QString &source, const QString &destination,
                           bool overwrite) {
-  m_cancelled.store(false);
+  m_cancelled->store(false);
+  // `cancelled` is a shared_ptr COPY captured by value below, not `this` --
+  // the job lambda below is entirely `this`-free (P0 concurrency audit,
+  // forensic audit 2026-08-16): see the comment on run()/ProgressFn in
+  // FileOperations.h for why that matters.
+  auto cancelled = m_cancelled;
   run(QStringLiteral("copy"), source,
-      [this, source, destination, overwrite]() -> Result {
+      [source, destination, overwrite, cancelled](const auto &progressFn) -> Result {
         if (!QFileInfo::exists(source))
           return {false, QStringLiteral("source does not exist")};
         if (entryExists(destination)) {
@@ -17,7 +22,7 @@ void FileOperations::copy(const QString &source, const QString &destination,
           // copies over), consistent with what the conflict dialog
           // promises. It used to be done by `cp -f`.
           QString rmErr;
-          if (!removeTree(destination, m_cancelled, rmErr))
+          if (!removeTree(destination, *cancelled, rmErr))
             return {false, rmErr};
         }
         const qint64 realTotal = treeSize(source);
@@ -28,16 +33,19 @@ void FileOperations::copy(const QString &source, const QString &destination,
           const double pct = qMin(100.0, done * 100.0 / pctTotal);
           if (pct - lastPct >= 1.0) { // do not flood with signals (~every 1%)
             lastPct = pct;
-            emitProgress(QStringLiteral("copy"), source, done, realTotal);
+            progressFn(done, realTotal);
           }
         };
         QString err;
-        if (!copyTree(source, destination, copied, cb, m_cancelled, err)) {
-          if (err == QLatin1String("cancelled"))
-            forceRemove(destination); // clean up the partial copy (13.G)
+        if (!copyTree(source, destination, copied, cb, *cancelled, err)) {
+          // Clean up the partial copy on ANY failure (P0-2, forensic audit
+          // 2026-08-16), not just cancellation -- a disk-full/permission/
+          // read error mid-tree must not leave a truncated destination that
+          // looks like a real file.
+          forceRemove(destination);
           return {false, err};
         }
-        emitProgress(QStringLiteral("copy"), source, realTotal, realTotal);
+        progressFn(realTotal, realTotal);
         return {true, QString()};
       });
 }

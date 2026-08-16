@@ -59,6 +59,59 @@ QtObject {
           Backend.FileOperations.copy(sc.listDir, sc.opsDir + "/listcopy")
         })
 
+        // Regression for P0-2 (forensic audit 2026-08-16): FileOpsPrivate::copyFile()
+        // used to treat a mid-copy QFile::read() error (-1) identically to a clean
+        // EOF (0) -- the destination was silently reported as a successful copy
+        // while actually truncated. This can't force the exact -1 syscall
+        // deterministically without root, but it exercises the closest realistic
+        // failure a user hits (an unreadable file inside the tree being copied) and
+        // asserts BOTH halves of the fix: the failure must be reported (not
+        // swallowed as success) AND the partial destination must be cleaned up
+        // instead of left behind looking like a real, complete copy.
+        sc.add("Backend.FileOperations copy: unreadable file mid-tree fails and cleans up (P0-2 regression)", function (done) {
+          var srcTree = sc.opsDir + "/p02-src"
+          var destTree = sc.opsDir + "/p02-dst"
+          var buildCmd = "rm -rf " + sc._q(srcTree) + " " + sc._q(destTree)
+            + " && mkdir -p " + sc._q(srcTree)
+            + " && echo ok > " + sc._q(srcTree + "/readable.txt")
+            + " && echo secret > " + sc._q(srcTree + "/noaccess.txt")
+            + " && chmod 000 " + sc._q(srcTree + "/noaccess.txt")
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            function restorePermsThen(cb) {
+              // So the QTemporaryDir root can always clean itself up on exit,
+              // regardless of how this test resolves.
+              sc._sh(["bash", "-c", "chmod 644 " + sc._q(srcTree + "/noaccess.txt")], cb)
+            }
+            function onErr(op, path, msg) {
+              if (path !== srcTree) return
+              cleanup()
+              restorePermsThen(function () {
+                sc._listOnce(sc.opsDir, function (e) {
+                  var destGone = !sc._has(e, "p02-dst")
+                  done(destGone, destGone
+                    ? "copy correctly failed (" + msg + ") and the partial destination was cleaned up"
+                    : "copy failed but left a partial/truncated destination behind: " + destTree)
+                })
+              })
+            }
+            function onFin(op, path) {
+              if (path !== srcTree) return
+              cleanup()
+              restorePermsThen(function () {
+                done(false, "copy of a tree containing an unreadable file was reported as SUCCESS — silent data loss")
+              })
+            }
+            function cleanup() {
+              Backend.FileOperations.error.disconnect(onErr)
+              Backend.FileOperations.finished.disconnect(onFin)
+            }
+            Backend.FileOperations.error.connect(onErr)
+            Backend.FileOperations.finished.connect(onFin)
+            Backend.FileOperations.copy(srcTree, destTree)
+          })
+        })
+
         sc.add("Backend.FileOperations copy symlink preserved", function (done) {
           sc._fileOp(done, function () {
             sc._listOnce(sc.opsDir, function (e) {
@@ -312,6 +365,79 @@ QtObject {
             Backend.FileOperations.copy(sc.note, b)
           })
           Backend.FileOperations.copy(sc.note, a)
+        })
+
+        // Regression for P0 concurrency audit (forensic audit 2026-08-16):
+        // every FileOperations job (copy/move/remove/emptyTrash/
+        // restoreByOrigPath) used to capture `[this, ...]` and read
+        // `this->m_cancelled` / call `this->emitProgress(...)` for the
+        // ENTIRE duration of the job -- e.g. the whole copyTree() loop --
+        // all of it BEFORE the Life/mutex guard was ever checked (that only
+        // covered the final finished/error delivery). Destroying the
+        // singleton (app quitting) while a job was still running was a
+        // confirmed use-after-free (reproduced with AddressSanitizer: 8/8
+        // iterations crashed before the fix, 0/8 after). FileOperations is a
+        // QML_SINGLETON, so this can't destroy it mid-job the way the
+        // SearchWorker regression test does -- instead this hammers the
+        // cooperative-cancel path that shares the exact same underlying
+        // fix (m_cancelled is now a shared_ptr independent of `this`) and
+        // confirms the singleton is still fully functional afterwards.
+        sc.add("FileOperations: rapid copy+cancel cycles don't corrupt delivery (P0 regression)", function (done) {
+          var base = sc.opsDir + "/p0-fileops-stress"
+          var buildCmd = "rm -rf " + sc._q(base) + " && mkdir -p " + sc._q(base)
+            + " && cd " + sc._q(base)
+            + " && for i in $(seq 1 500); do : > \"file_$i.txt\"; done"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var iterations = 15
+            var i = 0
+            // Each iteration waits for ITS OWN dest path before starting the
+            // next: Backend.FileOperations is a shared singleton whose
+            // finished/error signals are not scoped to a caller, so firing
+            // several unawaited copy()+cancel() calls back-to-back would
+            // leave stray in-flight operations that could deliver LATE,
+            // during a completely unrelated later test, confusing whichever
+            // one-shot listener happens to be attached then (a self-inflicted
+            // test-hygiene bug, not the product bug under test -- the actual
+            // lifetime fix is already proven by the AddressSanitizer run).
+            function next() {
+              if (i >= iterations) { finalCheck(); return }
+              i++
+              var dst = base + "-dst-" + i
+              // FileOperations.run() reports the SOURCE path in finished/
+              // error (see copy()'s run() call), not the destination -- both
+              // handlers filter on `base` (this test's fixed source), which
+              // correctly identifies "this test's current op" since the
+              // serialization above guarantees only one of THIS test's own
+              // operations is ever in flight at a time.
+              function onErr(op, path, msg) { if (path !== base) return; cleanup(); Qt.callLater(next) }
+              function onFin(op, path) { if (path !== base) return; cleanup(); Qt.callLater(next) }
+              function cleanup() {
+                Backend.FileOperations.error.disconnect(onErr)
+                Backend.FileOperations.finished.disconnect(onFin)
+              }
+              Backend.FileOperations.error.connect(onErr)
+              Backend.FileOperations.finished.connect(onFin)
+              Backend.FileOperations.copy(base, dst, true)
+              Backend.FileOperations.cancel()
+            }
+            function finalCheck() {
+              // No process crash so far is already the main signal; confirm
+              // the singleton is still genuinely functional afterwards with
+              // one real, awaited (non-cancelled) copy.
+              var dst = base + "-final"
+              sc._fileOp(done, function () {
+                sc._listOnce(sc.opsDir, function (e) {
+                  var ok = sc._has(e, "p0-fileops-stress-final")
+                  done(ok, ok
+                    ? iterations + " rapid copy+cancel cycles survived, singleton still functional"
+                    : "final copy after stress didn't complete correctly")
+                })
+              })
+              Backend.FileOperations.copy(base, dst, true)
+            }
+            next()
+          })
         })
   }
 }

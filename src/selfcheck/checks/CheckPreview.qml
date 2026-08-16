@@ -29,6 +29,85 @@ QtObject {
           Backend.ThumbnailProvider.ready.connect(onReady)
         })
 
+        // Regression for P0-4 (forensic audit 2026-08-16): scripts/runtime/
+        // thumbnail-video.sh only checked `[[ -f "$dest" ]]` before letting
+        // ffmpegthumbnailer write to $dest -- a DANGLING symlink pre-planted at
+        // that fully predictable (unsalted SHA-1) cache path made `-f` false
+        // (correctly: nothing real is there YET) but ffmpegthumbnailer's own
+        // `open()` follows the link anyway, creating a brand-new file at
+        // whatever the symlink points to instead of a fresh, contained cache
+        // entry. Plants that exact dangling symlink and asserts the target
+        // never gets created and $dest ends up a real file, not a symlink.
+        sc.add("thumbnail-video.sh: pre-planted dangling symlink at dest is not followed (P0-4 regression)", function (done) {
+          var video = sc.opsDir + "/p04-src.mp4"
+          var dest = sc.opsDir + "/p04-thumb.jpg"
+          var victimTarget = sc.opsDir + "/p04-victim-target.jpg" // must NOT exist beforehand
+          var setup = "rm -f " + sc._q(video) + " " + sc._q(dest) + " " + sc._q(victimTarget)
+            + " && ffmpeg -y -f lavfi -i color=c=blue:s=64x64:d=1 -frames:v 5 -pix_fmt yuv420p "
+            + sc._q(video) + " -loglevel quiet"
+            + " && ln -s " + sc._q(victimTarget) + " " + sc._q(dest)
+          sc._sh(["bash", "-c", setup], function (setupResult) {
+            if (setupResult.exitCode !== 0) { done(false, "fixture setup failed: " + setupResult.stderr); return }
+            sc._sh(["bash", sc.resourceRoot + "/scripts/runtime/thumbnail-video.sh", video, dest], function () {
+              var check = "test -L " + sc._q(dest) + " && echo DEST_IS_SYMLINK; "
+                + "test -e " + sc._q(victimTarget) + " && echo VICTIM_CREATED; "
+                + "test -f " + sc._q(dest) + " && echo DEST_IS_REGULAR_FILE"
+              sc._sh(["bash", "-c", check], function (checkResult) {
+                var out = String(checkResult.stdout)
+                var stillSymlink = out.indexOf("DEST_IS_SYMLINK") >= 0
+                var victimCreated = out.indexOf("VICTIM_CREATED") >= 0
+                var destIsRegular = out.indexOf("DEST_IS_REGULAR_FILE") >= 0
+                var safe = !stillSymlink && !victimCreated && destIsRegular
+                done(safe, safe
+                  ? "dest is a genuine regular file; the dangling symlink's target was never created"
+                  : "VULNERABLE: dest still a symlink=" + stillSymlink + " victim target created=" + victimCreated)
+              })
+            })
+          })
+        })
+
+        // Regression for P0 concurrency audit (forensic audit 2026-08-16):
+        // ThumbnailProvider had NO lifetime guard at all -- no destructor,
+        // no Life/mutex, nothing. Its pool worker called
+        // QMetaObject::invokeMethod(this, ...) completely unguarded, so
+        // closing the app while a thumbnail was still generating was a
+        // confirmed use-after-free that crashed Qt's own event delivery
+        // (reproduced with AddressSanitizer: SEGV inside
+        // QCoreApplicationPrivate::notify_helper, 8/8 iterations before the
+        // fix, 0/8 after). ThumbnailProvider is a QML_SINGLETON, so this
+        // can't destroy it mid-generate the way the SearchWorker regression
+        // test does -- instead this fires many concurrent, DISTINCT
+        // requests (distinct cache keys, so none short-circuit on the
+        // m_inflight dedup) and confirms every one delivers exactly once,
+        // no crash, no stuck "already generating" state left behind.
+        sc.add("ThumbnailProvider: many concurrent distinct requests all deliver exactly once (P0 regression)", function (done) {
+          var n = 12
+          var buildCmd = "for i in $(seq 1 " + n + "); do cp -- " + sc._q(sc.png)
+            + " " + sc._q(sc.opsDir) + "/p0-thumb-$i.png; done"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var paths = []
+            for (var k = 1; k <= n; k++) paths.push(sc.opsDir + "/p0-thumb-" + k + ".png")
+            var delivered = {}
+            var extraCalls = 0
+            function onReady(path, thumbPath) {
+              if (paths.indexOf(path) < 0) return // unrelated thumbnail from another test
+              if (delivered[path]) { extraCalls++; return } // would indicate a duplicate/corrupted delivery
+              delivered[path] = thumbPath
+            }
+            Backend.ThumbnailProvider.ready.connect(onReady)
+            paths.forEach(function (p) { Backend.ThumbnailProvider.request(p, 128) })
+            sc._poll(function () { return Object.keys(delivered).length === n }, function (ok) {
+              Backend.ThumbnailProvider.ready.disconnect(onReady)
+              var allNonEmpty = ok && paths.every(function (p) { return delivered[p] && delivered[p].length > 0 })
+              done(allNonEmpty && extraCalls === 0,
+                allNonEmpty && extraCalls === 0
+                  ? n + " concurrent distinct requests all delivered exactly once"
+                  : "delivered=" + Object.keys(delivered).length + "/" + n + " extraCalls=" + extraCalls)
+            })
+          })
+        })
+
         // Canonical cache hash: Backend.ThumbnailProvider.cacheKey is the
         // ONLY scheme (SHA-1 hex), shared by the image/PDF thumbnails
         // (internal to request()), the video ones (VideoThumbnails) and the

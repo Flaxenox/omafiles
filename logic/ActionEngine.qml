@@ -17,6 +17,7 @@ Item {
 
   property Item root: null
   property Item navController: null
+  property Item list: null
   property var _nativeMkdirPending: ({})
 
 
@@ -1133,7 +1134,17 @@ Item {
     else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
     else return
     archiveOpenProc.outPath = out
-    archiveOpenProc.start(["bash", "-c", "mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])
+    // outDir is keyed by an unsalted SHA-1 of (archivePath+full) -- fully
+    // predictable offline by anyone who knows those two strings. Without
+    // this, a symlink pre-planted at `out` (or at `outDir` itself, pointing
+    // at some other real directory) would make the shell `>` redirection
+    // above follow it and overwrite whatever it points to instead of
+    // creating a fresh file (P0-3, forensic audit 2026-08-16). `rm -rf --`
+    // on a symlink removes the link itself, never its target, so this is
+    // safe even if outDir/out is currently a symlink; mkdir -p then always
+    // creates a genuinely fresh real directory before extraction writes into it.
+    archiveOpenProc.start(["bash", "-c", "rm -rf -- " + Util.shellQuote(outDir)
+      + " && mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])
   }
 
   function isArchive(entry) {

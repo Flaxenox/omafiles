@@ -249,5 +249,47 @@ QtObject {
           })
           Backend.FileOperations.copy(sc.note, oldFile)
         })
+
+        // Regression for the Phase 43 ControllerRegistry wiring break (P0-1,
+        // forensic audit 2026-08-16): ActionEngine.refreshArchiveListing()/
+        // enterArchive() reference `list` (the active ListView), but
+        // ActionEngine never declared `property Item list` nor received it
+        // from ControllerRegistry (unlike its siblings SearchOps/TabOps/
+        // NavigationController, which all do). Every archive open threw a
+        // ReferenceError. This exercises the REAL composition root (sc._content),
+        // so it fails again if the ControllerRegistry wiring regresses.
+        sc.add("Archive browsing: enter zip, list, navigate subfolder, exit (P0-1 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var zipPath = sc.opsDir + "/p0archive-test.zip"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p0archive-src && mkdir -p p0archive-src/p0archive-sub"
+            + " && echo root > p0archive-src/p0archive-root.txt"
+            + " && echo inner > p0archive-src/p0archive-sub/p0archive-inner.txt"
+            + " && (cd p0archive-src && zip -q -r " + sc._q(zipPath) + " .)"
+            + " && rm -rf p0archive-src"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.actionEngine.enterArchive(zipPath)
+            sc._poll(function () {
+              return sc._has(NavState.entries, "p0archive-root.txt") && sc._has(NavState.entries, "p0archive-sub")
+            }, function (okRoot) {
+              if (!okRoot) {
+                c.actionEngine.exitArchive()
+                done(false, "archive root never listed correctly (inArchive=" + ArchiveState.inArchive + ")")
+                return
+              }
+              ArchiveState.archiveSubPath = "p0archive-sub"
+              c.actionEngine.refreshArchiveListing()
+              sc._poll(function () { return sc._has(NavState.entries, "p0archive-inner.txt") }, function (okSub) {
+                var wasInArchive = ArchiveState.inArchive
+                c.actionEngine.exitArchive()
+                var exitOk = ArchiveState.inArchive === false
+                done(okSub && wasInArchive && exitOk,
+                  "sub-listing=" + okSub + " wasInArchive=" + wasInArchive + " exitOk=" + exitOk)
+              })
+            })
+          })
+        })
   }
 }

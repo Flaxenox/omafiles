@@ -200,5 +200,54 @@ QtObject {
           var ok = called.F2 && called.Del && called.CtrlC && called.CtrlX && called.CtrlV
           done(ok, ok ? "all 5 shortcuts routed correctly" : JSON.stringify(called))
         })
+
+        // ======================= P0-3 (forensic audit 2026-08-16) =======================
+        // openFileInArchive() extracts a single archive member to
+        // ~/.cache/omafiles/archive-open/<sha1(archivePath+member)>/<name> via a
+        // plain shell `>` redirection. Before the fix, if an attacker could plant a
+        // symlink at that fully-predictable (unsalted SHA-1, no randomness) path
+        // BEFORE the victim opened the file, the redirection followed the symlink
+        // and overwrote whatever it pointed to with the archive's (attacker-
+        // controlled) content instead of creating a fresh file. This plants the
+        // exact exploit and asserts the victim target survives untouched.
+        sc.add("openFileInArchive: pre-planted symlink at the cache path is not followed (P0-3 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var zipPath = sc.opsDir + "/p03-archive.zip"
+          var victim = sc.opsDir + "/p03-victim.txt"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p03src && mkdir p03src"
+            + " && echo PWNED_CONTENT > p03src/secret.txt"
+            + " && (cd p03src && zip -q " + sc._q(zipPath) + " secret.txt)"
+            + " && rm -rf p03src"
+            + " && echo VICTIM_UNTOUCHED > " + sc._q(victim)
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var outDir = Paths.homeDir + "/.cache/omafiles/archive-open/"
+              + Backend.ThumbnailProvider.cacheKey(zipPath + "|secret.txt")
+            var out = outDir + "/secret.txt"
+            var plantCmd = "rm -rf -- " + sc._q(outDir) + " && mkdir -p -- " + sc._q(outDir)
+              + " && ln -s -- " + sc._q(victim) + " " + sc._q(out)
+            sc._sh(["bash", "-c", plantCmd], function (plantResult) {
+              if (plantResult.exitCode !== 0) { done(false, "couldn't plant symlink: " + plantResult.stderr); return }
+              c.actionEngine.enterArchive(zipPath)
+              c.actionEngine.openFileInArchive({ name: "secret.txt", type: "file" })
+              // openFileInArchive is fire-and-forget (its own internal
+              // ProcessRunner isn't exposed to the test); a tiny single-file
+              // extraction settles in a few ms, 500ms is a generous margin.
+              var timeout = Qt.createQmlObject('import QtQuick; Timer { interval: 500; repeat: false }', sc)
+              timeout.triggered.connect(function () {
+                c.actionEngine.exitArchive()
+                sc._sh(["bash", "-c", "cat -- " + sc._q(victim)], function (victimResult) {
+                  var victimIntact = String(victimResult.stdout).trim() === "VICTIM_UNTOUCHED"
+                  done(victimIntact, victimIntact
+                    ? "victim file untouched — pre-planted symlink was destroyed and replaced before extraction"
+                    : "VULNERABLE: the pre-planted symlink was followed, victim file now contains: " + String(victimResult.stdout).trim())
+                })
+              })
+              timeout.start()
+            })
+          })
+        })
   }
 }

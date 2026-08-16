@@ -4,18 +4,30 @@ pkgver=0.9.0
 pkgrel=1
 pkgdesc="A high-performance, native Qt6 file manager designed around the DHH philosophy"
 arch=('x86_64')
-url="https://github.com/omafiles/omafiles"
-license=('GPL3')
-depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'glib2')
+url="https://github.com/Percius04/omafiles"
+license=('MIT')
+# qt6-webengine provides Qt6::Pdf (libQt6Pdf.so) on Arch -- CMakeLists.txt's
+# `find_package(Qt6 REQUIRED COMPONENTS ... Pdf ...)` fails to configure
+# without it (P0-5, forensic audit 2026-08-16).
+depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-webengine' 'glib2')
 makedepends=('cmake' 'ninja' 'qt6-tools')
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/omafiles/omafiles/archive/v${pkgver}.tar.gz")
-sha256sums=('e45cc3b60b91b126f75c3ba821c5d29c356b599fe1bef2e086a324068ed8fc08')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Percius04/omafiles/archive/v${pkgver}.tar.gz")
+sha256sums=('e45cc3b60b91b126f75c3ba821c5d29c356b599fe1bef2e086a324068ed8fc08') # FIXME: regenerate once a v1.0 tag matching these fixes is cut (see P0-5 report)
 
 build() {
   cd "${pkgname}-${pkgver}"
+  # CMAKE_INSTALL_PREFIX alone does NOT control where this project installs --
+  # OMAFILES_{BIN,DATA,QML}_INSTALL_DIR are separate CACHE variables that
+  # default to $HOME/.local/... for the documented no-root per-user dev
+  # workflow. Without overriding them here, `DESTDIR="$pkgdir" cmake --install`
+  # would write into the PACKAGE BUILDER's own home directory instead of
+  # staging under $pkgdir/usr/..., breaking makepkg entirely (P0-5, forensic
+  # audit 2026-08-16).
   cmake -B build -G Ninja \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release \
+    -DOMAFILES_BIN_INSTALL_DIR=/usr/bin \
+    -DOMAFILES_DATA_INSTALL_DIR=/usr/share \
+    -DOMAFILES_QML_INSTALL_DIR=/usr/lib/qt6/qml
   cmake --build build
 }
 

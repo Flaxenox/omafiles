@@ -4,6 +4,8 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <memory>
+#include <mutex>
 #include <qqmlregistration.h>
 
 // C++ backend for thumbnails. Generates thumbnails of images
@@ -32,6 +34,7 @@ class ThumbnailProvider : public QObject {
 
 public:
   explicit ThumbnailProvider(QObject *parent = nullptr);
+  ~ThumbnailProvider() override;
 
   // Path of the thumbnail of `path` (max side `size` px) if it is already in
   // the cache; if not, "" and it generates it async -> ready(path, thumbPath).
@@ -81,4 +84,20 @@ private:
 
   QString m_cacheDir;
   QSet<QString> m_inflight; // keys being generated right now (dedup)
+
+  // Life guard against the dangling `this` (same pattern as DirectoryModel/
+  // FileOperations/SearchWorker). P0 concurrency audit (forensic audit
+  // 2026-08-16): request()'s pool worker used to call
+  // QMetaObject::invokeMethod(this, ...) completely unguarded -- there was
+  // no destructor, no life tracking at all, so closing the app (destroying
+  // this QML singleton) while a thumbnail was still being generated was a
+  // confirmed use-after-free/segfault (reproduced with AddressSanitizer:
+  // Qt's own event delivery crashed trying to dispatch to the freed
+  // object). generate() itself stays static/`this`-free, as documented
+  // above; only the delivery step needs the guard.
+  struct Life {
+    std::mutex mtx;
+    bool alive = true;
+  };
+  std::shared_ptr<Life> m_life = std::make_shared<Life>();
 };

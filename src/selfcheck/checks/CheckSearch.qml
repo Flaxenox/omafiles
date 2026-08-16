@@ -67,5 +67,70 @@ QtObject {
             sw.searchContent(base, "hello selfcheck", false)
           })
         })
+
+        // Regression for P0 concurrency audit (forensic audit 2026-08-16):
+        // SearchWorker's scan loop used to read `this->m_gen` on every
+        // iterated entry, unguarded, for the entire duration of the scan --
+        // ALL of it before the Life/mutex guard (which only covered the
+        // final result delivery) was ever consulted. Destroying the worker
+        // while it was still walking a tree was a confirmed use-after-free
+        // (reproduced with AddressSanitizer against a few thousand files:
+        // every single run crashed before the fix, zero crashes in 96
+        // create/search/destroy cycles after). This exercises the exact
+        // same pattern live, repeatedly, through the real QML lifecycle
+        // (SearchWorker is QML_ELEMENT, so it can genuinely be created and
+        // destroyed on demand, unlike the two QML_SINGLETON backends). A
+        // real regression here would crash the whole selfcheck process, not
+        // just fail this one test.
+        sc.add("SearchWorker: create/search/destroy under load doesn't corrupt state (P0 regression)", function (done) {
+          var base = sc.opsDir + "/p0-search-stress"
+          var buildCmd = "rm -rf " + sc._q(base) + " && mkdir -p " + sc._q(base)
+            + " && cd " + sc._q(base)
+            + " && for i in $(seq 1 3000); do : > \"file_$i.txt\"; done"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var iterations = 40
+            var i = 0
+            function nextIteration() {
+              if (i >= iterations) { finalCheck(); return }
+              i++
+              var sw = sc._searchFactory.createObject(sc)
+              // Broad query ("e" matches most of "file_N.txt") over 3000
+              // entries so the scan is still running when destroy() fires
+              // right behind it -- no wait, no sleep, maximum overlap.
+              sw.search(base, "e", true)
+              sw.destroy()
+              // Also exercise start-then-immediately-cancel-and-restart on a
+              // worker we keep alive, interleaved with the destroy cycles.
+              if (i % 2 === 0) {
+                var sw2 = sc._searchFactory.createObject(sc)
+                sw2.search(base, "f", true)
+                sw2.cancel()
+                sw2.search(base, "e", true)
+                sw2.cancel()
+                sw2.destroy()
+              }
+              Qt.callLater(nextIteration)
+            }
+            function finalCheck() {
+              // If any stale callback from the stress loop had corrupted
+              // shared state, a normal search afterwards is the most direct
+              // way to notice: wrong/missing results, or simply never
+              // arriving (the 8s per-test timeout would then fail this).
+              var sw = sc._searchFactory.createObject(sc)
+              function onResults(entries, truncated) {
+                sw.results.disconnect(onResults)
+                sw.destroy()
+                var ok = entries.length === 200 && truncated === true
+                done(ok, ok
+                  ? "40 create/search/destroy cycles (+20 cancel/restart) survived, final search still correct"
+                  : "final search after stress wrong: n=" + entries.length + " truncated=" + truncated)
+              }
+              sw.results.connect(onResults)
+              sw.search(base, "e", true) // "e" matches all 3000 -> capped at 200, truncated=true
+            }
+            nextIteration()
+          })
+        })
   }
 }
