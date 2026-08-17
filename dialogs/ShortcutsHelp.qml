@@ -19,7 +19,25 @@ Item {
   id: root
 
   property bool open: false
+  // Effective bindings (defaults + any valid ~/.config/omafiles/keybindings.toml
+  // overrides), one row per resolver-tracked action -- passed in by
+  // core/DialogLayer.qml from controllers.keybindingResolver.effectiveBindingsList()
+  // (P2.5, 2026-08-17). Replaces the old hand-maintained copy of the shortcut
+  // table that used to live only here and drift from the actual code/README.
+  property var bindings: []
   signal requestClose()
+
+  // The two-key "gg" chord and Escape aren't resolver actions (see
+  // logic/KeybindingResolver.qml's header: both stay hardcoded, not simple
+  // "key -> action" bindings), so they're not in `bindings` -- listed here
+  // by hand instead. Same for the Shift+arrow extend-selection quirk,
+  // documented accurately (Shift+j/k do NOT extend, only Shift+Down/Up do --
+  // see state/KeyboardDefaults.qml's header for why).
+  readonly property var structuralRows: [
+    { key: "gg", action: "Jump to top (press g twice)" },
+    { key: "Shift+Down / Shift+Up", action: "Extend selection down / up" },
+    { key: "Escape", action: "Close search, preview, or the active panel" }
+  ]
 
   ModalSurface {
     open: root.open
@@ -53,40 +71,12 @@ Item {
         width: parent.width
         spacing: Style.spacing.xs
 
-        // Same order as the table of the "Keyboard
-        // shortcuts" section of the README -- if a shortcut is added/edited there,
-        // do it here too.
+        // Effective bindings: resolver-tracked actions (defaults, or the
+        // user's keybindings.toml overrides where valid) plus the handful
+        // of structural entries that aren't resolver actions. This is no
+        // longer a separately hand-maintained list -- see `bindings` above.
         Repeater {
-          model: [
-            { key: "j / k / ↓ / ↑", action: "Move down / up" },
-            { key: "Shift+j / k / ↓ / ↑", action: "Extend selection down / up" },
-            { key: "h / Backspace", action: "Go up a directory" },
-            { key: "l / Enter", action: "Open (enter directory / launch file)" },
-            { key: "Alt+← / Alt+→", action: "Back / forward (per panel)" },
-            { key: "gg / Shift+G", action: "Jump to top / bottom" },
-            { key: "Space", action: "Toggle preview (Quick Look)" },
-            { key: "/ · Ctrl+F", action: "Search files (name; content: to search inside)" },
-            { key: ": / Ctrl+P", action: "Command palette" },
-            { key: "Ctrl+A", action: "Select all" },
-            { key: "Ctrl+Shift+A", action: "Select none" },
-            { key: "Ctrl+I", action: "Invert selection" },
-            { key: "F2", action: "Rename" },
-            { key: "Delete", action: "Delete (to trash)" },
-            { key: "Ctrl+C / Ctrl+X / Ctrl+V", action: "Copy / cut / paste" },
-            { key: "Ctrl+Z", action: "Undo" },
-            { key: "Ctrl+Shift+Z / Ctrl+Y", action: "Redo" },
-            { key: "s / Shift+S", action: "Cycle sort field / reverse order" },
-            { key: "Ctrl+L", action: "Edit path (Tab completes, ↑/↓ pick)" },
-            { key: "Ctrl+Shift+N", action: "New folder" },
-            { key: "Ctrl+N", action: "New file" },
-            { key: "Ctrl+T / Ctrl+\\", action: "New panel" },
-            { key: "Ctrl+W / Ctrl+Tab", action: "Close active panel / next panel" },
-            { key: "Ctrl+H", action: "Toggle hidden files" },
-            { key: "Shift+Enter", action: "Open a terminal here" },
-            { key: "F5", action: "Refresh" },
-            { key: "?", action: "Toggle this help" },
-            { key: "Escape", action: "Close search, preview, or the active panel" }
-          ]
+          model: root.structuralRows.concat(root.bindings)
 
           Row {
             required property var modelData

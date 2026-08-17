@@ -16,7 +16,8 @@ QtObject {
     "checks/CheckPanels.qml",
     "checks/CheckSearch.qml",
     "checks/CheckDevices.qml",
-    "checks/CheckIntegration.qml"
+    "checks/CheckIntegration.qml",
+    "checks/CheckKeybindings.qml"
   ]
 
   function registerAll(sc) {

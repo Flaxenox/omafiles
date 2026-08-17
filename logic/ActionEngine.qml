@@ -17,7 +17,6 @@ Item {
 
   property Item root: null
   property Item navController: null
-  property Item list: null
   property var _nativeMkdirPending: ({})
 
 
@@ -309,7 +308,18 @@ Item {
       if (result.exitCode === 0) {
         if (cb) cb()
       } else if (!result.cancelled) {
-        Backend.Notifier.notify(result.stderr.trim() || "Couldn't restore from trash")
+        // actionProc is the ONE shared process for every shell-based action
+        // (rename, bulk rename, chmod, compress, extract, make-link,
+        // new-file/-folder overwrite...) -- this fallback used to say
+        // "Couldn't restore from trash", written back when restore-from-
+        // trash was itself shell-based. It no longer is (restoreFromTrash()
+        // uses runNativeRestore(), a separate native path with its own
+        // "Action failed" fallback below) -- so that string was stale for
+        // every one of this handler's actual current callers (P2.7,
+        // 2026-08-17). "Action failed" matches the native path's own
+        // fallback for the same reason: neither handler knows which of its
+        // several callers is the one that just failed.
+        Backend.Notifier.notify(result.stderr.trim() || "Action failed")
       }
     }
   }
@@ -917,13 +927,36 @@ Item {
     var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (Utils.extOf(e.name) ? "." + Utils.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
-      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
+      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1)).trim()
       return {
         oldName: e.name, newName: newName,
         oldPath: Utils.joinPath(NavState.currentPath, e.name),
         newPath: Utils.joinPath(NavState.currentPath, newName)
       }
     })
+    // Validate the WHOLE batch upfront, before any conflict check or
+    // filesystem call (P2.7, 2026-08-17): a pattern like "{ext}" on an
+    // extensionless file, or one that strips everything, can produce an
+    // empty name. Without this guard it wasn't a clean silent no-op
+    // either: Utils.joinPath(currentPath, "") resolves to currentPath
+    // itself, which of course always "already exists" -- so the empty
+    // pair tripped the existingPaths() collision check below and opened
+    // the bulk-rename CONFLICT dialog, misleadingly presenting an invalid
+    // pattern as an "overwrite?" decision. Confirming that dialog would
+    // reach runPendingBulkRename() with the empty pair still in it,
+    // running `mv -n -- oldpath ''`. Unlike commitRename's own
+    // `if (!newName) return` (a single name the user typed themselves, a
+    // silent no-op reads as "I didn't confirm"), this is a DERIVED result
+    // across possibly many files the user can't preview -- so this gets
+    // an explicit, correctly-worded notification instead, same style as
+    // the other "couldn't do this" messages in this file.
+    var emptyNames = pairs.filter(function (p) { return !p.newName })
+    if (emptyNames.length > 0) {
+      Backend.Notifier.notify(emptyNames.length === 1
+        ? "Bulk rename: pattern produces an empty name for \"" + emptyNames[0].oldName + "\" — nothing renamed"
+        : "Bulk rename: pattern produces an empty name for " + emptyNames.length + " items — nothing renamed")
+      return
+    }
     ConflictState.pendingBulkRename = pairs
     var targetCounts = {}
     pairs.forEach(function (p) {
@@ -1144,63 +1177,14 @@ Item {
 
 
 
-  // The main ListView (id "list" in core) -- refreshArchiveListing()
-  // resets its scroll just like refresh() does with a normal folder.
-
-  function enterArchive(path) {
-    SelectionState.selectOnly(-1)
-    ArchiveState.inArchive = true
-    ArchiveState.archivePath = path
-    ArchiveState.archiveSubPath = ""
-    refreshArchiveListing()
-  }
-
-  function exitArchive() {
-    ArchiveState.inArchive = false
-    ArchiveState.archivePath = ""
-    ArchiveState.archiveSubPath = ""
-    navController.refresh()
-  }
-
-  function refreshArchiveListing() {
-    SelectionState.selectOnly(-1)
-    list.contentY = list.originY
-    archiveListProc.start([Paths.resourceDir + "/scripts/runtime/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
-  }
-
-  // Extracts ONLY that file to a temporary cache (not the whole archive) and
-  // opens it with the default app.
-  function openFileInArchive(entry) {
-    var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-    var ext = Utils.extOf(ArchiveState.archivePath)
-    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Backend.ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
-    var outDir = out.substring(0, out.lastIndexOf("/"))
-    var cmd
-    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
-    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else return
-    archiveOpenProc.outPath = out
-    // outDir is keyed by an unsalted SHA-1 of (archivePath+full) -- fully
-    // predictable offline by anyone who knows those two strings. Without
-    // this, a symlink pre-planted at `out` (or at `outDir` itself, pointing
-    // at some other real directory) would make the shell `>` redirection
-    // above follow it and overwrite whatever it points to instead of
-    // creating a fresh file (P0-3, forensic audit 2026-08-16). `rm -rf --`
-    // on a symlink removes the link itself, never its target, so this is
-    // safe even if outDir/out is currently a symlink; mkdir -p then always
-    // creates a genuinely fresh real directory before extraction writes into it.
-    archiveOpenProc.start(["bash", "-c", "rm -rf -- " + Util.shellQuote(outDir)
-      + " && mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])
-  }
-
-  function isArchive(entry) {
-    if (entry.type === "dir") return false
-    var ext = Utils.extOf(entry.name)
-    return ext === "zip" || ext === "7z" || ext === "rar" || FileTypeConfig.tarExt.indexOf(ext) >= 0
-  }
-
+  // isArchive()/enterArchive()/exitArchive()/refreshArchiveListing()/
+  // openFileInArchive() moved to logic/ArchiveBrowser.qml (architectural
+  // audit 2026-08-17, P2.3) -- archive browsing never used runAction()/
+  // pushUndo()/the native-batch machinery, the one block in this file with
+  // a genuinely independent lifecycle. isIso() stays: ISO mounting
+  // (logic/MountActions.qml) is a different mechanism entirely, not
+  // archive browsing -- it only ever sat next to isArchive() here because
+  // both are "can this file be entered like a folder" checks.
   function isIso(entry) {
     return entry.type !== "dir" && Utils.extOf(entry.name) === "iso"
   }
@@ -1231,34 +1215,6 @@ Item {
     ConflictState.pendingExtract = null
     ConflictState.extractConflictOpen = false
     ConflictState.extractConflictNames = []
-  }
-
-  Backend.ProcessRunner {
-    id: archiveListProc
-    onFinished: function (result) {
-      var s = String(result.stdout || "")
-      var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
-      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-      var parsed = []
-      for (var i = 0; i + 1 < fields.length; i += 2) {
-        parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
-      }
-      NavState.entries = SortState.sortEntries(parsed)
-      list.positionViewAtBeginning()
-      SelectionState.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
-    }
-  }
-
-  Backend.ProcessRunner {
-    id: archiveOpenProc
-    property string outPath: ""
-    onFinished: function (result) {
-      if (result.exitCode !== 0) {
-        Backend.Notifier.notify(result.stderr.trim() || "Couldn't open archive")
-        return
-      }
-      navController.openWithDefault(archiveOpenProc.outPath)
-    }
   }
 
 }

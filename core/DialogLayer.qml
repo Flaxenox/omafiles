@@ -114,6 +114,7 @@ Item {
   ShortcutsHelp {
     anchors.fill: parent
     open: DialogsState.shortcutsHelpOpen
+    bindings: controllers && controllers.keybindingResolver ? controllers.keybindingResolver.effectiveBindingsList() : []
     onRequestClose: DialogsState.shortcutsHelpOpen = false
   }
 

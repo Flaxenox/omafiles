@@ -251,13 +251,17 @@ QtObject {
         })
 
         // Regression for the Phase 43 ControllerRegistry wiring break (P0-1,
-        // forensic audit 2026-08-16): ActionEngine.refreshArchiveListing()/
-        // enterArchive() reference `list` (the active ListView), but
-        // ActionEngine never declared `property Item list` nor received it
-        // from ControllerRegistry (unlike its siblings SearchOps/TabOps/
-        // NavigationController, which all do). Every archive open threw a
-        // ReferenceError. This exercises the REAL composition root (sc._content),
-        // so it fails again if the ControllerRegistry wiring regresses.
+        // forensic audit 2026-08-16): archive browsing's refresh()/enter()
+        // reference `list` (the active ListView), and the owning component
+        // must actually receive it from ControllerRegistry (unlike its
+        // siblings SearchOps/TabOps/NavigationController at the time, which
+        // all did). Every archive open threw a ReferenceError. Moved to
+        // logic/ArchiveBrowser.qml (architectural audit 2026-08-17, P2.3);
+        // updated to call the real archiveBrowser API and to descend via
+        // enterSubdir() (the real UI path a folder click takes) instead of
+        // poking ArchiveState.archiveSubPath by hand. This exercises the
+        // REAL composition root (sc._content), so it fails again if the
+        // ControllerRegistry wiring regresses.
         sc.add("Archive browsing: enter zip, list, navigate subfolder, exit (P0-1 regression)", function (done) {
           var c = sc._content
           if (!c) { done(false, "no composition root"); return }
@@ -270,23 +274,525 @@ QtObject {
             + " && rm -rf p0archive-src"
           sc._sh(["bash", "-c", buildCmd], function (buildResult) {
             if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
-            c.actionEngine.enterArchive(zipPath)
+            c.archiveBrowser.enter(zipPath)
             sc._poll(function () {
               return sc._has(NavState.entries, "p0archive-root.txt") && sc._has(NavState.entries, "p0archive-sub")
             }, function (okRoot) {
               if (!okRoot) {
-                c.actionEngine.exitArchive()
+                c.archiveBrowser.exit()
                 done(false, "archive root never listed correctly (inArchive=" + ArchiveState.inArchive + ")")
                 return
               }
-              ArchiveState.archiveSubPath = "p0archive-sub"
-              c.actionEngine.refreshArchiveListing()
+              c.archiveBrowser.enterSubdir("p0archive-sub")
               sc._poll(function () { return sc._has(NavState.entries, "p0archive-inner.txt") }, function (okSub) {
                 var wasInArchive = ArchiveState.inArchive
-                c.actionEngine.exitArchive()
+                c.archiveBrowser.exit()
                 var exitOk = ArchiveState.inArchive === false
                 done(okSub && wasInArchive && exitOk,
                   "sub-listing=" + okSub + " wasInArchive=" + wasInArchive + " exitOk=" + exitOk)
+              })
+            })
+          })
+        })
+
+        // ======================= ArchiveBrowser (P2.3 extraction) =======================
+
+        sc.add("ArchiveBrowser: nested subdirs, up() ascends one level at a time, exit() only at root", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var zipPath = sc.opsDir + "/p23-nested.zip"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p23nsrc && mkdir -p p23nsrc/a/b"
+            + " && echo c > p23nsrc/a/b/c.txt"
+            + " && (cd p23nsrc && zip -q -r " + sc._q(zipPath) + " .)"
+            + " && rm -rf p23nsrc"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.archiveBrowser.enter(zipPath)
+            sc._poll(function () { return sc._has(NavState.entries, "a") }, function (okRoot) {
+              if (!okRoot) { c.archiveBrowser.exit(); done(false, "archive root never listed 'a'"); return }
+              c.archiveBrowser.enterSubdir("a")
+              sc._poll(function () { return sc._has(NavState.entries, "b") && ArchiveState.archiveSubPath === "a" }, function (okA) {
+                if (!okA) { c.archiveBrowser.exit(); done(false, "didn't descend into 'a'"); return }
+                c.archiveBrowser.enterSubdir("b")
+                sc._poll(function () { return sc._has(NavState.entries, "c.txt") && ArchiveState.archiveSubPath === "a/b" }, function (okB) {
+                  if (!okB) { c.archiveBrowser.exit(); done(false, "didn't descend into 'a/b'"); return }
+                  // up() from a/b -> a (still inArchive, NOT exited)
+                  c.archiveBrowser.up()
+                  sc._poll(function () { return ArchiveState.archiveSubPath === "a" && ArchiveState.inArchive }, function (okUp1) {
+                    if (!okUp1) { c.archiveBrowser.exit(); done(false, "up() from a/b landed on '" + ArchiveState.archiveSubPath + "', inArchive=" + ArchiveState.inArchive); return }
+                    // up() from a -> root (still inArchive, NOT exited)
+                    c.archiveBrowser.up()
+                    sc._poll(function () { return ArchiveState.archiveSubPath === "" && ArchiveState.inArchive }, function (okUp2) {
+                      if (!okUp2) { c.archiveBrowser.exit(); done(false, "up() from 'a' landed on '" + ArchiveState.archiveSubPath + "', inArchive=" + ArchiveState.inArchive); return }
+                      // up() from the archive root -> real exit
+                      c.archiveBrowser.up()
+                      done(!ArchiveState.inArchive, "up()-chain ascended one level at a time and only exited at the true root, inArchive=" + ArchiveState.inArchive)
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+
+        sc.add("ArchiveBrowser: many entries, spaces, and Unicode filenames list correctly", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var zipPath = sc.opsDir + "/p23-many.zip"
+          var manyTouch = ""
+          for (var i = 0; i < 40; i++) manyTouch += "touch p23msrc/many-" + i + ".txt && "
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p23msrc && mkdir -p p23msrc"
+            + " && " + manyTouch
+            + "touch " + sc._q("p23msrc/file with spaces.txt")
+            + " && touch " + sc._q("p23msrc/café ñ 文件.txt")
+            + " && (cd p23msrc && zip -q -r " + sc._q(zipPath) + " .)"
+            + " && rm -rf p23msrc"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.archiveBrowser.enter(zipPath)
+            sc._poll(function () { return NavState.entries.length >= 42 }, function (listed) {
+              var hasSpaces = sc._has(NavState.entries, "file with spaces.txt")
+              var hasUnicode = sc._has(NavState.entries, "café ñ 文件.txt")
+              c.archiveBrowser.exit()
+              done(listed && hasSpaces && hasUnicode,
+                "entries=" + NavState.entries.length + " spaces=" + hasSpaces + " unicode=" + hasUnicode)
+            })
+          })
+        })
+
+        // NOT a test of "correct" empty-archive listing -- scripts/runtime/
+        // list-archive.sh has a PRE-EXISTING bug (unrelated to this
+        // extraction, not fixed here per its "ownership refactor, preserve
+        // behavior exactly" scope): a truly empty tar's `tar tf` prints the
+        // archive's own "./" root entry, which the script's parser turns
+        // into a bogus single "." directory row instead of zero entries
+        // (the zip case has an analogous issue: `unzip -Z1` prints "Empty
+        // zipfile." to stdout, which gets parsed as a fake filename). This
+        // test's job is only to confirm the EXTRACTION didn't change that
+        // pre-existing behavior, and that entering/exiting an empty archive
+        // still doesn't hang or crash -- not that the behavior is correct.
+        sc.add("ArchiveBrowser: empty archive doesn't crash or hang, exit() still clean (documents pre-existing list-archive.sh quirk)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var tarPath = sc.opsDir + "/p23-empty.tar"
+          var buildCmd = "rm -rf " + sc._q(sc.opsDir + "/p23esrc") + " && mkdir -p " + sc._q(sc.opsDir + "/p23esrc")
+            + " && tar cf " + sc._q(tarPath) + " -C " + sc._q(sc.opsDir + "/p23esrc") + " ."
+            + " && rm -rf " + sc._q(sc.opsDir + "/p23esrc")
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.archiveBrowser.enter(tarPath)
+            var timer = Qt.createQmlObject('import QtQuick; Timer { interval: 300; repeat: false }', sc)
+            timer.triggered.connect(function () {
+              var enteredOk = ArchiveState.inArchive === true
+              var boundedOk = NavState.entries.length <= 1 // known quirk: 0 or the bogus "."
+              c.archiveBrowser.exit()
+              var exitOk = ArchiveState.inArchive === false
+              done(enteredOk && boundedOk && exitOk,
+                "entered=" + enteredOk + " entries=" + NavState.entries.length + " exitOk=" + exitOk)
+            })
+            timer.start()
+          })
+        })
+
+        sc.add("ArchiveBrowser: invalid archive lists empty without crashing, exit() still clean", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var fakePath = sc.opsDir + "/p23-fake.zip"
+          sc._sh(["bash", "-c", "echo 'not a real zip' > " + sc._q(fakePath)], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed"); return }
+            c.archiveBrowser.enter(fakePath)
+            var timer = Qt.createQmlObject('import QtQuick; Timer { interval: 300; repeat: false }', sc)
+            timer.triggered.connect(function () {
+              var enteredOk = ArchiveState.inArchive === true
+              var emptyOk = NavState.entries.length === 0
+              c.archiveBrowser.exit()
+              var exitOk = ArchiveState.inArchive === false
+              done(enteredOk && emptyOk && exitOk,
+                "entered=" + enteredOk + " empty=" + emptyOk + " (entries=" + NavState.entries.length + ") exitOk=" + exitOk)
+            })
+            timer.start()
+          })
+        })
+
+        sc.add("ArchiveBrowser: real navigateTo() while inArchive force-exits silently (forceExit regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var zipPath = sc.opsDir + "/p23-forceexit.zip"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p23fsrc && mkdir p23fsrc && echo x > p23fsrc/inside.txt"
+            + " && (cd p23fsrc && zip -q -r " + sc._q(zipPath) + " .)"
+            + " && rm -rf p23fsrc"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.archiveBrowser.enter(zipPath)
+            sc._poll(function () { return sc._has(NavState.entries, "inside.txt") }, function (listed) {
+              if (!listed) { c.archiveBrowser.exit(); done(false, "archive never listed"); return }
+              // Real navigation elsewhere (a bookmark/tab/back-forward/edit-path
+              // all funnel through navController.navigateTo -> _goToPath, same
+              // as this call) -- must silently leave archive mode via
+              // forceExit(), WITHOUT re-listing the archive's real parent dir
+              // first (that would be wasted work _goToPath immediately discards).
+              c.navController.navigateTo(sc.opsDir)
+              sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, "p23-forceexit.zip") }, function (okNav) {
+                var exitedCleanly = ArchiveState.inArchive === false && ArchiveState.archivePath === "" && ArchiveState.archiveSubPath === ""
+                NavState.currentPath = prevPath
+                done(okNav && exitedCleanly,
+                  "navigated=" + okNav + " archiveState cleared=" + exitedCleanly)
+              })
+            })
+          })
+        })
+
+        sc.add("ArchiveBrowser: tab switch saves and restores archive position (TabOps regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var tabOps = c.controllers.tabOps
+          var prevPath = NavState.currentPath
+          var zipPath = sc.opsDir + "/p23-tabs.zip"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p23tsrc && mkdir -p p23tsrc/sub && echo x > p23tsrc/sub/deep.txt"
+            + " && (cd p23tsrc && zip -q -r " + sc._q(zipPath) + " .)"
+            + " && rm -rf p23tsrc"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.navController.navigateTo(sc.opsDir)
+            c.archiveBrowser.enter(zipPath)
+            sc._poll(function () { return sc._has(NavState.entries, "sub") }, function () {
+              c.archiveBrowser.enterSubdir("sub")
+              sc._poll(function () { return sc._has(NavState.entries, "deep.txt") }, function (listedSub) {
+                if (!listedSub) { c.archiveBrowser.exit(); NavState.currentPath = prevPath; done(false, "didn't descend into sub"); return }
+                var startTabs = TabsState.tabs.length
+                // openInNewTab (not newTab(), which doesn't call _goToPath and
+                // so doesn't force-exit archive mode on its own -- a separate,
+                // pre-existing TabOps nuance, not touched here) saves tab 0
+                // (mid-archive) for real via saveActiveTab(), then creates+
+                // activates tab 1 pointing at a real directory via _goToPath,
+                // which force-exits archive mode for the new tab.
+                tabOps.openInNewTab(sc.opsDir)
+                sc._poll(function () { return TabsState.activeTabIndex === 1 && !ArchiveState.inArchive }, function (okNewTab) {
+                  if (!okNewTab) { done(false, "openInNewTab() didn't land on a real (non-archive) tab 1"); return }
+                  tabOps.switchToTab(0) // must restore tab 0's saved archive position
+                  sc._poll(function () {
+                    return ArchiveState.inArchive && ArchiveState.archivePath === zipPath && ArchiveState.archiveSubPath === "sub"
+                      && sc._has(NavState.entries, "deep.txt")
+                  }, function (okRestore) {
+                    var restoredArchivePath = ArchiveState.archivePath
+                    var restoredSubPath = ArchiveState.archiveSubPath
+                    var restoredListed = sc._has(NavState.entries, "deep.txt")
+                    // Cleanup via the real close path: land on tab 1, close it
+                    // (closeTab() closes the ACTIVE tab), back to a single tab 0.
+                    tabOps.switchToTab(1)
+                    sc._poll(function () { return TabsState.activeTabIndex === 1 }, function () {
+                      tabOps.closeTab()
+                      sc._poll(function () { return TabsState.tabs.length === startTabs }, function () {
+                        c.archiveBrowser.exit()
+                        NavState.currentPath = prevPath
+                        done(okRestore, "restored archivePath match=" + (restoredArchivePath === zipPath)
+                          + " subPath=" + restoredSubPath + " listed=" + restoredListed)
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+
+        // P2.7 (2026-08-17): actionProc.onFinished's fallback error message
+        // used to be the stale "Couldn't restore from trash" for every
+        // shell-based action (rename/bulk-rename/chmod/compress/extract/
+        // make-link), not just restore (which no longer even goes through
+        // this handler -- see the fix's own comment in ActionEngine.qml).
+        // Backend.Notifier.notify() is a detached "notify-send" call with
+        // no return value/signal to assert the exact string against
+        // without faking notify-send via PATH injection -- deliberately
+        // not done here to avoid new test infrastructure for a one-line
+        // message fix. What IS verified, on the real composition root's
+        // real actionEngine: a command that fails with genuinely empty
+        // stderr ("false", exits 1, no output) runs the fallback branch
+        // to completion (busy state resets, no exception, onSuccess never
+        // fires) -- i.e. the exact branch the string lives in.
+        sc.add("Action failure with empty stderr resets busy state cleanly (fallback error message regression, P2.7)", function (done) {
+          var c = sc._content
+          if (!c || !c.actionEngine) { done(false, "no composition root"); return }
+          var successCalled = false
+          var started = c.actionEngine.runAction("false", "P2.7 regression: empty-stderr failure", function () { successCalled = true })
+          if (!started) { done(false, "runAction rejected (still busy from a previous test?)"); return }
+          sc._poll(function () { return !ActionState.actionBusy }, function (settled) {
+            done(settled && !successCalled, settled
+              ? (successCalled ? "onSuccess fired for a command that exited 1" : "failure branch ran to completion, busy state reset, onSuccess correctly not called")
+              : "actionBusy never cleared")
+          })
+        })
+
+        // ======================= Bulk rename (P2.7, 2026-08-17) =======================
+        // The P2.6 audit found bulk rename fully implemented but with zero
+        // regression coverage despite its own code comment calling it out
+        // as historically risky. All three below drive the REAL
+        // composition root (c.actionEngine.commitBulkRename(), the exact
+        // function dialogs/BulkRenamePanel.qml's "Rename" button calls),
+        // real NavState/SelectionState, real fixture files -- not a
+        // reimplementation of the rename logic.
+        sc.add("Bulk rename: pattern applies to multiple files, with undo/redo (P2.7)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var aName = "br-a-" + stamp + ".txt"
+          var bName = "br-b-" + stamp + ".txt"
+          var newA = "br-a-" + stamp + "-renamed.txt"
+          var newB = "br-b-" + stamp + "-renamed.txt"
+          var aPath = sc.opsDir + "/" + aName
+          var bPath = sc.opsDir + "/" + bName
+          function selectByNames(names) {
+            var entries = NavState.visibleEntries
+            var idx = []
+            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+            if (idx.length !== names.length) return false
+            SelectionState.selectedIndices = idx
+            return true
+          }
+          Backend.FileOperations.copy(sc.note, aPath)
+          sc._fileOp(done, function () {
+            Backend.FileOperations.copy(sc.note, bPath)
+            sc._fileOp(done, function () {
+              c.navController.navigateTo(sc.opsDir)
+              sc._poll(function () {
+                return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName)
+              }, function (listed) {
+                if (!listed) { NavState.currentPath = prevPath; done(false, "fixtures never appeared"); return }
+                if (!selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+                DialogsState.bulkRenamePattern = "{name}-renamed{ext}"
+                c.actionEngine.commitBulkRename()
+                sc._poll(function () {
+                  return sc._has(NavState.visibleEntries, newA) && sc._has(NavState.visibleEntries, newB) && !sc._has(NavState.visibleEntries, aName)
+                }, function (renamed) {
+                  if (!renamed) { NavState.currentPath = prevPath; done(false, "rename didn't apply"); return }
+                  c.actionEngine.undoLast()
+                  sc._poll(function () {
+                    return sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName) && !sc._has(NavState.visibleEntries, newA)
+                  }, function (undone) {
+                    if (!undone) { NavState.currentPath = prevPath; done(false, "undo didn't restore original names"); return }
+                    c.actionEngine.redoLast()
+                    sc._poll(function () {
+                      return sc._has(NavState.visibleEntries, newA) && sc._has(NavState.visibleEntries, newB)
+                    }, function (redone) {
+                      NavState.currentPath = prevPath
+                      done(redone, redone ? "2 files renamed via {name}/{ext} pattern, undo restored originals, redo re-applied" : "redo didn't re-apply")
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+
+        sc.add("Bulk rename: pattern producing an empty name renames nothing (P2.7 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var noExtName = "br-noext-" + stamp // no "." at all -> {ext} is guaranteed empty
+          var noExtPath = sc.opsDir + "/" + noExtName
+          function selectByNames(names) {
+            var entries = NavState.visibleEntries
+            var idx = []
+            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+            if (idx.length !== names.length) return false
+            SelectionState.selectedIndices = idx
+            return true
+          }
+          Backend.FileOperations.copy(sc.note, noExtPath)
+          sc._fileOp(done, function () {
+            c.navController.navigateTo(sc.opsDir)
+            sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, noExtName) }, function (listed) {
+              if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
+              if (!selectByNames([noExtName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              DialogsState.bulkRenamePattern = "{ext}"
+              c.actionEngine.commitBulkRename()
+              // The fix returns synchronously before touching the
+              // filesystem or ConflictState -- no async signal to wait
+              // on. A short settle timer (same technique as the P0-3
+              // symlink test) gives a REGRESSION (the old code, which
+              // would have started a real "mv -n -- x ''" via runAction)
+              // time to show up if it somehow did.
+              var settle = Qt.createQmlObject('import QtQuick; Timer { interval: 300; repeat: false }', sc)
+              settle.triggered.connect(function () {
+                var stillThere = sc._has(NavState.visibleEntries, noExtName)
+                var neverBusy = !ActionState.actionBusy
+                var noConflictOpened = !ConflictState.bulkRenameConflictOpen
+                NavState.currentPath = prevPath
+                var ok = stillThere && neverBusy && noConflictOpened
+                done(ok, ok ? "empty-name pattern renamed nothing, no filesystem call was made"
+                            : "stillThere=" + stillThere + " neverBusy=" + neverBusy + " noConflictOpened=" + noConflictOpened)
+              })
+              settle.start()
+            })
+          })
+        })
+
+        sc.add("Bulk rename: internal-duplicate collision opens the conflict dialog instead of renaming (P2.7)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var aName = "br-coll-a-" + stamp + ".txt"
+          var bName = "br-coll-b-" + stamp + ".txt"
+          var aPath = sc.opsDir + "/" + aName
+          var bPath = sc.opsDir + "/" + bName
+          function selectByNames(names) {
+            var entries = NavState.visibleEntries
+            var idx = []
+            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+            if (idx.length !== names.length) return false
+            SelectionState.selectedIndices = idx
+            return true
+          }
+          Backend.FileOperations.copy(sc.note, aPath)
+          sc._fileOp(done, function () {
+            Backend.FileOperations.copy(sc.note, bPath)
+            sc._fileOp(done, function () {
+              c.navController.navigateTo(sc.opsDir)
+              sc._poll(function () {
+                return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName)
+              }, function (listed) {
+                if (!listed) { NavState.currentPath = prevPath; done(false, "fixtures never appeared"); return }
+                if (!selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+                // Both selected files map to the exact same target name --
+                // an internal duplicate, not a filesystem collision.
+                DialogsState.bulkRenamePattern = "same-" + stamp + "{ext}"
+                c.actionEngine.commitBulkRename()
+                var opened = ConflictState.bulkRenameConflictOpen
+                var stillOriginal = sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName)
+                c.actionEngine.cancelPendingBulkRename()
+                var closedAfterCancel = !ConflictState.bulkRenameConflictOpen
+                NavState.currentPath = prevPath
+                var ok = opened && stillOriginal && closedAfterCancel
+                done(ok, ok ? "internal-duplicate collision opened the conflict dialog, nothing renamed, cancel closed it cleanly"
+                            : "opened=" + opened + " stillOriginal=" + stillOriginal + " closedAfterCancel=" + closedAfterCancel)
+              })
+            })
+          })
+        })
+
+        // ======================= Chmod + undo (P2.7, 2026-08-17) =======================
+        // The P2.6 audit found chmod's commit+undo path with zero
+        // dedicated coverage beyond an ARG_MAX-scale test. Drives the
+        // REAL production path: controllers.propertiesLoader.startChmod()
+        // (the exact function the Properties/chmod UI calls, which reads
+        // ACTUAL permissions via Backend.FileOperations.octalModes() and
+        // populates ChmodState.chmodOriginalModes -- undo's source of
+        // truth), then c.actionEngine.commitChmod() (the exact function
+        // dialogs/ChmodPanel.qml's confirm button calls).
+        sc.add("Chmod: commit changes permissions, undo restores the original mode (P2.7)", function (done) {
+          var c = sc._content
+          if (!c || !c.controllers || !c.controllers.propertiesLoader) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var name = "chmod-" + stamp + ".txt"
+          var path = sc.opsDir + "/" + name
+          Backend.FileOperations.copy(sc.note, path)
+          sc._fileOp(done, function () {
+            var before = Backend.FileOperations.octalModes([path])[0]
+            if (!before) { done(false, "couldn't read the fixture's starting mode"); return }
+            // Pick a target mode that's guaranteed different from
+            // whatever umask gave the fixture (600 vs 400 covers both
+            // common cases; if the fixture somehow already is 600, fall
+            // back to 400).
+            var target = before === "600" ? "400" : "600"
+            NavState.currentPath = sc.opsDir
+            c.controllers.propertiesLoader.startChmod([{ name: name, type: "file" }])
+            if (ChmodState.chmodOriginalModes[name] !== before) {
+              NavState.currentPath = prevPath
+              done(false, "startChmod() read a different mode (" + ChmodState.chmodOriginalModes[name] + ") than expected (" + before + ")")
+              return
+            }
+            c.actionEngine.commitChmod(target)
+            sc._poll(function () { return Backend.FileOperations.octalModes([path])[0] === target }, function (changed) {
+              if (!changed) { NavState.currentPath = prevPath; done(false, "chmod never applied (still " + Backend.FileOperations.octalModes([path])[0] + ")"); return }
+              c.actionEngine.undoLast()
+              sc._poll(function () { return Backend.FileOperations.octalModes([path])[0] === before }, function (restored) {
+                NavState.currentPath = prevPath
+                done(restored, restored
+                  ? ("chmod " + before + " -> " + target + ", undo restored " + before)
+                  : ("undo didn't restore the original mode (now " + Backend.FileOperations.octalModes([path])[0] + ", expected " + before + ")"))
+              })
+            })
+          })
+        })
+
+        // ======================= Compress + extract (P2.7, 2026-08-17) =======================
+        // The P2.6 audit found compress/extract with only narrow,
+        // security-specific coverage (BUG-05's tar-dash-prefix test, the
+        // P0-3 openFileInArchive symlink test) -- nothing exercising
+        // ordinary successful compress/extract. Drives the real
+        // c.actionEngine.compressSelected()/extractHere() (the exact
+        // functions the context menu / command palette call), real zip,
+        // real content comparison after the round-trip -- not just
+        // "a file with this name exists."
+        sc.add("Compress + extract round-trip: zip preserves content (P2.7)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var srcDir = sc.opsDir + "/cx-src-" + stamp
+          var outDir = sc.opsDir + "/cx-out-" + stamp
+          var fname = "payload.txt"
+          var srcPath = srcDir + "/" + fname
+          function selectByNames(names) {
+            var entries = NavState.visibleEntries
+            var idx = []
+            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+            if (idx.length !== names.length) return false
+            SelectionState.selectedIndices = idx
+            return true
+          }
+          sc._seqOps([
+            function () { Backend.FileOperations.mkdir(srcDir) },
+            function () { Backend.FileOperations.mkdir(outDir) },
+            function () { Backend.FileOperations.copy(sc.note, srcPath) }
+          ], done, function () {
+            c.navController.navigateTo(srcDir)
+            sc._poll(function () { return NavState.currentPath === srcDir && sc._has(NavState.visibleEntries, fname) }, function (listed) {
+              if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
+              if (!selectByNames([fname])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              c.actionEngine.compressSelected()
+              var zipName = fname + ".zip"
+              var zipPath = srcDir + "/" + zipName
+              // Poll the REAL file on disk (Backend.FileOperations.totalSize,
+              // a native stat) rather than NavState.visibleEntries: the
+              // directory-listing model can transiently show stale/mid-
+              // refresh content (this test's first version polled the
+              // listing and read a 0-byte extracted file -- the listing's
+              // "payload.txt" match was actually a stale echo of srcDir's
+              // OWN same-named fixture, not outDir's real, not-yet-written
+              // one; a native size check can't be fooled by that).
+              sc._poll(function () { return Backend.FileOperations.totalSize([zipPath]) > 0 }, function (compressed) {
+                if (!compressed) { NavState.currentPath = prevPath; done(false, "compress never produced " + zipName); return }
+                var zipInOut = outDir + "/" + zipName
+                sc._fileOp(done, function () {
+                  c.navController.navigateTo(outDir)
+                  sc._poll(function () { return Backend.FileOperations.totalSize([zipInOut]) > 0 }, function (copiedOut) {
+                    if (!copiedOut) { NavState.currentPath = prevPath; done(false, "zip copy never appeared in outDir"); return }
+                    c.actionEngine.extractHere({ name: zipName, type: "file" })
+                    var extractedPath = outDir + "/" + fname
+                    sc._poll(function () { return Backend.FileOperations.totalSize([extractedPath]) > 0 }, function (extracted) {
+                      NavState.currentPath = prevPath
+                      if (!extracted) { done(false, "extract never produced " + fname); return }
+                      sc._sh(["bash", "-c", "cat -- " + sc._q(sc.note)], function (r1) {
+                        sc._sh(["bash", "-c", "cat -- " + sc._q(extractedPath)], function (r2) {
+                          var ok = r1.exitCode === 0 && r2.exitCode === 0 && r1.stdout === r2.stdout
+                          done(ok, ok ? "compressed, copied, extracted -- content preserved byte for byte"
+                                      : "content mismatch after round-trip (orig " + JSON.stringify(r1.stdout).slice(0, 40) + " vs extracted " + JSON.stringify(r2.stdout).slice(0, 40) + ")")
+                        })
+                      })
+                    })
+                  })
+                })
+                Backend.FileOperations.copy(zipPath, zipInOut)
               })
             })
           })

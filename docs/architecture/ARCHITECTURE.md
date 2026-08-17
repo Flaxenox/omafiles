@@ -43,10 +43,15 @@ backend/                         Native C++ Qt6 plugin (Omafiles.Backend, one sh
   MimeResolver.*, NetworkResolver.*, NetworkMounts.*, TerminalResolver.*, PathCompleter.*
   ProcessRunner.*, ProcessWatcher.*, Detached.*, Env.*, Notifier.*, JsonStore.*, UDisksWatcher.*, FolderCounter.*, GioCompat.h
 logic/                           Orchestration controllers (one shared owner: core/ControllerRegistry.qml)
-  ActionEngine.qml                File actions (copy/move/delete/trash/rename/chmod/link/archive) + undo/redo + batch/progress
+  ActionEngine.qml                File actions (copy/move/delete/trash/rename/chmod/link) + undo/redo + batch/progress
   NavigationController.qml        Directory navigation, history, tab restore glue
+  ArchiveBrowser.qml              Archive browsing (list/enter/open inside .zip/.7z/.rar/tar without
+                                   extracting) -- extracted from ActionEngine.qml, P2.3, 2026-08-17
   DirLister.qml                   Thin adapter over Backend.DirectoryModel (stable logic/ API)
-  KeyboardShortcuts.qml            Keys.onPressed routing for the active panel (instantiated in panels/ActiveFileList.qml)
+  KeyboardShortcuts.qml            Keys.onPressed routing for the active panel (instantiated in panels/ActiveFileList.qml);
+                                   resolves event -> action id via KeybindingResolver, then dispatches
+  KeybindingResolver.qml           Parses ~/.config/omafiles/keybindings.toml, resolves key events against
+                                   state/KeyboardDefaults.qml + overrides, conflict/validation warnings (P2.5, 2026-08-17)
   SearchOps.qml, SearchBackend.qml Live-filter + indexed/recursive deep search coordination
   TabOps.qml                      Tab lifecycle, per-tab scroll/preview/archive state restore
   MountActions.qml                Removable device + network mount actions
@@ -55,11 +60,11 @@ logic/                           Orchestration controllers (one shared owner: co
   PropertiesLoader.qml            Properties panel data (size/permissions/owner)
   CustomActions.qml               User-defined custom actions
 state/                            Reactive state singletons (pragma Singleton, module Omafiles.State)
-  26 singletons: NavState, TabsState, SelectionState, SortState, UndoState, ClipboardState,
+  27 singletons: NavState, TabsState, SelectionState, SortState, UndoState, ClipboardState,
   ConflictState, ArchiveState, TrashState, MountsState, DialogsState, ActionState,
   PreviewState/PreviewContentState, PropertiesState, ChmodState, EditModeState, ContextMenuState,
   DropHoverState, BookmarksState, FolderCountState, VideoThumbState, PaletteState, PickerState,
-  FileTypeConfig, Paths
+  FileTypeConfig, Paths, KeyboardDefaults
 panels/                          Presentation: ActiveFileList, BackgroundPanel, Sidebar (+3 sub-panels), PreviewPanel, SearchBar, row delegates
 dialogs/                         Presentation: BulkRenamePanel, ChmodPanel, CommandPalettePanel, ConflictResolveDialog,
                                   ConnectServer, ContextMenuPanel, OpenWithPanel, PropertiesPanel, ShortcutsHelp
@@ -68,7 +73,7 @@ shared/                          Reusable visual atoms/utilities: BreadcrumbSegm
 scripts/runtime/                 Justified external-system adapters (see contract below): list-archive.sh,
                                   list-mounts.sh, mount-iso.sh, search-index.sh, thumbnail-video.sh
 scripts/                         install-integrations.sh, open-path.sh, dbus-*.py (D-Bus portal/FileManager1 services)
-src/selfcheck/                   Headless regression suite (--selfcheck), 95 checks as of this writing
+src/selfcheck/                   Headless regression suite (--selfcheck), 124 checks as of this writing
 ```
 
 ---
@@ -267,8 +272,10 @@ Do not add a new script here for something a `QFileInfo`/`QMimeDatabase`/
 
 ## Phase 43: what actually happened (and the actual lesson)
 
-`logic/ActionEngine.qml` is 1200+ lines. Before drawing a conclusion from
-that number alone, the actual history matters:
+`logic/ActionEngine.qml` is 1186 lines (down from ~1258 after the P2.3
+archive-browsing extraction below; was 1200+ when this section was first
+written). Before drawing a conclusion from that number alone, the actual
+history matters:
 
 - The merge (`37f3f318`, 2026-08-15) folded 11 previously-separate,
   clearly-named files into one, as an unreviewed "chore" commit with no
@@ -299,6 +306,18 @@ that number alone, the actual history matters:
   or merge of `logic/` needs the same kind of explicit, written, independent
   risk review Phase 41 got and the `ActionEngine` merge didn't — see
   `docs/audits/MONOLITH_AUDIT.md` for the full per-file verdicts.
+- **This review happened once, concretely: the P2.3 archive-browsing
+  extraction (2026-08-17, see `docs/audits/P2_1_ACTIONENGINE_SHARED_AUDIT.md`
+  and `docs/audits/P2_3_ARCHIVE_EXTRACTION_REPORT.md`).** Archive browsing
+  was identified as the one block in `ActionEngine.qml` with a genuinely
+  independent lifecycle (never touched `runAction()`/`pushUndo()`/the
+  native-batch machinery) and moved to `logic/ArchiveBrowser.qml`. Everything
+  else stayed — delete/clipboard/rename/chmod/drag-drop/compress/extract all
+  funnel through the same two shared execution primitives that must stay
+  co-located for the mutual-exclusion guard state (`actionProc.busy`/
+  `nativeBusy`) to mean anything. This is the concrete example of "a future
+  split done with the discipline Phase 43 skipped" the paragraph above asks
+  for, not a precedent for extracting anything else without the same review.
 
 ### Why panels/ do not own business operations
 

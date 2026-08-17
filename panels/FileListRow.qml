@@ -52,6 +52,18 @@ CursorSurface {
   accent: Color.accent
   hasCursor: mouseArea.containsMouse
   current: SelectionState.isSelected(index) || DropHoverState.dropHoverIndex === index
+  // Alternating row background (Debian tester feedback, deferred at the
+  // P2.1 audit until CursorSurface had a real opt-in extension point --
+  // P2.4, 2026-08-17). `index` is already the final on-screen row order:
+  // NavState.visibleEntries (this ListView's model) is a plain,
+  // already-sorted-and-filtered array, not a proxy model, so index 0/1/2...
+  // IS display order 0/1/2... with no remapping needed. Lowest priority in
+  // CursorSurface's own color ternary (hasCursor/current always win), so
+  // hover, selection, and drop-hover (folded into `current` above) are
+  // unaffected. Same subtle "resting state" alpha (Style.normalFillFor,
+  // 4% by default, theme-tunable) already used everywhere else in the app
+  // for an idle fill -- no new color/token introduced.
+  idleFill: index % 2 === 0 ? "transparent" : Style.normalFillFor(foreground, accent)
 
   DropArea {
     // Only folders are a valid destination for a drop --

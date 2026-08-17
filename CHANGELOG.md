@@ -1,5 +1,49 @@
 # OmaFiles Changelog
 
+## [1.0.0] - 2026-08-17
+
+A forensic-audit-driven hardening release on top of v0.9.0's architecture: a full concurrency/security pass (verified with AddressSanitizer, not just code review), a round of architectural cleanup that kept the codebase's size in check instead of letting it grow, a new custom-keybindings system, and a much wider automated regression suite. No new user-facing features beyond custom keybindings and alternating row colors — this release is about correctness and stability on the foundation v0.9.0 already built.
+
+### Filesystem operations & concurrency safety
+
+* **Use-after-free fixes in `FileOperations`, `SearchWorker`, and `ThumbnailProvider`**, each reproduced for real with AddressSanitizer against a standalone repro binary (not just inferred from code review), fixed to match the `Life`+mutex discipline `DirectoryModel` already used correctly, then re-verified clean with the same ASan binary across repeated passes.
+* **Per-operation cancellation tokens:** `FileOperations` used to reuse a single shared cancellation flag across every copy/move/remove/trash/restore call. Two operations overlapping in time could silently interfere with each other's cancellation state. Each call now gets its own independent token; re-verified with a targeted ASan stress test (overlapping copy + cancel + immediate second copy, 300 operations across 4 passes, zero violations).
+* **Data-integrity and packaging fixes** from the forensic audit pass, including a missing `qt6-webengine` build dependency (`Qt6::Pdf` failed to configure without it) and a symlink-at-cache-path vulnerability in archive file opening (a pre-planted symlink could have redirected an extracted file's write).
+
+### Archive handling
+
+* **`ArchiveBrowser`** extracted from the `ActionEngine` monolith into its own component — the one piece of that file with a genuinely independent lifecycle (browsing vs. mutating), identified by an explicit architectural audit rather than split "because it was large."
+* Archive-open path hardened against the symlink vulnerability above; dedicated regression coverage added (none existed before).
+
+### Custom keybindings
+
+* Every keyboard shortcut (except five fixed OS-convention ones: Ctrl+C/X/V/Z, Ctrl+Tab) can now be remapped via `~/.config/omafiles/keybindings.toml` — built specifically for alternative keyboard layouts (Colemak, Dvorak, etc.) where the default `hjkl`-style navigation lands on inconvenient keys.
+* One authoritative source of truth (`state/KeyboardDefaults.qml`) now drives the actual dispatch, the in-app `?` help overlay, and the README's shortcut table — replacing three independently-hand-maintained copies that had already drifted out of sync with each other.
+* Deterministic conflict handling: a colliding or invalid entry in the config falls back to its default with a warning, never leaves an ambiguous binding.
+
+### Architectural cleanup
+
+* `shared/`'s two known contract violations (`MarqueeCatcher.qml`, `PathCompletionField.qml` importing `state`/`Backend` directly, against this project's own layering rules) fixed — `shared/` is now fully compliant.
+* `ActionEngine.qml` audited end to end for further extraction candidates; kept intentionally intact everywhere except the archive-browsing split above, since everything else funnels through one of two shared execution primitives (shell dispatch, native batch dispatch) that must stay co-located.
+* Stale comments referencing a pre-Phase-43 file split that no longer exists (`ConflictActions.qml` and five other dissolved filenames) corrected throughout `logic/` and `state/`.
+* Alternating row background colors added as an opt-in, zero-behavior-change-by-default property on the shared `CursorSurface` component, applied only to the two file-list row delegates.
+
+### Bug fixes
+
+* **Bulk rename** could produce an empty target filename from a pattern like `{ext}` on an extensionless file (e.g. `mv -n -- file ''`), reached through a misleading "conflict" dialog rather than a clear error. Now validated upfront with a plain rejection notification.
+* **A stale, misleading error message** ("Couldn't restore from trash") was shown for *any* failing shell-based action — rename, bulk rename, chmod, compress, extract, make-link — a leftover from before that handler was shared across all of them. Now reports a generic, accurate failure message.
+* **The default-file-manager self-registration** (`org.freedesktop.FileManager1` / `inode/directory` `xdg-mime` setup) had been silently broken for several days due to a wrong internal script path — `Backend.Detached.run()` on a missing path fails with no error, no crash, and no visible symptom, so this went undetected through an entire architectural audit pass until the final release audit caught it directly.
+
+### Regression coverage
+
+* The headless `--selfcheck` suite grew from 85 (v0.9.0) to **124**, adding dedicated coverage for: archive browsing, alternating rows, the full custom-keybindings resolver (defaults, overrides, conflicts, invalid config, text-input protection, help-overlay accuracy), bulk rename (pattern substitution, empty-name rejection, collision handling, undo/redo), chmod commit+undo, and a compress→extract round-trip with byte-for-byte content verification.
+* A latent race in the selfcheck harness itself (not production code) was found and fixed: a timed-out test's stale signal handler could remain connected to a shared backend singleton and misfire on a later, unrelated test's completion signal under real I/O contention — root-caused by direct inspection, not just reproduction, and fixed by disconnecting stale handlers on timeout.
+
+### Packaging
+
+* `zip` and `unzip` added to the Arch package's runtime dependencies — Compress always produces a `.zip` and Extract needs `unzip` for that same default format; unlike the already-documented optional tools, there's no graceful fallback for either. `p7zip`/`unrar` remain optional (only needed for `.7z`/`.rar`, documented in the README).
+* Production-path packaging verified end to end this release: built with the exact install paths `packaging/arch/PKGBUILD` uses, staged to an isolated `DESTDIR`, and the staged binary itself launched and passed the full selfcheck suite from that staged location — not just "the files exist in the right place."
+
 ## [0.9.0] - 2026-08-15
 
 OmaFiles v0.9.0 stable is the culmination of the standalone Qt6 generation. This release completely transitions OmaFiles from a shell-integrated prototype into a high-performance native desktop application with zero external shell dependencies in its hot paths.

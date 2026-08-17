@@ -185,6 +185,7 @@ Item {
 
   readonly property alias controllers: registry
   readonly property alias actionEngine: registry.actionEngine
+  readonly property alias archiveBrowser: registry.archiveBrowser
   readonly property alias navController: registry.navController
   readonly property alias commandFacade: commandFacade
   readonly property alias dialogLayer: dialogLayer
@@ -199,6 +200,7 @@ Item {
     customActions: registry.customActions
     navController: registry.navController
     actionEngine: registry.actionEngine
+    archiveBrowser: registry.archiveBrowser
     openProc: registry.openProc
   }
 

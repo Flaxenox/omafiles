@@ -33,6 +33,12 @@ CursorSurface {
   // 1/0.72 cancels exactly the parent's opacity only while this
   // specific row has the cursor over it.
   opacity: hasCursor ? 1 / 0.72 : 1
+  // Alternating row background (P2.4, 2026-08-17) -- same as
+  // panels/FileListRow.qml, see its comment for the full rationale.
+  // Deliberately NOT given the hasCursor-style opacity compensation above:
+  // the idle stripe should dim along with the rest of this
+  // not-the-active-panel row (uniform 0.72), not stand out from it.
+  idleFill: index % 2 === 0 ? "transparent" : Style.normalFillFor(foreground, accent)
 
   DropArea {
     visible: modelData.type === "dir"

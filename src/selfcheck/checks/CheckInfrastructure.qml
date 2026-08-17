@@ -104,5 +104,25 @@ QtObject {
           // effect and that the core started up complete.
           done(sc._content !== null, "AppBindings instantiated without self-registration")
         })
+
+        // Final-release-audit regression (2026-08-17): AppBindings.qml's
+        // self-registration call had a wrong path
+        // ("/scripts/runtime/scripts/install-integrations.sh", which
+        // never existed -- the real file is at "/scripts/install-
+        // integrations.sh") for 3 days (since commit 37f3f318,
+        // 2026-08-15) with zero detection, because Backend.Detached.run()
+        // on a missing path fails completely silently (fire-and-forget,
+        // no signal, no crash) and the script is idempotent-and-
+        // invisible when it DOES run -- a broken run looked identical to
+        // a successful no-op to any manual tester. This doesn't execute
+        // the script (it mutates real xdg-mime/D-Bus defaults, not
+        // appropriate to run from a selfcheck) -- it only confirms the
+        // exact path AppBindings.qml constructs resolves to a real file,
+        // which is the one thing that silently regressed.
+        sc.add("install-integrations.sh path resolves to a real file (regression, self-registration)", function (done) {
+          var path = Paths.resourceDir + "/scripts/install-integrations.sh"
+          var exists = Backend.FileOperations.existingPaths([path]).length > 0
+          done(exists, exists ? "path resolves correctly: " + path : "MISSING: " + path + " -- self-registration would silently no-op")
+        })
   }
 }

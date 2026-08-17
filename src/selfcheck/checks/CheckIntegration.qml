@@ -177,6 +177,13 @@ QtObject {
         sc.add("Keyboard shortcut integration test (BUG-06)", function (done) {
           var kbdComp = Qt.createComponent("../../../logic/KeyboardShortcuts.qml")
           if (kbdComp.status !== Component.Ready) { done(false, "kbd comp not ready: " + kbdComp.errorString()); return }
+          // P2.5 (2026-08-17): handlePress() now resolves event -> action id
+          // via hostControllers.keybindingResolver before dispatching, so the
+          // stub needs a real resolver, not just a real actionEngine -- an
+          // isolated JS object literal can't replicate actionFor()'s logic.
+          var resolverComp = Qt.createComponent("../../../logic/KeybindingResolver.qml")
+          if (resolverComp.status !== Component.Ready) { done(false, "resolver comp not ready: " + resolverComp.errorString()); return }
+          var resolver = resolverComp.createObject(sc)
           var called = {}
           var stubEngine = {
             startRename: function() { called.F2 = true },
@@ -186,7 +193,7 @@ QtObject {
             paste: function() { called.CtrlV = true }
           }
           var kbd = kbdComp.createObject(sc, {
-            "hostControllers": { "actionEngine": stubEngine, "navController": {} },
+            "hostControllers": { "actionEngine": stubEngine, "navController": {}, "keybindingResolver": resolver },
             "hostRoot": {}
           })
           var ev = function(k, mod) { return { "key": k, "modifiers": mod || Qt.NoModifier, "accepted": false } }
@@ -207,6 +214,7 @@ QtObject {
             terminalShortcutError = String(e)
           }
           kbd.destroy()
+          resolver.destroy()
 
           // Also checked against the REAL production instance (nested under
           // panels/ActiveFileList.qml, reached here through
@@ -282,14 +290,14 @@ QtObject {
               + " && ln -s -- " + sc._q(victim) + " " + sc._q(out)
             sc._sh(["bash", "-c", plantCmd], function (plantResult) {
               if (plantResult.exitCode !== 0) { done(false, "couldn't plant symlink: " + plantResult.stderr); return }
-              c.actionEngine.enterArchive(zipPath)
-              c.actionEngine.openFileInArchive({ name: "secret.txt", type: "file" })
+              c.archiveBrowser.enter(zipPath)
+              c.archiveBrowser.openFile({ name: "secret.txt", type: "file" })
               // openFileInArchive is fire-and-forget (its own internal
               // ProcessRunner isn't exposed to the test); a tiny single-file
               // extraction settles in a few ms, 500ms is a generous margin.
               var timeout = Qt.createQmlObject('import QtQuick; Timer { interval: 500; repeat: false }', sc)
               timeout.triggered.connect(function () {
-                c.actionEngine.exitArchive()
+                c.archiveBrowser.exit()
                 sc._sh(["bash", "-c", "cat -- " + sc._q(victim)], function (victimResult) {
                   var victimIntact = String(victimResult.stdout).trim() === "VICTIM_UNTOUCHED"
                   done(victimIntact, victimIntact

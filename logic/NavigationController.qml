@@ -14,6 +14,7 @@ Item {
   property Item root: null
   property Item list: null
   property Item actionEngine: null
+  property Item archiveBrowser: null
   property Item mountOps: null
 
   // ---------- Directory refresh / watching ----------
@@ -22,7 +23,7 @@ Item {
     // toggle, the palette's "Refresh", the onExited of the file
     // actions...) reloads the correct thing without having to remember to
     // check inArchive at every site.
-    if (ArchiveState.inArchive) { actionEngine.refreshArchiveListing(); return }
+    if (ArchiveState.inArchive) { archiveBrowser.refresh(); return }
     dirLister.list(NavState.currentPath)
   }
 
@@ -148,7 +149,7 @@ Item {
     // archive" mode -- currentPath never changes while browsing INSIDE
     // the archive (see enter()/goUp()/inArchive), so if this
     // runs it means the user went somewhere else for real.
-    if (ArchiveState.inArchive) { ArchiveState.inArchive = false; ArchiveState.archivePath = ""; ArchiveState.archiveSubPath = "" }
+    if (ArchiveState.inArchive) archiveBrowser.forceExit()
     NavState.currentPath = path
     SelectionState.selectOnly(-1)
     EditModeState.renamingIndex = -1
@@ -248,17 +249,16 @@ Item {
     }
     if (ArchiveState.inArchive) {
       if (entry.type === "dir") {
-        ArchiveState.archiveSubPath = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-        actionEngine.refreshArchiveListing()
+        archiveBrowser.enterSubdir(entry.name)
       } else {
-        actionEngine.openFileInArchive(entry)
+        archiveBrowser.openFile(entry)
       }
       return
     }
     if (entry.type === "dir") {
       navigateTo(Utils.joinPath(NavState.currentPath, entry.name))
-    } else if (actionEngine.isArchive(entry)) {
-      actionEngine.enterArchive(Utils.joinPath(NavState.currentPath, entry.name))
+    } else if (archiveBrowser.isArchive(entry)) {
+      archiveBrowser.enter(Utils.joinPath(NavState.currentPath, entry.name))
     } else if (actionEngine.isIso(entry)) {
       mountOps.mountIso(entry)
     } else {
@@ -273,13 +273,7 @@ Item {
   }
 
   function goUp() {
-    if (ArchiveState.inArchive) {
-      if (ArchiveState.archiveSubPath === "") { actionEngine.exitArchive(); return }
-      var slash = ArchiveState.archiveSubPath.lastIndexOf("/")
-      ArchiveState.archiveSubPath = slash > 0 ? ArchiveState.archiveSubPath.substring(0, slash) : ""
-      actionEngine.refreshArchiveListing()
-      return
-    }
+    if (ArchiveState.inArchive) { archiveBrowser.up(); return }
     if (NavState.currentPath === "/") return
     var idx = NavState.currentPath.lastIndexOf("/")
     navigateTo(idx > 0 ? NavState.currentPath.substring(0, idx) : "/")

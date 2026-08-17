@@ -111,9 +111,10 @@ QtObject {
         // Canonical cache hash: Backend.ThumbnailProvider.cacheKey is the
         // ONLY scheme (SHA-1 hex), shared by the image/PDF thumbnails
         // (internal to request()), the video ones (VideoThumbnails) and the
-        // extraction cache (ArchiveActions). It's anchored against the known SHA-1 of a
-        // fixed entry so that any scheme change (which would invalidate the whole
-        // on-disk cache) breaks the harness instead of going unnoticed.
+        // extraction cache (logic/ArchiveBrowser.qml's openFile()). It's
+        // anchored against the known SHA-1 of a fixed entry so that any
+        // scheme change (which would invalidate the whole on-disk cache)
+        // breaks the harness instead of going unnoticed.
         sc.add("Thumbnail cache key is canonical SHA-1 (B1)", function (done) {
           var k = Backend.ThumbnailProvider.cacheKey("omafiles-b1|42")
           var expected = "244adfd729888c0a4499250ebb2e9f41d7243600" // sha1("omafiles-b1|42")

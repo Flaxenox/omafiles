@@ -14,7 +14,7 @@ Item {
   // The main ListView (id "list" in core) -- save/restore
   // scroll when switching tabs.
   property Item list: null
-  property Item actionEngine: null
+  property Item archiveBrowser: null
   property Item previewLoader: null
 
   // Closes the tab/panel at `index`, whether or not it is the active one (the × of each
@@ -127,10 +127,7 @@ Item {
   // _restoreTabPreview/_restoreTabScroll.
   function _restoreTabArchive(tab) {
     if (tab.inArchive && tab.archivePath) {
-      ArchiveState.inArchive = true
-      ArchiveState.archivePath = tab.archivePath
-      ArchiveState.archiveSubPath = tab.archiveSubPath || ""
-      actionEngine.refreshArchiveListing()
+      archiveBrowser.restore(tab.archivePath, tab.archiveSubPath)
     }
   }
 

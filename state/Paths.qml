@@ -46,6 +46,10 @@ QtObject {
   // doesn't write it -- the user edits it by hand; the migration from the old
     readonly property string actionsFile: configDir + "/actions.toml"
 
+  // User-defined keyboard rebindings (P2.5, 2026-08-17). Same contract as
+  // actionsFile: optional, hand-edited, never written by the app.
+  readonly property string keybindingsFile: configDir + "/keybindings.toml"
+
   // Persistent state (JsonStore reads/writes them via Persistence).
   readonly property string bookmarksFile: stateDir + "/bookmarks.json"
   readonly property string recentFile: stateDir + "/recent.json"
