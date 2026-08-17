@@ -18,4 +18,17 @@ QtObject {
   // ProcessRunner.finished already carries `cancelled` in the result, see
   // Omafiles.Backend.ProcessRunner.)
   property var _actionOnSuccess: null
+
+  // Names awaiting the delete/trash ConfirmDialog -- set by
+  // ActionEngine.requestDelete(), read and cleared by
+  // ActionEngine.confirmDelete() and by core/DialogLayer.qml's
+  // deleteConfirm (opened/message/onCanceled). Previously lived as an
+  // untyped `root.pendingDeleteNames` on core/OmafilesContent.qml, the one
+  // outlier among ActionEngine's pending-confirmation state that wasn't
+  // migrated here with the rest (architectural audit 2026-08-17,
+  // P2.1 follow-up) -- every sibling "is a confirm dialog open" check in
+  // KeyboardShortcuts.qml/OmafilesContent.qml already reads a state/
+  // singleton directly (ConflictState.*ConflictOpen etc.), this was the
+  // only one going through `root` instead.
+  property var pendingDeleteNames: []
 }

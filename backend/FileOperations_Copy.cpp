@@ -5,12 +5,11 @@
 using namespace FileOpsPrivate;
 void FileOperations::copy(const QString &source, const QString &destination,
                           bool overwrite) {
-  m_cancelled->store(false);
-  // `cancelled` is a shared_ptr COPY captured by value below, not `this` --
-  // the job lambda below is entirely `this`-free (P0 concurrency audit,
-  // forensic audit 2026-08-16): see the comment on run()/ProgressFn in
-  // FileOperations.h for why that matters.
-  auto cancelled = m_cancelled;
+  // `cancelled` is a fresh, operation-local shared_ptr copy captured by
+  // value below, not `this` and not shared with any other operation -- see
+  // beginCancelToken()'s doc comment in FileOperations.h (P1-4) and the
+  // ProgressFn comment on run() (P0) for why both matter.
+  auto cancelled = beginCancelToken();
   run(QStringLiteral("copy"), source,
       [source, destination, overwrite, cancelled](const auto &progressFn) -> Result {
         if (!QFileInfo::exists(source))

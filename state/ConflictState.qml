@@ -3,10 +3,11 @@ import QtQuick
 
 // State of the six conflict dialogs (rename/paste/extract/
 // compress/bulk-rename/drop) -- fourth singleton of the
-// state/ layer, same pattern validated with Selection/Clipboard/Undo. The logic
-// that decides when to open them and what to do on confirm stays in
-// logic/ConflictActions.qml (and in RenameOps/ClipboardOps/ArchiveActions/
-// FileOps/DragDropOps for the conflict-free case).
+// state/ layer, same pattern validated with Selection/Clipboard/Undo. The
+// logic that decides when to open them and what to do on confirm lives in
+// logic/ActionEngine.qml (corrected 2026-08-17, P2.1 follow-up -- this
+// used to name six separate *Ops.qml/ConflictActions.qml files, all
+// folded into ActionEngine.qml on 2026-08-15).
 QtObject {
   property var pendingRename: null // { oldPath, newPath }
   property bool renameConflictOpen: false

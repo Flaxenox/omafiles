@@ -33,14 +33,22 @@ void TerminalResolver::launchTerminal(const QString &directory) {
   for (const QString &term : candidates) {
     QString exe = QStandardPaths::findExecutable(term);
     if (!exe.isEmpty()) {
+      // Same guard copyText() already uses below: without it, every
+      // selfcheck run of the Shift+Return ("open terminal here") shortcut
+      // regression test opened a REAL terminal window on the developer's
+      // desktop (test-hygiene finding, architectural audit 2026-08-17 --
+      // same class of bug as NavigationController::openWithDefault()'s
+      // identical fix earlier the same day).
+      if (qEnvironmentVariable("OMAFILES_SELFCHECK") == "1") return;
+
       QProcess process;
       process.setProgram(exe);
       process.setWorkingDirectory(directory);
-      
+
       if (term == QLatin1String("gnome-terminal")) {
         process.setArguments({QStringLiteral("--working-directory"), directory});
       }
-      
+
       process.startDetached();
       return;
     }

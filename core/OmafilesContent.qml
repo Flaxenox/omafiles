@@ -22,13 +22,12 @@ Item {
   property real _pendingScrollOffset: 0
   property real measuredRowHeight: 0
   property string actionBusyDots: ""
-  property var pendingDeleteNames: []
   property bool gPending: false
 
   readonly property bool hasPendingEdit: EditModeState.renamingIndex >= 0 || EditModeState.creatingFolder || EditModeState.creatingFile || EditModeState.editingPath
 
   readonly property bool hasBlockingOverlay: root.hasPendingEdit || ContextMenuState.contextMenuOpen
-    || root.pendingDeleteNames.length > 0 || ConflictState.renameConflictOpen || ConflictState.pasteConflictOpen
+    || ActionState.pendingDeleteNames.length > 0 || ConflictState.renameConflictOpen || ConflictState.pasteConflictOpen
     || ConflictState.extractConflictOpen || ConflictState.compressConflictOpen || ConflictState.bulkRenameConflictOpen
     || ConflictState.dropConflictOpen || ConflictState.newFileConflictOpen || ConflictState.newFolderConflictOpen
     || PaletteState.paletteOpen || PreviewState.openWithOpen || DialogsState.bulkRenameOpen
@@ -138,7 +137,7 @@ Item {
     EditModeState.creatingFolder = false
     EditModeState.creatingFile = false
     EditModeState.editingPath = false
-    root.pendingDeleteNames = []
+    ActionState.pendingDeleteNames = []
     ContextMenuState.contextMenuOpen = false
     PropertiesState.propertiesOpen = false
     DialogsState.shortcutsHelpOpen = false
@@ -186,8 +185,10 @@ Item {
 
   readonly property alias controllers: registry
   readonly property alias actionEngine: registry.actionEngine
+  readonly property alias archiveBrowser: registry.archiveBrowser
   readonly property alias navController: registry.navController
   readonly property alias commandFacade: commandFacade
+  readonly property alias dialogLayer: dialogLayer
 
   CommandFacade {
     id: commandFacade
@@ -199,6 +200,7 @@ Item {
     customActions: registry.customActions
     navController: registry.navController
     actionEngine: registry.actionEngine
+    archiveBrowser: registry.archiveBrowser
     openProc: registry.openProc
   }
 

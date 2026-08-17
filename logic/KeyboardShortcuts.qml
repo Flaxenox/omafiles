@@ -1,5 +1,6 @@
 import QtQuick
 import "../state"
+import Omafiles.Backend as Backend
 
 // Keyboard shortcuts of the active panel (Keys.onPressed of the ListView) --
 // first cut of panels/ActiveFileList.qml (761 lines, over the
@@ -35,7 +36,7 @@ Item {
       if (event.key === Qt.Key_Escape) { ContextMenuState.contextMenuOpen = false; event.accepted = true }
       return
     }
-    if (hostRoot && hostRoot.pendingDeleteNames && hostRoot.pendingDeleteNames.length > 0) {
+    if (ActionState.pendingDeleteNames.length > 0) {
       if (hostDialogs && hostDialogs.deleteConfirm && hostDialogs.deleteConfirm.handleKey(event)) event.accepted = true
       return
     }
@@ -108,125 +109,144 @@ Item {
 
     var extend = (event.modifiers & Qt.ShiftModifier) !== 0
 
-    // Shift+Return: Open terminal here
-    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ShiftModifier)) {
-      Backend.TerminalResolver.launchTerminal(NavState.currentPath)
-      event.accepted = true
-    } else if (event.key === Qt.Key_Escape) {
+    // Escape and the "gg" top-of-list chord stay hardcoded, not
+    // resolver-driven (P2.5 audit's own recommendation): Escape's
+    // meaning is context-dependent (search/preview/picker/tabs) rather
+    // than a single handler call, and "g" is a stateful two-key chord
+    // (hostRoot.gPending + hostGTimer), not a plain "key -> action".
+    if (event.key === Qt.Key_Escape) {
       if (NavState.searching) { if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.exitSearch() }
       else if (PreviewState.previewOpen) PreviewState.previewOpen = false
       else if (PickerState.active) { if (hostRoot) hostRoot.cancelPicker() }
       else if (TabsState.tabs.length > 1) { if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.closeTab() }
       event.accepted = true
-    } else if (event.key === Qt.Key_Backspace || (event.key === Qt.Key_H && event.modifiers === Qt.NoModifier)) {
-      if (hostControllers && hostControllers.navController) hostControllers.navController.goUp()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || (event.key === Qt.Key_L && event.modifiers === Qt.NoModifier)) {
-      if (SelectionState.selectedIndex >= 0 && hostControllers && hostControllers.navController) hostControllers.navController.enter(NavState.visibleEntries[SelectionState.selectedIndex])
-      event.accepted = true
-    } else if (event.key === Qt.Key_Space) {
-      if (hostControllers && hostControllers.previewLoader) hostControllers.previewLoader.togglePreview()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Slash || (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier))) {
-      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.startSearch()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Colon || (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
-      if (hostCommandFacade) hostCommandFacade.openPalette()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Question) {
-      DialogsState.shortcutsHelpOpen = true
-      event.accepted = true
-    } else if (event.key === Qt.Key_G && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.goBottom()
-      event.accepted = true
-    } else if (event.key === Qt.Key_G && event.modifiers === Qt.NoModifier) {
+      return
+    }
+    if (event.key === Qt.Key_G && event.modifiers === Qt.NoModifier) {
       if (hostRoot.gPending) { if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.goTop(); hostRoot.gPending = false }
       else { hostRoot.gPending = true; hostGTimer.restart() }
       event.accepted = true
-    } else if (event.key === Qt.Key_Down || (event.key === Qt.Key_J && event.modifiers === Qt.NoModifier)) {
-      var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
-      if (extend) { if (true) SelectionState.selectRange(down) }
-      else { if (true) SelectionState.selectOnly(down) }
-      hostListView.positionViewAtIndex(down, ListView.Contain)
-      event.accepted = true
-    } else if (event.key === Qt.Key_Up || (event.key === Qt.Key_K && event.modifiers === Qt.NoModifier)) {
-      var up = Math.max(0, SelectionState.selectedIndex - 1)
-      if (extend) { if (true) SelectionState.selectRange(up) }
-      else { if (true) SelectionState.selectOnly(up) }
-      hostListView.positionViewAtIndex(up, ListView.Contain)
-      event.accepted = true
-    } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      if (true) SelectionState.selectNone()
-      event.accepted = true
-    } else if (event.key === Qt.Key_A && (event.modifiers & Qt.ControlModifier)) {
-      SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
-      event.accepted = true
-    } else if (event.key === Qt.Key_I && (event.modifiers & Qt.ControlModifier)) {
-      if (true) SelectionState.invertSelection()
-      event.accepted = true
-    } else if (event.key === Qt.Key_F2) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startRename(SelectionState.selectedIndex)
-      event.accepted = true
-    } else if (event.key === Qt.Key_Delete) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.requestDelete()
-      event.accepted = true
-    } else if (event.key === Qt.Key_F5) {
-      if (hostControllers && hostControllers.navController) hostControllers.navController.refresh()
-      event.accepted = true
-    } else if (event.key === Qt.Key_S && (event.modifiers & Qt.ShiftModifier)) {
-      SortState.reverseSort()
-      event.accepted = true
-    } else if (event.key === Qt.Key_S && event.modifiers === Qt.NoModifier) {
-      SortState.cycleSort()
-      event.accepted = true
-    } else if (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.startEditPath()
-      event.accepted = true
-    } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFolder()
-      event.accepted = true
-    } else if (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFile()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Backslash && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.newTab()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Left && (event.modifiers & Qt.AltModifier)) {
-      if (hostControllers && hostControllers.navController) hostControllers.navController.navBack()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Right && (event.modifiers & Qt.AltModifier)) {
-      if (hostControllers && hostControllers.navController) hostControllers.navController.navForward()
-      event.accepted = true
-    } else if (event.key === Qt.Key_T && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.newTab()
-      event.accepted = true
-    } else if (event.key === Qt.Key_W && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.closeTab()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.nextTab()
-      event.accepted = true
-    } else if (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.toggleHidden()
-      event.accepted = true
-    } else if (event.key === Qt.Key_C && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.copySelected()
-      event.accepted = true
-    } else if (event.key === Qt.Key_X && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.cutSelected()
-      event.accepted = true
-    } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.paste()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.redoLast()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Y && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.redoLast()
-      event.accepted = true
-    } else if (event.key === Qt.Key_Z && (event.modifiers & Qt.ControlModifier)) {
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.undoLast()
-      event.accepted = true
+      return
     }
+
+    // Everything else: configured-binding -> semantic action -> handler.
+    // KeyboardDefaults.actions encodes both the default keys and the
+    // priority order that used to be implicit in this if/else chain
+    // (e.g. select_none before select_all so Ctrl+Shift+A doesn't also
+    // match Ctrl+A); KeybindingResolver.actionFor() applies overrides
+    // from ~/.config/omafiles/keybindings.toml on top of those defaults.
+    var resolver = hostControllers && hostControllers.keybindingResolver
+    var actionId = resolver ? resolver.actionFor(event) : null
+    if (!actionId) return
+
+    switch (actionId) {
+    case "open_terminal":
+      Backend.TerminalResolver.launchTerminal(NavState.currentPath)
+      break
+    case "go_up":
+      if (hostControllers && hostControllers.navController) hostControllers.navController.goUp()
+      break
+    case "open":
+      if (SelectionState.selectedIndex >= 0 && hostControllers && hostControllers.navController) hostControllers.navController.enter(NavState.visibleEntries[SelectionState.selectedIndex])
+      break
+    case "toggle_preview":
+      if (hostControllers && hostControllers.previewLoader) hostControllers.previewLoader.togglePreview()
+      break
+    case "search":
+      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.startSearch()
+      break
+    case "command_palette":
+      if (hostCommandFacade) hostCommandFacade.openPalette()
+      break
+    case "toggle_help":
+      DialogsState.shortcutsHelpOpen = true
+      break
+    case "go_bottom":
+      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.goBottom()
+      break
+    case "move_down": {
+      var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
+      if (extend) SelectionState.selectRange(down)
+      else SelectionState.selectOnly(down)
+      hostListView.positionViewAtIndex(down, ListView.Contain)
+      break
+    }
+    case "move_up": {
+      var up = Math.max(0, SelectionState.selectedIndex - 1)
+      if (extend) SelectionState.selectRange(up)
+      else SelectionState.selectOnly(up)
+      hostListView.positionViewAtIndex(up, ListView.Contain)
+      break
+    }
+    case "select_none":
+      SelectionState.selectNone()
+      break
+    case "select_all":
+      SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
+      break
+    case "invert_selection":
+      SelectionState.invertSelection()
+      break
+    case "rename":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startRename(SelectionState.selectedIndex)
+      break
+    case "delete":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.requestDelete()
+      break
+    case "refresh":
+      if (hostControllers && hostControllers.navController) hostControllers.navController.refresh()
+      break
+    case "reverse_sort":
+      SortState.reverseSort()
+      break
+    case "cycle_sort":
+      SortState.cycleSort()
+      break
+    case "edit_path":
+      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.startEditPath()
+      break
+    case "new_folder":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFolder()
+      break
+    case "new_file":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startNewFile()
+      break
+    case "new_tab":
+      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.newTab()
+      break
+    case "nav_back":
+      if (hostControllers && hostControllers.navController) hostControllers.navController.navBack()
+      break
+    case "nav_forward":
+      if (hostControllers && hostControllers.navController) hostControllers.navController.navForward()
+      break
+    case "close_tab":
+      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.closeTab()
+      break
+    case "next_tab":
+      if (hostControllers && hostControllers.tabOps) hostControllers.tabOps.nextTab()
+      break
+    case "toggle_hidden":
+      if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.toggleHidden()
+      break
+    case "copy":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.copySelected()
+      break
+    case "cut":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.cutSelected()
+      break
+    case "paste":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.paste()
+      break
+    case "redo":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.redoLast()
+      break
+    case "undo":
+      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.undoLast()
+      break
+    default:
+      return
+    }
+    event.accepted = true
   }
 }

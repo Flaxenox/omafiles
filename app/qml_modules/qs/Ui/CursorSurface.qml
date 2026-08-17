@@ -23,10 +23,19 @@ BorderSurface {
   property color accent: Color.accent
   property color fill: Style.hoverFillFor(foreground, accent)
   property color currentFill: Style.selectedFillFor(foreground, accent)
+  // Opt-in idle-state fill (P2.4, 2026-08-17, alternating row colors) --
+  // painted only when the row is neither hovered nor current/selected.
+  // Defaults to fully transparent, i.e. byte-identical to the previous
+  // hardcoded "transparent" literal: every one of this component's other
+  // consumers (context menu rows, sidebar rows, palette rows, dropdown
+  // rows...) never sets it, so they render exactly as before. Only
+  // panels/FileListRow.qml and panels/BackgroundListDelegate.qml set it,
+  // for the zebra-stripe alternating background.
+  property color idleFill: "transparent"
 
   radius: Style.cornerRadius
 
-  color: hasCursor ? fill : (current ? currentFill : "transparent")
+  color: hasCursor ? fill : (current ? currentFill : root.idleFill)
   borderSpec: root.hasCursor
     ? Border.controlSpec("hover-cursor", root.foreground, root.accent)
     : (root.current

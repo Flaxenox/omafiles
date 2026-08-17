@@ -5,8 +5,7 @@
 using namespace FileOpsPrivate;
 void FileOperations::move(const QString &source, const QString &destination,
                           bool overwrite) {
-  m_cancelled->store(false);
-  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  auto cancelled = beginCancelToken(); // fresh, operation-local token (P1-4); job lambda is `this`-free (P0)
   run(QStringLiteral("move"), source,
       [source, destination, overwrite, cancelled](const auto &progressFn) -> Result {
     if (!QFileInfo::exists(source))

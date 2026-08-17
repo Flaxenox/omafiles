@@ -40,6 +40,7 @@ Item {
   property alias originY: listView.originY
   property alias contentHeight: listView.contentHeight
   property alias contentItem: listView.contentItem
+  property alias keyboardShortcuts: keyboardShortcuts
   function forceActiveFocus() { listView.forceActiveFocus() }
   function positionViewAtBeginning() { listView.positionViewAtBeginning() }
   function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
@@ -141,6 +142,7 @@ Item {
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               catcherListView: listView
               measuredRowHeight: root.measuredRowHeight
+              marqueeTarget: SelectionState
             }
 
             ListView {
@@ -178,6 +180,7 @@ Item {
                   anchors.fill: parent
                   catcherListView: listView
                   measuredRowHeight: root.measuredRowHeight
+                  marqueeTarget: SelectionState
                 }
               }
 

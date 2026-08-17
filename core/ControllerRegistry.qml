@@ -27,6 +27,7 @@ Item {
   readonly property alias fileMeta: fileMeta
   readonly property alias tabOps: tabOps
   readonly property alias navController: navController
+  readonly property alias archiveBrowser: archiveBrowser
   readonly property alias openProc: openProc
   readonly property alias mountOps: mountOps
   readonly property alias persistence: persistence
@@ -34,6 +35,7 @@ Item {
   readonly property alias previewLoader: previewLoader
   readonly property alias propertiesLoader: propertiesLoader
   readonly property alias customActions: customActions
+  readonly property alias keybindingResolver: keybindingResolver
 
   VideoThumbnails {
     id: videoThumbs
@@ -52,7 +54,7 @@ Item {
   }
   TabOps {
     id: tabOps
-    actionEngine: actionEngine
+    archiveBrowser: archiveBrowser
     root: registry.root
     list: registry.list
     previewLoader: previewLoader
@@ -61,9 +63,15 @@ Item {
   NavigationController {
     id: navController
     actionEngine: actionEngine
+    archiveBrowser: archiveBrowser
     root: registry.root
     list: registry.list
     mountOps: mountOps
+  }
+  ArchiveBrowser {
+    id: archiveBrowser
+    list: registry.list
+    navController: navController
   }
 
   // Shared launcher to open with the default app / open a
@@ -90,7 +98,6 @@ Item {
     id: actionEngine
     root: registry.root
     navController: navController
-    list: registry.list
   }
 
 
@@ -109,5 +116,13 @@ Item {
   CustomActions {
     id: customActions
     root: registry.root
+  }
+
+  // No root/list injection needed -- fully self-contained (reads Paths/
+  // KeyboardDefaults/Backend.Notifier only). logic/KeyboardShortcuts.qml
+  // reaches it via hostControllers.keybindingResolver; core/DialogLayer.qml
+  // via controllers.keybindingResolver (P2.5, 2026-08-17).
+  KeybindingResolver {
+    id: keybindingResolver
   }
 }

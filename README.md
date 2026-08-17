@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v0.9.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.0.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -56,7 +56,7 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 - Nothing silently clobbers an existing name: copy/cut/paste/drag show a real overwrite / skip / cancel dialog; extract/compress/bulk-rename show their own equivalent; rename asks to confirm an overwrite; new folder / new file / make link refuse with a clear error instead of failing quietly.
 - Copy/move show a "still working" indicator with **Cancel** and a real percentage + progress bar (estimated from source size vs. bytes landed — `cp`/`mv` don't report progress themselves), and a cancel leaves no half-written file or tree behind.
 - Copy/cut sync with the system clipboard (`wl-copy`, `text/uri-list`): paste files copied in Omafiles into another app, or files copied elsewhere into Omafiles (`Ctrl+V` falls back to the system clipboard when nothing's copied inside the app). "Copy path" puts the plain-text path(s) on the clipboard instead.
-- Rubber-band selection (drag over empty space; `Ctrl` adds to the selection), range selection with `Shift`+`j`/`k`/`↑`/`↓`, and drag-and-drop both out to and in from other apps.
+- Rubber-band selection (drag over empty space; `Ctrl` adds to the selection), range selection with `Shift`+`↑`/`↓`, and drag-and-drop both out to and in from other apps.
 
 ### Undo / Redo
 
@@ -105,6 +105,10 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 - A read-only Properties panel: real folder size via `du`, permissions, owner, dates — or a combined item count + total size for a multi-selection.
 
+### Custom keybindings (`keybindings.toml`)
+
+- Remap any non-fixed shortcut to a different key — no code changes, useful for Colemak/Dvorak or just personal taste. See [Custom keybindings](#custom-keybindings).
+
 ### Custom actions (`actions.toml`)
 
 - Your own commands, surfaced in both the command palette and the item context menu — the escape hatch for anything the manager doesn't ship (open in your editor, optimize an image, upload, run a script). See [Custom actions](#custom-actions).
@@ -127,12 +131,12 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 ## Keyboard shortcuts
 
-Every shortcut below is handled in `logic/KeyboardShortcuts.qml`; the in-app reference (`?`) mirrors this table.
+These are the **defaults**. Every one of them (except the five fixed shortcuts below) can be remapped to any key via `~/.config/omafiles/keybindings.toml` — see [Custom keybindings](#custom-keybindings). The table below, the in-app reference (`?`), and the actual dispatch in `logic/KeyboardShortcuts.qml` all read from one source of truth (`state/KeyboardDefaults.qml`), so they can't drift out of sync; the in-app `?` overlay always reflects your *effective* bindings, defaults or not.
 
 | Key | Action |
 | --- | --- |
 | `j` / `k` / `↓` / `↑` | Move down / up |
-| `Shift`+`j` / `k` / `↓` / `↑` | Extend selection down / up |
+| `Shift`+`↓` / `↑` | Extend selection down / up (arrow keys only — `Shift+j`/`Shift+k` are plain, unbound key presses) |
 | `h` / `Backspace` | Go up a directory |
 | `l` / `Enter` | Open (enter directory / launch file) |
 | `Alt+←` / `Alt+→` | Back / forward (per panel) |
@@ -145,8 +149,8 @@ Every shortcut below is handled in `logic/KeyboardShortcuts.qml`; the in-app ref
 | `Ctrl+I` | Invert selection |
 | `F2` | Rename |
 | `Delete` | Delete (to trash) |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste |
-| `Ctrl+Z` | Undo |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` *(fixed)* | Copy / cut / paste |
+| `Ctrl+Z` *(fixed)* | Undo |
 | `Ctrl+Shift+Z` / `Ctrl+Y` | Redo |
 | `s` / `Shift+S` | Cycle sort field / reverse order |
 | `Ctrl+L` | Edit path (with autocomplete: `Tab` completes, `↑`/`↓` pick, `Enter` goes) |
@@ -154,12 +158,36 @@ Every shortcut below is handled in `logic/KeyboardShortcuts.qml`; the in-app ref
 | `Ctrl+N` | New file |
 | `Ctrl+T` / `Ctrl+\` | New panel |
 | `Ctrl+W` | Close active panel |
-| `Ctrl+Tab` | Next panel |
+| `Ctrl+Tab` *(fixed)* | Next panel |
 | `Ctrl+H` | Toggle hidden files |
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |
 | `?` | Toggle keyboard shortcuts help |
 | `Escape` | Close search, then preview, then the active panel (with 2+ panels) |
+
+`gg` and `Escape` are handled structurally (a two-key chord and a context-sensitive close, respectively) rather than as single key bindings, so they're not in `keybindings.toml`. `SearchBar` and the command palette have their own independent `↑`/`↓` navigation, unaffected by `move_up`/`move_down` remapping — a known limitation, not a bug.
+
+## Custom keybindings
+
+Drop a TOML file at `~/.config/omafiles/keybindings.toml` to remap any non-fixed shortcut above to a different key — useful for alternative keyboard layouts (Colemak, Dvorak, …) where `hjkl`-style navigation lands on inconvenient physical keys.
+
+```toml
+[keybindings]
+move_down = "n"
+move_up   = "e"
+go_up     = "m"
+open      = "i"
+rename    = "r"
+refresh   = "ctrl+shift+r"
+```
+
+**Format:** a flat `[keybindings]` table, `action_name = "key"`. The key is a single character (`"n"`) or named key (`"return"`, `"space"`, `"backspace"`, `"delete"`, `"tab"`, `"f2"`, `"f5"`, an arrow name, or a symbol), optionally prefixed with `ctrl+`, `shift+`, and/or `alt+` (e.g. `"ctrl+shift+r"`). Action names match the left column of the table above (snake_case — see the in-app `?` overlay or `state/KeyboardDefaults.qml` for the full id list). Assigning a key **replaces all of that action's default keys** — e.g. overriding `move_down` frees up both `j` and `↓`, not just one of them.
+
+**Fixed shortcuts** (`Ctrl+C`/`Ctrl+X`/`Ctrl+V`/`Ctrl+Z`/`Ctrl+Tab`) can't be remapped — they follow OS/desktop clipboard-undo conventions and the near-universal "next tab" binding, and an entry for one of them in the config is ignored.
+
+**Conflicts and invalid entries never break startup.** If a key is already claimed by another (non-overridden) action, if an action name doesn't exist, or if a key spec can't be parsed, that one entry is ignored and its action keeps its default — you get a desktop notification listing what was skipped, everything else in the file still applies. A missing file (the common case) is silent and identical to having no overrides at all.
+
+Like `actions.toml`, this is hand-edited only — Omafiles never writes it — and is read once at startup (no file watcher); relaunch after editing it.
 
 ## Custom actions
 
@@ -235,6 +263,8 @@ OmaFiles works fully without these packages. When installed, they enable additio
 | **ffmpegthumbnailer** | Video thumbnails |
 | **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
 | **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
+| **zip** / **unzip** | Compress / extract `.zip` — unlike the rows above, there's no fallback: without these, Compress and extracting a `.zip` fail with an error notification instead of degrading gracefully |
+| **p7zip** / **unrar** | Extract `.7z` / `.rar` archives (browsing them, and `.tar`-family extraction, don't need these) |
 
 **No longer required:** `xdg-mime`, `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
 
@@ -271,12 +301,12 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
 
 Omafiles enforces strict automated quality and performance gates before every release:
 
-- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **85/85** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, and UI instantiation.
+- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **124/124** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, keyboard dispatch, and UI instantiation.
 - **Performance Regression Gate:** `python3 bench/bench-gate.py --check-gate` validates cold startup, memory usage, large directory listings (up to 100k files), search latency, and I/O throughput against the canonical baseline (`bench/baseline.json`).
 
 ## Status
 
-Stable Release (`v0.9.0`) — ready for production use.
+Stable Release (`v1.0.0`) — ready for production use.
 
 ## License
 

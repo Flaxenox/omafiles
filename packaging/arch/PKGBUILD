@@ -1,6 +1,6 @@
 # Maintainer: Josema <josema@example.com>
 pkgname=omafiles
-pkgver=0.9.0
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="A high-performance, native Qt6 file manager designed around the DHH philosophy"
 arch=('x86_64')
@@ -9,10 +9,15 @@ license=('MIT')
 # qt6-webengine provides Qt6::Pdf (libQt6Pdf.so) on Arch -- CMakeLists.txt's
 # `find_package(Qt6 REQUIRED COMPONENTS ... Pdf ...)` fails to configure
 # without it (P0-5, forensic audit 2026-08-16).
-depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-webengine' 'glib2')
+# zip/unzip: Compress always produces a .zip (logic/ActionEngine.qml's
+# compressSelected() hardcodes it, no alternative format) and Extract needs
+# unzip for that same default format -- unlike p7zip/unrar (needed only for
+# the optional .7z/.rar cases, see README's Optional dependencies table),
+# there's no fallback for either of these (final release audit, 2026-08-17).
+depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-webengine' 'glib2' 'zip' 'unzip')
 makedepends=('cmake' 'ninja' 'qt6-tools')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Percius04/omafiles/archive/v${pkgver}.tar.gz")
-sha256sums=('307f60a97a9bfe2360ddb1a5f008ea0dee9b12d2c67b02e4126d2d851e6431e2') # verified 2026-08-17 against the corrected URL (the old one pointed at github.com/omafiles/omafiles, which 404s)
+sha256sums=('e45cc3b60b91b126f75c3ba821c5d29c356b599fe1bef2e086a324068ed8fc08') # FIXME: this is still the old 0.9.0 tarball's hash -- regenerate against the actual v1.0.0 tag's tarball once it's cut and pushed (release prep, 2026-08-17; can't compute the real hash of a tag that doesn't exist yet)
 
 build() {
   cd "${pkgname}-${pkgver}"

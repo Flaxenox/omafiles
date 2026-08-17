@@ -15,6 +15,7 @@ Item {
   property var customActions
   property var navController
   property var actionEngine
+  property var archiveBrowser
   property var openProc
 
   function paletteCommands() {
@@ -63,7 +64,7 @@ Item {
       cmds.push({ label: "Empty trash", run: function () { if (actionEngine) actionEngine.emptyTrash() } })
       cmds.push({ label: "Restore", enabled: hasSelection, run: function () { actionEngine.restoreFromTrash() } })
     }
-    if (entry && entry.type !== "dir" && actionEngine.isArchive(entry)) {
+    if (entry && entry.type !== "dir" && archiveBrowser.isArchive(entry)) {
       cmds.push({ label: "Extract here", run: function () { actionEngine.extractHere(entry) } })
     }
     if (entry && actionEngine.isIso(entry)) {
@@ -170,7 +171,7 @@ Item {
         actions.push({ label: "Add to bookmarks", action: function () { BookmarksState.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
       actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected() } })
-      if (actionEngine.isArchive(entries[0])) {
+      if (archiveBrowser.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { actionEngine.extractHere(entries[0]) } })
       }
       if (actionEngine.isIso(entries[0])) {

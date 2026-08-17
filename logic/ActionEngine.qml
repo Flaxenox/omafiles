@@ -17,7 +17,6 @@ Item {
 
   property Item root: null
   property Item navController: null
-  property Item list: null
   property var _nativeMkdirPending: ({})
 
 
@@ -165,6 +164,11 @@ Item {
         _finishNative(true)
         return
       }
+      // Recorded BEFORE advancing _batchIdx: this is what makes the undo
+      // entry (see _finishNative) reflect exactly the items that really
+      // completed, not the whole batch that was merely requested (P1-1/
+      // P1-2, architectural audit 2026-08-17).
+      _batchCompleted.push(_batchQueue[_batchIdx])
       _progBase += _lastItemTotal
       _lastItemTotal = 0
       _batchIdx += 1
@@ -187,6 +191,12 @@ Item {
   property bool _batchOverwrite: false
   property var _batchOnDone: null
   property bool _cancelling: false
+  // Items of _batchQueue that ACTUALLY finished (see onFinished above) --
+  // NOT the whole batch that was requested. _finishNative hands exactly
+  // this to _batchOnDone, so a caller building an undo entry can never
+  // claim more happened than really did (P1-1/P1-2, architectural audit
+  // 2026-08-17).
+  property var _batchCompleted: []
 
   function runNativeCopy(pairs, busyLabel, overwrite, onDone) {
     return _runNative("copy", pairs, busyLabel, overwrite, onDone)
@@ -224,6 +234,7 @@ Item {
     _batchIdx = 0
     _batchOverwrite = false
     _batchOnDone = onDone || null
+    _batchCompleted = []
     ActionState.actionLabel = "Emptying trash…"
     ActionState.actionBusy = true
     ActionState.actionProgressPct = -1
@@ -243,6 +254,7 @@ Item {
     _batchIdx = 0
     _batchOverwrite = overwrite === true
     _batchOnDone = onDone || null
+    _batchCompleted = []
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     if (busyLabel && (kind === "copy" || kind === "move"))
@@ -272,8 +284,19 @@ Item {
     nativeBusy = false
     _resetActionState()
     var cb = _batchOnDone
+    var completed = _batchCompleted
     _batchOnDone = null
-    if (success && cb) Qt.callLater(cb)
+    _batchCompleted = []
+    // Real bug (P1-1/P1-2, architectural audit 2026-08-17): this used to
+    // gate on `success` alone, so a batch that failed or was cancelled
+    // AFTER a few items had already really completed on disk skipped
+    // _batchOnDone entirely -- zero undo entry for work that genuinely
+    // happened, even though `success` and "nothing happened" are different
+    // things. The only thing that matters for "is there something to
+    // report/undo" is whether anything actually finished; `cb` now always
+    // receives the real completed subset (never the full original batch)
+    // so it can never register an undo for more than truly succeeded.
+    if (cb && completed.length > 0) Qt.callLater(function () { cb(completed) })
   }
 
   Backend.ProcessRunner {
@@ -285,7 +308,18 @@ Item {
       if (result.exitCode === 0) {
         if (cb) cb()
       } else if (!result.cancelled) {
-        Backend.Notifier.notify(result.stderr.trim() || "Couldn't restore from trash")
+        // actionProc is the ONE shared process for every shell-based action
+        // (rename, bulk rename, chmod, compress, extract, make-link,
+        // new-file/-folder overwrite...) -- this fallback used to say
+        // "Couldn't restore from trash", written back when restore-from-
+        // trash was itself shell-based. It no longer is (restoreFromTrash()
+        // uses runNativeRestore(), a separate native path with its own
+        // "Action failed" fallback below) -- so that string was stale for
+        // every one of this handler's actual current callers (P2.7,
+        // 2026-08-17). "Action failed" matches the native path's own
+        // fallback for the same reason: neither handler knows which of its
+        // several callers is the one that just failed.
+        Backend.Notifier.notify(result.stderr.trim() || "Action failed")
       }
     }
   }
@@ -300,12 +334,12 @@ Item {
     if (ArchiveState.inArchive) return
     var names = SelectionState.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
-    root.pendingDeleteNames = names
+    ActionState.pendingDeleteNames = names
   }
 
   function confirmDelete() {
-    var names = root.pendingDeleteNames
-    root.pendingDeleteNames = []
+    var names = ActionState.pendingDeleteNames
+    ActionState.pendingDeleteNames = []
     if (names.length === 0) return
     if (NavState.currentPath === Paths.trashDir) {
       // NATIVE permanent delete: FileOperations.remove instead
@@ -331,17 +365,24 @@ Item {
       // the user presses undo, much later.
       var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      runNativeTrash(origPaths, "", function () {
-        // The undo is only registered if the send confirmed success. Undo =
-        // restore BY ORIGINAL PATH: it searches
-        // in ALL the active trashes for the .trashinfo whose original path
-        // matches, so it works the same wherever the delete came from -- and it works
+      runNativeTrash(origPaths, "", function (completed) {
+        // The undo is only registered if the send confirmed success, and
+        // ONLY for the items that actually made it to the trash -- `completed`
+        // (never the full `origPaths`) is what _finishNative reports really
+        // finished, so if item 3 of 5 fails/gets cancelled, undo only offers
+        // to restore the 2 that genuinely moved (P1-1, architectural audit
+        // 2026-08-17). Undo = restore BY ORIGINAL PATH: it searches in ALL the
+        // active trashes for the .trashinfo whose original path matches, so
+        // it works the same wherever the delete came from -- and it works
         // even if the user undoes much later without having ever opened the
         // Trash.
-        pushUndo(label, function () {
-          return runNativeRestore(origPaths, "")
+        var donePaths = completed.map(function (p) { return p.src })
+        var doneLabel = donePaths.length === origPaths.length ? label
+          : (donePaths.length + " of " + origPaths.length + " items deleted")
+        pushUndo(doneLabel, function () {
+          return runNativeRestore(donePaths, "")
         }, function () {
-          return runNativeTrash(origPaths, "")
+          return runNativeTrash(donePaths, "")
         })
       })
     }
@@ -437,15 +478,21 @@ Item {
         // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
-        runNativeMove(pairs, busyLabel, overwrite, function () {
-          var label = pairs.length === 1
-            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-            : "move " + pairs.length + " items"
-          var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
+        runNativeMove(pairs, busyLabel, overwrite, function (completed) {
+          // `completed` (never the full `pairs`) is exactly what
+          // _finishNative reports really moved -- if item 3 of `pairs` fails
+          // or the user cancels mid-batch, undo only offers to reverse the
+          // items that genuinely moved (P1-1, architectural audit 2026-08-17).
+          var label = completed.length === pairs.length
+            ? (pairs.length === 1
+                ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+                : "move " + pairs.length + " items")
+            : (completed.length + " of " + pairs.length + " items moved")
+          var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
           pushUndo(label, function () {
             return runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return runNativeMove(pairs, "", overwrite)     // redo: like the original
+            return runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
           })
         })
       }
@@ -520,10 +567,12 @@ Item {
   }
 
   // commitNewFile()/commitNewFolder() (check whether something with
-  // that name already exists) live in logic/ConflictActions.qml, next to
-  // newFileCheckProc/newFolderCheckProc -- same pattern as commitRename/
-  // renameCheckProc. These two are the real execution (with overwrite=true
-  // if the user confirmed overwriting in the conflict dialog).
+  // that name already exists, further below in this file -- corrected
+  // 2026-08-17, P2.1 follow-up, this used to name logic/ConflictActions.qml,
+  // folded into ActionEngine.qml on 2026-08-15) are the conflict checks;
+  // runPendingNewFile()/runPendingNewFolder() (here) are the real
+  // execution, with overwrite=true if the user confirmed overwriting in
+  // the conflict dialog.
   function runPendingNewFile(overwrite) {
     var pending = ConflictState.pendingNewFile
     ConflictState.pendingNewFile = null
@@ -735,14 +784,15 @@ Item {
     runNativeRestore(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
-  // actionEngine.startDropInto() is the one that actually checks
-  // conflicts -- handleFilesDropped() only resolves the DragEvent itself
-  // (accept/reject, move vs copy). runDrop() (the real execution of the
-  // mv/cp) lives in logic/ConflictActions.qml next to dropCheckProc, which
-  // calls it -- if it stayed here, DragDropOps and ConflictActions would
-  // need each other (circular dependency, rule 5 of the architecture
-  // prompt). With the executor there, the dependency stays one-way:
-  // DragDropOps -> ConflictActions.
+  // Drag-and-drop, three steps, all in this file (stale comments here used
+  // to describe a pre-Phase-43 split across logic/DragDropOps.qml and
+  // logic/ConflictActions.qml, corrected 2026-08-17, P2.1 follow-up --
+  // both files were folded into ActionEngine.qml on 2026-08-15):
+  // handleFilesDropped() only resolves the DragEvent itself (accept/reject,
+  // move vs copy); startDropInto() is the one that actually checks
+  // conflicts via existingPaths() and opens ConflictState.dropConflictOpen
+  // if needed; runDrop() (below) does the real mv/cp once any conflict is
+  // resolved.
 
   function urlToPath(url) {
     var s = String(url)
@@ -763,9 +813,8 @@ Item {
     return data
   }
 
-  // runDrop() (executes the real mv/cp after resolving a drop conflict)
-  // lives in logic/ConflictActions.qml -- see the comment next to
-  // `conflictActions` above.
+  // runDrop() (below) executes the real mv/cp after resolving a drop
+  // conflict -- see the drag-and-drop comment above handleFilesDropped().
 
   function cancelDropConflict() {
     ConflictState.dropConflictOpen = false
@@ -878,13 +927,36 @@ Item {
     var pairs = entries.map(function (e, i) {
       var ext = e.type === "dir" ? "" : (Utils.extOf(e.name) ? "." + Utils.extOf(e.name) : "")
       var base = ext ? e.name.slice(0, -ext.length) : e.name
-      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1))
+      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1)).trim()
       return {
         oldName: e.name, newName: newName,
         oldPath: Utils.joinPath(NavState.currentPath, e.name),
         newPath: Utils.joinPath(NavState.currentPath, newName)
       }
     })
+    // Validate the WHOLE batch upfront, before any conflict check or
+    // filesystem call (P2.7, 2026-08-17): a pattern like "{ext}" on an
+    // extensionless file, or one that strips everything, can produce an
+    // empty name. Without this guard it wasn't a clean silent no-op
+    // either: Utils.joinPath(currentPath, "") resolves to currentPath
+    // itself, which of course always "already exists" -- so the empty
+    // pair tripped the existingPaths() collision check below and opened
+    // the bulk-rename CONFLICT dialog, misleadingly presenting an invalid
+    // pattern as an "overwrite?" decision. Confirming that dialog would
+    // reach runPendingBulkRename() with the empty pair still in it,
+    // running `mv -n -- oldpath ''`. Unlike commitRename's own
+    // `if (!newName) return` (a single name the user typed themselves, a
+    // silent no-op reads as "I didn't confirm"), this is a DERIVED result
+    // across possibly many files the user can't preview -- so this gets
+    // an explicit, correctly-worded notification instead, same style as
+    // the other "couldn't do this" messages in this file.
+    var emptyNames = pairs.filter(function (p) { return !p.newName })
+    if (emptyNames.length > 0) {
+      Backend.Notifier.notify(emptyNames.length === 1
+        ? "Bulk rename: pattern produces an empty name for \"" + emptyNames[0].oldName + "\" — nothing renamed"
+        : "Bulk rename: pattern produces an empty name for " + emptyNames.length + " items — nothing renamed")
+      return
+    }
     ConflictState.pendingBulkRename = pairs
     var targetCounts = {}
     pairs.forEach(function (p) {
@@ -1045,10 +1117,14 @@ Item {
   // a drive, or the background of the list = the folder open right now).
   // `isMove` comes from DragEvent.source !== null (internal drag) --
   // drags coming from outside always copy, never move the source.
-  // mode: "all" (no conflicts) | "overwrite" | "skip". It lived in
-  // logic/DragDropOps.qml -- moved here to break a circular
-  // dependency (DragDropOps needed conflictActions to check
-  // conflicts, and conflictActions needed dragDropOps only for this).
+  // mode: "all" (no conflicts) | "overwrite" | "skip". Originally lived in
+  // logic/DragDropOps.qml, moved here pre-Phase-43 to break a circular
+  // dependency with the conflict-check logic (DragDropOps needed it to
+  // check conflicts, and it needed DragDropOps only for this) -- both
+  // files were folded into ActionEngine.qml on 2026-08-15 (corrected
+  // 2026-08-17, P2.1 follow-up), so the two are one file today and the
+  // cycle no longer exists to avoid, but drag-and-drop conflict
+  // resolution and its execution stay next to each other on purpose.
   function runDrop(mode) {
     var conflictSet = {}
     ConflictState.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
@@ -1077,15 +1153,20 @@ Item {
         // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
-        actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {
-          var label = pairs.length === 1
-            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-            : "move " + pairs.length + " items"
-          var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
+        actionEngine.runNativeMove(pairs, busyLabel, overwrite, function (completed) {
+          // `completed` (never the full `pairs`) is exactly what
+          // _finishNative reports really moved -- see the identical comment
+          // in runPaste() above (P1-1, architectural audit 2026-08-17).
+          var label = completed.length === pairs.length
+            ? (pairs.length === 1
+                ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+                : "move " + pairs.length + " items")
+            : (completed.length + " of " + pairs.length + " items moved")
+          var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
           actionEngine.pushUndo(label, function () {
             return actionEngine.runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return actionEngine.runNativeMove(pairs, "", overwrite)     // redo: like the original
+            return actionEngine.runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
           })
         })
       }
@@ -1096,63 +1177,14 @@ Item {
 
 
 
-  // The main ListView (id "list" in core) -- refreshArchiveListing()
-  // resets its scroll just like refresh() does with a normal folder.
-
-  function enterArchive(path) {
-    SelectionState.selectOnly(-1)
-    ArchiveState.inArchive = true
-    ArchiveState.archivePath = path
-    ArchiveState.archiveSubPath = ""
-    refreshArchiveListing()
-  }
-
-  function exitArchive() {
-    ArchiveState.inArchive = false
-    ArchiveState.archivePath = ""
-    ArchiveState.archiveSubPath = ""
-    navController.refresh()
-  }
-
-  function refreshArchiveListing() {
-    SelectionState.selectOnly(-1)
-    list.contentY = list.originY
-    archiveListProc.start([Paths.resourceDir + "/scripts/runtime/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
-  }
-
-  // Extracts ONLY that file to a temporary cache (not the whole archive) and
-  // opens it with the default app.
-  function openFileInArchive(entry) {
-    var full = ArchiveState.archiveSubPath ? ArchiveState.archiveSubPath + "/" + entry.name : entry.name
-    var ext = Utils.extOf(ArchiveState.archivePath)
-    var out = Paths.homeDir + "/.cache/omafiles/archive-open/" + Backend.ThumbnailProvider.cacheKey(ArchiveState.archivePath + "|" + full) + "/" + entry.name
-    var outDir = out.substring(0, out.lastIndexOf("/"))
-    var cmd
-    if (ext === "zip") cmd = "unzip -p -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (ext === "7z") cmd = "7z x -y -so -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " 2>/dev/null > " + Util.shellQuote(out)
-    else if (ext === "rar") cmd = "unrar p -inul -- " + Util.shellQuote(ArchiveState.archivePath) + " " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) cmd = "tar xf " + Util.shellQuote(ArchiveState.archivePath) + " -O -- " + Util.shellQuote(full) + " > " + Util.shellQuote(out)
-    else return
-    archiveOpenProc.outPath = out
-    // outDir is keyed by an unsalted SHA-1 of (archivePath+full) -- fully
-    // predictable offline by anyone who knows those two strings. Without
-    // this, a symlink pre-planted at `out` (or at `outDir` itself, pointing
-    // at some other real directory) would make the shell `>` redirection
-    // above follow it and overwrite whatever it points to instead of
-    // creating a fresh file (P0-3, forensic audit 2026-08-16). `rm -rf --`
-    // on a symlink removes the link itself, never its target, so this is
-    // safe even if outDir/out is currently a symlink; mkdir -p then always
-    // creates a genuinely fresh real directory before extraction writes into it.
-    archiveOpenProc.start(["bash", "-c", "rm -rf -- " + Util.shellQuote(outDir)
-      + " && mkdir -p -- " + Util.shellQuote(outDir) + " && " + cmd])
-  }
-
-  function isArchive(entry) {
-    if (entry.type === "dir") return false
-    var ext = Utils.extOf(entry.name)
-    return ext === "zip" || ext === "7z" || ext === "rar" || FileTypeConfig.tarExt.indexOf(ext) >= 0
-  }
-
+  // isArchive()/enterArchive()/exitArchive()/refreshArchiveListing()/
+  // openFileInArchive() moved to logic/ArchiveBrowser.qml (architectural
+  // audit 2026-08-17, P2.3) -- archive browsing never used runAction()/
+  // pushUndo()/the native-batch machinery, the one block in this file with
+  // a genuinely independent lifecycle. isIso() stays: ISO mounting
+  // (logic/MountActions.qml) is a different mechanism entirely, not
+  // archive browsing -- it only ever sat next to isArchive() here because
+  // both are "can this file be entered like a folder" checks.
   function isIso(entry) {
     return entry.type !== "dir" && Utils.extOf(entry.name) === "iso"
   }
@@ -1183,34 +1215,6 @@ Item {
     ConflictState.pendingExtract = null
     ConflictState.extractConflictOpen = false
     ConflictState.extractConflictNames = []
-  }
-
-  Backend.ProcessRunner {
-    id: archiveListProc
-    onFinished: function (result) {
-      var s = String(result.stdout || "")
-      var fields = s.length === 0 ? [] : s.split(String.fromCharCode(0))
-      if (fields.length > 0 && fields[fields.length - 1] === "") fields.pop()
-      var parsed = []
-      for (var i = 0; i + 1 < fields.length; i += 2) {
-        parsed.push({ type: fields[i + 1] === "1" ? "dir" : "file", name: fields[i], size: 0, mtime: 0, link: "" })
-      }
-      NavState.entries = SortState.sortEntries(parsed)
-      list.positionViewAtBeginning()
-      SelectionState.selectOnly(NavState.visibleEntries.length > 0 ? 0 : -1)
-    }
-  }
-
-  Backend.ProcessRunner {
-    id: archiveOpenProc
-    property string outPath: ""
-    onFinished: function (result) {
-      if (result.exitCode !== 0) {
-        Backend.Notifier.notify(result.stderr.trim() || "Couldn't open archive")
-        return
-      }
-      navController.openWithDefault(archiveOpenProc.outPath)
-    }
   }
 
 }

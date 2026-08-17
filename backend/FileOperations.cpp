@@ -54,6 +54,12 @@ void FileOperations::run(const QString &op, const QString &path,
 
 void FileOperations::cancel() { m_cancelled->store(true); }
 
+std::shared_ptr<std::atomic<bool>> FileOperations::beginCancelToken() {
+  auto token = std::make_shared<std::atomic<bool>>(false);
+  m_cancelled = token; // cancel() now targets THIS operation
+  return token;
+}
+
 QStringList FileOperations::existingPaths(const QStringList &paths) const {
   QStringList out;
   for (const QString &p : paths) {

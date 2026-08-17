@@ -1,9 +1,12 @@
 pragma Singleton
 import QtQuick
 
-// Extension lists per file type: static configuration for PreviewLoader,
-// ArchiveActions, and ConflictActions. Pure static configuration, not
-// composition-root state -- here they stay as the single source.
+// Extension lists per file type: static configuration for
+// logic/PreviewLoader.qml and logic/ActionEngine.qml (corrected
+// 2026-08-17, P2.1 follow-up -- ArchiveActions.qml/ConflictActions.qml
+// were folded into ActionEngine.qml on 2026-08-15). Pure static
+// configuration, not composition-root state -- here they stay as the
+// single source.
 //
 // O2 (BACKEND_DESIGN.md 6.B) foresees a MimeDb in C++ that decides the type by
 // content/mime instead of by extension; until then this is the canonical
