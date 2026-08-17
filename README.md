@@ -265,8 +265,9 @@ OmaFiles works fully without these packages. When installed, they enable additio
 | **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
 | **zip** / **unzip** | Compress / extract `.zip` — unlike the rows above, there's no fallback: without these, Compress and extracting a `.zip` fail with an error notification instead of degrading gracefully |
 | **p7zip** / **unrar** | Extract `.7z` / `.rar` archives (browsing them, and `.tar`-family extraction, don't need these) |
+| **xdg-mime** | Registering Omafiles as the default file manager on first launch, and resolving the default app for "open with default" double-clicks (both best-effort, guarded by `command -v`) |
 
-**No longer required:** `xdg-mime`, `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
+**No longer required:** `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
 
 ## System integration
 
