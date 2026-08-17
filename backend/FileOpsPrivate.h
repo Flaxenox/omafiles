@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QRunnable>
 #include <QStorageInfo>
+#include <QThread>
 #include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
@@ -180,6 +181,21 @@ inline void forceRemove(const QString &path) {
 // that is not $HOME's (XDG Trash spec: deleting from another disk goes to
 // THAT disk's trash). Replica of trash-roots.sh without shell.
 inline QStringList discoverTrashRoots() {
+  // Selfcheck-only hook (V1_1_P0_TRASH_FREEZE regression test): simulates a
+  // slow/stalled mount stat() -- e.g. a spun-down mechanical disk or a
+  // stalled network/FUSE mount (sshfs/NFS/rclone/gvfs) -- which is what
+  // actually froze the UI before this function's callers were made async
+  // (see FileOperations::requestTrashRoots()/requestTrashInfo()). A real
+  // slow mount isn't available in CI/dev environments, so the regression
+  // test opts into this instead, the same env-var-gated pattern as
+  // OMAFILES_SELFCHECK elsewhere in this codebase. Always off in production
+  // (the var is never set outside the selfcheck harness).
+  bool msOk = false;
+  const int slowMs = qEnvironmentVariableIntValue(
+      "OMAFILES_SELFCHECK_SLOW_TRASH_MOUNT_MS", &msOk);
+  if (msOk && slowMs > 0)
+    QThread::msleep(static_cast<unsigned long>(slowMs));
+
   QStringList roots;
   const QString home = QDir::homePath();
   const QString dataHome =

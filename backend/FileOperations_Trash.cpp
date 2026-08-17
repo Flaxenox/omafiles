@@ -164,28 +164,51 @@ void FileOperations::restoreByOrigPath(const QString &origPath) {
   });
 }
 
-QStringList FileOperations::trashRoots() const { return discoverTrashRoots(); }
+void FileOperations::requestTrashRoots(quint64 requestId) {
+  auto life = m_life; // copy of the control block, outlives the singleton (see run())
+  QThreadPool::globalInstance()->start(QRunnable::create(
+      [this, life, requestId]() {
+        const QStringList roots = discoverTrashRoots(); // the slow part: stat() per mount
+        std::lock_guard<std::mutex> lk(life->mtx);
+        if (!life->alive)
+          return;
+        QMetaObject::invokeMethod(
+            this,
+            [this, requestId, roots]() { emit trashRootsReady(requestId, roots); },
+            Qt::QueuedConnection);
+      }));
+}
 
-QVariantList FileOperations::trashInfo() const {
-  QVariantList out;
-  for (const QString &root : discoverTrashRoots()) {
-    QDir infoDir(root + QStringLiteral("/info"));
-    if (!infoDir.exists())
-      continue;
-    const QFileInfoList infos =
-        infoDir.entryInfoList({QStringLiteral("*.trashinfo")}, QDir::Files);
-    for (const QFileInfo &fi : infos) {
-      QString name, origPath;
-      qint64 epoch = 0;
-      if (!parseTrashInfo(fi, root, name, origPath, epoch))
-        continue;
-      QVariantMap e;
-      e[QStringLiteral("name")] = name;
-      e[QStringLiteral("origPath")] = origPath;
-      e[QStringLiteral("epoch")] = epoch;
-      e[QStringLiteral("trashRoot")] = root;
-      out.append(e);
-    }
-  }
-  return out;
+void FileOperations::requestTrashInfo(quint64 requestId) {
+  auto life = m_life;
+  QThreadPool::globalInstance()->start(QRunnable::create(
+      [this, life, requestId]() {
+        QVariantList out;
+        for (const QString &root : discoverTrashRoots()) {
+          QDir infoDir(root + QStringLiteral("/info"));
+          if (!infoDir.exists())
+            continue;
+          const QFileInfoList infos = infoDir.entryInfoList(
+              {QStringLiteral("*.trashinfo")}, QDir::Files);
+          for (const QFileInfo &fi : infos) {
+            QString name, origPath;
+            qint64 epoch = 0;
+            if (!parseTrashInfo(fi, root, name, origPath, epoch))
+              continue;
+            QVariantMap e;
+            e[QStringLiteral("name")] = name;
+            e[QStringLiteral("origPath")] = origPath;
+            e[QStringLiteral("epoch")] = epoch;
+            e[QStringLiteral("trashRoot")] = root;
+            out.append(e);
+          }
+        }
+        std::lock_guard<std::mutex> lk(life->mtx);
+        if (!life->alive)
+          return;
+        QMetaObject::invokeMethod(
+            this,
+            [this, requestId, out]() { emit trashInfoReady(requestId, out); },
+            Qt::QueuedConnection);
+      }));
 }
