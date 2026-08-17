@@ -14,10 +14,23 @@ import Omafiles.Backend as Backend
 // watching is done by its internal QFileSystemWatcher (without forking
 // inotifywait). Thin adapter over the model:
 //   - normal folder -> dirModel.list(path)
-//   - Trash -> trash-roots.sh (discover XDG roots) + dirModel.listMany
-//     (merge the content of all) + trash-info.sh (metadata)
+//   - Trash -> requestTrashRoots() (discover XDG roots, ASYNC) + dirModel.listMany
+//     (merge the content of all) + requestTrashInfo() (metadata, ASYNC)
 // The public API (entries/pathError/loaded/listed/list) does not change, so
 // NavigationController and BackgroundPanel stay the same.
+//
+// P0 fix (V1_1_P0_TRASH_FREEZE, 2026-08-17): trash-root discovery and
+// .trashinfo parsing used to be SYNCHRONOUS Q_INVOKABLE calls
+// (FileOperations.trashRoots()/trashInfo()), run directly on the UI thread
+// from list()/onListed below. Both iterate every mounted volume with no
+// timeout; a slow disk or a stalled network/FUSE mount froze the whole app
+// -- reproduced live (real Sidebar->Trash click, gdb backtrace confirmed
+// Thread 1/UI thread blocked inside FileOperations::trashRoots()). Both are
+// now async (request*()/`*Ready` signals, see FileOperations.h), gated by
+// `_trashReqId` since the backend is a shared singleton and its signals are
+// broadcast to every DirLister instance (one per tab, one per always-alive
+// BackgroundPanel) -- without the id check, one instance's response could
+// be misapplied to another's in-flight request.
 Item {
   id: dirLister
   property string trashDir: ""
@@ -52,18 +65,24 @@ Item {
   // (measured: 342 ms/refresh at 100k)— to an O(1) string comparison.
   property string _lastSignature: ""
 
+  // Discriminates this DirLister's own in-flight trash requests from
+  // another instance's, since Backend.FileOperations is one shared
+  // singleton whose trashRootsReady/trashInfoReady are broadcast to every
+  // listener (P0 fix, see header comment above).
+  property int _trashReqId: 0
+
   function list(path) {
     _targetPath = path
     pathError = ""
     if (path === trashDir) {
       // The Trash aggregates the home root PLUS the .Trash-$UID of any
-      // mounted disk (XDG Trash spec). FileOperations.trashRoots()
-      // discovers them (native, Phase 16: replaces trash-roots.sh); then the
-      // content of all is merged with listMany. It is not a single folder,
-      // which is why it does not go through dirModel.list plainly.
-      var paths = Backend.FileOperations.trashRoots().map(function (r) { return r + "/files" })
+      // mounted disk (XDG Trash spec). requestTrashRoots() discovers them
+      // asynchronously (native, replaces trash-roots.sh); onTrashRootsReady
+      // below continues with listMany once they arrive. It is not a single
+      // folder, which is why it does not go through dirModel.list plainly.
       _dirMode = "trash"
-      dirModel.listMany(paths, showHidden)
+      _trashReqId++
+      Backend.FileOperations.requestTrashRoots(_trashReqId)
     } else {
       _dirMode = "dir"
       dirModel.list(path, showHidden)
@@ -113,6 +132,29 @@ Item {
     return SortState.isDefaultOrder ? raw : SortState.sortEntries(raw)
   }
 
+  // Answers to the async trash requests above (P0 fix). Both handlers
+  // ignore any emission that isn't a response to THIS instance's own most
+  // recent request -- see _trashReqId's doc comment.
+  Connections {
+    target: Backend.FileOperations
+    function onTrashRootsReady(requestId, roots) {
+      if (_dirMode !== "trash" || requestId !== _trashReqId) return
+      var paths = roots.map(function (r) { return r + "/files" })
+      dirModel.listMany(paths, showHidden)
+    }
+    function onTrashInfoReady(requestId, info) {
+      if (_dirMode !== "trash" || requestId !== _trashReqId) return
+      // TrashState.trashInfo is shared by the active panel and the
+      // background ones; DeleteOps/FileOps use it to know the physical
+      // root of each item on restore/delete.
+      var map = {}
+      for (var i = 0; i < info.length; i++)
+        map[info[i].name] = { origPath: info[i].origPath, epoch: info[i].epoch, trashRoot: info[i].trashRoot }
+      TrashState.trashInfo = map
+      _apply()
+    }
+  }
+
   // Native listing backend (Phase 6.C/6.D). Serves both normal folders
   // (list) and the Trash (listMany). The dirModel.entries array has the
   // same shape {type,name,size,mtime,link} that Utils.parseEntries produced,
@@ -132,18 +174,14 @@ Item {
 
       if (isTrash) {
         // listMany does not produce error codes (aggregate); the Trash
-        // simply shows whatever is there. NATIVE trash metadata
-        // (FileOperations.trashInfo, Phase 16: replaces trash-info.sh):
-        // synchronous, so it is filled BEFORE painting -- without the previous
-        // async dance (nor flicker). TrashState.trashInfo is shared by
-        // the active panel and the background ones; DeleteOps/FileOps use it to
-        // know the physical root of each item on restore/delete.
-        var arr = Backend.FileOperations.trashInfo()
-        var info = {}
-        for (var i = 0; i < arr.length; i++)
-          info[arr[i].name] = { origPath: arr[i].origPath, epoch: arr[i].epoch, trashRoot: arr[i].trashRoot }
-        TrashState.trashInfo = info
-        _apply()
+        // simply shows whatever is there. Trash metadata (requestTrashInfo,
+        // async, P0 fix) arrives a tick later via onTrashInfoReady above,
+        // which calls _apply() once it's in -- rows can briefly render
+        // without their trash metadata (original path/deletion date)
+        // before it fills in, trading the old "filled before paint, but the
+        // stat() could freeze the whole app" behavior for one that never
+        // blocks the UI thread.
+        Backend.FileOperations.requestTrashInfo(_trashReqId)
       } else {
         // Normal folder: map the model's error to pathError with the
         // SAME codes that list-dir.sh's exit codes gave.

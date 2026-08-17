@@ -33,9 +33,16 @@ QtObject {
           function onFinished(op, path) {
             if (op !== "emptyTrash") return
             Backend.FileOperations.finished.disconnect(onFinished)
-            var info = Backend.FileOperations.trashInfo()
-            var ok = (info.length === 0)
-            done(ok, ok ? "trash emptied cleanly: remaining=" + info.length : "items remained: " + info.length)
+            // trashInfo is async since the P0 trash-freeze fix (V1_1_P0_TRASH_FREEZE).
+            var reqId = Date.now()
+            function onInfo(id, info) {
+              if (id !== reqId) return
+              Backend.FileOperations.trashInfoReady.disconnect(onInfo)
+              var ok = (info.length === 0)
+              done(ok, ok ? "trash emptied cleanly: remaining=" + info.length : "items remained: " + info.length)
+            }
+            Backend.FileOperations.trashInfoReady.connect(onInfo)
+            Backend.FileOperations.requestTrashInfo(reqId)
           }
           Backend.FileOperations.finished.connect(onFinished)
           Backend.FileOperations.emptyTrash()

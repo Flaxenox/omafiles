@@ -121,8 +121,21 @@ public:
   // Active XDG trash roots: the home one (~/.local/share/
   // Trash) plus the .Trash-$uid of any other mount point. Native
   // replacement for trash-roots.sh; the Trash view lists "<root>/files" of each
-  // one with DirectoryModel.listMany. Synchronous (only stat over the mounts).
-  Q_INVOKABLE QStringList trashRoots() const;
+  // one with DirectoryModel.listMany.
+  //
+  // ASYNC (P0, V1_1_P0_TRASH_FREEZE): discovery iterates EVERY mounted
+  // volume (QStorageInfo::mountedVolumes(), unfiltered by filesystem type)
+  // and does a QFileInfo::isDir() stat-class call against each one's
+  // candidate .Trash-$uid -- unbounded, no timeout. A slow disk (spun-down
+  // mechanical drive) or a stalled network/FUSE mount (sshfs/NFS/rclone/
+  // gvfs) makes any one of those stat() calls block for as long as that
+  // mount takes to respond, which used to happen directly on the calling
+  // (UI) thread -- freezing the whole app. `requestId` is echoed back on
+  // trashRootsReady so each caller (DirLister has one instance per tab AND
+  // one per always-alive BackgroundPanel, see logic/DirLister.qml) can tell
+  // its own request apart from another instance's, since this is a shared
+  // QML_SINGLETON and the signal is broadcast to every listener.
+  Q_INVOKABLE void requestTrashRoots(quint64 requestId);
 
   // Metadata of all the .trashinfo of all the roots: native
   // replacement for trash-info.sh. A list of objects {name, origPath, epoch,
@@ -130,10 +143,22 @@ public:
   // percent-decoded (relative to the resolved mount point in disk
   // trashes), `epoch` = DeletionDate in seconds, `trashRoot` = the physical root
   // that contains that item (to restore/delete in the correct trash).
-  // Reuses the same parsing as restoreByOrigPath. Synchronous.
-  Q_INVOKABLE QVariantList trashInfo() const;
+  // Reuses the same parsing as restoreByOrigPath.
+  //
+  // ASYNC (P0, V1_1_P0_TRASH_FREEZE): same reasoning as requestTrashRoots()
+  // -- re-runs mount discovery plus a synchronous open+parse of every
+  // .trashinfo file across every root, previously on the UI thread.
+  Q_INVOKABLE void requestTrashInfo(quint64 requestId);
 
 signals:
+  // Answers to requestTrashRoots()/requestTrashInfo() above, delivered on
+  // the UI thread once the pool-thread discovery/parsing finishes.
+  // `requestId` is whatever the caller passed to the matching request*()
+  // call -- callers MUST ignore any emission whose requestId doesn't match
+  // their own most recent pending request, since every DirLister instance
+  // shares this one singleton.
+  void trashRootsReady(quint64 requestId, const QStringList &roots);
+  void trashInfoReady(quint64 requestId, const QVariantList &info);
   // Progress by BYTES of a copy/move in progress: `done`
   // = bytes copied of the current item, `total` = size of the item. The
   // consumer (ActionEngine) aggregates over the batch. It was a percentage before.

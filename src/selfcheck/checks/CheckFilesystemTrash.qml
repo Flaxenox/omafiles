@@ -320,11 +320,19 @@ QtObject {
                             if (!pending) { done(false, "requestDelete() didn't arm the confirm dialog"); return }
                             c.actionEngine.confirmDelete()
                             sc._fileOp(done, function () {
-                              var info = Backend.FileOperations.trashInfo()
-                              var stillThere = false
-                              for (var i = 0; i < info.length; i++) if (info[i].name === wname) stillThere = true
-                              NavState.currentPath = prevPath
-                              done(!stillThere, stillThere ? "permanent delete left the .trashinfo behind" : "restore + permanent delete via real itemActions() OK")
+                              // trashInfo is async since the P0 trash-freeze fix
+                              // (V1_1_P0_TRASH_FREEZE).
+                              var reqId = Date.now()
+                              function onInfo(id, info) {
+                                if (id !== reqId) return
+                                Backend.FileOperations.trashInfoReady.disconnect(onInfo)
+                                var stillThere = false
+                                for (var i = 0; i < info.length; i++) if (info[i].name === wname) stillThere = true
+                                NavState.currentPath = prevPath
+                                done(!stillThere, stillThere ? "permanent delete left the .trashinfo behind" : "restore + permanent delete via real itemActions() OK")
+                              }
+                              Backend.FileOperations.trashInfoReady.connect(onInfo)
+                              Backend.FileOperations.requestTrashInfo(reqId)
                             })
                           })
                         })
@@ -438,13 +446,24 @@ QtObject {
                           }
                           confirm.confirmed()
                           sc._fileOp(done, function () {
-                            var info = Backend.FileOperations.trashInfo()
-                            var stillThere = false
-                            for (var i = 0; i < info.length; i++) if (info[i].name === aName) stillThere = true
-                            if (stillThere) { done(false, "permanent delete left the .trashinfo behind"); return }
+                            // trashInfo is async since the P0 trash-freeze fix
+                            // (V1_1_P0_TRASH_FREEZE).
+                            var reqId = Date.now()
+                            function onInfo(id, info) {
+                              if (id !== reqId) return
+                              Backend.FileOperations.trashInfoReady.disconnect(onInfo)
+                              var stillThere = false
+                              for (var i = 0; i < info.length; i++) if (info[i].name === aName) stillThere = true
+                              if (stillThere) { done(false, "permanent delete left the .trashinfo behind"); return }
 
-                            // ---- 4) no stale names from the previous (permanent-delete) operation ----
-                            c.navController.navigateTo(sc.opsDir)
+                              // ---- 4) no stale names from the previous (permanent-delete) operation ----
+                              c.navController.navigateTo(sc.opsDir)
+                              _afterTrashInfoCheck()
+                            }
+                            Backend.FileOperations.trashInfoReady.connect(onInfo)
+                            Backend.FileOperations.requestTrashInfo(reqId)
+                          })
+                          function _afterTrashInfoCheck() {
                             sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, cName) }, function (listedC) {
                               if (!listedC) { done(false, "third fixture file never appeared"); return }
                               if (!selectByNames([cName])) { done(false, "couldn't select the third file"); return }
@@ -457,7 +476,7 @@ QtObject {
                               done(!stale, stale ? "stale names/message leaked from a previous delete: " + JSON.stringify(ActionState.pendingDeleteNames) + " / " + confirm.message
                                                   : "cancel + multi-select + trash-send + permanent-delete, no stale state, all via the real ConfirmDialog")
                             })
-                          })
+                          }
                         })
                       })
                     })
@@ -503,6 +522,65 @@ QtObject {
             })
           }
           copyNext()
+        })
+
+        // V1_1_P0_TRASH_FREEZE regression: the three tests above (real UI
+        // path, repeated navigation, 50-item Trash) all passed BEFORE this
+        // fix, because the dev/CI machine's mounts are all fast -- the bug
+        // only manifests when discoverTrashRoots()'s per-mount stat() is
+        // slow (a spun-down disk, a stalled network/FUSE mount), which none
+        // of them simulate. This one does, via the OMAFILES_SELFCHECK_SLOW_
+        // TRASH_MOUNT_MS hook in FileOpsPrivate.h::discoverTrashRoots() --
+        // against the OLD synchronous trashRoots()/trashInfo() this made
+        // the whole UI thread block for the delay (event loop dead, this
+        // test's own 30ms timer never ticks, exactly the freeze reproduced
+        // live via a real sidebar click + gdb-held breakpoint, see
+        // docs/audits/V1_1_P0_TRASH_FREEZE_REPORT.md); against the fixed,
+        // async requestTrashRoots()/requestTrashInfo() the delay only holds
+        // a QThreadPool worker, and the event loop keeps ticking throughout.
+        sc.add("Trash navigation stays responsive when a mount's stat() is slow (V1_1_P0_TRASH_FREEZE regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var SLOW_MS = 2500
+
+          function cleanupEnv() { Backend.Env.set("OMAFILES_SELFCHECK_SLOW_TRASH_MOUNT_MS", "0") }
+
+          Backend.Env.set("OMAFILES_SELFCHECK_SLOW_TRASH_MOUNT_MS", String(SLOW_MS))
+
+          var ticks = 0
+          var t = Qt.createQmlObject('import QtQuick; Timer { interval: 30; repeat: true }', sc)
+          t.triggered.connect(function () { ticks++ })
+          var startedAt = Date.now()
+          t.start()
+          // Same real click the sidebar bookmark row makes (CommandFacade.openBookmark).
+          c.commandFacade.openBookmark({ path: Paths.trashDir, type: "dir" })
+
+          // Wait out the simulated-slow-mount window by WALL CLOCK, not by
+          // app state: NavState.currentPath flips to Paths.trashDir almost
+          // immediately (NavigationController._goToPath sets it before the
+          // now-async listing even starts), so polling on it alone would
+          // resolve long before the delay we're actually trying to observe
+          // has elapsed. If the UI thread is blocked (the pre-fix bug),
+          // BOTH this poll's own timer and the ticks timer stall together
+          // and only resume once whatever is blocking the thread releases
+          // it -- so this still terminates either way, it just reports few
+          // or no ticks when the bug is present.
+          sc._poll(function () { return Date.now() - startedAt >= SLOW_MS + 250 }, function () {
+            t.stop()
+            t.destroy()
+            var ms = Date.now() - startedAt
+            var arrived = (NavState.currentPath === Paths.trashDir)
+            NavState.currentPath = prevPath
+            cleanupEnv()
+            // A responsive event loop ticks ~(SLOW_MS/30) times while
+            // waiting; a blocked one ticks 0 (or a couple, right as it
+            // unblocks) -- 5 is a conservative floor, robust to jitter.
+            var ok = arrived && ticks >= 5
+            done(ok, ok
+                ? ("event loop kept ticking (" + ticks + " ticks) during a " + SLOW_MS + "ms simulated slow mount, " + ms + "ms elapsed")
+                : ("event loop appears to have blocked: only " + ticks + " ticks in " + ms + "ms (arrived=" + arrived + ")"))
+          })
         })
 
         sc.add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
