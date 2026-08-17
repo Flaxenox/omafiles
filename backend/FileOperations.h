@@ -177,11 +177,42 @@ private:
   void run(const QString &op, const QString &path,
           std::function<Result(const ProgressFn &)> job);
 
-  // Cooperative cancellation flag (see cancel()/copy()). Heap-allocated and
-  // shared (not a plain member) so that a job lambda can hold its own
-  // shared_ptr copy and keep reading/writing the SAME flag safely even if
-  // the FileOperations singleton itself is destroyed while the job is still
-  // running on a pool thread (same reasoning as ProgressFn above).
+  // Starts a fresh, operation-local cancellation token and makes it the one
+  // cancel() targets from now on. Every cancellable entry point (copy/move/
+  // remove/emptyTrash/restoreByOrigPath) MUST call this exactly once, at the
+  // very start, instead of reusing/reset()-ing a single shared flag (P1-4,
+  // architectural audit 2026-08-17).
+  //
+  // Before this, `m_cancelled` was ONE atomic<bool> reused for the entire
+  // lifetime of the singleton: every op reset the SAME flag to false at its
+  // own start and captured a shared_ptr to that SAME object. Two operations
+  // overlapping in time (e.g. a batch's next item starting while the
+  // previous item's delivery is still in flight, or any future/direct
+  // Backend.FileOperations caller that doesn't go through ActionEngine's
+  // single-flight `nativeBusy` guard) were therefore silently reading and
+  // writing the exact same flag: starting op B could un-cancel a still-
+  // running op A that had just been cancelled (B's `store(false)` resets the
+  // shared flag A's job is still checking), and cancel() had no way to
+  // target one without affecting the other. ActionEngine's own `nativeBusy`
+  // convention happened to prevent this in today's UI, but the backend's own
+  // contract did not guarantee it.
+  //
+  // Fix: each call gets its OWN heap-allocated atomic<bool> (via
+  // beginCancelToken()), captured by the job lambda as a shared_ptr copy
+  // independent of `this` and independent of any OTHER operation's token.
+  // `m_cancelled` always points at whichever token is currently "active"
+  // (the most recently started operation, matching the single Cancel
+  // button's UX -- there is no per-operation-ID cancel()), so cancel()
+  // still cancels "the current operation" with no API change, but an
+  // earlier operation that is still finishing up keeps checking its OWN,
+  // untouched token and is never affected by a later operation starting,
+  // being cancelled, or resetting anything.
+  std::shared_ptr<std::atomic<bool>> beginCancelToken();
+
+  // The cancellation token of whichever operation cancel() currently
+  // targets. Never read/written directly by job lambdas -- see
+  // beginCancelToken()'s doc comment above and copy()/move()/remove()/
+  // emptyTrash()/restoreByOrigPath() for how each captures its own copy.
   std::shared_ptr<std::atomic<bool>> m_cancelled =
       std::make_shared<std::atomic<bool>>(false);
 

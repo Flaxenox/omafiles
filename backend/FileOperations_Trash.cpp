@@ -15,8 +15,7 @@ void FileOperations::trash(const QString &path) {
 }
 
 void FileOperations::emptyTrash() {
-  m_cancelled->store(false);
-  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  auto cancelled = beginCancelToken(); // fresh, operation-local token (P1-4); job lambda is `this`-free (P0)
   run(QStringLiteral("emptyTrash"), QString(), [cancelled](const auto &) -> Result {
     QString err;
     const QStringList roots = discoverTrashRoots();
@@ -94,8 +93,7 @@ void FileOperations::restore(const QString &path) {
 }
 
 void FileOperations::restoreByOrigPath(const QString &origPath) {
-  m_cancelled->store(false);
-  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  auto cancelled = beginCancelToken(); // fresh, operation-local token (P1-4); job lambda is `this`-free (P0)
   run(QStringLiteral("restore"), origPath, [origPath, cancelled](const auto &) -> Result {
     // Search in ALL the XDG roots for the .trashinfo whose Path= matches origPath,
     // matching exact, canonical (symlink-resolved), or clean paths,

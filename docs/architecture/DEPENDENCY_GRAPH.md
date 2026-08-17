@@ -1,121 +1,86 @@
 # `logic/` dependency graph
 
-Generated from `property Item x` wiring between `logic/*.qml` components (UI
-element/dialog references excluded — this is component-to-component only).
-Regenerated 2026-08-09 after **Phase 14.D** (explicit dependency
-injection): the controllers stopped using `OmafilesContent` as a generic
-facade and now receive `actionEngine` / `navController` / `fileTypeUtils`
-directly from `core/ControllerRegistry.qml`. `KeyboardShortcuts` (which is
-instantiated in `panels/ActiveFileList.qml`, not in the registry) is included by
-its `host*` injections.
+Regenerated 2026-08-17 (architectural-audit P1-5) against the **current**
+`logic/` directory (14 files). The previous version of this document
+(last regenerated 2026-08-09) described a `logic/` made of ~20 small
+`*Ops.qml` controllers — `ClipboardOps`, `RenameOps`, `DragDropOps`,
+`FileOps`, `ConflictActions`, `ArchiveActions`, `DeleteOps`, `BookmarkOps`,
+`OpenWithOps`, `SelectionOps`, `SortOps` among them. **None of those files
+exist anymore** — they were folded into `logic/ActionEngine.qml` in a single
+commit (`37f3f318`, 2026-08-15, see `ARCHITECTURE.md`'s "Phase 43" section
+and `docs/audits/ARCHITECTURE_EVOLUTION_AUDIT.md`). The graph below reflects
+what is actually in the repository today, derived the same way as before:
+from `property Item x` / `property var x` wiring in
+`core/ControllerRegistry.qml` (the sole owner of every controller except
+`KeyboardShortcuts`) plus the `hostControllers.*` accesses in
+`logic/KeyboardShortcuts.qml` (instantiated in `panels/ActiveFileList.qml`,
+not in the registry).
 
 ```mermaid
 graph LR
   ActionEngine --> NavigationController
-  ArchiveActions --> ActionEngine
-  ArchiveActions --> NavigationController
-  ArchiveActions --> SelectionOps
-  ArchiveActions --> SortOps
-  BookmarkOps --> MountActions
-  BookmarkOps --> NavigationController
-  BookmarkOps --> Persistence
-  BookmarkOps --> TabOps
-  ClipboardOps --> ActionEngine
-  ClipboardOps --> SelectionOps
-  ConflictActions --> ActionEngine
-  ConflictActions --> ArchiveActions
-  ConflictActions --> BookmarkOps
-  ConflictActions --> ClipboardOps
-  ConflictActions --> FileOps
-  ConflictActions --> RenameOps
-  ConflictActions --> SelectionOps
-  DeleteOps --> ActionEngine
-  DeleteOps --> SelectionOps
-  DragDropOps --> ConflictActions
-  DragDropOps --> SelectionOps
-  FileOps --> ActionEngine
-  FileOps --> SelectionOps
-  KeyboardShortcuts --> ActionEngine
-  KeyboardShortcuts --> ClipboardOps
-  KeyboardShortcuts --> ConflictActions
-  KeyboardShortcuts --> DeleteOps
-  KeyboardShortcuts --> DragDropOps
-  KeyboardShortcuts --> FileOps
-  KeyboardShortcuts --> MountActions
-  KeyboardShortcuts --> NavigationController
-  KeyboardShortcuts --> PreviewLoader
-  KeyboardShortcuts --> RenameOps
-  KeyboardShortcuts --> SearchOps
-  KeyboardShortcuts --> SelectionOps
-  KeyboardShortcuts --> SortOps
-  KeyboardShortcuts --> TabOps
-  MountActions --> NavigationController
-  MountActions --> TabOps
-  NavigationController --> ArchiveActions
-  NavigationController --> BookmarkOps
-  NavigationController --> MountActions
-  NavigationController --> SelectionOps
-  NavigationController --> SortOps
-  OpenWithOps --> BookmarkOps
-  Persistence --> NavigationController
-  Persistence --> TabOps
-  PreviewLoader --> FileMeta
-  PreviewLoader --> VideoThumbnails
-  PropertiesLoader --> SelectionOps
-  RenameOps --> ActionEngine
-  RenameOps --> NavigationController
-  SearchOps --> NavigationController
-  SearchOps --> SelectionOps
-  SearchOps --> SortOps
-  SelectionOps --> PreviewLoader
-  TabOps --> ArchiveActions
+  TabOps --> ActionEngine
   TabOps --> NavigationController
   TabOps --> PreviewLoader
+  NavigationController --> MountActions
+  MountActions --> TabOps
+  MountActions --> NavigationController
+  Persistence --> TabOps
+  Persistence --> NavigationController
+  SearchOps --> NavigationController
+  PreviewLoader --> VideoThumbnails
+  PreviewLoader --> FileMeta
+  KeyboardShortcuts --> ActionEngine
+  KeyboardShortcuts --> NavigationController
+  KeyboardShortcuts --> SearchOps
+  KeyboardShortcuts --> TabOps
+  KeyboardShortcuts --> MountActions
+  KeyboardShortcuts --> PreviewLoader
 ```
 
-Leaves (no `logic/` dependencies): `FileMeta`, `VideoThumbnails`. Pure file type and string utilities live in `Utils.js`.
+Every controller additionally receives `root` (the composition root,
+`core/OmafilesContent.qml`) and, where it touches the active listing,
+`list` (the real `ListView`-owning `panels/ActiveFileList.qml` instance) --
+both injected by `core/ControllerRegistry.qml` and omitted above as they are
+not `logic/`-to-`logic/` edges. `PropertiesLoader` and `CustomActions`
+receive only `root` and have no edges to other controllers. `DirLister.qml`
+and `SearchBackend.qml` are thin adapters directly over
+`Backend.DirectoryModel`/a native search index and are not wired into the
+registry's controller graph at all (they're consumed by
+`NavigationController`/`SearchOps` respectively as plain property values,
+not as registry-owned singletons).
 
-## The graph is NO LONGER acyclic (on purpose, since 14.D)
+**Leaves** (no `logic/`-to-`logic/` dependencies of their own):
+`VideoThumbnails`, `FileMeta`, `PropertiesLoader`, `CustomActions`,
+`DirLister`, `SearchBackend`.
 
-The previous version (`core-v1-ready`, 2026-08-05) was acyclic because
-`NavigationController` wasn't referenced by anyone: only
-`OmafilesContent` instantiated it and the controllers reached navigation via
-`root.refresh()` / `root.navigateTo()` (the composition root's facade).
+## The graph is still cyclic, on purpose (unchanged since Phase 14.D)
 
-Injecting `navController` directly (Phase 14.D, removing those `root.*`
-wrappers) makes real **reference cycles** appear. The core one is:
+`NavigationController` injects `MountActions`, and `MountActions` injects
+`NavigationController` back (same for `TabOps` in both directions with
+`NavigationController` and with `Persistence`). This is a genuine reference
+cycle, not an initialization-order bug: `core/ControllerRegistry.qml`
+resolves everything by QML `id`, which does not require declaration order,
+and no constructor calls into another controller during creation. Verified
+by `--selfcheck` passing clean (95/95 as of this writing) and by the app
+starting cleanly.
 
-```
-NavigationController → { ArchiveActions, BookmarkOps, MountActions }
-        ↑______________________________|
-```
-
-that is, `NavigationController` injects those three controllers **and** the three
-receive `navController` back. There are 18 distinct cycles derived from that
-(e.g. `NavigationController → MountActions → TabOps → NavigationController`).
-
-**This is harmless at runtime.** They are references between siblings that the
-`ControllerRegistry` resolves by `id` (QML doesn't require declaration order);
-there is no instantiation nor call recursion. Validated: `--selfcheck`
-77/77 and both frontends (Quickshell + Qt6) start clean. Acyclicity
-stopped being an achievable invariant as soon as the navigation logic moved
-to being injected instead of accessed via the root's facade, and it adds no value
-to pursue it: it would break the decoupling that 14.D sought.
-
-> **Notice for the next refactor:** don't try to "break" these cycles
-> by reordering the registry's instantiations nor returning to a
-> `root.*` wrapper. The cycles are of *reference*, not of *initialization*, and they are the
-> expected consequence of explicit injection.
+**Do not try to "fix" this by reordering `ControllerRegistry.qml` or by
+reintroducing a `root.*` facade indirection to break the cycle.** That
+facade is exactly what Phase 14.D deliberately removed in favor of explicit
+injection; the cycles are the expected, harmless consequence of explicit
+injection between mutually-aware siblings, not a defect.
 
 ## Regenerating this document
 
 Derive it from the registry's real wiring (source of truth for ownership):
 
 ```
-core/ControllerRegistry.qml   # "Component { id: x; dep: otherId }" blocks
+core/ControllerRegistry.qml   # "Foo { id: x; dep: otherId }" blocks
 panels/ActiveFileList.qml     # host* injections of KeyboardShortcuts
+logic/KeyboardShortcuts.qml   # grep for `hostControllers\.[a-zA-Z]+` to get its real edges
 ```
 
-filtering out the self-references of the `readonly property alias X: X` and the
-`root`/`list` injections (which point to the composition root and the ListView,
-not to another `logic/` component).
+Filter out: self-references (`readonly property alias X: X`), and the
+`root`/`list` injections (they point at the composition root and the active
+`ListView`, not at another `logic/` component).

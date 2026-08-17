@@ -4,9 +4,13 @@ import QtQuick
 // Row selection state (single + drag marquee) --
 // first singleton of the state/ layer, a pilot to validate the
 // Selection state singleton for active file listing.
-// Util/Color/Style of qs.Commons already use) before moving more state here. The
-// logic that manipulates it stays in logic/SelectionOps.qml -- this is ONLY
-// the state, without functions.
+// Util/Color/Style of qs.Commons already use) before moving more state here.
+// Unlike most other state/ singletons (property bags only), this one also
+// carries the selection/marquee manipulation functions themselves
+// (selectOnly/toggleSelect/selectRange/startMarquee/moveMarquee/endMarquee/
+// etc., below) -- corrected 2026-08-17, P2.1 follow-up, this used to name a
+// separate logic/SelectionOps.qml that never actually existed as a
+// distinct file by the time this comment was written.
 QtObject {
   property int selectedIndex: -1
   property var selectedIndices: []

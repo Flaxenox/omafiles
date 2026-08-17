@@ -165,6 +165,11 @@ Item {
         _finishNative(true)
         return
       }
+      // Recorded BEFORE advancing _batchIdx: this is what makes the undo
+      // entry (see _finishNative) reflect exactly the items that really
+      // completed, not the whole batch that was merely requested (P1-1/
+      // P1-2, architectural audit 2026-08-17).
+      _batchCompleted.push(_batchQueue[_batchIdx])
       _progBase += _lastItemTotal
       _lastItemTotal = 0
       _batchIdx += 1
@@ -187,6 +192,12 @@ Item {
   property bool _batchOverwrite: false
   property var _batchOnDone: null
   property bool _cancelling: false
+  // Items of _batchQueue that ACTUALLY finished (see onFinished above) --
+  // NOT the whole batch that was requested. _finishNative hands exactly
+  // this to _batchOnDone, so a caller building an undo entry can never
+  // claim more happened than really did (P1-1/P1-2, architectural audit
+  // 2026-08-17).
+  property var _batchCompleted: []
 
   function runNativeCopy(pairs, busyLabel, overwrite, onDone) {
     return _runNative("copy", pairs, busyLabel, overwrite, onDone)
@@ -224,6 +235,7 @@ Item {
     _batchIdx = 0
     _batchOverwrite = false
     _batchOnDone = onDone || null
+    _batchCompleted = []
     ActionState.actionLabel = "Emptying trash…"
     ActionState.actionBusy = true
     ActionState.actionProgressPct = -1
@@ -243,6 +255,7 @@ Item {
     _batchIdx = 0
     _batchOverwrite = overwrite === true
     _batchOnDone = onDone || null
+    _batchCompleted = []
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     if (busyLabel && (kind === "copy" || kind === "move"))
@@ -272,8 +285,19 @@ Item {
     nativeBusy = false
     _resetActionState()
     var cb = _batchOnDone
+    var completed = _batchCompleted
     _batchOnDone = null
-    if (success && cb) Qt.callLater(cb)
+    _batchCompleted = []
+    // Real bug (P1-1/P1-2, architectural audit 2026-08-17): this used to
+    // gate on `success` alone, so a batch that failed or was cancelled
+    // AFTER a few items had already really completed on disk skipped
+    // _batchOnDone entirely -- zero undo entry for work that genuinely
+    // happened, even though `success` and "nothing happened" are different
+    // things. The only thing that matters for "is there something to
+    // report/undo" is whether anything actually finished; `cb` now always
+    // receives the real completed subset (never the full original batch)
+    // so it can never register an undo for more than truly succeeded.
+    if (cb && completed.length > 0) Qt.callLater(function () { cb(completed) })
   }
 
   Backend.ProcessRunner {
@@ -300,12 +324,12 @@ Item {
     if (ArchiveState.inArchive) return
     var names = SelectionState.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
-    root.pendingDeleteNames = names
+    ActionState.pendingDeleteNames = names
   }
 
   function confirmDelete() {
-    var names = root.pendingDeleteNames
-    root.pendingDeleteNames = []
+    var names = ActionState.pendingDeleteNames
+    ActionState.pendingDeleteNames = []
     if (names.length === 0) return
     if (NavState.currentPath === Paths.trashDir) {
       // NATIVE permanent delete: FileOperations.remove instead
@@ -331,17 +355,24 @@ Item {
       // the user presses undo, much later.
       var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
-      runNativeTrash(origPaths, "", function () {
-        // The undo is only registered if the send confirmed success. Undo =
-        // restore BY ORIGINAL PATH: it searches
-        // in ALL the active trashes for the .trashinfo whose original path
-        // matches, so it works the same wherever the delete came from -- and it works
+      runNativeTrash(origPaths, "", function (completed) {
+        // The undo is only registered if the send confirmed success, and
+        // ONLY for the items that actually made it to the trash -- `completed`
+        // (never the full `origPaths`) is what _finishNative reports really
+        // finished, so if item 3 of 5 fails/gets cancelled, undo only offers
+        // to restore the 2 that genuinely moved (P1-1, architectural audit
+        // 2026-08-17). Undo = restore BY ORIGINAL PATH: it searches in ALL the
+        // active trashes for the .trashinfo whose original path matches, so
+        // it works the same wherever the delete came from -- and it works
         // even if the user undoes much later without having ever opened the
         // Trash.
-        pushUndo(label, function () {
-          return runNativeRestore(origPaths, "")
+        var donePaths = completed.map(function (p) { return p.src })
+        var doneLabel = donePaths.length === origPaths.length ? label
+          : (donePaths.length + " of " + origPaths.length + " items deleted")
+        pushUndo(doneLabel, function () {
+          return runNativeRestore(donePaths, "")
         }, function () {
-          return runNativeTrash(origPaths, "")
+          return runNativeTrash(donePaths, "")
         })
       })
     }
@@ -437,15 +468,21 @@ Item {
         // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
-        runNativeMove(pairs, busyLabel, overwrite, function () {
-          var label = pairs.length === 1
-            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-            : "move " + pairs.length + " items"
-          var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
+        runNativeMove(pairs, busyLabel, overwrite, function (completed) {
+          // `completed` (never the full `pairs`) is exactly what
+          // _finishNative reports really moved -- if item 3 of `pairs` fails
+          // or the user cancels mid-batch, undo only offers to reverse the
+          // items that genuinely moved (P1-1, architectural audit 2026-08-17).
+          var label = completed.length === pairs.length
+            ? (pairs.length === 1
+                ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+                : "move " + pairs.length + " items")
+            : (completed.length + " of " + pairs.length + " items moved")
+          var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
           pushUndo(label, function () {
             return runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return runNativeMove(pairs, "", overwrite)     // redo: like the original
+            return runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
           })
         })
       }
@@ -520,10 +557,12 @@ Item {
   }
 
   // commitNewFile()/commitNewFolder() (check whether something with
-  // that name already exists) live in logic/ConflictActions.qml, next to
-  // newFileCheckProc/newFolderCheckProc -- same pattern as commitRename/
-  // renameCheckProc. These two are the real execution (with overwrite=true
-  // if the user confirmed overwriting in the conflict dialog).
+  // that name already exists, further below in this file -- corrected
+  // 2026-08-17, P2.1 follow-up, this used to name logic/ConflictActions.qml,
+  // folded into ActionEngine.qml on 2026-08-15) are the conflict checks;
+  // runPendingNewFile()/runPendingNewFolder() (here) are the real
+  // execution, with overwrite=true if the user confirmed overwriting in
+  // the conflict dialog.
   function runPendingNewFile(overwrite) {
     var pending = ConflictState.pendingNewFile
     ConflictState.pendingNewFile = null
@@ -735,14 +774,15 @@ Item {
     runNativeRestore(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
-  // actionEngine.startDropInto() is the one that actually checks
-  // conflicts -- handleFilesDropped() only resolves the DragEvent itself
-  // (accept/reject, move vs copy). runDrop() (the real execution of the
-  // mv/cp) lives in logic/ConflictActions.qml next to dropCheckProc, which
-  // calls it -- if it stayed here, DragDropOps and ConflictActions would
-  // need each other (circular dependency, rule 5 of the architecture
-  // prompt). With the executor there, the dependency stays one-way:
-  // DragDropOps -> ConflictActions.
+  // Drag-and-drop, three steps, all in this file (stale comments here used
+  // to describe a pre-Phase-43 split across logic/DragDropOps.qml and
+  // logic/ConflictActions.qml, corrected 2026-08-17, P2.1 follow-up --
+  // both files were folded into ActionEngine.qml on 2026-08-15):
+  // handleFilesDropped() only resolves the DragEvent itself (accept/reject,
+  // move vs copy); startDropInto() is the one that actually checks
+  // conflicts via existingPaths() and opens ConflictState.dropConflictOpen
+  // if needed; runDrop() (below) does the real mv/cp once any conflict is
+  // resolved.
 
   function urlToPath(url) {
     var s = String(url)
@@ -763,9 +803,8 @@ Item {
     return data
   }
 
-  // runDrop() (executes the real mv/cp after resolving a drop conflict)
-  // lives in logic/ConflictActions.qml -- see the comment next to
-  // `conflictActions` above.
+  // runDrop() (below) executes the real mv/cp after resolving a drop
+  // conflict -- see the drag-and-drop comment above handleFilesDropped().
 
   function cancelDropConflict() {
     ConflictState.dropConflictOpen = false
@@ -1045,10 +1084,14 @@ Item {
   // a drive, or the background of the list = the folder open right now).
   // `isMove` comes from DragEvent.source !== null (internal drag) --
   // drags coming from outside always copy, never move the source.
-  // mode: "all" (no conflicts) | "overwrite" | "skip". It lived in
-  // logic/DragDropOps.qml -- moved here to break a circular
-  // dependency (DragDropOps needed conflictActions to check
-  // conflicts, and conflictActions needed dragDropOps only for this).
+  // mode: "all" (no conflicts) | "overwrite" | "skip". Originally lived in
+  // logic/DragDropOps.qml, moved here pre-Phase-43 to break a circular
+  // dependency with the conflict-check logic (DragDropOps needed it to
+  // check conflicts, and it needed DragDropOps only for this) -- both
+  // files were folded into ActionEngine.qml on 2026-08-15 (corrected
+  // 2026-08-17, P2.1 follow-up), so the two are one file today and the
+  // cycle no longer exists to avoid, but drag-and-drop conflict
+  // resolution and its execution stay next to each other on purpose.
   function runDrop(mode) {
     var conflictSet = {}
     ConflictState.dropConflictNames.forEach(function (n) { conflictSet[n] = true })
@@ -1077,15 +1120,20 @@ Item {
         // NATIVE move: FileOperations.move. Same undo model
         // (move back / redo), now also native -- 0 shell.
         var overwrite = mode === "overwrite"
-        actionEngine.runNativeMove(pairs, busyLabel, overwrite, function () {
-          var label = pairs.length === 1
-            ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
-            : "move " + pairs.length + " items"
-          var reversed = pairs.map(function (p) { return { src: p.dest, dest: p.src } })
+        actionEngine.runNativeMove(pairs, busyLabel, overwrite, function (completed) {
+          // `completed` (never the full `pairs`) is exactly what
+          // _finishNative reports really moved -- see the identical comment
+          // in runPaste() above (P1-1, architectural audit 2026-08-17).
+          var label = completed.length === pairs.length
+            ? (pairs.length === 1
+                ? "move \"" + pairs[0].dest.substring(pairs[0].dest.lastIndexOf("/") + 1) + "\""
+                : "move " + pairs.length + " items")
+            : (completed.length + " of " + pairs.length + " items moved")
+          var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
           actionEngine.pushUndo(label, function () {
             return actionEngine.runNativeMove(reversed, "", false)      // undo: no-clobber
           }, function () {
-            return actionEngine.runNativeMove(pairs, "", overwrite)     // redo: like the original
+            return actionEngine.runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
           })
         })
       }

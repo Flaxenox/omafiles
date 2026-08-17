@@ -1,5 +1,6 @@
 import QtQuick
 import "../state"
+import Omafiles.Backend as Backend
 
 // Keyboard shortcuts of the active panel (Keys.onPressed of the ListView) --
 // first cut of panels/ActiveFileList.qml (761 lines, over the
@@ -35,7 +36,7 @@ Item {
       if (event.key === Qt.Key_Escape) { ContextMenuState.contextMenuOpen = false; event.accepted = true }
       return
     }
-    if (hostRoot && hostRoot.pendingDeleteNames && hostRoot.pendingDeleteNames.length > 0) {
+    if (ActionState.pendingDeleteNames.length > 0) {
       if (hostDialogs && hostDialogs.deleteConfirm && hostDialogs.deleteConfirm.handleKey(event)) event.accepted = true
       return
     }

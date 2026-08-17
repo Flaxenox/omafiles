@@ -17,23 +17,34 @@ import QtQuick
 // to itself instead of to the passed value (see
 // [[project_omafiles_architecture_rules]], same bug as
 // BackgroundPanel.qml/KeyboardShortcuts.qml).
-import "../state"
-
+//
+// No `import "../state"` on purpose (architectural audit 2026-08-17, P2.1
+// follow-up): this used to call SelectionState.startMarquee/moveMarquee/
+// endMarquee directly, one of the two documented shared/-contract
+// violations in docs/architecture/ARCHITECTURE.md. `marqueeTarget` takes
+// its place -- any object exposing the same three methods (SelectionState
+// today; both call sites just pass `marqueeTarget: SelectionState`), so
+// this component knows a generic marquee-target shape, not the specific
+// singleton. Same idiom `catcherListView` already used for the ListView
+// reference, just extended to the selection side too.
 MouseArea {
   property Item catcherListView: null
   property real measuredRowHeight: 32
+  // Must expose startMarquee(x, y, viewportY, additive), moveMarquee(x, y,
+  // viewportY, rowHeight), endMarquee() -- SelectionState's own shape.
+  property var marqueeTarget: null
 
   acceptedButtons: Qt.LeftButton
   onPressed: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
-    SelectionState.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
+    marqueeTarget.startMarquee(p.x, p.y, vp.y, (mouse.modifiers & Qt.ControlModifier) !== 0)
   }
   onPositionChanged: function (mouse) {
     var p = mapToItem(catcherListView.contentItem, mouse.x, mouse.y)
     var vp = mapToItem(catcherListView, mouse.x, mouse.y)
-    SelectionState.moveMarquee(p.x, p.y, vp.y, measuredRowHeight)
+    marqueeTarget.moveMarquee(p.x, p.y, vp.y, measuredRowHeight)
   }
-  onReleased: SelectionState.endMarquee()
-  onCanceled: SelectionState.endMarquee()
+  onReleased: marqueeTarget.endMarquee()
+  onCanceled: marqueeTarget.endMarquee()
 }

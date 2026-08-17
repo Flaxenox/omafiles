@@ -212,10 +212,18 @@ Item {
   //     with StdioCollector is not to be trusted to launch something that in turn
   //     forks a long-running app.
   //  3. gtk-launch via Detached (this one): same mechanism ALREADY verified
-  //     reliable in OpenWithOps.launchWith() ("Open with..."), which does
+  //     reliable in core/CommandFacade.qml's launchWith() ("Open with...",
+  //     corrected 2026-08-17, P2.1 follow-up -- that logic used to live in
+  //     logic/OpenWithOps.qml, folded away on 2026-08-15), which does
   //     respect Terminal=true. It only remains to first resolve the id of the
   //     default .desktop (gtk-launch needs an id, not a path).
   function openWithDefault(path) {
+    // Same guard TerminalResolver already uses for its own real launches:
+    // without it, every selfcheck run of the P0-3 archive-open regression
+    // test (which legitimately calls this on success) opened a real
+    // terminal+editor window on the developer's desktop (test-hygiene
+    // finding, architectural audit 2026-08-17).
+    if (Backend.Env.get("OMAFILES_SELFCHECK") === "1") return
     Backend.Detached.run(["bash", "-c", 'id=$(xdg-mime query default "$(xdg-mime query filetype "$1")"); [ -n "$id" ] && exec gtk-launch "$id" "$1"', "_", path])
   }
 

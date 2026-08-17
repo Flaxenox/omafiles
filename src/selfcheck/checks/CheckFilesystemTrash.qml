@@ -209,6 +209,302 @@ QtObject {
           })
         })
 
+        sc.add("Navigate to Trash via bookmark (real UI path, repeated) does not freeze", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+
+          function tick(n, after) {
+            var responsive = false
+            var t = Qt.createQmlObject('import QtQuick; Timer { interval: 30; repeat: false }', sc)
+            t.triggered.connect(function () { responsive = true })
+            // Same call the sidebar bookmark row makes on click
+            // (Sidebar.onBookmarkOpened -> MainLayout -> commandFacade.openBookmark),
+            // not an isolated Qt.createComponent fragment.
+            c.commandFacade.openBookmark({ path: Paths.trashDir, type: "dir" })
+            t.start()
+            sc._poll(function () { return NavState.currentPath === Paths.trashDir && responsive }, function (ok1) {
+              t.destroy()
+              if (!ok1) { done(false, "iteration " + n + ": didn't navigate or event loop stalled entering Trash"); return }
+              var responsive2 = false
+              var t2 = Qt.createQmlObject('import QtQuick; Timer { interval: 30; repeat: false }', sc)
+              t2.triggered.connect(function () { responsive2 = true })
+              c.commandFacade.openBookmark({ path: sc.opsDir, type: "dir" })
+              t2.start()
+              sc._poll(function () { return NavState.currentPath === sc.opsDir && responsive2 }, function (ok2) {
+                t2.destroy()
+                if (!ok2) { done(false, "iteration " + n + ": didn't navigate away or event loop stalled leaving Trash"); return }
+                if (n >= 3) { after(); return }
+                tick(n + 1, after)
+              })
+            })
+          }
+
+          function withNTrashedItems(count, cb) {
+            if (count === 0) { cb(); return }
+            var names = []
+            for (var i = 0; i < count; i++) names.push(sc.opsDir + "/trashnav-" + Date.now() + "-" + i + ".txt")
+            var i2 = 0
+            function copyNext() {
+              if (i2 >= names.length) { trashAll(0); return }
+              Backend.FileOperations.copy(sc.note, names[i2])
+              sc._fileOp(done, function () { i2++; copyNext() })
+            }
+            var j = 0
+            function trashAll() {
+              if (j >= names.length) { cb(); return }
+              Backend.FileOperations.trash(names[j])
+              sc._fileOp(done, function () { j++; trashAll() })
+            }
+            copyNext()
+          }
+
+          NavState.currentPath = sc.opsDir
+          withNTrashedItems(0, function () {
+            tick(1, function () {
+              withNTrashedItems(2, function () {
+                tick(1, function () {
+                  NavState.currentPath = prevPath
+                  done(true, "repeated navigation in/out of Trash (empty and populated) stayed responsive")
+                })
+              })
+            })
+          })
+        })
+
+        sc.add("Restore + permanently delete from Trash via real itemActions() (UI path)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var facade = c.commandFacade
+          var prevPath = NavState.currentPath
+          var work = sc.opsDir + "/ia-trash-" + Date.now() + ".txt"
+          var wname = work.substring(work.lastIndexOf("/") + 1)
+
+          function findAction(actions, label) {
+            for (var i = 0; i < actions.length; i++) if (actions[i].label.indexOf(label) === 0) return actions[i]
+            return null
+          }
+          function selectByName(name) {
+            var entries = NavState.visibleEntries
+            for (var i = 0; i < entries.length; i++) {
+              if (entries[i].name === name) { SelectionState.selectOnly(i); return true }
+            }
+            return false
+          }
+
+          Backend.FileOperations.copy(sc.note, work)
+          sc._fileOp(done, function () {
+            Backend.FileOperations.trash(work)
+            sc._fileOp(done, function () {
+              facade.openBookmark({ path: Paths.trashDir, type: "dir" })
+              sc._poll(function () { return NavState.currentPath === Paths.trashDir }, function () {
+                sc._poll(function () { return sc._has(NavState.visibleEntries, wname) }, function (listed) {
+                  if (!listed) { done(false, "trashed item never appeared in the Trash listing"); return }
+                  if (!selectByName(wname)) { done(false, "couldn't select the trashed item"); return }
+                  var restoreAction = findAction(facade.itemActions(), "Restore")
+                  if (!restoreAction) { done(false, "no Restore action offered in Trash"); return }
+                  restoreAction.action()
+                  sc._fileOp(done, function () {
+                    sc._listOnce(sc.opsDir, function (e) {
+                      if (!sc._has(e, wname)) { done(false, "Restore didn't put the file back"); return }
+                      // Trash it again to exercise permanent delete.
+                      Backend.FileOperations.trash(work)
+                      sc._fileOp(done, function () {
+                        sc._poll(function () { return sc._has(NavState.visibleEntries, wname) }, function (listed2) {
+                          if (!listed2) { done(false, "re-trashed item never re-appeared"); return }
+                          if (!selectByName(wname)) { done(false, "couldn't re-select the trashed item"); return }
+                          var delAction = findAction(facade.itemActions(), "Delete permanently")
+                          if (!delAction) { done(false, "no 'Delete permanently' action offered in Trash"); return }
+                          delAction.action() // requestDelete() -> ActionState.pendingDeleteNames, awaits ConfirmDialog
+                          sc._poll(function () { return ActionState.pendingDeleteNames.length > 0 }, function (pending) {
+                            if (!pending) { done(false, "requestDelete() didn't arm the confirm dialog"); return }
+                            c.actionEngine.confirmDelete()
+                            sc._fileOp(done, function () {
+                              var info = Backend.FileOperations.trashInfo()
+                              var stillThere = false
+                              for (var i = 0; i < info.length; i++) if (info[i].name === wname) stillThere = true
+                              NavState.currentPath = prevPath
+                              done(!stillThere, stillThere ? "permanent delete left the .trashinfo behind" : "restore + permanent delete via real itemActions() OK")
+                            })
+                          })
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+
+        sc.add("Delete confirmation: real dialog path (cancel, multi-select, trash-send, permanent, no stale names)", function (done) {
+          // P2.1 follow-up (2026-08-17): pendingDeleteNames moved from an
+          // untyped root.pendingDeleteNames to ActionState.pendingDeleteNames.
+          // This exercises the REAL path end to end -- CommandFacade.itemActions()
+          // -> ActionEngine.requestDelete() -> ActionState.pendingDeleteNames ->
+          // the real DialogLayer ConfirmDialog (c.dialogLayer.deleteConfirm,
+          // not a re-simulated formula) -> canceled()/confirmed() (the same
+          // signals the real UI's Escape/click paths emit) ->
+          // ActionEngine.confirmDelete() -- not an isolated Qt.createComponent
+          // fragment.
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var facade = c.commandFacade
+          var confirm = c.dialogLayer.deleteConfirm
+          var prevPath = NavState.currentPath
+
+          function findAction(actions, label) {
+            for (var i = 0; i < actions.length; i++) if (actions[i].label.indexOf(label) === 0) return actions[i]
+            return null
+          }
+          function selectByNames(names) {
+            var entries = NavState.visibleEntries
+            var idx = []
+            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+            if (idx.length !== names.length) return false
+            SelectionState.selectedIndices = idx
+            return true
+          }
+
+          var stamp = Date.now()
+          var aName = "delconf-a-" + stamp + ".txt"
+          var bName = "delconf-b-" + stamp + ".txt"
+          var cName = "delconf-c-" + stamp + ".txt"
+          var aPath = sc.opsDir + "/" + aName
+          var bPath = sc.opsDir + "/" + bName
+          var cPath = sc.opsDir + "/" + cName
+
+          Backend.FileOperations.copy(sc.note, aPath)
+          sc._fileOp(done, function () {
+            Backend.FileOperations.copy(sc.note, bPath)
+            sc._fileOp(done, function () {
+              Backend.FileOperations.copy(sc.note, cPath)
+              sc._fileOp(done, function () {
+                c.navController.navigateTo(sc.opsDir)
+                sc._poll(function () {
+                  return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, aName)
+                    && sc._has(NavState.visibleEntries, bName) && sc._has(NavState.visibleEntries, cName)
+                }, function (listed) {
+                  if (!listed) { done(false, "fixture files never appeared in the listing"); return }
+
+                  // ---- 1) multi-select + cancel: no delete happens, dialog closes, names cleared ----
+                  if (!selectByNames([aName, bName])) { done(false, "couldn't select a+b"); return }
+                  var delAction1 = findAction(facade.itemActions(), "Delete")
+                  if (!delAction1) { done(false, "no Delete action offered"); return }
+                  delAction1.action()
+                  if (!confirm.opened) { done(false, "requestDelete() didn't open the real ConfirmDialog"); return }
+                  if (ActionState.pendingDeleteNames.length !== 2
+                      || ActionState.pendingDeleteNames.indexOf(aName) < 0 || ActionState.pendingDeleteNames.indexOf(bName) < 0) {
+                    done(false, "pendingDeleteNames wrong for multi-select: " + JSON.stringify(ActionState.pendingDeleteNames)); return
+                  }
+                  if (confirm.message.indexOf("2 items") < 0 || confirm.message.indexOf("PERMANENTLY") >= 0) {
+                    done(false, "dialog message wrong for a non-Trash multi delete: " + confirm.message); return
+                  }
+                  confirm.canceled() // same signal the real Escape/Cancel-button path emits
+                  if (confirm.opened || ActionState.pendingDeleteNames.length !== 0) {
+                    done(false, "cancel didn't close the dialog / clear pendingDeleteNames"); return
+                  }
+                  sc._listOnce(sc.opsDir, function (eAfterCancel) {
+                    if (!sc._has(eAfterCancel, aName) || !sc._has(eAfterCancel, bName)) {
+                      done(false, "cancel must not have deleted anything, but a file is gone"); return
+                    }
+
+                    // ---- 2) single delete (send to trash), confirmed for real ----
+                    if (!selectByNames([aName])) { done(false, "couldn't select a alone"); return }
+                    var delAction2 = findAction(facade.itemActions(), "Delete")
+                    delAction2.action()
+                    if (ActionState.pendingDeleteNames.length !== 1 || ActionState.pendingDeleteNames[0] !== aName) {
+                      done(false, "pendingDeleteNames wrong for single delete: " + JSON.stringify(ActionState.pendingDeleteNames)); return
+                    }
+                    if (confirm.message.indexOf(aName) < 0 || confirm.message.indexOf("trash?") < 0) {
+                      done(false, "dialog message wrong for a single non-Trash delete: " + confirm.message); return
+                    }
+                    confirm.confirmed() // same signal the real click/Enter path emits -> actionEngine.confirmDelete()
+                    sc._fileOp(done, function () {
+                      sc._listOnce(sc.opsDir, function (eAfterSend) {
+                        if (sc._has(eAfterSend, aName)) { done(false, "confirmed delete didn't send the file to trash"); return }
+                        if (ActionState.pendingDeleteNames.length !== 0) { done(false, "pendingDeleteNames not cleared after confirm"); return }
+
+                        // ---- 3) permanent delete from inside Trash ----
+                        c.navController.navigateTo(Paths.trashDir)
+                        sc._poll(function () { return NavState.currentPath === Paths.trashDir && sc._has(NavState.visibleEntries, aName) }, function (listedInTrash) {
+                          if (!listedInTrash) { done(false, "trashed file never appeared in Trash listing"); return }
+                          if (!selectByNames([aName])) { done(false, "couldn't select the trashed item"); return }
+                          var delAction3 = findAction(facade.itemActions(), "Delete permanently")
+                          if (!delAction3) { done(false, "no 'Delete permanently' action in Trash"); return }
+                          delAction3.action()
+                          if (confirm.message.indexOf(aName) < 0 || confirm.message.indexOf("PERMANENTLY") < 0) {
+                            done(false, "dialog message wrong for permanent delete: " + confirm.message); return
+                          }
+                          confirm.confirmed()
+                          sc._fileOp(done, function () {
+                            var info = Backend.FileOperations.trashInfo()
+                            var stillThere = false
+                            for (var i = 0; i < info.length; i++) if (info[i].name === aName) stillThere = true
+                            if (stillThere) { done(false, "permanent delete left the .trashinfo behind"); return }
+
+                            // ---- 4) no stale names from the previous (permanent-delete) operation ----
+                            c.navController.navigateTo(sc.opsDir)
+                            sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, cName) }, function (listedC) {
+                              if (!listedC) { done(false, "third fixture file never appeared"); return }
+                              if (!selectByNames([cName])) { done(false, "couldn't select the third file"); return }
+                              var delAction4 = findAction(facade.itemActions(), "Delete")
+                              delAction4.action()
+                              var stale = ActionState.pendingDeleteNames.length !== 1 || ActionState.pendingDeleteNames[0] !== cName
+                                || confirm.message.indexOf(aName) >= 0 || confirm.message.indexOf(bName) >= 0
+                              confirm.canceled()
+                              NavState.currentPath = prevPath
+                              done(!stale, stale ? "stale names/message leaked from a previous delete: " + JSON.stringify(ActionState.pendingDeleteNames) + " / " + confirm.message
+                                                  : "cancel + multi-select + trash-send + permanent-delete, no stale state, all via the real ConfirmDialog")
+                            })
+                          })
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+          })
+        })
+
+        sc.add("Large Trash (50 items) navigates via real UI path without stalling", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var names = []
+          for (var i = 0; i < 50; i++) names.push(sc.opsDir + "/bulk-trash-" + Date.now() + "-" + i + ".txt")
+
+          var i2 = 0
+          function copyNext() {
+            if (i2 >= names.length) { trashAll(); return }
+            Backend.FileOperations.copy(sc.note, names[i2])
+            sc._fileOp(done, function () { i2++; copyNext() })
+          }
+          var j = 0
+          function trashAll() {
+            if (j >= names.length) { navigate(); return }
+            Backend.FileOperations.trash(names[j])
+            sc._fileOp(done, function () { j++; trashAll() })
+          }
+          function navigate() {
+            var responsive = false
+            var t = Qt.createQmlObject('import QtQuick; Timer { interval: 30; repeat: false }', sc)
+            t.triggered.connect(function () { responsive = true })
+            var startedAt = Date.now()
+            c.commandFacade.openBookmark({ path: Paths.trashDir, type: "dir" })
+            t.start()
+            sc._poll(function () { return NavState.currentPath === Paths.trashDir && responsive }, function (ok) {
+              t.destroy()
+              var ms = Date.now() - startedAt
+              NavState.currentPath = prevPath
+              done(ok, ok ? ("navigated into a 50-item Trash in " + ms + "ms, event loop stayed responsive")
+                          : "event loop appears blocked navigating a large Trash")
+            })
+          }
+          copyNext()
+        })
+
         sc.add("Conflict detection: existingPaths (file/dir/symlink)", function (done) {
           var f = sc.opsDir + "/cd-file.txt"
           var d = sc.opsDir + "/cd-dir"

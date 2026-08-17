@@ -4,8 +4,7 @@
 #include <QRunnable>
 using namespace FileOpsPrivate;
 void FileOperations::remove(const QString &path, bool ignoreMissing) {
-  m_cancelled->store(false);
-  auto cancelled = m_cancelled; // see copy() -- job lambda is `this`-free
+  auto cancelled = beginCancelToken(); // fresh, operation-local token (P1-4); job lambda is `this`-free (P0)
   run(QStringLiteral("remove"), path, [path, ignoreMissing, cancelled](const auto &) -> Result {
     if (!QFileInfo(path).exists() && !QFileInfo(path).isSymLink()) {
       // ignoreMissing (= `rm -f`): it not existing is not an error.

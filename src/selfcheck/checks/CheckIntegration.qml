@@ -187,7 +187,7 @@ QtObject {
           }
           var kbd = kbdComp.createObject(sc, {
             "hostControllers": { "actionEngine": stubEngine, "navController": {} },
-            "hostRoot": { "pendingDeleteNames": [] }
+            "hostRoot": {}
           })
           var ev = function(k, mod) { return { "key": k, "modifiers": mod || Qt.NoModifier, "accepted": false } }
           kbd.handlePress(ev(Qt.Key_F2))
@@ -195,10 +195,62 @@ QtObject {
           kbd.handlePress(ev(Qt.Key_C, Qt.ControlModifier))
           kbd.handlePress(ev(Qt.Key_X, Qt.ControlModifier))
           kbd.handlePress(ev(Qt.Key_V, Qt.ControlModifier))
+          // P1-3 (architectural audit 2026-08-17): Shift+Return ("open
+          // terminal here") calls Backend.TerminalResolver, but this file
+          // only imports QtQuick and ../state -- caught here explicitly
+          // (try/catch) instead of letting a ReferenceError propagate as a
+          // generic "exception: ..." failure from the runner.
+          var terminalShortcutError = null
+          try {
+            kbd.handlePress(ev(Qt.Key_Return, Qt.ShiftModifier))
+          } catch (e) {
+            terminalShortcutError = String(e)
+          }
           kbd.destroy()
 
+          // Also checked against the REAL production instance (nested under
+          // panels/ActiveFileList.qml, reached here through
+          // sc._content.actionEngine.list -- see P0-1's lesson in
+          // ARCHITECTURE_EVOLUTION_AUDIT.md: QML's id-based context
+          // resolution can make an isolated Qt.createComponent() repro
+          // behave differently from the real nested tree, so imports are
+          // verified both ways rather than trusting either alone.
+          var realTreeError = null
+          var c = sc._content
+          if (c && c.actionEngine && c.actionEngine.list && c.actionEngine.list.keyboardShortcuts) {
+            try {
+              c.actionEngine.list.keyboardShortcuts.handlePress(ev(Qt.Key_Return, Qt.ShiftModifier))
+            } catch (e) {
+              realTreeError = String(e)
+            }
+          }
+
           var ok = called.F2 && called.Del && called.CtrlC && called.CtrlX && called.CtrlV
-          done(ok, ok ? "all 5 shortcuts routed correctly" : JSON.stringify(called))
+            && !terminalShortcutError && !realTreeError
+          done(ok, ok ? "all 6 shortcuts routed correctly (isolated + real tree)"
+                      : (terminalShortcutError ? "Shift+Return (isolated) threw: " + terminalShortcutError
+                        : realTreeError ? "Shift+Return (real tree) threw: " + realTreeError
+                        : JSON.stringify(called)))
+        })
+
+        // Regression for P1-3 (architectural audit 2026-08-17):
+        // core/DialogLayer.qml's onAuthSubmitted (network "connect to
+        // server" auth dialog) calls Backend.NetworkResolver.submitAuth(),
+        // but the file only imported qs.Commons/qs.Ui/../dialogs/../state --
+        // same missing-import bug as KeyboardShortcuts.qml above, different
+        // file. Exercises the REAL composition root (sc._content) by
+        // emitting the real ConnectServer dialog's authSubmitted signal, not
+        // a reimplementation.
+        sc.add("DialogLayer: network auth submission resolves Backend.NetworkResolver (P1-3 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var authError = null
+          try {
+            c.dialogLayer.connectServer.authSubmitted("user", "pass", false)
+          } catch (e) {
+            authError = String(e)
+          }
+          done(!authError, authError ? "authSubmitted threw: " + authError : "Backend.NetworkResolver resolved correctly")
         })
 
         // ======================= P0-3 (forensic audit 2026-08-16) =======================

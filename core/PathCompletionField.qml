@@ -10,6 +10,15 @@ import Omafiles.Backend as Backend
 // complete the segment and arrows to walk the options. All the path
 // resolution is C++ (Omafiles.Backend.PathCompleter -> QDir), without external processes:
 // it resolves ~, absolute paths and paths relative to the current folder.
+//
+// Lives in core/, not shared/ (architectural audit 2026-08-17, P2.1
+// follow-up): it reads NavState/EditModeState and calls
+// Backend.PathCompleter directly, which shared/ components are not
+// allowed to do (see docs/architecture/ARCHITECTURE.md's dependency
+// rules); its only consumer (core/MainLayout.qml) already lives in
+// core/, where that restriction doesn't apply -- so relocating removed
+// the violation instead of adding property/signal plumbing for a
+// decoupling nothing else currently needs.
 Item {
   id: field
   property Item root: null
@@ -71,6 +80,19 @@ Item {
     verticalPadding: 2
     Accessible.role: Accessible.EditableText
     Accessible.name: "Path"
+    // The kit's default TextField background is a subtle alpha wash (8%
+    // fill / 25% border, Style.controlFill/controlBorder) -- fine for a
+    // field sitting inside an already-boxed surface (dialogs, forms), but
+    // here it replaces the breadcrumb directly in the toolbar with nothing
+    // else behind it, and the suggestion dropdown right below (same file)
+    // is already solid (Color.menu.background + Border.flat), so the field
+    // read as "no background" against it. Same solid treatment as the
+    // dropdown it belongs to, not a new theme.
+    background: BorderSurface {
+      color: Color.menu.background
+      borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+      radius: Style.cornerRadius
+    }
     // Only when the user types (not when fillWith/onVisibleChanged assign
     // text by code: onTextEdited does not fire with programmatic assignments).
     onTextEdited: field.refresh()

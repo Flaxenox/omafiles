@@ -439,5 +439,173 @@ QtObject {
             next()
           })
         })
+
+        // Regression for P1-4 (architectural audit 2026-08-17): m_cancelled
+        // used to be ONE atomic<bool> reused for the whole lifetime of the
+        // FileOperations singleton -- every copy()/move()/remove()/
+        // emptyTrash()/restoreByOrigPath() call reset the SAME flag and
+        // captured a shared_ptr to that SAME object. Two operations
+        // overlapping in time were therefore silently sharing one
+        // cancellation flag: starting operation B could un-cancel a still-
+        // running operation A, and cancel() had no way to target one
+        // without affecting the other. ActionEngine's own `nativeBusy`
+        // single-flight convention happened to prevent this in the current
+        // UI, but the backend's own contract did not guarantee it, and
+        // nothing stopped a future/direct caller from tripping it. Each
+        // operation now gets its own token (beginCancelToken()); cancel()
+        // always targets whichever operation started most recently
+        // (matching the single Cancel action's UX -- there is no per-
+        // operation-ID cancel()), and an earlier operation that's still
+        // finishing up is never affected by a later one starting, being
+        // cancelled, or resetting anything.
+        sc.add("FileOperations: cancel() only targets the current operation, earlier ones are unaffected (P1-4 regression)", function (done) {
+          var srcA = sc.opsDir + "/p14-a-src"
+          var dstA = sc.opsDir + "/p14-a-dst"
+          var srcB = sc.opsDir + "/p14-b-src"
+          var dstB = sc.opsDir + "/p14-b-dst"
+          var buildCmd = "rm -rf " + sc._q(srcA) + " " + sc._q(dstA) + " " + sc._q(srcB) + " " + sc._q(dstB)
+            + " && mkdir -p " + sc._q(srcA) + " " + sc._q(srcB)
+            + " && cd " + sc._q(srcA) + " && for i in $(seq 1 3000); do : > \"f$i.txt\"; done"
+            + " && cd " + sc._q(srcB) + " && for i in $(seq 1 3000); do : > \"f$i.txt\"; done"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var resultA = null, resultB = null
+            function onErr(op, path, msg) {
+              if (path === srcA) resultA = "error:" + msg
+              else if (path === srcB) resultB = "error:" + msg
+              maybeCheckAB()
+            }
+            function onFin(op, path) {
+              if (path === srcA) resultA = "finished"
+              else if (path === srcB) resultB = "finished"
+              maybeCheckAB()
+            }
+            function cleanupAB() {
+              Backend.FileOperations.error.disconnect(onErr)
+              Backend.FileOperations.finished.disconnect(onFin)
+            }
+            function maybeCheckAB() {
+              if (resultA === null || resultB === null) return
+              cleanupAB()
+              // B started after A, so B is the "current" operation cancel()
+              // targets; A must be completely unaffected by it.
+              var abOk = resultA === "finished" && resultB === "error:cancelled"
+              if (!abOk) {
+                done(false, "A=" + resultA + " B=" + resultB + " (A should finish, B should be cancelled)")
+                return
+              }
+              checkCleanStateAfterwards(abOk)
+            }
+            // A fresh operation after a cancellation must NOT inherit a
+            // stale cancelled=true state -- it gets its own new token.
+            function checkCleanStateAfterwards() {
+              var srcC = sc.opsDir + "/p14-c-src"
+              var dstC = sc.opsDir + "/p14-c-dst"
+              sc._sh(["bash", "-c", "rm -rf " + sc._q(srcC) + " " + sc._q(dstC)
+                + " && mkdir -p " + sc._q(srcC) + " && echo hi > " + sc._q(srcC + "/f.txt")], function (r2) {
+                if (r2.exitCode !== 0) { done(false, "fixture C build failed: " + r2.stderr); return }
+                sc._fileOp(done, function () {
+                  sc._listOnce(sc.opsDir, function (e) {
+                    var ok = sc._has(e, "p14-c-dst")
+                    done(ok, ok
+                      ? "A finished, B cancelled, and a fresh operation afterwards started with clean state"
+                      : "operation C after the stress didn't complete -- inherited stale cancellation?")
+                  })
+                })
+                Backend.FileOperations.copy(srcC, dstC, true)
+              })
+            }
+            Backend.FileOperations.error.connect(onErr)
+            Backend.FileOperations.finished.connect(onFin)
+            Backend.FileOperations.copy(srcA, dstA, true)
+            Backend.FileOperations.copy(srcB, dstB, true)
+            Backend.FileOperations.cancel()
+          })
+        })
+
+        // Regression for P1-1 (architectural audit 2026-08-17): a batch
+        // cancelled (or partially failed) mid-flight used to register NO
+        // undo entry at all for the items that had already genuinely moved
+        // -- _finishNative() only called _batchOnDone when the WHOLE batch
+        // succeeded, so 2 real moves with zero undo availability was
+        // possible. Now the undo entry always reflects exactly the subset
+        // that actually completed (see _batchCompleted / _finishNative /
+        // runPaste()/runDrop()/confirmDelete() in ActionEngine.qml). This
+        // exercises the real ActionEngine composition root end to end:
+        // start a 5-item move, let exactly the first item genuinely finish,
+        // cancel, then verify the undo entry exists, matches the real disk
+        // state, and correctly reverts only what actually moved.
+        sc.add("ActionEngine native move: partial batch (cancelled mid-flight) gets an accurate, working undo entry (P1-1 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var base = sc.opsDir + "/p11-partial"
+          var buildCmd = "rm -rf " + sc._q(base) + " && mkdir -p " + sc._q(base)
+            + " && for i in 1 2 3 4 5; do echo item$i > " + sc._q(base) + "/src$i.txt; done"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            var pairs = [1, 2, 3, 4, 5].map(function (i) {
+              return { src: base + "/src" + i + ".txt", dest: base + "/dst" + i + ".txt" }
+            })
+            // Wait for the FIRST item to genuinely finish, then cancel --
+            // ActionEngine's own Connections (wired at startup) sees this
+            // same signal first and already dispatched item 2 by the time
+            // this fires, so cancelAction() deterministically lands on a
+            // real partial batch (>=1 done, not all 5) instead of racing a
+            // fixed delay.
+            function onFirstItemDone(op, path) {
+              if (path !== pairs[0].src) return
+              Backend.FileOperations.finished.disconnect(onFirstItemDone)
+              c.actionEngine.cancelAction()
+            }
+            Backend.FileOperations.finished.connect(onFirstItemDone)
+            var started = c.actionEngine.runNativeMove(pairs, "Moving…", false, function (completed) {
+              if (completed.length === 0 || completed.length === pairs.length) {
+                done(false, "expected a PARTIAL batch, got completed=" + completed.length + "/" + pairs.length)
+                return
+              }
+              // runNativeMove() itself is a low-level primitive -- it does NOT
+              // register undo (that's the caller's job, see runPaste()/
+              // runDrop() in ActionEngine.qml). This registers the SAME way
+              // runPaste()'s fixed onDone closure now does, to test the
+              // actual mechanism (an accurate undo built from `completed`,
+              // never the full original batch) rather than reinventing it.
+              var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
+              c.actionEngine.pushUndo(completed.length + " of " + pairs.length + " items moved", function () {
+                return c.actionEngine.runNativeMove(reversed, "", false)
+              }, function () {
+                return c.actionEngine.runNativeMove(completed, "", false)
+              })
+              var entry = UndoState.undoStack[UndoState.undoStack.length - 1]
+              if (!entry) { done(false, "no undo entry was registered for the partial batch"); return }
+              sc._listOnce(base, function (e) {
+                var movedCount = 0
+                for (var i = 0; i < pairs.length; i++) if (sc._has(e, "dst" + (i + 1) + ".txt")) movedCount++
+                if (movedCount !== completed.length) {
+                  done(false, "disk state (" + movedCount + " moved) doesn't match reported completed=" + completed.length)
+                  return
+                }
+                c.undoLast()
+                // The undo itself is a runNativeMove() batch of
+                // completed.length items -- sc._fileOp only awaits the FIRST
+                // finished/error signal, which isn't enough once completed.length
+                // > 1 (item 2's move could still be in flight when checked).
+                // Poll on nativeBusy going back to false instead, which only
+                // happens once the WHOLE undo batch has settled.
+                sc._poll(function () { return !c.actionEngine.nativeBusy }, function (settled) {
+                  if (!settled) { done(false, "undo batch never settled"); return }
+                  sc._listOnce(base, function (e2) {
+                    var allBack = pairs.slice(0, completed.length).every(function (p) {
+                      return sc._has(e2, p.src.substring(p.src.lastIndexOf("/") + 1))
+                    })
+                    done(allBack, allBack
+                      ? "partial batch (" + completed.length + "/" + pairs.length + ") got an accurate undo entry that correctly reverted exactly what moved"
+                      : "undo of the partial batch didn't restore the right items")
+                  })
+                })
+              })
+            })
+            if (!started) done(false, "runNativeMove returned false")
+          })
+        })
   }
 }
