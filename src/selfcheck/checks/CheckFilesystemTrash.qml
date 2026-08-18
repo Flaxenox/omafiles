@@ -161,8 +161,8 @@ QtObject {
           sc._fileOp(done, function () {
             var started = c.actionEngine.runNativeTrash([work], "", function () {
               c.actionEngine.pushUndo("delete test",
-                function () { return c.actionEngine.runNativeRestore([work], "") },
-                function () { return c.actionEngine.runNativeTrash([work], "") })
+                function (onSettled) { return c.actionEngine.runNativeRestore([work], "", onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeTrash([work], "", onSettled) })
               sc._listOnce(sc.opsDir, function (e) {
                 if (sc._has(e, "runner-trash.txt")) { done(false, "wasn't sent to trash"); return }
                 sc._fileOp(done, function () {

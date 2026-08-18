@@ -197,20 +197,133 @@ moved) got **zero** undo entry. `confirmDelete()`, `runPaste()`, and
 the original batch, and their label falls back to `"N of M items ..."` when
 the two differ.
 
-**Known, deliberately unfixed gap (documented, not silently missed):**
-`undoLast()`/`redoLast()` push the *entry itself* onto the opposite stack
-(and show "Undoing:"/"Redoing:") as soon as `entry.undo()`/`entry.redo()`
-**starts**, not once it is confirmed to have actually completed — "started"
-and "succeeded" are different things for every async entry (native or
-shell-based). Closing this fully would require every one of the ~10
-`pushUndo()` call sites (rename, new file/folder, bulk rename, chmod, make
-link, native mkdir, trash, move) to thread a completion callback through
-their `undo`/`redo` closures — for native mkdir specifically, `Backend.
-FileOperations.mkdir()` has no `onDone` parameter to hook at all. This is a
-real, understood gap, not an oversight; fixing it is out of proportion for a
-"smallest robust fix" pass and is left for a dedicated follow-up. The
-higher-impact half of the same bug class (batches producing zero/wrong undo
+**Fixed (was: known, deliberately unfixed gap):** `undoLast()`/`redoLast()`
+used to push the *entry itself* onto the opposite stack (and show
+"Undoing:"/"Redoing:") as soon as `entry.undo()`/`entry.redo()` **started**,
+not once it was confirmed to have actually completed — "started" and
+"succeeded" are different things for every async entry (native or
+shell-based), and a redo pressed right after an undo could fire while that
+undo was still genuinely in flight. Closed by threading a completion
+callback (`onSettled`) through all ~10 `pushUndo()` call sites (rename, new
+file/folder, bulk rename, chmod, make link, native mkdir, trash, move) --
+9 of the 10 already had a real completion hook available underneath
+(`runAction()`'s `onSuccess` param, `runNative*()`'s `onDone` param), just
+not wired up to the undo-stack bookkeeping; the one exception, native
+mkdir's redo (`Backend.FileOperations.mkdir()` has no completion param of
+its own), reuses the same `Connections{ onFinished }` tracking-dictionary
+pattern the initial creation already relied on
+(`_nativeMkdirRedoPending`, `logic/ActionEngine.qml`). `onSettled` only
+fires on genuine success, matching each underlying hook's own contract --
+if the undo/redo itself fails or is cancelled, the entry is not moved to
+the opposite stack at all, which is strictly safer than the old behavior
+(offering a "redo" for an undo that had just failed). Regression-tested
+directly: a redo fired in the same synchronous tick as its undo is proven
+a no-op until the real underlying operation settles (`src/selfcheck/checks/
+CheckActions.qml`, "Undo/redo race" test) -- reverting the fix reproduces
+the exact race the test catches. The higher-impact half of the same bug
+class (batches producing zero/wrong undo
 entries) **is** fixed.
+
+### Transfer/archive queueing (partial, first increment)
+
+Every file action shares the same three mutual-exclusion primitives
+(`actionProc.busy`/`nativeBusy`/`archiveProc.active`, see `_isBusy()`).
+Before this, ANY second action arriving while one was in flight was flatly
+rejected with a "still busy — try again in a moment" notification, no matter
+how long the first one was expected to take -- pasting a second batch of
+files, or extracting a second archive, while a large copy was still running
+lost the request entirely; the user had to notice it failed and retry by
+hand once the first one finished.
+
+Native copy/move (`_runNative`, kind `"copy"`/`"move"` only) and
+compress/extract (`runActionWithProgress`, the sole entry point for both)
+now queue instead of rejecting: `_transferQueue`, a FIFO of `{ label, run }`
+entries (`run` just re-invokes the original call; `label` is display-only),
+drained at the three points an action genuinely finishes (`_finishNative`,
+`actionProc.onFinished`, `archiveProc.onFinished`) plus the synchronous
+cancel path in `cancelAction()`. `run` re-invoking its own call is what
+keeps this small -- there's no separate "resume a queued job" code path; by
+the time it runs, `_isBusy()` is false again and it just takes its normal
+path. `_transferQueue` is always reassigned via `concat()`/`slice()`, never
+mutated in place (`push()`/`splice()`) -- it's a QML `property var` with a
+UI binding on it (`core/DialogLayer.qml`, see below); in-place mutation
+doesn't fire the change notification that binding depends on. Rename/
+chmod/mkdir/make-link/bulk-rename/trash/restore/emptyTrash (`runAction()`,
+`emptyTrash()`) deliberately keep the old reject-on-busy behavior
+(`_busyGuard()`) -- all quick, effectively-instant operations where
+queueing wouldn't be noticeable and rejecting on the rare double-fire is
+harmless.
+
+Visible in the UI: `core/DialogLayer.qml`'s copy/move-in-progress card
+(`actionBusyCard`) is now the last item of a `Column`
+(`actionBusyStack`), preceded by one compact, dimmed row per
+`_transferQueue` entry (its `label`, a "Pending" tag, and a "Cancel"
+button wired to `cancelQueuedJob(index)`) via a `Repeater` bound directly
+to `_transferQueue`. No notification when a job is deferred (removed --
+redundant with the row itself appearing). `cancelQueuedJob()` just drops
+the entry (`run` is discarded, never invoked) -- nothing on disk is
+touched and no undo entry is ever registered for a job that never ran; if
+the dropped entry was itself a queued undo/redo, it stays unreachable from
+either stack, matching the existing "silently dropped from undo history"
+contract for any undo/redo that fails or is cancelled (see
+`undoLast()`/`redoLast()`), not a new case.
+
+This is a first increment, not full queueing coverage: the excluded quick
+actions above stay reject-only on purpose, and there is no way to reorder a
+queued item yet. Regression-tested directly (`src/
+selfcheck/checks/CheckActions.qml`, "Transfer queue" tests): two native
+copies issued in the same synchronous tick, and a native copy plus an
+archive job issued in the same tick (proving the queue is one shared FIFO
+across both kinds, not two separate ones), and cancelling a pending entry
+(proving it never runs and the still-active job is unaffected) -- all three
+confirmed to genuinely fail when their respective fix is reverted (timeout
+for the first two, the dropped-job's destination appearing on disk for the
+third).
+
+### `tabEntriesCache` is a bounded LRU, not a source of truth to poll for
+
+`core/OmafilesContent.qml`'s `tabEntriesCache` (written only by `panels/
+BackgroundPanel.qml`'s `_cachePut()`) is capped at 8 entries on purpose --
+"one entry per folder visited in ANY background tab", bounded so a long
+session with many tabs doesn't retain thousands of stale listing objects.
+Every background panel in the app (real tabs, not just tests) writes to
+this SAME shared cache, and each write both re-inserts the touched key at
+the newest position AND evicts the single oldest key once the cap is
+exceeded.
+
+This makes it unsafe as a thing to *poll for* from outside: a selfcheck
+test (`src/selfcheck/checks/CheckPanels.qml`, "Background panel refreshes
+on content change") used to wait for its own freshly-created panel's entry
+to appear in this cache. Root-caused via temporary `SelfCheckOut.line()`
+tracing (console.error is silently dropped in this release build --
+confirmed directly, see `main.cpp`'s `SelfCheckReporter` comment) after
+widening the poll's own timeout budget made the failure rate WORSE, not
+better -- the trace showed the value being set correctly, then gone by the
+very next 16ms poll tick, with the cache already at its 8-key cap: real
+background-panel activity from OTHER, unrelated tests running earlier in
+the same long-lived `sc._content` reliably evicted the test's own entry
+within single-digit milliseconds. Not a bug in the panel or in the
+eviction policy -- the cache was simply never the right thing for an
+outside observer to wait on, since eviction is a normal, expected, and
+completely unrelated event from this panel's perspective.
+
+Fixed by exposing the specific panel's own `DirLister` instance directly
+(`property alias dirLister: dirLister`, `panels/BackgroundPanel.qml`) and
+having the test observe `bg.dirLister.loaded`/`.entries` instead --
+immune to eviction, and arguably a more direct test of what "Background
+panel refreshes" actually means (the panel's own state), not a side
+channel. Confirmed directly: 0/15 failures after the fix, versus a
+measured ~13-25% failure rate at the same point before it (across several
+independent sampled batches, widening the timeout alone included).
+
+**Separate, not yet root-caused:** while gathering the samples above, one
+run (out of ~15) hit a cluster of 4 unrelated Trash tests ("Trash removes
+item from source", "ActionEngine trash+restore end-to-end", "Trash +
+restore directory", "Trash + restore symlink") all failing together, 3 of
+them by hitting the full 8000ms test timeout. Real system trash was
+checked and is clean (not fixture pollution from repeated runs). Not
+investigated further this session -- noted here so a future session
+doesn't start from zero.
 
 ---
 

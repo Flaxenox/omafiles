@@ -153,3 +153,42 @@ function isAudio(entry) {
 function isPdf(entry) {
   return !!entry && entry.type === "file" && extOf(entry.name) === "pdf"
 }
+
+// Pure name transformation shared by the real bulk-rename execution
+// (logic/ActionEngine.qml, commitBulkRename) and its live preview
+// (dialogs/BulkRenamePanel.qml) -- single source of truth so the preview
+// can never show something different from what actually happens.
+// entries: [{name, type}]. Returns [{oldName, newName}], same order/length
+// as entries -- index i backs {n}. {n:W} zero-pads the sequence number to
+// W digits (e.g. {n:3} -> "001", "002"...); bare {n} is unpadded, unchanged
+// from before this was added.
+// findRe/replace (V1.1, optional): a JS regex (as a string) applied to the
+// base name -- ALL matches (the "g" flag is always added), before {name}/
+// {ext}/{n} substitution -- so {n} still numbers by original selection
+// order, not by anything the replace could have changed. `replace` supports
+// the normal JS replacement syntax ($1, $&, ...). An invalid regex (typing
+// in progress, e.g. an unbalanced paren) is treated the same as no find/
+// replace at all -- silently skipped, never throws, so the live preview
+// stays usable while the user is still typing it.
+function bulkRenameNames(entries, pattern, findRe, replace) {
+  var re = null
+  if (findRe) {
+    try { re = new RegExp(findRe, "g") } catch (e) { re = null }
+  }
+  return (entries || []).map(function (e, i) {
+    var ext = e.type === "dir" ? "" : (extOf(e.name) ? "." + extOf(e.name) : "")
+    var base = ext ? e.name.slice(0, -ext.length) : e.name
+    if (re) {
+      try { base = base.replace(re, replace || "") } catch (e2) { /* leave base as-is */ }
+    }
+    var newName = String(pattern || "")
+      .replace(/\{name\}/g, base)
+      .replace(/\{ext\}/g, ext)
+      .replace(/\{n(?::(\d+))?\}/g, function (_, width) {
+        var num = String(i + 1)
+        return width ? num.padStart(parseInt(width, 10), "0") : num
+      })
+      .trim()
+    return { oldName: e.name, newName: newName }
+  })
+}

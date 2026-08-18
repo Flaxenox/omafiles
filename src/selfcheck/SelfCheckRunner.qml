@@ -95,13 +95,20 @@ QtObject {
     onTriggered: sc._done(false, "timeout (" + _timeout.interval + "ms)")
   }
 
-  function add(name, fn) { checks.push({ name: name, fn: fn }) }
+  // timeoutMs (optional): per-test override of the default 8000ms hang
+  // watchdog above -- for a test that legitimately needs more room (e.g.
+  // one waiting on a background-thread-pool listing that can be genuinely
+  // slower under contention from other tests' real file ops run earlier in
+  // the same process), not a general knob to reach for. Every other test
+  // keeps the default.
+  function add(name, fn, timeoutMs) { checks.push({ name: name, fn: fn, timeoutMs: timeoutMs || 0 }) }
 
   function _run() {
     idx++
     if (idx >= checks.length) { _report(); return }
     _settled = false
     _startedAt = Date.now()
+    _timeout.interval = checks[idx].timeoutMs || 8000
     _timeout.restart()
     try {
       checks[idx].fn(function (pass, msg) { sc._done(pass, msg) })
@@ -208,19 +215,24 @@ QtObject {
   property Timer _pollTimer: Timer { interval: 16; repeat: true }
 
   // Polls cond() every 16 ms (wall-clock, not event loop passes) until it
-  // is true or the budget runs out (~4 s, comfortable under the 8 s per-test
-  // timeout). To wait for an async effect that doesn't expose a public signal
-  // to hook onto (e.g. the re-listing of a background panel, whose
-  // DirLister is internal and delivers via invokeMethod from a pool thread).
-  // The real interval gives clock time to the worker, avoiding the race of a
-  // Qt.callLater loop that spins faster than the thread can
-  // respond. The runner is sequential: there is only one _poll in flight.
-  function _poll(cond, cb) {
+  // is true or the budget runs out (default ~4 s / 250 ticks, comfortable
+  // under the 8 s per-test timeout). To wait for an async effect that
+  // doesn't expose a public signal to hook onto (e.g. the re-listing of a
+  // background panel, whose DirLister is internal and delivers via
+  // invokeMethod from a pool thread). The real interval gives clock time to
+  // the worker, avoiding the race of a Qt.callLater loop that spins faster
+  // than the thread can respond. The runner is sequential: there is only
+  // one _poll in flight.
+  // maxTicks (optional): overrides the default 250 -- pairs with add()'s
+  // own timeoutMs override for a test that needs more room end to end; the
+  // default is unchanged for every other caller.
+  function _poll(cond, cb, maxTicks) {
     if (cond()) { cb(true); return }
     var n = 0
+    var limit = maxTicks || 250
     function tick() {
       if (cond()) { done(); cb(true) }
-      else if (++n > 250) { done(); cb(false) }
+      else if (++n > limit) { done(); cb(false) }
     }
     function done() { _pollTimer.stop(); _pollTimer.triggered.disconnect(tick) }
     _pollTimer.triggered.connect(tick)

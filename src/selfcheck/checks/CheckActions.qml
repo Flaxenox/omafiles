@@ -17,8 +17,8 @@ QtObject {
             c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
               var reversed = [{ src: dst, dest: work }]
               c.actionEngine.pushUndo("move test",
-                function () { return c.actionEngine.runNativeMove(reversed, "", false) },
-                function () { return c.actionEngine.runNativeMove(pairs, "", false) })
+                function (onSettled) { return c.actionEngine.runNativeMove(reversed, "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove(pairs, "", false, onSettled) })
               sc._fileOp(done, function () {
                 sc._listOnce(sc.opsDir, function (e) {
                   var undone = sc._has(e, "ur-src.txt") && !sc._has(e, "ur-dst.txt")
@@ -45,8 +45,8 @@ QtObject {
           sc._fileOp(done, function () {
             c.actionEngine.runNativeTrash([work], "", function () {
               c.actionEngine.pushUndo("delete test",
-                function () { return c.actionEngine.runNativeRestore([work], "") },
-                function () { return c.actionEngine.runNativeTrash([work], "") })
+                function (onSettled) { return c.actionEngine.runNativeRestore([work], "", onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeTrash([work], "", onSettled) })
               sc._fileOp(done, function () {
                 sc._listOnce(sc.opsDir, function (e) {
                   var undone = sc._has(e, "urt-src.txt")
@@ -79,12 +79,12 @@ QtObject {
           ], done, function () {
             c.actionEngine.runNativeMove([{ src: a, dest: da }], "", false, function () {
               c.actionEngine.pushUndo("move A",
-                function () { return c.actionEngine.runNativeMove([{ src: da, dest: a }], "", false) },
-                function () { return c.actionEngine.runNativeMove([{ src: a, dest: da }], "", false) })
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: da, dest: a }], "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: a, dest: da }], "", false, onSettled) })
               c.actionEngine.runNativeMove([{ src: b, dest: db }], "", false, function () {
                 c.actionEngine.pushUndo("move B",
-                  function () { return c.actionEngine.runNativeMove([{ src: db, dest: b }], "", false) },
-                  function () { return c.actionEngine.runNativeMove([{ src: b, dest: db }], "", false) })
+                  function (onSettled) { return c.actionEngine.runNativeMove([{ src: db, dest: b }], "", false, onSettled) },
+                  function (onSettled) { return c.actionEngine.runNativeMove([{ src: b, dest: db }], "", false, onSettled) })
                 sc._fileOp(done, function () {
                   sc._listOnce(sc.opsDir, function (e) {
                     var bReverted = sc._has(e, "lifo-b.txt") && sc._has(e, "lifo-da.txt")
@@ -114,8 +114,8 @@ QtObject {
             c.actionEngine.runNativeMove(pairs, "", false, function () {
               var reversed = [{ src: dst, dest: work }]
               c.actionEngine.pushUndo("valid move",
-                function () { return c.actionEngine.runNativeMove(reversed, "", false) },
-                function () { return c.actionEngine.runNativeMove(pairs, "", false) })
+                function (onSettled) { return c.actionEngine.runNativeMove(reversed, "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove(pairs, "", false, onSettled) })
               var bigDst = sc.opsDir + "/ctu-big-copy.bin"
               function onErr(op, path, msg) {
                 if (path !== sc.dir + "/big.bin") return
@@ -149,15 +149,21 @@ QtObject {
           sc._fileOp(done, function () {
             c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, function () {
               c.actionEngine.pushUndo("urc",
-                function () { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false) },
-                function () { return c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false) })
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, onSettled) })
               var afterPush = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
               c.undoLast()
-              var afterUndo = UndoState.undoStack.length === 0 && UndoState.redoStack.length === 1
-              sc._fileOp(done, function () {
+              // undoStack.length===0 happens synchronously (undoLast() pops
+              // immediately), but redoStack only gains the entry once the
+              // undo genuinely completes -- exactly the "started vs
+              // finished" fix this test exists to verify -- so poll for it
+              // instead of assuming same-tick timing.
+              sc._poll(function () { return UndoState.redoStack.length === 1 }, function (undoSettled) {
+                var afterUndo = UndoState.undoStack.length === 0 && UndoState.redoStack.length === 1
+                if (!undoSettled) { done(false, "undo never settled (redoStack stayed empty)"); return }
                 c.redoLast()
-                var afterRedo = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
-                sc._fileOp(done, function () {
+                sc._poll(function () { return UndoState.undoStack.length === 1 }, function (redoSettled) {
+                  var afterRedo = UndoState.undoStack.length === 1 && UndoState.redoStack.length === 0
                   done(afterPush && afterUndo && afterRedo,
                        "push/undo/redo stacks: " + afterPush + "/" + afterUndo + "/" + afterRedo)
                 })
@@ -165,6 +171,135 @@ QtObject {
             })
           })
           Backend.FileOperations.copy(sc.note, work)
+        })
+
+        // Directly proves the race the "started vs finished" fix (see
+        // undoLast()/redoLast()'s doc comment in ActionEngine.qml) closes:
+        // before the fix, undoLast() pushed the entry to redoStack as soon
+        // as the undo merely STARTED, so a redo fired in the very same
+        // tick (before the undo's real native move had any chance to
+        // finish) would already find it there and attempt to redo
+        // something whose own undo hadn't completed -- a genuine
+        // correctness hazard. After the fix, redoStack is provably still
+        // empty at that exact point, so the immediate redo must be a safe
+        // no-op (UndoState.undoStack's own guard), and the eventual settle
+        // still lands correctly once the real undo genuinely finishes.
+        sc.add("Undo/redo race: redo fired in the same tick as undo doesn't fire while the undo is still in flight (correctness fix regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          UndoState.undoStack = []
+          UndoState.redoStack = []
+          var work = sc.opsDir + "/urace-src.txt"
+          var dst = sc.opsDir + "/urace-dst.txt"
+          sc._fileOp(done, function () {
+            c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, function () {
+              c.actionEngine.pushUndo("urace",
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: dst, dest: work }], "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove([{ src: work, dest: dst }], "", false, onSettled) })
+              c.undoLast()
+              var redoStackHadEntryTooEarly = UndoState.redoStack.length > 0
+              c.redoLast() // same tick, real undo above hasn't had a chance to settle yet
+              var immediateRedoFired = UndoState.undoStack.length > 0 // redoLast() re-pushes to undoStack only if it actually fires
+              sc._poll(function () { return UndoState.redoStack.length === 1 }, function (settled) {
+                var finalOk = settled && UndoState.undoStack.length === 0 && UndoState.redoStack.length === 1
+                sc._listOnce(sc.opsDir, function (e) {
+                  var diskOk = sc._has(e, "urace-src.txt") && !sc._has(e, "urace-dst.txt")
+                  var pass = !redoStackHadEntryTooEarly && !immediateRedoFired && finalOk && diskOk
+                  done(pass, pass ? "redo correctly no-opped while undo was still in flight, settled correctly afterward"
+                                   : "tooEarly=" + redoStackHadEntryTooEarly + " immediateFired=" + immediateRedoFired + " finalOk=" + finalOk + " diskOk=" + diskOk)
+                })
+              })
+            })
+          })
+          Backend.FileOperations.copy(sc.note, work)
+        })
+
+        // Transfer queue (V1.1): copy/move issued while another one is
+        // already running used to be flatly rejected ("still busy — try
+        // again"); now it's queued and runs automatically once the first
+        // one frees up. Both runNativeCopy() calls happen in the SAME JS
+        // tick here on purpose -- nativeBusy is set synchronously inside
+        // _runNative() before any Qt signal has a chance to fire, so the
+        // second call is deterministically forced onto the queue path
+        // regardless of how fast the underlying copy actually completes.
+        sc.add("Transfer queue: a second native copy issued while the first is still running gets queued, not rejected", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var srcA = sc.opsDir + "/tq-a.txt"
+          var srcB = sc.opsDir + "/tq-b.txt"
+          var dstA = sc.opsDir + "/tq-a-dst.txt"
+          var dstB = sc.opsDir + "/tq-b-dst.txt"
+          sc._seqOps([
+            function () { Backend.FileOperations.copy(sc.note, srcA) },
+            function () { Backend.FileOperations.copy(sc.note, srcB) }
+          ], done, function () {
+            var startedA = c.actionEngine.runNativeCopy([{ src: srcA, dest: dstA }], "Copying A…", false, function () {})
+            var startedB = c.actionEngine.runNativeCopy([{ src: srcB, dest: dstB }], "Copying B…", false, function () {})
+            var queuedImmediately = c.actionEngine._transferQueue.length === 1
+            sc._poll(function () { return c.actionEngine._transferQueue.length === 0 && !c.actionEngine.nativeBusy }, function () {
+              sc._listOnce(sc.opsDir, function (e) {
+                var bothCopied = sc._has(e, "tq-a-dst.txt") && sc._has(e, "tq-b-dst.txt")
+                var pass = startedA === true && startedB === true && queuedImmediately && bothCopied
+                done(pass, pass ? "both queued copies landed on disk"
+                                 : "startedA=" + startedA + " startedB=" + startedB + " queuedImmediately=" + queuedImmediately + " bothCopied=" + bothCopied)
+              })
+            })
+          })
+        })
+
+        // Same queue, but crossing kinds (native copy busy -> an archive job
+        // arrives): proves _transferQueue is one shared FIFO across
+        // _runNative() and runActionWithProgress(), not two separate ones
+        // that happen to look similar.
+        sc.add("Transfer queue: an archive job issued while a native copy is running gets queued (shared queue across kinds)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var work = sc.opsDir + "/tq-arch-src.txt"
+          var dst = sc.opsDir + "/tq-arch-dst.txt"
+          sc._fileOp(done, function () {
+            var startedCopy = c.actionEngine.runNativeCopy([{ src: work, dest: dst }], "Copying…", false, function () {})
+            var archiveRan = false
+            var startedArchive = c.actionEngine.runActionWithProgress("true", "Archive test…", 0, function () { archiveRan = true })
+            var queuedImmediately = c.actionEngine._transferQueue.length === 1 && !c.actionEngine.archiveBusy
+            sc._poll(function () { return archiveRan && c.actionEngine._transferQueue.length === 0 }, function (settled) {
+              var pass = startedCopy === true && startedArchive === true && queuedImmediately && settled
+              done(pass, pass ? "queued archive job ran automatically once the native copy freed up"
+                               : "startedCopy=" + startedCopy + " startedArchive=" + startedArchive + " queuedImmediately=" + queuedImmediately + " settled=" + settled)
+            })
+          })
+          Backend.FileOperations.copy(sc.note, work)
+        })
+
+        // cancelQueuedJob() (V1.1): drops a still-pending entry before it
+        // ever runs -- `run` is discarded, never invoked, so B's dest must
+        // never appear on disk once A (the active one) finishes.
+        sc.add("Transfer queue: cancelling a pending job drops it before it runs, active job unaffected", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var srcA = sc.opsDir + "/tqc-a.txt"
+          var srcB = sc.opsDir + "/tqc-b.txt"
+          var dstA = sc.opsDir + "/tqc-a-dst.txt"
+          var dstB = sc.opsDir + "/tqc-b-dst.txt"
+          sc._seqOps([
+            function () { Backend.FileOperations.copy(sc.note, srcA) },
+            function () { Backend.FileOperations.copy(sc.note, srcB) }
+          ], done, function () {
+            var startedA = c.actionEngine.runNativeCopy([{ src: srcA, dest: dstA }], "Copying A…", false, function () {})
+            var startedB = c.actionEngine.runNativeCopy([{ src: srcB, dest: dstB }], "Copying B…", false, function () {})
+            var queuedImmediately = c.actionEngine._transferQueue.length === 1
+            c.actionEngine.cancelQueuedJob(0)
+            var droppedImmediately = c.actionEngine._transferQueue.length === 0
+            sc._poll(function () { return !c.actionEngine.nativeBusy && c.actionEngine._transferQueue.length === 0 }, function () {
+              sc._listOnce(sc.opsDir, function (e) {
+                var aCopied = sc._has(e, "tqc-a-dst.txt")
+                var bNeverRan = !sc._has(e, "tqc-b-dst.txt") && sc._has(e, "tqc-b.txt")
+                var pass = startedA === true && startedB === true && queuedImmediately && droppedImmediately && aCopied && bNeverRan
+                done(pass, pass ? "cancelled pending job never ran, active copy completed normally"
+                                 : "startedA=" + startedA + " startedB=" + startedB + " queuedImmediately=" + queuedImmediately
+                                   + " droppedImmediately=" + droppedImmediately + " aCopied=" + aCopied + " bNeverRan=" + bNeverRan)
+              })
+            })
+          })
         })
 
         sc.add("Backend.FileOperations move", function (done) {
@@ -688,6 +823,211 @@ QtObject {
                             : "opened=" + opened + " stillOriginal=" + stillOriginal + " closedAfterCancel=" + closedAfterCancel)
               })
             })
+          })
+        })
+
+        // {n:W} zero-padding (V1.1) -- added to Utils.bulkRenameNames(),
+        // the shared pure function commitBulkRename() and
+        // BulkRenamePanel.qml's live preview both call, so this also
+        // covers the preview never being able to diverge from the real
+        // result (they're literally the same function call).
+        sc.add("Bulk rename: {n:W} zero-pads the sequence number (V1.1)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var names = ["brp-a-" + stamp + ".txt", "brp-b-" + stamp + ".txt", "brp-c-" + stamp + ".txt"]
+          var expected = ["item-001.txt", "item-002.txt", "item-003.txt"].map(function (n) { return stamp + "-" + n })
+          sc._seqOps(names.map(function (n) {
+            return function () { Backend.FileOperations.copy(sc.note, sc.opsDir + "/" + n) }
+          }), done, function () {
+            c.navController.navigateTo(sc.opsDir)
+            sc._poll(function () {
+              return NavState.currentPath === sc.opsDir && names.every(function (n) { return sc._has(NavState.visibleEntries, n) })
+            }, function (listed) {
+              if (!listed) { NavState.currentPath = prevPath; done(false, "fixtures never appeared"); return }
+              if (!sc._selectByNames(names)) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              DialogsState.bulkRenamePattern = stamp + "-item-{n:3}{ext}"
+              c.actionEngine.commitBulkRename()
+              sc._poll(function () {
+                return expected.every(function (n) { return sc._has(NavState.visibleEntries, n) })
+              }, function (renamed) {
+                NavState.currentPath = prevPath
+                done(renamed, renamed ? "3 files zero-padded to item-001/002/003 via {n:3}" : "padded names never appeared")
+              })
+            })
+          })
+        })
+
+        // Regex find/replace (V1.1): applied to the base name BEFORE
+        // {name}/{ext}/{n} substitution, via DialogsState.bulkRenameFind/
+        // bulkRenameReplace -- the exact fields dialogs/BulkRenamePanel.qml's
+        // Find/Replace TextFields write to before calling commitBulkRename().
+        sc.add("Bulk rename: find/replace regex substitutes before {name}/{ext} (V1.1)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var name = "brf-" + stamp + "-IMG_42.txt"
+          var expected = "brf-" + stamp + "-Photo_42.txt"
+          Backend.FileOperations.copy(sc.note, sc.opsDir + "/" + name)
+          sc._fileOp(done, function () {
+            c.navController.navigateTo(sc.opsDir)
+            sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, name) }, function (listed) {
+              if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
+              if (!sc._selectByNames([name])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              DialogsState.bulkRenamePattern = "{name}{ext}"
+              DialogsState.bulkRenameFind = "IMG_(\\d+)"
+              DialogsState.bulkRenameReplace = "Photo_$1"
+              c.actionEngine.commitBulkRename()
+              sc._poll(function () { return sc._has(NavState.visibleEntries, expected) }, function (renamed) {
+                NavState.currentPath = prevPath
+                DialogsState.bulkRenameFind = ""
+                DialogsState.bulkRenameReplace = ""
+                done(renamed, renamed ? "IMG_42 -> Photo_42 via regex find/replace with a $1 backreference" : "regex substitution never applied")
+              })
+            })
+          })
+        })
+
+        sc.add("Bulk rename: invalid regex in find/replace is skipped, not applied (V1.1 regression)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var stamp = Date.now()
+          var name = "brf-bad-" + stamp + ".txt"
+          Backend.FileOperations.copy(sc.note, sc.opsDir + "/" + name)
+          sc._fileOp(done, function () {
+            c.navController.navigateTo(sc.opsDir)
+            sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, name) }, function (listed) {
+              if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
+              if (!sc._selectByNames([name])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              DialogsState.bulkRenamePattern = "{name}{ext}"
+              // Unbalanced paren -- `new RegExp()` throws on this. Must not
+              // crash commitBulkRename(); the pattern should apply as if
+              // find/replace were empty (here: a no-op, {name}{ext} = itself).
+              DialogsState.bulkRenameFind = "("
+              DialogsState.bulkRenameReplace = "x"
+              c.actionEngine.commitBulkRename()
+              var settle = Qt.createQmlObject('import QtQuick; Timer { interval: 300; repeat: false }', sc)
+              settle.triggered.connect(function () {
+                var stillThere = sc._has(NavState.visibleEntries, name)
+                var neverBusy = !ActionState.actionBusy
+                NavState.currentPath = prevPath
+                DialogsState.bulkRenameFind = ""
+                DialogsState.bulkRenameReplace = ""
+                var ok = stillThere && neverBusy
+                done(ok, ok ? "invalid regex didn't crash and didn't rename (pattern applied as a no-op)"
+                            : "stillThere=" + stillThere + " neverBusy=" + neverBusy)
+              })
+              settle.start()
+            })
+          })
+        })
+
+        // ======================= Drag & drop (V1.1) =======================
+        // startDropInto()/runDrop() had zero dedicated coverage despite
+        // going through the exact same native copy/move + undo/redo +
+        // transfer-queue machinery drop/paste already share -- these three
+        // drive startDropInto() directly (the real function every
+        // DropArea's handleFilesDropped() calls once the DragEvent itself
+        // is resolved; the DragEvent wrapper isn't constructible headlessly,
+        // same reasoning as commitBulkRename()/commitChmod() being driven
+        // directly instead of their dialogs' buttons).
+        sc.add("Drag&drop: startDropInto() moves a file into another folder, with undo/redo (V1.1, previously untested)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var stamp = Date.now()
+          var destDir = sc.opsDir + "/dnd-dest-" + stamp
+          var srcName = "dnd-src-" + stamp + ".txt"
+          var srcPath = sc.opsDir + "/" + srcName
+          sc._seqOps([
+            function () { Backend.FileOperations.mkdir(destDir) },
+            function () { Backend.FileOperations.copy(sc.note, srcPath) }
+          ], done, function () {
+            sc._fileOp(done, function () {
+              sc._listOnce(destDir, function (e) {
+                var movedIn = sc._has(e, srcName)
+                sc._listOnce(sc.opsDir, function (e2) {
+                  var goneFromSrc = !sc._has(e2, srcName)
+                  if (!movedIn || !goneFromSrc) { done(false, "drop-move didn't apply: movedIn=" + movedIn + " goneFromSrc=" + goneFromSrc); return }
+                  c.actionEngine.undoLast()
+                  sc._fileOp(done, function () {
+                    sc._listOnce(sc.opsDir, function (e3) {
+                      var undone = sc._has(e3, srcName)
+                      if (!undone) { done(false, "undo didn't restore to the source folder"); return }
+                      c.actionEngine.redoLast()
+                      sc._fileOp(done, function () {
+                        sc._listOnce(destDir, function (e4) {
+                          var redone = sc._has(e4, srcName)
+                          done(redone, redone ? "drop-move applied, undo restored to source, redo re-applied into dest" : "redo didn't re-apply")
+                        })
+                      })
+                    })
+                  })
+                })
+              })
+            })
+            c.actionEngine.startDropInto(destDir, [srcPath], true)
+          })
+        })
+
+        sc.add("Drag&drop: dropping onto an existing name opens the conflict dialog, skip excludes only that item (V1.1, previously untested)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var stamp = Date.now()
+          var destDir = sc.opsDir + "/dnd-coll-" + stamp
+          var collideName = "dnd-collide-" + stamp + ".txt"
+          var okName = "dnd-ok-" + stamp + ".txt"
+          var collideSrcPath = sc.opsDir + "/" + collideName
+          var collideDestPath = destDir + "/" + collideName
+          var okSrcPath = sc.opsDir + "/" + okName
+          sc._seqOps([
+            function () { Backend.FileOperations.mkdir(destDir) },
+            function () { Backend.FileOperations.copy(sc.note, collideSrcPath) },
+            function () { Backend.FileOperations.copy(sc.note, okSrcPath) },
+            function () { Backend.FileOperations.copy(sc.note, collideDestPath) }
+          ], done, function () {
+            c.actionEngine.startDropInto(destDir, [collideSrcPath, okSrcPath], false)
+            var opened = ConflictState.dropConflictOpen
+            var namesMatch = ConflictState.dropConflictNames.length === 1 && ConflictState.dropConflictNames[0] === collideName
+            if (!opened || !namesMatch) {
+              done(false, "conflict dialog didn't open correctly: opened=" + opened + " namesMatch=" + namesMatch)
+              return
+            }
+            sc._fileOp(done, function () {
+              sc._listOnce(destDir, function (e) {
+                var okCopied = sc._has(e, okName)
+                var collideUntouched = sc._has(e, collideName)
+                var noLongerPending = !ConflictState.dropConflictOpen
+                var pass = okCopied && collideUntouched && noLongerPending
+                done(pass, pass ? "skip mode copied the non-conflicting item and left the conflicting one untouched"
+                                 : "okCopied=" + okCopied + " collideUntouched=" + collideUntouched + " noLongerPending=" + noLongerPending)
+              })
+            })
+            c.actionEngine.runDrop("skip")
+          })
+        })
+
+        sc.add("Drag&drop: dropping a file onto its own containing folder is a no-op (V1.1, previously untested)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var stamp = Date.now()
+          var name = "dnd-selfdrop-" + stamp + ".txt"
+          var path = sc.opsDir + "/" + name
+          Backend.FileOperations.copy(sc.note, path)
+          sc._fileOp(done, function () {
+            c.actionEngine.startDropInto(sc.opsDir, [path], false)
+            var settle = Qt.createQmlObject('import QtQuick; Timer { interval: 300; repeat: false }', sc)
+            settle.triggered.connect(function () {
+              sc._listOnce(sc.opsDir, function (e) {
+                var occurrences = e.filter(function (x) { return x.name === name }).length
+                var neverBusy = !ActionState.actionBusy
+                var ok = occurrences === 1 && neverBusy
+                done(ok, ok ? "self-drop guard correctly no-opped, no duplicate/rename" : "occurrences=" + occurrences + " neverBusy=" + neverBusy)
+              })
+            })
+            settle.start()
           })
         })
 

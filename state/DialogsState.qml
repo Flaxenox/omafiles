@@ -11,6 +11,11 @@ import QtQuick
 QtObject {
   property bool bulkRenameOpen: false
   property string bulkRenamePattern: "{name}{ext}"
+  // Regex find/replace (V1.1), applied to the base name before {name}/{ext}/
+  // {n} substitution -- ephemeral like bulkRenamePattern above, not
+  // persisted (only the pattern itself joins BookmarksState.bulkRenameHistory).
+  property string bulkRenameFind: ""
+  property string bulkRenameReplace: ""
 
   property bool shortcutsHelpOpen: false
 

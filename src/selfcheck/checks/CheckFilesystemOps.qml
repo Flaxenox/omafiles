@@ -254,8 +254,8 @@ QtObject {
             var started = c.actionEngine.runNativeMove(pairs, "Moving…", false, function () {
               var reversed = [{ src: dst, dest: work }]
               c.actionEngine.pushUndo("move test",
-                function () { return c.actionEngine.runNativeMove(reversed, "", false) },
-                function () { return c.actionEngine.runNativeMove(pairs, "", false) })
+                function (onSettled) { return c.actionEngine.runNativeMove(reversed, "", false, onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeMove(pairs, "", false, onSettled) })
               sc._listOnce(sc.opsDir, function (e) {
                 if (!(sc._has(e, "mv-runner-dst.txt") && !sc._has(e, "mv-runner-src.txt"))) {
                   done(false, "didn't move"); return
@@ -570,10 +570,10 @@ QtObject {
               // actual mechanism (an accurate undo built from `completed`,
               // never the full original batch) rather than reinventing it.
               var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
-              c.actionEngine.pushUndo(completed.length + " of " + pairs.length + " items moved", function () {
-                return c.actionEngine.runNativeMove(reversed, "", false)
-              }, function () {
-                return c.actionEngine.runNativeMove(completed, "", false)
+              c.actionEngine.pushUndo(completed.length + " of " + pairs.length + " items moved", function (onSettled) {
+                return c.actionEngine.runNativeMove(reversed, "", false, onSettled)
+              }, function (onSettled) {
+                return c.actionEngine.runNativeMove(completed, "", false, onSettled)
               })
               var entry = UndoState.undoStack[UndoState.undoStack.length - 1]
               if (!entry) { done(false, "no undo entry was registered for the partial batch"); return }

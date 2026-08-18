@@ -18,6 +18,14 @@ Item {
   property Item root: null
   property Item navController: null
   property var _nativeMkdirPending: ({})
+  // Native "new folder" REDOS in flight -> completion callback (see the
+  // undo/redo "started vs finished" fix below, next to pushUndo()). Separate
+  // from _nativeMkdirPending above: that one is keyed for "register a NEW
+  // undo entry", this one is keyed for "an EXISTING entry is being redone,
+  // just tell it when the native mkdir actually finishes" -- a redo must
+  // never call pushUndo() again (undoLast()/redoLast() already move the
+  // entry between stacks themselves).
+  property var _nativeMkdirRedoPending: ({})
 
   // Exposes archiveProc's real busy state (cleanup pass) -- the selfcheck
   // suite's compress-then-extract tests used to bridge the gap between
@@ -43,25 +51,42 @@ Item {
     UndoState.redoStack = []
   }
 
+  // undo/redo closures accept an optional onSettled callback (fixes the
+  // "started vs finished" gap documented in docs/architecture/ARCHITECTURE.md
+  // -- entry.undo()/entry.redo() returning true only ever meant "accepted
+  // and launched", not "actually completed", yet the entry moved to the
+  // OPPOSITE stack immediately on that return, before the real work was
+  // done. A redo pressed right after could fire while its own undo was
+  // still mid-flight. Every closure already had a real completion hook
+  // available (runAction()'s onSuccess param, runNative*()'s onDone param)
+  // except the native "new folder" redo (Backend.FileOperations.mkdir()
+  // called directly, no such param) -- see _nativeMkdirRedoPending below for
+  // that one case. onSettled only fires on SUCCESS, matching each
+  // underlying onSuccess/onDone's own contract -- if the undo/redo itself
+  // fails or is cancelled, the entry is not moved to the opposite stack at
+  // all (silently dropped from undo history from that point on). This is
+  // strictly safer than the previous behavior, which offered a "redo" for
+  // an undo that had just genuinely failed.
   function undoLast() {
     if (UndoState.undoStack.length === 0) return
     var entry = UndoState.undoStack[UndoState.undoStack.length - 1]
     UndoState.undoStack = UndoState.undoStack.slice(0, -1)
-    // entry.undo() returns what runAction() returns: false if it was
-    // discarded because another action was in progress. Before, this said "Undone"
-    // no matter what, even when the undo didn't even get
+    // entry.undo() returns what runAction()/runNative*() returns: false if
+    // it was discarded because another action was in progress. Before, this
+    // said "Undone" no matter what, even when the undo didn't even get
     // launched, AND the entry was lost from the stack anyway. Now, if it
     // didn't get launched, it is returned to the stack so it can be retried.
-    var started = entry.undo()
+    var started = entry.undo(function () {
+      // Only reached on genuine completion (see the comment above) -- NOT
+      // every undoStack entry has a redoFn (see the comment next to
+      // pushUndo).
+      if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
+    })
     if (started === false) {
       UndoState.undoStack = UndoState.undoStack.concat([entry])
       Backend.Notifier.notify("Couldn't undo \"" + entry.label + "\": still busy with another action")
       return
     }
-    // It only goes to the redo stack if it really has a way to be redone
-    // -- not every undoStack entry has a redoFn (see the
-    // comment next to pushUndo).
-    if (entry.redo) UndoState.redoStack = UndoState.redoStack.concat([entry]).slice(-20)
     Backend.Notifier.notify("Undoing: " + entry.label)
   }
 
@@ -69,16 +94,17 @@ Item {
     if (UndoState.redoStack.length === 0) return
     var entry = UndoState.redoStack[UndoState.redoStack.length - 1]
     UndoState.redoStack = UndoState.redoStack.slice(0, -1)
-    var started = entry.redo()
+    var started = entry.redo(function () {
+      // Back to undoStack WITHOUT going through pushUndo() -- that would
+      // empty redoStack, which is exactly what we don't want in the middle
+      // of an undo/redo/undo cycle. Only reached on genuine completion.
+      UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
+    })
     if (started === false) {
       UndoState.redoStack = UndoState.redoStack.concat([entry])
       Backend.Notifier.notify("Couldn't redo \"" + entry.label + "\": still busy with another action")
       return
     }
-    // Back to undoStack WITHOUT going through pushUndo() -- that would empty
-    // redoStack, which is exactly what we don't want in the middle of an
-    // undo/redo/undo cycle.
-    UndoState.undoStack = UndoState.undoStack.concat([entry]).slice(-20)
     Backend.Notifier.notify("Redoing: " + entry.label)
   }
 
@@ -87,13 +113,58 @@ Item {
   // batch ops...). Without this guard, a second call while the first is
   // still running (double click, or an extra keypress during a long
   // operation) changed its command and restarted it, cutting off the
-  // ongoing operation mid-copy without any notice. Shared by runAction(),
-  // runActionWithProgress(), emptyTrash() and _runNative() -- was 4
-  // byte-identical copies of this exact check (cleanup pass).
+  // ongoing operation mid-copy without any notice.
+  function _isBusy() {
+    return actionProc.busy || nativeBusy || archiveProc.active
+  }
+
+  // Reject-on-busy guard: kept for rename/chmod/mkdir/link/bulk-rename/
+  // trash/restore/emptyTrash (runAction(), emptyTrash()) -- all quick,
+  // rarely queued-for in practice. Shared by runAction() and emptyTrash()
+  // -- was 4 byte-identical copies of this exact check (cleanup pass); the
+  // other 2 (native copy/move, archive compress/extract) queue instead,
+  // see _transferQueue below.
   function _busyGuard() {
-    if (!actionProc.busy && !nativeBusy && !archiveProc.active) return false
+    if (!_isBusy()) return false
     Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
     return true
+  }
+
+  // Transfer queue (V1.1): copy/move (native) and compress/extract
+  // (archiveProc) are the operations actually worth queuing instead of
+  // rejecting -- they can take long enough that a second one arriving
+  // mid-flight (another paste, another drop, another archive) is a normal
+  // thing to want to happen automatically, not just a "try again" dead
+  // end. Each entry is { label, run }: `run` is a closure that just
+  // re-calls the original _runNative()/runActionWithProgress() invocation
+  // (no separate dispatch table -- when dequeued, _isBusy() is false
+  // again, so it just runs its normal path), `label` is only for display
+  // (DialogLayer's pending-queue indicator). Always reassigned via
+  // concat()/slice(), never push()/splice() -- this is a QML `property
+  // var`, and in-place mutation doesn't fire the change notification a UI
+  // binding on it depends on.
+  property var _transferQueue: []
+
+  function _drainTransferQueue() {
+    if (_isBusy()) return
+    if (_transferQueue.length === 0) return
+    var job = _transferQueue[0]
+    _transferQueue = _transferQueue.slice(1)
+    job.run()
+  }
+
+  // Drops a still-pending entry before it ever runs (DialogLayer's "Pending"
+  // rows, V1.1) -- `run` is simply discarded, never invoked, so nothing on
+  // disk is touched and no undo entry is ever registered for it. If the
+  // dropped entry happened to be a queued undo/redo (pushUndo()'s closures
+  // can themselves land in this same queue, see runNativeMove's onSettled
+  // usage), it stays unreachable from either undo/redo stack -- the same
+  // "silently dropped from undo history" contract already documented for
+  // any undo/redo that fails or is cancelled (see undoLast()/redoLast()),
+  // not a new case to special-case here.
+  function cancelQueuedJob(index) {
+    if (index < 0 || index >= _transferQueue.length) return
+    _transferQueue = _transferQueue.slice(0, index).concat(_transferQueue.slice(index + 1))
   }
 
   function runAction(cmd, busyLabel, onSuccess) {
@@ -147,6 +218,7 @@ Item {
     // by their own command).
     actionProc.cancel()
     _resetActionState()
+    _drainTransferQueue()
   }
 
   function _resetActionState() {
@@ -266,7 +338,10 @@ Item {
   }
 
   function runActionWithProgress(cmd, busyLabel, total, onSuccess, volumes) {
-    if (_busyGuard()) return false
+    if (_isBusy()) {
+      _transferQueue = _transferQueue.concat([{ label: busyLabel || "Archive job", run: function () { runActionWithProgress(cmd, busyLabel, total, onSuccess, volumes) } }])
+      return true
+    }
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     ActionState._actionOnSuccess = onSuccess || null
@@ -369,7 +444,14 @@ Item {
   }
 
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
-    if (_busyGuard()) return false
+    if (_isBusy()) {
+      if (kind === "copy" || kind === "move") {
+        _transferQueue = _transferQueue.concat([{ label: busyLabel || (kind === "move" ? "Move" : "Copy"), run: function () { _runNative(kind, pairs, busyLabel, overwrite, onDone) } }])
+        return true
+      }
+      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
+      return false
+    }
     nativeBusy = true
     _cancelling = false
     _nativeKind = kind
@@ -420,6 +502,7 @@ Item {
     // receives the real completed subset (never the full original batch)
     // so it can never register an undo for more than truly succeeded.
     if (cb && completed.length > 0) Qt.callLater(function () { cb(completed) })
+    _drainTransferQueue()
   }
 
   Backend.ProcessRunner {
@@ -445,6 +528,7 @@ Item {
         // several callers is the one that just failed.
         Backend.Notifier.notify(result.stderr.trim() || "Action failed")
       }
+      _drainTransferQueue()
     }
   }
 
@@ -520,6 +604,7 @@ Item {
           .filter(function (l) { return l.length > 0 }).slice(-2).join(" — ")
         Backend.Notifier.notify(stderrText.trim() || tail || "Action failed")
       }
+      _drainTransferQueue()
     }
   }
 
@@ -588,10 +673,10 @@ Item {
         var donePaths = completed.map(function (p) { return p.src })
         var doneLabel = donePaths.length === origPaths.length ? label
           : (donePaths.length + " of " + origPaths.length + " items deleted")
-        pushUndo(doneLabel, function () {
-          return runNativeRestore(donePaths, "")
-        }, function () {
-          return runNativeTrash(donePaths, "")
+        pushUndo(doneLabel, function (onSettled) {
+          return runNativeRestore(donePaths, "", onSettled)
+        }, function (onSettled) {
+          return runNativeTrash(donePaths, "", onSettled)
         })
       })
     }
@@ -698,10 +783,10 @@ Item {
                 : "move " + pairs.length + " items")
             : (completed.length + " of " + pairs.length + " items moved")
           var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
-          pushUndo(label, function () {
-            return runNativeMove(reversed, "", false)      // undo: no-clobber
-          }, function () {
-            return runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
+          pushUndo(label, function (onSettled) {
+            return runNativeMove(reversed, "", false, onSettled)      // undo: no-clobber
+          }, function (onSettled) {
+            return runNativeMove(completed, "", overwrite, onSettled) // redo: like the original, only what actually moved
           })
         })
       }
@@ -746,10 +831,10 @@ Item {
     // already been assumed done in the UI -- the input closed anyway).
     var renameCmd = "mv " + (overwrite ? "-f" : "-n") + " -- " + Util.shellQuote(r.oldPath) + " " + Util.shellQuote(r.newPath)
     runAction(renameCmd, undefined, function () {
-      pushUndo("rename to \"" + oldName + "\"", function () {
-        return runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath))
-      }, function () {
-        return runAction(renameCmd)
+      pushUndo("rename to \"" + oldName + "\"", function (onSettled) {
+        return runAction("mv -n -- " + Util.shellQuote(r.newPath) + " " + Util.shellQuote(r.oldPath), undefined, onSettled)
+      }, function (onSettled) {
+        return runAction(renameCmd, undefined, onSettled)
       })
     })
   }
@@ -797,10 +882,10 @@ Item {
       // undoing, it goes to the trash instead of being lost with no recovery.
       // It does not try to restore whatever it may have overwritten -- same limit
       // that paste/drop with overwrite already has.
-      pushUndo("new file \"" + pending.name + "\"", function () {
-        return runAction("gio trash -- " + Util.shellQuote(pending.path))
-      }, function () {
-        return runAction(newFileCmd)
+      pushUndo("new file \"" + pending.name + "\"", function (onSettled) {
+        return runAction("gio trash -- " + Util.shellQuote(pending.path), undefined, onSettled)
+      }, function (onSettled) {
+        return runAction(newFileCmd, undefined, onSettled)
       })
     })
   }
@@ -821,10 +906,10 @@ Item {
       // 7 only wires the mkdir of the common case to the native backend.
       var cmd = "rm -rf -- " + Util.shellQuote(pending.path) + " && mkdir -p -- " + Util.shellQuote(pending.path)
       runAction(cmd, undefined, function () {
-        pushUndo("new folder \"" + pending.name + "\"", function () {
-          return runAction("rmdir -- " + Util.shellQuote(pending.path))
-        }, function () {
-          return runAction(cmd)
+        pushUndo("new folder \"" + pending.name + "\"", function (onSettled) {
+          return runAction("rmdir -- " + Util.shellQuote(pending.path), undefined, onSettled)
+        }, function (onSettled) {
+          return runAction(cmd, undefined, onSettled)
         })
       })
       return
@@ -847,13 +932,25 @@ Item {
       // ones showing this same folder.
       navController.refresh()
       NavState.refreshTick += 1
+      // A REDO of a previously-undone "new folder" in flight: fire its
+      // onSettled (see undoLast()/redoLast()'s doc comment) instead of
+      // registering a brand new undo entry -- Backend.FileOperations.mkdir()
+      // has no completion-callback param of its own, so this Connections
+      // handler is the only place that ever learns it actually finished.
+      var redoOnSettled = actionEngine._nativeMkdirRedoPending[path]
+      if (redoOnSettled !== undefined) {
+        delete actionEngine._nativeMkdirRedoPending[path]
+        redoOnSettled()
+        return
+      }
       var name = actionEngine._nativeMkdirPending[path]
-      if (name === undefined) return // redo or another mkdir: do not re-register
+      if (name === undefined) return // another mkdir entirely: do not re-register
       delete actionEngine._nativeMkdirPending[path]
-      pushUndo("new folder \"" + name + "\"", function () {
+      pushUndo("new folder \"" + name + "\"", function (onSettled) {
         // rmdir (not rm -rf): if there is already something inside, it fails instead of deleting it.
-        return runAction("rmdir -- " + Util.shellQuote(path))
-      }, function () {
+        return runAction("rmdir -- " + Util.shellQuote(path), undefined, onSettled)
+      }, function (onSettled) {
+        actionEngine._nativeMkdirRedoPending[path] = onSettled || function () {}
         Backend.FileOperations.mkdir(path) // redo: without re-registering
         return true
       })
@@ -861,6 +958,11 @@ Item {
     function onError(op, path, message) {
       if (op === "mkdir" && actionEngine._nativeMkdirPending[path] !== undefined)
         delete actionEngine._nativeMkdirPending[path]
+      // A pending redo that failed: no completion, so it never joins
+      // undoStack again (same "silently dropped on failure" contract as
+      // every other undo/redo closure, see undoLast()/redoLast()'s comment).
+      if (op === "mkdir" && actionEngine._nativeMkdirRedoPending[path] !== undefined)
+        delete actionEngine._nativeMkdirRedoPending[path]
       if (op === "mkdir" && message && message !== "cancelled")
         Backend.Notifier.notify(message || "Rename failed")
     }
@@ -876,6 +978,8 @@ Item {
   function startBulkRename() {
     if (ArchiveState.inArchive) return
     DialogsState.bulkRenamePattern = "{name}{ext}"
+    DialogsState.bulkRenameFind = ""
+    DialogsState.bulkRenameReplace = ""
     DialogsState.bulkRenameOpen = true
   }
 
@@ -895,13 +999,13 @@ Item {
     var bulkRenameCmd = chainCmds(cmds)
     runAction(bulkRenameCmd, "Renaming " + cmds.length + " items…", function () {
       var label = toRename.length === 1 ? "rename \"" + toRename[0].oldName + "\"" : "bulk rename " + toRename.length + " items"
-      pushUndo(label, function () {
+      pushUndo(label, function (onSettled) {
         var undoCmds = toRename.map(function (p) {
           return "mv -n -- " + Util.shellQuote(p.newPath) + " " + Util.shellQuote(p.oldPath)
         })
-        return runAction(chainCmds(undoCmds))
-      }, function () {
-        return runAction(bulkRenameCmd)
+        return runAction(chainCmds(undoCmds), undefined, onSettled)
+      }, function (onSettled) {
+        return runAction(bulkRenameCmd, undefined, onSettled)
       })
     })
   }
@@ -934,14 +1038,14 @@ Item {
     var chmodCmd = chainCmds(cmds)
     runAction(chmodCmd, label, function () {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
-      pushUndo(undoLabel, function () {
+      pushUndo(undoLabel, function (onSettled) {
         var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
           return "chmod " + originalModes[n] + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
         })
         if (undoCmds.length === 0) return false
-        return runAction(chainCmds(undoCmds))
-      }, function () {
-        return runAction(chmodCmd)
+        return runAction(chainCmds(undoCmds), undefined, onSettled)
+      }, function (onSettled) {
+        return runAction(chmodCmd, undefined, onSettled)
       })
     })
   }
@@ -969,10 +1073,10 @@ Item {
     // the link that was attempted.
     var makeLinkCmd = "ln -s -- " + Util.shellQuote(target) + " " + Util.shellQuote(linkPath)
     runAction(makeLinkCmd, undefined, function () {
-      pushUndo("make link \"" + linkName + "\"", function () {
-        return runAction("rm -- " + Util.shellQuote(linkPath))
-      }, function () {
-        return runAction(makeLinkCmd)
+      pushUndo("make link \"" + linkName + "\"", function (onSettled) {
+        return runAction("rm -- " + Util.shellQuote(linkPath), undefined, onSettled)
+      }, function (onSettled) {
+        return runAction(makeLinkCmd, undefined, onSettled)
       })
     })
   }
@@ -1167,14 +1271,15 @@ Item {
     if (entries.length === 0) return
     var pattern = DialogsState.bulkRenamePattern
     BookmarksState.addBulkRenameHistory(pattern)
-    var pairs = entries.map(function (e, i) {
-      var ext = e.type === "dir" ? "" : (Utils.extOf(e.name) ? "." + Utils.extOf(e.name) : "")
-      var base = ext ? e.name.slice(0, -ext.length) : e.name
-      var newName = pattern.replace(/\{name\}/g, base).replace(/\{ext\}/g, ext).replace(/\{n\}/g, String(i + 1)).trim()
+    // Utils.bulkRenameNames() is the single source of truth for the name
+    // transformation -- also used by BulkRenamePanel.qml's live preview, so
+    // what gets shown before confirming can never diverge from what
+    // actually happens here.
+    var pairs = Utils.bulkRenameNames(entries, pattern, DialogsState.bulkRenameFind, DialogsState.bulkRenameReplace).map(function (n) {
       return {
-        oldName: e.name, newName: newName,
-        oldPath: Utils.joinPath(NavState.currentPath, e.name),
-        newPath: Utils.joinPath(NavState.currentPath, newName)
+        oldName: n.oldName, newName: n.newName,
+        oldPath: Utils.joinPath(NavState.currentPath, n.oldName),
+        newPath: Utils.joinPath(NavState.currentPath, n.newName)
       }
     })
     // Validate the WHOLE batch upfront, before any conflict check or
@@ -1423,10 +1528,10 @@ Item {
                 : "move " + pairs.length + " items")
             : (completed.length + " of " + pairs.length + " items moved")
           var reversed = completed.map(function (p) { return { src: p.dest, dest: p.src } })
-          actionEngine.pushUndo(label, function () {
-            return actionEngine.runNativeMove(reversed, "", false)      // undo: no-clobber
-          }, function () {
-            return actionEngine.runNativeMove(completed, "", overwrite) // redo: like the original, only what actually moved
+          actionEngine.pushUndo(label, function (onSettled) {
+            return actionEngine.runNativeMove(reversed, "", false, onSettled)      // undo: no-clobber
+          }, function (onSettled) {
+            return actionEngine.runNativeMove(completed, "", overwrite, onSettled) // redo: like the original, only what actually moved
           })
         })
       }
