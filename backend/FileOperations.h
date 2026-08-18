@@ -12,7 +12,7 @@
 
 // C++ backend for file operations. Native replacement
 // for the shell commands (cp/mv/rm/mkdir/gio trash/...) that today
-// ActionEngine.runAction builds and executes. See BACKEND_DESIGN.md 5.3 (FileOps).
+// ActionEngine.runAction builds and executes. See BACKEND_DESIGN.md.
 //
 // Phase 7 INTRODUCES and validates it; for now only "new folder" (mkdir) is
 // wired live. The rest of the consumers (copy/move/delete/trash,

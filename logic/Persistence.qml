@@ -2,16 +2,18 @@ import QtQuick
 import "../state"
 import Omafiles.Backend as Backend
 
-// On-disk persistence (bookmarks, recents, tab session,
-// bulk-rename history) -- sixteenth component extracted
-// from core, and the first that takes a group of Process out of the
-// main file. Only the pure I/O functions were moved here
-// (read/write the JSON on disk); the business logic that decides WHAT
-// to save (addRecent, removeBookmark, addBulkRenameHistory...) stays in
-// core and simply calls "persistence.saveX()" instead of
-// "root.saveX()" -- same pattern as the rest of the components: root.xxx
-// to read/write app state, passed as a property instead of
-// looking it up with its own id.
+// On-disk persistence -- sixteenth component extracted from core, and the
+// first that takes a group of Process out of the main file. Owns the
+// initial load() for each JSON file (bookmarks, recents, tab session,
+// bulk-rename history, network profiles) plus saveBookmarks()/saveSession()
+// (the two cases that need a full-array/object rewrite from outside a
+// single mutator). Recents/bulk-rename-history/network-profiles no longer
+// route their SAVES through here (cleanup pass, corrected comment): their
+// add/remove mutators live directly on state/BookmarksState.qml and write
+// to Backend.JsonStore themselves for atomicity with the in-memory update
+// -- this file used to also expose saveRecent()/saveBulkRenameHistory()
+// wrappers for that, but nothing called them once BookmarksState.qml took
+// over (removed, see git history if the old shape is ever needed again).
 //
 // Phase 6.A (josema): the I/O no longer launches shell processes. Previously each
 // read was a `cat` (ProcessRunner→QProcess) and each write a
@@ -47,10 +49,6 @@ Item {
     Backend.JsonStore.read(Paths.recentFile)
   }
 
-  function saveRecent() {
-    _saveJson(Paths.recentFile, BookmarksState.recentFiles)
-  }
-
   // Called on first application startup without an explicit path argument.
   // a path requested by the host -- see open(). Async load (JsonStore.read);
   // refresh()/startDirWatch are triggered from the sessionFile handler
@@ -74,8 +72,8 @@ Item {
     Backend.JsonStore.read(Paths.bulkRenameHistoryFile)
   }
 
-  function saveBulkRenameHistory() {
-    _saveJson(Paths.bulkRenameHistoryFile, BookmarksState.bulkRenameHistory)
+  function loadNetworkProfiles() {
+    Backend.JsonStore.read(Paths.networkProfilesFile)
   }
 
   // A single delivery point for the four reads: JsonStore is a
@@ -117,6 +115,9 @@ Item {
       } else if (path === Paths.bulkRenameHistoryFile) {
         BookmarksState.bulkRenameHistoryLoaded = true
         BookmarksState.bulkRenameHistory = Array.isArray(parsed) ? parsed : []
+      } else if (path === Paths.networkProfilesFile) {
+        BookmarksState.networkProfilesLoaded = true
+        BookmarksState.networkProfiles = Array.isArray(parsed) ? parsed : []
       }
     }
   }

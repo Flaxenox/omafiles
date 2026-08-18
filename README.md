@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.0.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.0.1`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -163,6 +163,7 @@ These are the **defaults**. Every one of them (except the five fixed shortcuts b
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |
 | `?` | Toggle keyboard shortcuts help |
+| `Alt+N` | Recent notifications |
 | `Escape` | Close search, then preview, then the active panel (with 2+ panels) |
 
 `gg` and `Escape` are handled structurally (a two-key chord and a context-sensitive close, respectively) rather than as single key bindings, so they're not in `keybindings.toml`. `SearchBar` and the command palette have their own independent `↑`/`↓` navigation, unaffected by `move_up`/`move_down` remapping — a known limitation, not a bug.
@@ -255,16 +256,17 @@ o.bind("SUPER + SHIFT + F", "Omafiles (file manager)", { launch = "omafiles" })
 
 ### Optional dependencies
 
-OmaFiles works fully without these packages. When installed, they enable additional integrations or faster backends.
+Everything below is truly optional in the sense that OmaFiles starts and runs fine without it — but **python-gobject** is the one exception in this table worth calling out on its own: it's not required to *build* or *launch* the app, yet `install-integrations.sh` (which runs automatically, unprompted, on first launch) needs it to self-register as the default file manager / `org.freedesktop.FileManager1` / the FileChooser portal, and that self-registration fails silently without it. Everything else below degrades gracefully or falls back to a different mechanism.
 
 | Tool | Enables |
 | --- | --- |
 | **tracker3** / **plocate** | Faster global filename search (otherwise falls back to the built-in recursive search engine) |
 | **ffmpegthumbnailer** | Video thumbnails |
 | **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
-| **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
+| **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support — see the note above, this one silently no-ops rather than degrading gracefully |
 | **zip** / **unzip** | Compress / extract `.zip` — unlike the rows above, there's no fallback: without these, Compress and extracting a `.zip` fail with an error notification instead of degrading gracefully |
-| **p7zip** / **unrar** | Extract `.7z` / `.rar` archives (browsing them, and `.tar`-family extraction, don't need these) |
+| **p7zip** | Extract `.7z` archives, and create them via the "Compress to .7z" option (browsing archives, and `.tar`-family extract/compress including `.tar.gz`, don't need this) |
+| **unrar** | Extract `.rar` archives |
 | **xdg-mime** | Registering Omafiles as the default file manager on first launch, and resolving the default app for "open with default" double-clicks (both best-effort, guarded by `command -v`) |
 
 **No longer required:** `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
@@ -307,7 +309,7 @@ Omafiles enforces strict automated quality and performance gates before every re
 
 ## Status
 
-Stable Release (`v1.0.0`) — ready for production use.
+Stable Release (`v1.0.1`) — ready for production use.
 
 ## License
 

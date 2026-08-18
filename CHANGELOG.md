@@ -1,5 +1,13 @@
 # OmaFiles Changelog
 
+## [1.0.1] - 2026-08-17
+
+Bug-fix-only hotfix release. No new features.
+
+* **Fixed: the app could freeze entering Trash.** Trash-root discovery and `.trashinfo` parsing ran synchronously on the UI thread on every Trash navigation; a slow disk (spun-down mechanical drive) or a stalled network/FUSE mount could block the entire app for as long as that mount took to respond. Both are now handled off the UI thread via the existing async backend pattern. See `docs/audits/V1_1_P0_TRASH_FREEZE_REPORT.md` for the full investigation.
+* Hardened Restore/permanent-delete against a related race exposed by the fix above: acting on a Trash item before its metadata has finished loading now notifies instead of silently doing nothing.
+* Packaging: fixed `install-integrations.sh` assuming a per-user `$HOME/.local/share` install even when packaged system-wide (e.g. under `/usr`); the app's version is now exposed to QML from the single CMake-authoritative source instead of nowhere.
+
 ## [1.0.0] - 2026-08-17
 
 A forensic-audit-driven hardening release on top of v0.9.0's architecture: a full concurrency/security pass (verified with AddressSanitizer, not just code review), a round of architectural cleanup that kept the codebase's size in check instead of letting it grow, a new custom-keybindings system, and a much wider automated regression suite. No new user-facing features beyond custom keybindings and alternating row colors — this release is about correctness and stability on the foundation v0.9.0 already built.

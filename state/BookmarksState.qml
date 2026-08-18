@@ -8,6 +8,28 @@ QtObject {
   property var bookmarks: Paths.defaultBookmarks
   property var recentFiles: []
   property var bulkRenameHistory: []
+  property bool networkProfilesLoaded: false
+  property var networkProfiles: []
+
+  // Called on a successful connect (logic/MountActions.qml's
+  // onMountFinished) -- saves the URI so the next connection doesn't
+  // require retyping the whole address, same idea/shape as addRecent().
+  // Never stores a password: NetworkResolver's auth flow is separate from
+  // this URI, see Paths.networkProfilesFile's comment.
+  function addNetworkProfile(uri) {
+    if (!uri) return
+    var next = networkProfiles.filter(function (p) { return p !== uri })
+    next.unshift(uri)
+    if (next.length > 10) next = next.slice(0, 10)
+    networkProfiles = next
+    Backend.JsonStore.write(Paths.networkProfilesFile, next)
+  }
+
+  function removeNetworkProfile(uri) {
+    var next = networkProfiles.filter(function (p) { return p !== uri })
+    networkProfiles = next
+    Backend.JsonStore.write(Paths.networkProfilesFile, next)
+  }
 
   function addRecent(path, name) {
     var next = recentFiles.filter(function (r) { return r.path !== path })

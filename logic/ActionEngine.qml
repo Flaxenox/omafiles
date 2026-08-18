@@ -19,6 +19,17 @@ Item {
   property Item navController: null
   property var _nativeMkdirPending: ({})
 
+  // Exposes archiveProc's real busy state (cleanup pass) -- the selfcheck
+  // suite's compress-then-extract tests used to bridge the gap between
+  // ActionState.actionBusy clearing and archiveProc itself actually
+  // settling with a guessed fixed-duration Timer (a real, empirically-
+  // reproduced flake otherwise, ~10% of runs for the .7z case: the
+  // compress subprocess writing its output file to disk doesn't guarantee
+  // runActionWithProgress()'s own busy guard, which checks archiveProc.active
+  // directly, has cleared yet). This lets a test poll the SAME thing the
+  // guard checks instead of guessing how long that takes.
+  property alias archiveBusy: archiveProc.active
+
 
   // Simple stack of reversible actions: rename, new folder/file,
   // delete (to trash), move (cut+paste/drag), bulk
@@ -71,17 +82,22 @@ Item {
     Backend.Notifier.notify("Redoing: " + entry.label)
   }
 
+  // actionProc/nativeBusy/archiveProc are each a single process/flag shared
+  // across all file actions (rename, delete, copy/move, compress, native
+  // batch ops...). Without this guard, a second call while the first is
+  // still running (double click, or an extra keypress during a long
+  // operation) changed its command and restarted it, cutting off the
+  // ongoing operation mid-copy without any notice. Shared by runAction(),
+  // runActionWithProgress(), emptyTrash() and _runNative() -- was 4
+  // byte-identical copies of this exact check (cleanup pass).
+  function _busyGuard() {
+    if (!actionProc.busy && !nativeBusy && !archiveProc.active) return false
+    Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
+    return true
+  }
+
   function runAction(cmd, busyLabel, onSuccess) {
-    // actionProc is a single process shared by all file
-    // actions (rename, delete, copy/move, compress...). Without this
-    // guard, a second call while the first is still running
-    // (double click, or an extra keypress during a long operation)
-    // changed its command and restarted it, cutting off the ongoing operation
-    // mid-copy without any notice.
-    if (actionProc.busy || nativeBusy) {
-      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
-      return false
-    }
+    if (_busyGuard()) return false
     ActionState.actionLabel = busyLabel || ""
     ActionState.actionBusy = !!busyLabel
     ActionState._actionOnSuccess = onSuccess || null
@@ -117,7 +133,15 @@ Item {
       Backend.FileOperations.cancel()
       return
     }
-    // Actions still in shell (compress/extract/rename/create): actionProc.
+    // Archive extract/compress (archiveProc, watched for progress): same
+    // whole-process-group semantics as actionProc.cancel() below, via
+    // ProcessWatcher.stop(). No partial-destination cleanup here either --
+    // same reasoning as the shell actions.
+    if (archiveProc.active) {
+      archiveProc.stop()
+      return
+    }
+    // Actions still in shell (rename/create/chmod/...): actionProc.
     // cancel() kills the whole process group. They have no progress nor a
     // partial destination to clean up here (their overwrite is atomic or handled
     // by their own command).
@@ -145,6 +169,111 @@ Item {
     _lastItemTotal = 0
     // Bar from 0% if there is something to measure; dots if the total is 0 (empty items).
     ActionState.actionProgressPct = _progTotal > 0 ? 0 : -1
+  }
+
+  // ---------- Archive extract/compress progress (V1.1) ----------
+  // Not byte-based like copy/move above -- zip/7z/unrar/tar don't agree on
+  // a common byte-progress format, but they all print one output line per
+  // file when run verbose (not quiet), which IS a format they share. So
+  // this counts LINES against a known total entry count (from the same
+  // archive listing already fetched for conflict detection, or entries.length
+  // for compress) instead of bytes. Same clamping/dots-vs-bar convention as
+  // the native path above. Clamped to 99, never 100, until onFinished says
+  // so -- undercounting (e.g. zip -r recursing into a folder) must never
+  // read as "done" while the process is still working.
+  property real _archiveProgTotal: 0
+  property real _archiveProgDone: 0
+
+  // Multi-volume archives (foo.part01.rar..partNN.rar, foo.7z.001..NNN):
+  // line-counting breaks down here -- confirmed live (2026-08-18) that
+  // unrar prints several lines while still on volume 1 of a 9-volume
+  // archive, hitting the line-count total almost immediately. Weighted by
+  // REAL byte size of each volume instead. Which volume is "active" is
+  // DERIVED from the tool's own live "NN%" (a fraction of the whole
+  // logical file, spanning every volume seamlessly -- confirmed directly,
+  // 2026-08-18, real 8-volume 7z archive) mapped onto the known cumulative
+  // volume sizes -- not detected from output text: neither unrar nor 7z
+  // ever print a later volume's filename when they move on to reading it,
+  // so a "did this line mention part03.rar" scheme can never advance past
+  // volume 0 in practice (the bug behind the first attempt at this).
+  property var _archiveVolumes: null   // sorted [{name, num, size}], or null
+  property int _archiveVolIdx: -1      // index of the volume currently believed active (derived, see onLineRead)
+  property real _archiveVolBytesTotal: 0
+  property string _archiveBaseLabel: ""
+
+  function startArchiveProgress(total) {
+    _archiveProgTotal = total
+    _archiveProgDone = 0
+    _archiveVolumes = null
+    _archiveVolIdx = -1
+    ActionState.actionProgressPct = total > 0 ? 0 : -1
+  }
+
+  function startArchiveVolumeProgress(volumes, baseLabel) {
+    _archiveVolumes = volumes
+    _archiveVolIdx = 0
+    _archiveVolBytesTotal = volumes.reduce(function (sum, v) { return sum + v.size }, 0)
+    _archiveBaseLabel = baseLabel
+    ActionState.actionProgressPct = _archiveVolBytesTotal > 0 ? 0 : -1
+    ActionState.actionLabel = baseLabel + " (part 1/" + volumes.length + ")"
+  }
+
+  // Finds the sibling volumes of a multi-volume archive by matching known
+  // naming conventions against the CURRENT folder's already-loaded listing
+  // (NavState.visibleEntries) -- no extra filesystem round-trip needed,
+  // and entry.size is already there for the weighting above. Returns null
+  // if `name` doesn't look like a numbered volume, or only one match
+  // exists (nothing to weight against).
+  function _multiVolumeSiblings(name) {
+    var m = name.match(/^(.*)\.part\d+\.rar$/i) || name.match(/^(.*)\.7z\.\d+$/i)
+    if (!m) return null
+    var escapedBase = m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    var re = /\.part\d+\.rar$/i.test(name)
+      ? new RegExp("^" + escapedBase + "\\.part(\\d+)\\.rar$", "i")
+      : new RegExp("^" + escapedBase + "\\.7z\\.(\\d+)$", "i")
+    var vols = []
+    NavState.visibleEntries.forEach(function (e) {
+      var mm = e.name.match(re)
+      if (mm) vols.push({ name: e.name, num: parseInt(mm[1], 10), size: e.size || 0 })
+    })
+    if (vols.length <= 1) return null
+    vols.sort(function (a, b) { return a.num - b.num })
+    return vols
+  }
+
+  // Runs an archive extract/compress command with live progress, via
+  // archiveProc (ProcessWatcher) instead of actionProc (ProcessRunner) --
+  // same single-flight guard (see the archiveProc.active checks alongside
+  // actionProc.busy/nativeBusy elsewhere in this file), same "bash -c" +
+  // process-group convention, but streams stdout instead of only
+  // reporting the final result. `volumes` (optional): the multi-volume
+  // sibling set from _multiVolumeSiblings(), for weighted/live-part
+  // progress instead of the flat line-count fallback.
+  // zip/7z/unrar/tar all suppress their own live "NN%" progress display
+  // when stdout isn't a real terminal -- confirmed directly (2026-08-18):
+  // 7z extracting piped through `bash -c` produced ZERO \r updates; the
+  // exact same command under `script` (a fake controlling terminal)
+  // produced 21, with real "0%"/"44%"/etc content. This is the ordinary,
+  // near-universal isatty()-gated behavior CLI progress bars use, not
+  // specific to one tool -- it's why onLineRead only ever saw whole-line
+  // events (volume switches) and never the live intra-file percentage.
+  // `script` (util-linux, always present, no new dependency) is the
+  // standard way to fake a controlling terminal for exactly this case.
+  // -e makes it propagate the real child exit code (needed by
+  // archiveProc.onFinished); -q/-c: quiet, run this one command.
+  function _ptyArgs(cmd) {
+    return ["script", "-qec", "bash -c " + Util.shellQuote(cmd), "/dev/null"]
+  }
+
+  function runActionWithProgress(cmd, busyLabel, total, onSuccess, volumes) {
+    if (_busyGuard()) return false
+    ActionState.actionLabel = busyLabel || ""
+    ActionState.actionBusy = !!busyLabel
+    ActionState._actionOnSuccess = onSuccess || null
+    if (volumes && volumes.length > 1) startArchiveVolumeProgress(volumes, busyLabel || "")
+    else startArchiveProgress(total)
+    archiveProc.start(_ptyArgs(cmd), true)
+    return true
   }
 
   // Static declarative signal handler for all native file operations:
@@ -223,10 +352,7 @@ Item {
   }
 
   function emptyTrash(onDone) {
-    if (actionProc.busy || nativeBusy) {
-      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
-      return false
-    }
+    if (_busyGuard()) return false
     nativeBusy = true
     _cancelling = false
     _nativeKind = "emptyTrash"
@@ -243,10 +369,7 @@ Item {
   }
 
   function _runNative(kind, pairs, busyLabel, overwrite, onDone) {
-    if (actionProc.busy || nativeBusy) {
-      Backend.Notifier.notify("Still busy with the previous action — try again in a moment")
-      return false
-    }
+    if (_busyGuard()) return false
     nativeBusy = true
     _cancelling = false
     _nativeKind = kind
@@ -309,10 +432,11 @@ Item {
         if (cb) cb()
       } else if (!result.cancelled) {
         // actionProc is the ONE shared process for every shell-based action
-        // (rename, bulk rename, chmod, compress, extract, make-link,
-        // new-file/-folder overwrite...) -- this fallback used to say
-        // "Couldn't restore from trash", written back when restore-from-
-        // trash was itself shell-based. It no longer is (restoreFromTrash()
+        // that doesn't need progress (rename, bulk rename, chmod,
+        // make-link, new-file/-folder overwrite...; compress/extract moved
+        // to archiveProc below, V1.1, for progress) -- this fallback used
+        // to say "Couldn't restore from trash", written back when restore-
+        // from-trash was itself shell-based. It no longer is (restoreFromTrash()
         // uses runNativeRestore(), a separate native path with its own
         // "Action failed" fallback below) -- so that string was stale for
         // every one of this handler's actual current callers (P2.7,
@@ -320,6 +444,81 @@ Item {
         // fallback for the same reason: neither handler knows which of its
         // several callers is the one that just failed.
         Backend.Notifier.notify(result.stderr.trim() || "Action failed")
+      }
+    }
+  }
+
+  // Archive extract/compress (V1.1): same shared-single-process idea as
+  // actionProc above, but a ProcessWatcher instead of a ProcessRunner so
+  // progress can be observed live instead of only at the end -- see
+  // runActionWithProgress()/startArchiveProgress() above.
+  Backend.ProcessWatcher {
+    id: archiveProc
+    onLineRead: function (line) {
+      if (!ActionState.actionBusy) return
+      if (_archiveVolumes) {
+        // Multi-volume: confirmed directly (2026-08-18, a real 8-volume 7z
+        // archive, .7z.001..008) that neither unrar nor 7z ever print a
+        // later volume's filename when they move on to reading it -- the
+        // ORIGINAL "detect volume switch by filename match" scheme above
+        // could therefore never advance past volume 0, which is the real
+        // reason this never actually tracked live progress. What IS real,
+        // confirmed from the same test: the tool's live "NN%" (e.g. "62% -
+        // bigfile3.bin") is already a percentage of the WHOLE logical
+        // file's content, seamlessly spanning every volume -- not
+        // per-volume, no reset at volume boundaries. So the fix is
+        // actually simpler than the original design: trust that %
+        // directly as the overall fraction, and only use the known
+        // cumulative volume sizes to DERIVE which part it corresponds to,
+        // for the "(part N/M)" label -- never to detect it from text.
+        //
+        // Global match (not just the first): a single captured "line" can
+        // contain more than one "NN%" token pasted together from several
+        // \r-overwrites landing in the same drain (confirmed: "0%   62%
+        // ... Everything is Ok" arrived as one chunk) -- the LAST one is
+        // the current value, not the first/stale one.
+        var pctMatches = line.match(/(\d{1,3})\s*%/g)
+        if (!pctMatches || pctMatches.length === 0 || _archiveVolBytesTotal <= 0) return
+        var p = parseInt(pctMatches[pctMatches.length - 1], 10)
+        if (p < 0 || p > 100) return
+        ActionState.actionProgressPct = Math.min(99, p)
+        var bytesSoFar = (p / 100) * _archiveVolBytesTotal
+        var acc = 0
+        for (var i = 0; i < _archiveVolumes.length; i++) {
+          acc += _archiveVolumes[i].size
+          _archiveVolIdx = i
+          if (bytesSoFar < acc) break
+        }
+        ActionState.actionLabel = _archiveBaseLabel + " (part " + (_archiveVolIdx + 1) + "/" + _archiveVolumes.length + ")"
+        return
+      }
+      if (_archiveProgTotal <= 0) return
+      // Every format's verbose output is roughly one line per file/dir
+      // entry -- the fallback for archives that aren't a detected
+      // multi-volume set (see _multiVolumeSiblings()). Clamped to 99, not
+      // 100, so an undercount (e.g. zip -r recursing into a folder) can
+      // never claim done before the process actually says so via
+      // onFinished.
+      if (line.trim() === "") return
+      _archiveProgDone += 1
+      ActionState.actionProgressPct = Math.min(99, _archiveProgDone * 100 / _archiveProgTotal)
+    }
+    onFinished: function (exitCode, cancelled, stdoutText, stderrText) {
+      _resetActionState()
+      var cb = ActionState._actionOnSuccess
+      ActionState._actionOnSuccess = null
+      if (exitCode === 0) {
+        if (cb) cb()
+      } else if (!cancelled) {
+        // Running under a fake PTY (_ptyArgs(), for live progress) merges
+        // the child's stderr into stdout instead -- confirmed directly,
+        // 2026-08-18 -- so stderrText alone can no longer be trusted here.
+        // The real error is normally near the end of stdoutText; the last
+        // couple of non-empty lines is a reasonable, readable summary for
+        // a one-line notification (not the whole banner/scan preamble).
+        var tail = stdoutText.split("\n").map(function (l) { return l.trim() })
+          .filter(function (l) { return l.length > 0 }).slice(-2).join(" — ")
+        Backend.Notifier.notify(stderrText.trim() || tail || "Action failed")
       }
     }
   }
@@ -356,7 +555,17 @@ Item {
         paths.push(info.trashRoot + "/files/" + n)
         paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
       })
-      if (paths.length > 0) runNativeRemove(paths, "", true)
+      if (paths.length > 0) {
+        runNativeRemove(paths, "", true)
+      } else {
+        // TrashState.trashInfo can genuinely lag the file listing now that
+        // requestTrashInfo() is async (V1_1_P0_TRASH_FREEZE, post-fix
+        // sanity audit): on a slow mount the names can already be visible
+        // (dirModel.listMany finished) while trashInfo -- a SECOND, equally
+        // slow discoverTrashRoots() pass -- is still in flight. Without
+        // this, selecting+deleting in that window silently did nothing.
+        Backend.Notifier.notify("Trash info is still loading — try again in a moment")
+      }
     } else {
       // NATIVE send to trash: FileOperations.trash
       // (QFile::moveToTrash, XDG Trash) instead of `gio trash`. Original
@@ -780,7 +989,12 @@ Item {
     var origPaths = entries
       .filter(function (e) { return !!TrashState.trashInfo[e.name] })
       .map(function (e) { return TrashState.trashInfo[e.name].origPath })
-    if (origPaths.length === 0) return
+    if (origPaths.length === 0) {
+      // Same async-trashInfo race as confirmDelete()'s permanent-delete
+      // branch above -- see its comment.
+      Backend.Notifier.notify("Trash info is still loading — try again in a moment")
+      return
+    }
     runNativeRestore(origPaths, entries.length === 1 ? "Restoring \"" + entries[0].name + "\"…" : "Restoring " + entries.length + " items…")
   }
 
@@ -890,27 +1104,56 @@ Item {
     }
   }
 
-  function compressSelected() {
+  // format: "zip" (default) | "tar.gz" | "7z" -- V1.1, extends compress
+  // beyond the previously hardcoded .zip-only (docs/audits/
+  // V1_1_FEATURE_INVENTORY.md §8/§9). Same conflict/progress machinery for
+  // all three; only the archive extension and the actual command differ.
+  function compressSelected(format) {
     if (ArchiveState.inArchive) return
     var entries = SelectionState.selectedEntries()
     if (entries.length === 0) return
+    var ext = format === "tar.gz" ? ".tar.gz" : (format === "7z" ? ".7z" : ".zip")
     var archiveName = entries.length === 1
-      ? entries[0].name.replace(/\/$/, "") + ".zip"
-      : "selected-files.zip"
+      ? entries[0].name.replace(/\/$/, "") + ext
+      : "selected-files" + ext
     var names = entries.map(function (e) { return Util.shellQuote(e.name) }).join(" ")
-    // "rm -f" before the zip: if the user confirms overwriting an
-    // already-existing archiveName, make it a real replacement -- without the rm,
-    // "zip -r" ADDS/updates entries inside the existing zip instead of
-    // replacing it, so confirming "overwrite" did not actually leave a
-    // clean zip with only what is selected now.
-    // "./" before the zip name + "--" before the list: a
-    // real file named, for example, "-rf" (a valid name in Linux) would be
-    // interpreted as zip flags instead of as a file name.
-    // zip does not accept "--" before the zip name itself (error "can't use
-    // -- before archive name"), hence the "./" instead.
-    var cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
-      + " && zip -r -q " + Util.shellQuote("./" + archiveName) + " -- " + names
-    ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd }
+    // "rm -f" before creating: if the user confirms overwriting an
+    // already-existing archiveName, make it a real replacement -- without
+    // the rm, "zip -r"/"7z a" ADD/update entries inside the existing
+    // archive instead of replacing it, so confirming "overwrite" did not
+    // actually leave a clean archive with only what is selected now (tar
+    // doesn't have this problem -- "tar c" always truncates -- but rm
+    // first keeps the three paths uniform).
+    // "./" before the archive name + "--" before the file list: a real
+    // file named, for example, "-rf" (a valid name in Linux) would
+    // otherwise be interpreted as flags instead of as a file name --
+    // confirmed directly (2026-08-18) this bites all three tools the same
+    // way, not just zip (zip additionally rejects a bare "--" right before
+    // the archive name itself, "can't use -- before archive name", hence
+    // "./" specifically rather than "--" there for all three, for one
+    // uniform rule instead of a per-tool exception).
+    // Verbose, V1.1: one line per file/dir touched, for progress (see
+    // runActionWithProgress()) -- zip/tar do this by default with -v; 7z's
+    // "a" (add) is quiet by default unlike its "x" (extract), so -bb1
+    // (confirmed directly: prints "+ <name>" per file) is added just for
+    // this branch. entries.length is used as the progress total below --
+    // exact for a flat file selection; a selected folder makes any of the
+    // three recurse and print more lines than that, so the bar reaches
+    // 100% a beat before the process actually finishes rather than
+    // undercounting visibly -- an accepted approximation rather than a
+    // second async pre-pass just to recursively pre-count entries.
+    var cmd
+    if (format === "tar.gz") {
+      cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
+        + " && tar czvf " + Util.shellQuote("./" + archiveName) + " -- " + names
+    } else if (format === "7z") {
+      cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
+        + " && 7z a -bb1 " + Util.shellQuote("./" + archiveName) + " -- " + names
+    } else {
+      cmd = "cd -- " + Util.shellQuote(NavState.currentPath) + " && rm -f -- " + Util.shellQuote(archiveName)
+        + " && zip -r " + Util.shellQuote("./" + archiveName) + " -- " + names
+    }
+    ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd, total: entries.length }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (Backend.FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
       ConflictState.compressConflictOpen = true
@@ -984,8 +1227,14 @@ Item {
     // runPendingExtract can actually overwrite after confirming the
     // conflict notice below. listCmd uses the "flat list" mode of
     // each tool (name per line, no header) to know what would be
-    // clobbered, without needing to parse tables.
-    if (ext === "zip") { cmd = "unzip -o -q " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
+    // clobbered, without needing to parse tables -- its raw line count
+    // doubles as the progress total (V1.1): each tool's VERBOSE (not
+    // quiet) extraction output prints exactly one line per entry too, so
+    // "how many of these lines have I seen" tracks "how far along am I"
+    // without needing a per-tool byte-progress format (none of the four
+    // agree on one). unzip drops -q for this; 7z/unrar already print one
+    // line per file by default, no flag needed.
+    if (ext === "zip") { cmd = "unzip -o " + path + " -d " + dir; listCmd = "unzip -Z1 -- " + path }
     else if (ext === "7z") { cmd = "7z x -y " + path + " -o" + dir; listCmd = "7z l -ba -slt -- " + path + " | grep '^Path = ' | sed 's/^Path = //'" }
     else if (ext === "rar") { cmd = "unrar x -o+ " + path + " " + dir + "/"; listCmd = "unrar lb -- " + path }
     // No "--" on purpose, unlike the other three -- with "tf"
@@ -995,14 +1244,19 @@ Item {
     // directory". Real bug: this made the conflict check
     // ALWAYS fail silently for tar/tar.gz/tar.bz2/tar.xz (listCmd
     // returned nothing -> 0 conflicts always detected), although zip/7z/
-    // rar were not affected.
-    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) { cmd = "tar xf " + path + " -C " + dir; listCmd = "tar tf " + path }
+    // rar were not affected. "v" (verbose) added to "xf" for progress --
+    // same argument-order concern doesn't apply, it's not "--".
+    else if (FileTypeConfig.tarExt.indexOf(ext) >= 0) { cmd = "tar xvf " + path + " -C " + dir; listCmd = "tar tf " + path }
     else return
     // Before, this overwrote without asking, unlike paste/drop/
     // rename (which do check conflicts). Before extracting, the
     // content of the archive is listed and it is checked whether any top-
     // level element already exists in the current folder.
-    ConflictState.pendingExtract = { entry: entry, cmd: cmd }
+    // Multi-volume detection (V1.1): if this is one part of a numbered set
+    // (foo.part01.rar..NN, foo.7z.001..NNN), runPendingExtract() below
+    // weights progress by real volume size and shows which one is active
+    // instead of the flat per-line fallback (see _multiVolumeSiblings()).
+    ConflictState.pendingExtract = { entry: entry, cmd: cmd, volumes: actionEngine._multiVolumeSiblings(entry.name) }
     extractListProc.start(["bash", "-c", listCmd])
   }
 
@@ -1087,8 +1341,14 @@ Item {
   Backend.ProcessRunner {
     id: extractListProc
     onFinished: function (result) {
+      var rawLines = String(result.stdout || "").split("\n").filter(function (l) { return l.trim() !== "" })
+      // Progress total (V1.1): the RAW per-entry line count, not the
+      // deduped top-level one below -- this is what the verbose extraction
+      // command will print one line per, so it's what onLineRead counts
+      // against (see extractHere()/runActionWithProgress()).
+      if (ConflictState.pendingExtract) ConflictState.pendingExtract.total = rawLines.length
       var top = {}
-      String(result.stdout || "").split("\n").forEach(function (line) {
+      rawLines.forEach(function (line) {
         var name = line.replace(/\/+$/, "")
         if (!name) return
         var slash = name.indexOf("/")
@@ -1194,7 +1454,7 @@ Item {
     ConflictState.pendingCompress = null
     ConflictState.compressConflictOpen = false
     if (!p) return
-    actionEngine.runAction(p.cmd, "Compressing to \"" + p.archiveName + "\"…")
+    actionEngine.runActionWithProgress(p.cmd, "Compressing to \"" + p.archiveName + "\"…", p.total || 0)
   }
 
   function cancelPendingCompress() {
@@ -1208,7 +1468,7 @@ Item {
     ConflictState.extractConflictOpen = false
     ConflictState.extractConflictNames = []
     if (!p) return
-    actionEngine.runAction(p.cmd, "Extracting \"" + p.entry.name + "\"…")
+    actionEngine.runActionWithProgress(p.cmd, "Extracting \"" + p.entry.name + "\"…", p.total || 0, undefined, p.volumes)
   }
 
   function cancelPendingExtract() {

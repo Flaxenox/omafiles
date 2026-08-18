@@ -85,6 +85,7 @@ Item {
     if (!BookmarksState.bookmarksLoaded) registry.persistence.loadBookmarks()
     if (!BookmarksState.recentLoaded) registry.persistence.loadRecent()
     if (!BookmarksState.bulkRenameHistoryLoaded) registry.persistence.loadBulkRenameHistory()
+    if (!BookmarksState.networkProfilesLoaded) registry.persistence.loadNetworkProfiles()
     registry.mountOps.refreshMounts()
     registry.mountOps.refreshNetworkMounts()
     if (!restoringSession && !ArchiveState.inArchive) registry.navController.startDirWatch(NavState.currentPath)

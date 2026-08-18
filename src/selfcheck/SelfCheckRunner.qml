@@ -157,6 +157,19 @@ QtObject {
     return false
   }
 
+  // Selects NavState.visibleEntries by name; false (no selection change) if
+  // any requested name isn't currently listed. Was copy-pasted identically
+  // 5 times across src/selfcheck/checks/CheckActions.qml (cleanup pass).
+  function _selectByNames(names) {
+    var entries = NavState.visibleEntries
+    var idx = []
+    for (var i = 0; i < entries.length; i++)
+      if (names.indexOf(entries[i].name) >= 0) idx.push(i)
+    if (idx.length !== names.length) return false
+    SelectionState.selectedIndices = idx
+    return true
+  }
+
   // Runs a list of FileOperations operations IN SEQUENCE (each
   // `start` launches an op; its finished is awaited before the next). If
   // any fails -> done(false, ...). When all finish -> onAllDone(). For

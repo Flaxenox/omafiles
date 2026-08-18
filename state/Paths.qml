@@ -55,6 +55,11 @@ QtObject {
   readonly property string recentFile: stateDir + "/recent.json"
   readonly property string sessionFile: stateDir + "/session.json"
   readonly property string bulkRenameHistoryFile: stateDir + "/bulk-rename-history.json"
+  // Saved network-connection profiles (V1.1, headline #4) -- the URI only
+  // (address/protocol/path, and the username when embedded as user@host),
+  // never a password: NetworkResolver already asks for that separately via
+  // its own auth flow, so the URI string saved here never contains one.
+  readonly property string networkProfilesFile: stateDir + "/network-profiles.json"
 
   // Factory bookmarks (used when bookmarks.json doesn't exist yet).
   readonly property var defaultBookmarks: [

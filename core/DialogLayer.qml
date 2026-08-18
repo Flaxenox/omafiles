@@ -64,11 +64,14 @@ Item {
     authRequested: DialogsState.networkAuthRequested
     authMessage: DialogsState.networkAuthMessage
     authUser: DialogsState.networkAuthUser
+    profiles: BookmarksState.networkProfiles
 
     onConnectRequested: function (uri) {
       DialogsState.connectServerUri = uri
       if (controllers && controllers.mountOps) controllers.mountOps.commitConnectToServer()
     }
+
+    onProfileRemoveRequested: function (uri) { BookmarksState.removeNetworkProfile(uri) }
 
     onAuthSubmitted: function (user, password, remember) {
       DialogsState.networkConnecting = true
@@ -118,6 +121,13 @@ Item {
     onRequestClose: DialogsState.shortcutsHelpOpen = false
   }
 
+  // ---------- Recent notifications (V1.1) ----------
+  NotificationHistory {
+    anchors.fill: parent
+    open: DialogsState.notificationHistoryOpen
+    onRequestClose: DialogsState.notificationHistoryOpen = false
+  }
+
   // ---------- Copy/move in progress ----------
   BorderSurface {
     id: actionBusyCard
@@ -154,7 +164,11 @@ Item {
           font.pixelSize: Style.font.subtitle
           font.family: Style.font.family
           color: Color.menu.text
-          elide: Text.ElideRight
+          // Middle-elide, not right-elide: a long/garbled filename (scene-
+          // release names, multi-part archives) loses its extension and
+          // any distinguishing tail entirely when cut from the right --
+          // the middle keeps both ends readable.
+          elide: Text.ElideMiddle
         }
 
         Button {
@@ -171,12 +185,23 @@ Item {
       Rectangle {
         visible: ActionState.actionProgressPct >= 0
         width: parent.width
-        height: 3
+        // Thicker (was 3px) and darkened much further (2.5x -> 7x) so the
+        // track reads as genuinely dark regardless of theme -- at 2.5x a
+        // light menu.text lands on a MID gray, which can end up close in
+        // perceived brightness to some accent colors. Distinguishing by
+        // hue alone doesn't work for every viewer (reported: not visibly
+        // moving, colorblind) -- contrast needs to hold on luminance too,
+        // not just color.
+        height: 6
         radius: height / 2
-        color: Qt.darker(Color.menu.text, 2.5)
+        color: Qt.darker(Color.menu.text, 7)
+        border.width: 1
+        border.color: Qt.darker(Color.menu.text, 4)
 
         Rectangle {
-          width: parent.width * (ActionState.actionProgressPct / 100)
+          // Math.max(height, ...): a rounded nub is visible from the very
+          // first tick instead of an invisible sliver at low percentages.
+          width: Math.max(parent.height, parent.width * (ActionState.actionProgressPct / 100))
           height: parent.height
           radius: height / 2
           color: Color.accent

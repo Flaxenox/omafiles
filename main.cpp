@@ -83,9 +83,19 @@ QString resolveResourceDir() {
 // development build/ and the stable installation in ~/.local/lib/qt6/qml -- and
 // Qt ignores the one that does not exist, so it works in both modes.
 void addImportPaths(QQmlApplicationEngine &engine, const QString &resourceDir) {
+  // QQmlEngine::addImportPath() PREPENDS each call to the front of the
+  // search list, so the call order here has to be the REVERSE of the
+  // intended priority -- confirmed the hard way (2026-08-18): with
+  // IMPORT_DIR added before INSTALL_DIR, INSTALL_DIR ends up searched
+  // FIRST, so a freshly-built dev omafiles-standalone silently loaded the
+  // stale installed Omafiles.Backend plugin instead of its own sibling
+  // build/qml one -- symbols present in one .so but not the other were the
+  // giveaway. Same dev-tree-wins-when-present philosophy as
+  // resolveResourceDir() above; INSTALL_DIR added first so it's the
+  // fallback once IMPORT_DIR is prepended in front of it.
   engine.addImportPath(resourceDir + "/app/qml_modules");
-  engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));  // dev build/qml
-  engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // installed
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_INSTALL_DIR)); // installed (fallback)
+  engine.addImportPath(QStringLiteral(OMAFILES_QML_IMPORT_DIR));  // dev build/qml (wins if present)
 }
 
 // Name of the single-instance socket, per user (to not clash between
@@ -359,6 +369,7 @@ int runSelfCheck(int argc, char *argv[]) {
 int runNormal(int argc, char *argv[]) {
   QGuiApplication app(argc, argv);
   app.setApplicationName(QStringLiteral("omafiles"));
+  app.setApplicationVersion(QStringLiteral(APP_VERSION));
   // Wayland app_id = "omafiles" (kept on purpose: any
   // Hyprland windowrule with class:omafiles keeps working). The installed
   // .desktop has a different basename (io.github.percius04.omafiles, mandatory

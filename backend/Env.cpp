@@ -11,3 +11,5 @@ QString Env::get(const QString &name) const {
 void Env::set(const QString &name, const QString &value) {
   qputenv(name.toLocal8Bit().constData(), value.toLocal8Bit());
 }
+
+QString Env::version() const { return QStringLiteral(APP_VERSION); }

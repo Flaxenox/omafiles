@@ -59,6 +59,7 @@ QtObject {
     { id: "search",              label: "Search files",                        fixed: false, keys: [{ key: "/", mod: "any" }, { key: "f", mod: "ctrl" }] },
     { id: "command_palette",    label: "Command palette",                     fixed: false, keys: [{ key: ":", mod: "any" }, { key: "p", mod: "ctrl" }] },
     { id: "toggle_help",        label: "Toggle this help",                    fixed: false, keys: [{ key: "?", mod: "any" }] },
+    { id: "notification_history", label: "Recent notifications",             fixed: false, keys: [{ key: "n", mod: "alt" }] },
     { id: "go_bottom",           label: "Jump to bottom",                      fixed: false, keys: [{ key: "g", mod: "shift" }] },
     { id: "move_down",          label: "Move down",                           fixed: false, keys: [{ key: "down", mod: "any" }, { key: "j", mod: "none" }] },
     { id: "move_up",             label: "Move up",                             fixed: false, keys: [{ key: "up", mod: "any" }, { key: "k", mod: "none" }] },

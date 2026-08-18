@@ -30,7 +30,7 @@ Item {
       { label: "Copy path", enabled: hasSelection, run: function () { actionEngine.copyPathAbsoluteFor(SelectionState.selectedEntries()) } },
       { label: "Paste", enabled: ClipboardState.clipboardPaths.length > 0, run: function () { actionEngine.paste() } },
       { label: "Delete", enabled: hasSelection, run: function () { actionEngine.requestDelete() } },
-      { label: "Select all", run: function () { SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i }) } },
+      { label: "Select all", run: function () { SelectionState.selectAll() } },
       { label: "Select none", enabled: hasSelection, run: function () { SelectionState.selectNone() } },
       { label: "Invert selection", run: function () { SelectionState.invertSelection() } },
       { label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
@@ -53,7 +53,9 @@ Item {
       { label: "Forward", enabled: TabsState.navHistoryIndex < TabsState.navHistory.length - 1, run: function () { if (navController) navController.navForward() } },
       { label: "Edit path", run: function () { searchOps.startEditPath() } },
       { label: "Search", run: function () { searchOps.startSearch() } },
-      { label: "Compress to .zip", enabled: hasSelection, run: function () { actionEngine.compressSelected() } },
+      { label: "Compress to .zip", enabled: hasSelection, run: function () { actionEngine.compressSelected("zip") } },
+      { label: "Compress to .tar.gz", enabled: hasSelection, run: function () { actionEngine.compressSelected("tar.gz") } },
+      { label: "Compress to .7z", enabled: hasSelection, run: function () { actionEngine.compressSelected("7z") } },
       { label: "Bulk rename...", enabled: SelectionState.selectedIndices.length > 1, run: function () { actionEngine.startBulkRename() } },
       { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(SelectionState.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) actionEngine.makeLinkFor(entry) } },
@@ -81,7 +83,7 @@ Item {
     }
     if (ArchiveState.inArchive) {
       var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
-        "Compress to .zip", "Bulk rename...", "Permissions...", "Make link", "Properties",
+        "Compress to .zip", "Compress to .tar.gz", "Compress to .7z", "Bulk rename...", "Permissions...", "Make link", "Properties",
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
@@ -170,7 +172,9 @@ Item {
       if (!BookmarksState.isBookmarked(fullPath)) {
         actions.push({ label: "Add to bookmarks", action: function () { BookmarksState.addBookmark(fullPath, entries[0].name, entries[0].type) } })
       }
-      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected() } })
+      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected("zip") } })
+      actions.push({ label: "Compress to .tar.gz", action: function () { actionEngine.compressSelected("tar.gz") } })
+      actions.push({ label: "Compress to .7z", action: function () { actionEngine.compressSelected("7z") } })
       if (archiveBrowser.isArchive(entries[0])) {
         actions.push({ label: "Extract here", action: function () { actionEngine.extractHere(entries[0]) } })
       }
@@ -179,7 +183,9 @@ Item {
       }
     } else {
       actions.push({ label: "Bulk rename...", action: function () { actionEngine.startBulkRename() } })
-      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected() } })
+      actions.push({ label: "Compress to .zip", action: function () { actionEngine.compressSelected("zip") } })
+      actions.push({ label: "Compress to .tar.gz", action: function () { actionEngine.compressSelected("tar.gz") } })
+      actions.push({ label: "Compress to .7z", action: function () { actionEngine.compressSelected("7z") } })
     }
 
     actions.push({ label: "Permissions...", action: function () { propertiesLoader.startChmod(entries) } })

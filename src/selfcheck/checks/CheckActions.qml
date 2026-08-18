@@ -295,6 +295,43 @@ QtObject {
           })
         })
 
+        // .zst was already in FileTypeConfig.archiveExt (icon) but missing
+        // from tarExt (browse/extract gate), so a .tar.zst showed an
+        // archive icon that did nothing when double-clicked -- V1.1 P2
+        // fix. GNU tar auto-detects zstd compression from content on read
+        // (confirmed directly against a real .tar.zst, no special flag
+        // needed), so the fix is just adding "zst" to
+        // state/FileTypeConfig.qml's tarExt list + the matching case arm
+        // in scripts/runtime/list-archive.sh (its own, separate extension
+        // whitelist). This exercises both edits together via the real
+        // ArchiveBrowser.enter() -> list-archive.sh path. Fixture uses an
+        // explicit member name (not "tar -C dir ."), matching the
+        // convention CheckIntegration.qml:56 already established --
+        // "tar -C dir ." emits "./"-prefixed entries that trip a
+        // DIFFERENT, already-documented list-archive.sh quirk (see
+        // "empty archive" test below), unrelated to this fix.
+        sc.add("Archive browsing: .tar.zst is browsable (V1.1 regression, .zst inconsistency fix)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no composition root"); return }
+          var zstPath = sc.opsDir + "/p2zst-test.tar.zst"
+          var buildCmd = "cd " + sc._q(sc.opsDir)
+            + " && rm -rf p2zst-src && mkdir -p p2zst-src"
+            + " && echo hello > p2zst-src/p2zst-file.txt"
+            + " && tar --zstd -cf " + sc._q(zstPath) + " -C p2zst-src p2zst-file.txt"
+            + " && rm -rf p2zst-src"
+          sc._sh(["bash", "-c", buildCmd], function (buildResult) {
+            if (buildResult.exitCode !== 0) { done(false, "fixture build failed: " + buildResult.stderr); return }
+            c.archiveBrowser.enter(zstPath)
+            sc._poll(function () { return sc._has(NavState.entries, "p2zst-file.txt") }, function (listedOk) {
+              var wasInArchive = ArchiveState.inArchive
+              c.archiveBrowser.exit()
+              var pass = listedOk && wasInArchive
+              done(pass, pass ? "tar.zst detected and listed correctly (previously not recognized as an archive)"
+                               : "listed=" + listedOk + " wasInArchive=" + wasInArchive)
+            })
+          })
+        })
+
         // ======================= ArchiveBrowser (P2.3 extraction) =======================
 
         sc.add("ArchiveBrowser: nested subdirs, up() ascends one level at a time, exit() only at root", function (done) {
@@ -547,14 +584,6 @@ QtObject {
           var newB = "br-b-" + stamp + "-renamed.txt"
           var aPath = sc.opsDir + "/" + aName
           var bPath = sc.opsDir + "/" + bName
-          function selectByNames(names) {
-            var entries = NavState.visibleEntries
-            var idx = []
-            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
-            if (idx.length !== names.length) return false
-            SelectionState.selectedIndices = idx
-            return true
-          }
           Backend.FileOperations.copy(sc.note, aPath)
           sc._fileOp(done, function () {
             Backend.FileOperations.copy(sc.note, bPath)
@@ -564,7 +593,7 @@ QtObject {
                 return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName)
               }, function (listed) {
                 if (!listed) { NavState.currentPath = prevPath; done(false, "fixtures never appeared"); return }
-                if (!selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+                if (!sc._selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
                 DialogsState.bulkRenamePattern = "{name}-renamed{ext}"
                 c.actionEngine.commitBulkRename()
                 sc._poll(function () {
@@ -597,20 +626,12 @@ QtObject {
           var stamp = Date.now()
           var noExtName = "br-noext-" + stamp // no "." at all -> {ext} is guaranteed empty
           var noExtPath = sc.opsDir + "/" + noExtName
-          function selectByNames(names) {
-            var entries = NavState.visibleEntries
-            var idx = []
-            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
-            if (idx.length !== names.length) return false
-            SelectionState.selectedIndices = idx
-            return true
-          }
           Backend.FileOperations.copy(sc.note, noExtPath)
           sc._fileOp(done, function () {
             c.navController.navigateTo(sc.opsDir)
             sc._poll(function () { return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, noExtName) }, function (listed) {
               if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
-              if (!selectByNames([noExtName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              if (!sc._selectByNames([noExtName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
               DialogsState.bulkRenamePattern = "{ext}"
               c.actionEngine.commitBulkRename()
               // The fix returns synchronously before touching the
@@ -643,14 +664,6 @@ QtObject {
           var bName = "br-coll-b-" + stamp + ".txt"
           var aPath = sc.opsDir + "/" + aName
           var bPath = sc.opsDir + "/" + bName
-          function selectByNames(names) {
-            var entries = NavState.visibleEntries
-            var idx = []
-            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
-            if (idx.length !== names.length) return false
-            SelectionState.selectedIndices = idx
-            return true
-          }
           Backend.FileOperations.copy(sc.note, aPath)
           sc._fileOp(done, function () {
             Backend.FileOperations.copy(sc.note, bPath)
@@ -660,7 +673,7 @@ QtObject {
                 return NavState.currentPath === sc.opsDir && sc._has(NavState.visibleEntries, aName) && sc._has(NavState.visibleEntries, bName)
               }, function (listed) {
                 if (!listed) { NavState.currentPath = prevPath; done(false, "fixtures never appeared"); return }
-                if (!selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+                if (!sc._selectByNames([aName, bName])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
                 // Both selected files map to the exact same target name --
                 // an internal duplicate, not a filesystem collision.
                 DialogsState.bulkRenamePattern = "same-" + stamp + "{ext}"
@@ -742,14 +755,6 @@ QtObject {
           var outDir = sc.opsDir + "/cx-out-" + stamp
           var fname = "payload.txt"
           var srcPath = srcDir + "/" + fname
-          function selectByNames(names) {
-            var entries = NavState.visibleEntries
-            var idx = []
-            for (var i = 0; i < entries.length; i++) if (names.indexOf(entries[i].name) >= 0) idx.push(i)
-            if (idx.length !== names.length) return false
-            SelectionState.selectedIndices = idx
-            return true
-          }
           sc._seqOps([
             function () { Backend.FileOperations.mkdir(srcDir) },
             function () { Backend.FileOperations.mkdir(outDir) },
@@ -758,7 +763,7 @@ QtObject {
             c.navController.navigateTo(srcDir)
             sc._poll(function () { return NavState.currentPath === srcDir && sc._has(NavState.visibleEntries, fname) }, function (listed) {
               if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
-              if (!selectByNames([fname])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+              if (!sc._selectByNames([fname])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
               c.actionEngine.compressSelected()
               var zipName = fname + ".zip"
               var zipPath = srcDir + "/" + zipName
@@ -797,5 +802,93 @@ QtObject {
             })
           })
         })
+
+        // Compress-to-other-formats (V1.1, headline #8): same round-trip
+        // shape as the .zip test above, exactly parameterized by format/
+        // ext, for the two new formats added to
+        // ActionEngine.qml's compressSelected(format).
+        function registerCompressRoundTrip(format, ext, label) {
+          sc.add("Compress + extract round-trip: " + label + " preserves content (V1.1 regression)", function (done) {
+            var c = sc._content
+            if (!c) { done(false, "no composition root"); return }
+            // Guard against a real race, caught empirically (2026-08-18,
+            // this test flaked once at ~4s then passed at 64ms on
+            // immediate retry): runActionWithProgress()'s busy guard
+            // (actionProc.busy || nativeBusy || archiveProc.active,
+            // ActionEngine.qml) can still be settling from the PREVIOUS
+            // test's own compress/extract when this one starts back to
+            // back -- if so it silently rejects (no return value checked
+            // by extractHere()/compressSelected(), nothing retries), which
+            // looks exactly like "extract never produced the file". Not a
+            // real bug (reproduced the same compress/extract commands
+            // directly via bash, works every time) -- a test-isolation gap
+            // between two archive tests sharing the same archiveProc.
+            sc._poll(function () { return !ActionState.actionBusy && !c.actionEngine.archiveBusy }, function () {
+            var prevPath = NavState.currentPath
+            var stamp = Date.now()
+            var srcDir = sc.opsDir + "/cx-src-" + format.replace(".", "") + "-" + stamp
+            var outDir = sc.opsDir + "/cx-out-" + format.replace(".", "") + "-" + stamp
+            var fname = "payload.txt"
+            var srcPath = srcDir + "/" + fname
+            sc._seqOps([
+              function () { Backend.FileOperations.mkdir(srcDir) },
+              function () { Backend.FileOperations.mkdir(outDir) },
+              function () { Backend.FileOperations.copy(sc.note, srcPath) }
+            ], done, function () {
+              c.navController.navigateTo(srcDir)
+              sc._poll(function () { return NavState.currentPath === srcDir && sc._has(NavState.visibleEntries, fname) }, function (listed) {
+                if (!listed) { NavState.currentPath = prevPath; done(false, "fixture never appeared"); return }
+                if (!sc._selectByNames([fname])) { NavState.currentPath = prevPath; done(false, "selection failed"); return }
+                c.actionEngine.compressSelected(format)
+                var archName = fname + ext
+                var archPath = srcDir + "/" + archName
+                sc._poll(function () { return Backend.FileOperations.totalSize([archPath]) > 0 }, function (compressed) {
+                  if (!compressed) { NavState.currentPath = prevPath; done(false, "compress never produced " + archName); return }
+                  var archInOut = outDir + "/" + archName
+                  sc._fileOp(done, function () {
+                    c.navController.navigateTo(outDir)
+                    sc._poll(function () { return Backend.FileOperations.totalSize([archInOut]) > 0 }, function (copiedOut) {
+                      if (!copiedOut) { NavState.currentPath = prevPath; done(false, archName + " copy never appeared in outDir"); return }
+                      // Real race, found via SelfCheckOut tracing (2026-08-18):
+                      // the compress subprocess having already written the
+                      // archive to disk (the "compressed" poll above) does
+                      // NOT guarantee runActionWithProgress()'s own busy
+                      // guard (archiveProc.active, checked directly) has
+                      // cleared yet -- calling extractHere() too soon makes
+                      // that guard silently reject the extract (no return
+                      // value is checked by extractHere(), so nothing
+                      // retries). A guessed fixed-duration settle (a 200ms
+                      // Timer) used to bridge this instead of polling the
+                      // real flag directly, and still flaked occasionally
+                      // (wrong-sized guess) -- ActionEngine.archiveBusy
+                      // (cleanup pass) exposes archiveProc.active itself, so
+                      // this can poll the exact thing the guard checks
+                      // instead of estimating how long it takes to clear.
+                      sc._poll(function () { return !ActionState.actionBusy && !c.actionEngine.archiveBusy }, function () {
+                        c.actionEngine.extractHere({ name: archName, type: "file" })
+                        var extractedPath = outDir + "/" + fname
+                        sc._poll(function () { return Backend.FileOperations.totalSize([extractedPath]) > 0 }, function (extracted) {
+                          NavState.currentPath = prevPath
+                          if (!extracted) { done(false, "extract never produced " + fname); return }
+                          sc._sh(["bash", "-c", "cat -- " + sc._q(sc.note)], function (r1) {
+                            sc._sh(["bash", "-c", "cat -- " + sc._q(extractedPath)], function (r2) {
+                              var ok = r1.exitCode === 0 && r2.exitCode === 0 && r1.stdout === r2.stdout
+                              done(ok, ok ? "compressed to " + ext + ", copied, extracted -- content preserved byte for byte"
+                                          : "content mismatch after round-trip (orig " + JSON.stringify(r1.stdout).slice(0, 40) + " vs extracted " + JSON.stringify(r2.stdout).slice(0, 40) + ")")
+                            })
+                          })
+                        })
+                      })
+                    })
+                  })
+                  Backend.FileOperations.copy(archPath, archInOut)
+                })
+              })
+            })
+            })
+          })
+        }
+        registerCompressRoundTrip("tar.gz", ".tar.gz", ".tar.gz")
+        registerCompressRoundTrip("7z", ".7z", ".7z")
   }
 }

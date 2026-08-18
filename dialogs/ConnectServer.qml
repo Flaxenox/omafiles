@@ -20,10 +20,17 @@ Item {
   property bool connecting: false
   property string uri: ""
   property string errorText: ""
+  // Saved connection profiles (V1.1, headline #4) -- just the URIs, no
+  // password (NetworkResolver's auth flow, below, is separate and never
+  // feeds this list). Fed from core/DialogLayer.qml, same "purely
+  // presentational, core owns the state" contract as everything else here.
+  property var profiles: []
 
   // "Connect" pressed (Enter or button) -- the parent decides what to do with
   // the URI (save it + commitConnectToServer()).
   signal connectRequested(string uri)
+  // A saved profile's remove ("x") was clicked.
+  signal profileRemoveRequested(string uri)
   // Escape while there is an attempt in progress: abort ONLY the attempt,
   // the dialog stays open (like the "Cancel" button).
   signal cancelConnectingRequested()
@@ -66,6 +73,49 @@ Item {
         color: Color.menu.text
         opacity: Style.emphasis.secondary
         wrapMode: Text.Wrap
+      }
+
+      Column {
+        width: parent.width
+        visible: !root.authRequested && root.profiles.length > 0
+        spacing: Style.spacing.xs
+
+        Repeater {
+          model: root.profiles
+
+          Row {
+            id: profileRow
+            required property string modelData
+            width: parent.width
+            spacing: Style.spacing.sm
+
+            Text {
+              width: parent.width - removeProfileButton.width - Style.spacing.sm
+              text: profileRow.modelData
+              font.pixelSize: Style.font.bodySmall
+              font.family: Style.font.family
+              color: Color.menu.text
+              elide: Text.ElideMiddle
+              MouseArea {
+                anchors.fill: parent
+                onClicked: connectServerField.text = profileRow.modelData
+              }
+            }
+
+            Text {
+              id: removeProfileButton
+              text: "×"
+              font.pixelSize: Style.font.bodySmall
+              font.family: Style.font.family
+              color: Color.menu.text
+              opacity: Style.emphasis.secondary
+              MouseArea {
+                anchors.fill: parent
+                onClicked: root.profileRemoveRequested(profileRow.modelData)
+              }
+            }
+          }
+        }
       }
 
       TextField {

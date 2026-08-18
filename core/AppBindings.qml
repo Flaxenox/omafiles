@@ -38,17 +38,24 @@ Item {
   // label change, and here it responds by listing again -- no polling. The
   // initial load is done by OmafilesContent.open(); `enabled: root.opened` avoids
   // re-listing with the window closed (on reopening, open() catches up).
-  //
-  // NETWORK mounts (GVfs) are NOT covered by UDisks2: they are refreshed only by
-  // internal events (connect/disconnect server in Omafiles, navigate to network) and on
-  // opening the window -- without periodic polling. KNOWN LIMITATION: a network
-  // mount created from ANOTHER app (nautilus...) does not appear until the next
-  // internal event or reopening. Future improvement: a GVfs-specific watcher
-  // (D-Bus signals of org.gtk.vfs), never polling.
   Connections {
     target: Backend.UDisksWatcher
     enabled: root.opened
     function onDevicesChanged() { mountOps.refreshMounts() }
+  }
+
+  // NETWORK mounts (GVfs): reactive via the same pattern (V1.1), closing the
+  // previously-documented gap here -- a mount created/removed from ANOTHER
+  // app (Nautilus, gio mount, a file picker...) used to stay invisible
+  // until the next internal event (connect/disconnect server in Omafiles,
+  // navigate to network) or reopening the window. backend/GvfsWatcher
+  // subscribes to org.gtk.vfs.MountTracker's Mounted/Unmounted on the
+  // session bus (verified present, 2026-08-18) and emits mountsChanged(),
+  // coalesced the same way. No polling here either.
+  Connections {
+    target: Backend.GvfsWatcher
+    enabled: root.opened
+    function onMountsChanged() { mountOps.refreshNetworkMounts() }
   }
 
   Connections {

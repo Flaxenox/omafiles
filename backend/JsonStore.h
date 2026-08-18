@@ -9,7 +9,7 @@
 // C++ backend for Omafiles' JSON persistence.
 // Replaces the pattern of reading with "cat" (one fork per file) and writing
 // with "bash -c 'mkdir -p ... && printf > ...'" (another fork) that
-// logic/Persistence.qml used. See BACKEND_DESIGN.md 5.2.
+// logic/Persistence.qml used. See BACKEND_DESIGN.md.
 //
 // Three gains over the shell approach:
 //   - no forks: QFile/QJsonDocument do the syscall directly;
