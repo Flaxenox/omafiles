@@ -175,12 +175,18 @@ Item {
       if (isTrash) {
         // listMany does not produce error codes (aggregate); the Trash
         // simply shows whatever is there. Trash metadata (requestTrashInfo,
-        // async, P0 fix) arrives a tick later via onTrashInfoReady above,
-        // which calls _apply() once it's in -- rows can briefly render
-        // without their trash metadata (original path/deletion date)
-        // before it fills in, trading the old "filled before paint, but the
-        // stat() could freeze the whole app" behavior for one that never
-        // blocks the UI thread.
+        // async, P0 fix) is requested here but _apply() only runs once
+        // onTrashInfoReady answers (above) -- entries/listed() and
+        // TrashState.trashInfo always land together, in the same tick, so
+        // there's no window where rows are visible without their metadata.
+        // The real residual gap is elsewhere: NavigationController sets
+        // NavState.currentPath = trashDir SYNCHRONOUSLY, before this async
+        // chain even starts, so "are we in Trash" can say yes before
+        // entries/TrashState.trashInfo have actually caught up (e.g.
+        // rapidly re-entering Trash right after leaving it). ActionEngine's
+        // restoreFromTrash()/confirmDelete() already handle this: acting on
+        // a name with no matching TrashState.trashInfo entry notifies
+        // instead of silently doing nothing (post-P0 sanity audit).
         Backend.FileOperations.requestTrashInfo(_trashReqId)
       } else {
         // Normal folder: map the model's error to pathError with the

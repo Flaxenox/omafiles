@@ -12,7 +12,7 @@
 // (PNG/JPEG/WebP/GIF/SVG) and PDF (first page) with QImageReader, caches
 // them on disk and serves them by file PATH -- just as the project
 // already did with the PDF/video thumbnails (Image { source: <path> }), which
-// (which we do not control). See BACKEND_DESIGN.md 5.3.
+// (which we do not control). See BACKEND_DESIGN.md.
 //
 // Persistent cache in ~/.cache/omafiles/thumbnails/. The key is a hash
 // (SHA-1) of path+max-size+file-size+mtime: if the image

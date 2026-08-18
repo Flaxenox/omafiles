@@ -34,13 +34,38 @@ trap on_error ERR
 # forces the rewrite and re-copy in earlier installations.
 INTEGRATION_VERSION=8
 
-# RES_DIR: STABLE root of installed resources. The Exec point here,
-# not to the repo, so deleting the repository doesn't break opening folders nor "show in
-# file manager". Requires `cmake --install` (which copies scripts/ and assets/ here).
-RES_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omafiles"
-# SELF_RES: the resource root where THIS script lives (to read the icon without
-# depending on the install having already run). In an installation == RES_DIR.
+# SELF_RES: the resource root where THIS script actually lives (BASH_SOURCE[0]
+# is the exact path it was invoked with -- core/AppBindings.qml launches it as
+# <resourceDir>/scripts/install-integrations.sh, so this always equals the
+# app's own already-resolved resourceDir).
 SELF_RES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# RES_DIR: STABLE root of installed resources -- Exec= below points here, not
+# at wherever this script happens to be running from, so deleting a dev
+# checkout doesn't break "open folder"/"show in file manager". A real `cmake
+# --install` (manual $HOME/.local install, a /usr-prefixed system package, or
+# any other CMAKE_INSTALL_PREFIX) already puts this very script at its own
+# final, stable location -- SELF_RES IS that location, for any real install,
+# regardless of prefix. The one case it ISN'T the right answer: running
+# straight from an uninstalled dev/build checkout (`cmake -B build &&
+# ./build/omafiles-standalone`, never `cmake --install`ed), detected here by
+# the presence of CMakeLists.txt (install() only ever copies core/logic/
+# state/panels/dialogs/shared/app/src/scripts/assets, never the repo root
+# itself, so a real install never has this file) -- there we still fall back
+# to a stable per-user copy so Exec= survives the checkout being deleted.
+#
+# Before this fix, RES_DIR was hardcoded to $HOME/.local/share/omafiles
+# unconditionally: correct for the historical manual-install-only workflow,
+# but wrong (and a stray write into $HOME) for any system package installed
+# under /usr or a custom prefix -- Exec= pointed at a per-user path that was
+# never populated, silently breaking "open folder"/"show in file manager"/the
+# file picker portal for that install (V1_1_P1_PACKAGING, post-P0 sanity
+# audit follow-up).
+if [[ -f "$SELF_RES/CMakeLists.txt" ]]; then
+  RES_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/omafiles"
+else
+  RES_DIR="$SELF_RES"
+fi
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omafiles"
 STATE_FILE="$STATE_DIR/integrations-version"

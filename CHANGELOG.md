@@ -1,5 +1,54 @@
 # OmaFiles Changelog
 
+## [1.1.0] - 2026-08-19
+
+### File transfers & archives
+
+* **Transfers queue instead of rejecting.** A second copy/move/compress/extract issued while one is already running used to be flatly rejected ("still busy — try again"). It's now queued (FIFO) and starts automatically once its turn comes, shown as a dimmed "Pending" row (with its own Cancel) above the active operation. Quick, effectively-instant actions (rename, chmod, mkdir, trash, restore…) deliberately keep the old reject-on-busy behavior — queueing wouldn't be noticeable there.
+* **Compress to `.tar.gz` and `.7z`**, alongside the existing `.zip` — plus live progress bars for archive extract/compress (previously only copy/move had one). `.zst`/`.tar.zst` and `.tbz`/`.tbz2` are now consistently recognized as browsable/extractable archives.
+
+### Bulk rename
+
+* **Regex Find/Replace**, applied to the base name before the `{name}`/`{ext}`/`{n}` pattern — supports capture-group backreferences (`$1`); an invalid regex while typing is treated as a no-op instead of breaking the dialog.
+* **Zero-padded sequence numbers**: `{n:3}` → `001`, `002`… (`{n}` alone stays unpadded, unchanged).
+* **Live preview**: every resulting name is shown, row by row, before confirming — driven by the exact same function the real rename uses, so the preview can never diverge from what actually happens.
+
+### Preview
+
+* Inline **video/audio playback** (Qt Multimedia) in Quick Look — play/pause, auto-stops when you move to another item — instead of a thumbnail/metadata-only view.
+
+### Network locations
+
+* **Reactive GVfs mount watcher**: a network drive mounted or unmounted from another app is now picked up live, the same gap `UDisksWatcher` already closed for local devices.
+* **Saved connection profiles** (URI only, never a password) for one-click reconnecting to previously used servers.
+
+### Notifications
+
+* Migrated from `notify-send` to real desktop notifications (`org.freedesktop.Notifications` over D-Bus), plus an `Alt+N` recent-notifications panel (session-only history) in case you missed one.
+
+### Undo / Redo
+
+* Closed a real, previously-documented gap: `undoLast()`/`redoLast()` used to move an entry to the opposite stack (and show "Undoing:"/"Redoing:") as soon as the underlying operation *started*, not once it had genuinely *completed* — a redo pressed right after an undo could fire while that undo was still in flight. Now deferred until real completion; regression-tested against the exact race.
+
+### Bug fixes
+
+* A real, empirically-reproduced ~10% flake in the `.7z` compress/extract selfcheck, root-caused to a guessed fixed-duration settle instead of a deterministic check.
+* `main.cpp`'s import-path priority was backwards: a dev build could silently load the stale *installed* backend instead of its own.
+* A selfcheck testing its own background-panel refresh logic was polling a bounded (8-entry) LRU cache shared by every background panel in the app — real activity from unrelated tabs could evict its entry within milliseconds under a long test run, a genuine ~15-25% flake unrelated to any real bug. Fixed by observing the panel's own listing state directly instead.
+* Dead code removed (`Persistence.saveRecent`/`saveBulkRenameHistory`, `TabOps.closeTabAt`, `FileMeta.parseAudioInfo`), a 4×-duplicated busy guard in `ActionEngine` consolidated, two `toLowerCase()`-in-comparator hot paths hoisted to match an existing C++-side fix.
+
+### Regression coverage
+
+* The headless `--selfcheck` suite grew from 92 to **146**, adding dedicated coverage for the transfer queue (including cross-kind queueing and mid-queue cancellation), bulk rename's regex/padding/preview, drag-and-drop (move+undo/redo, conflict handling, the self-drop guard), and the undo/redo completion-timing fix.
+
+## [1.0.1] - 2026-08-17
+
+Bug-fix-only hotfix release. No new features.
+
+* **Fixed: the app could freeze entering Trash.** Trash-root discovery and `.trashinfo` parsing ran synchronously on the UI thread on every Trash navigation; a slow disk (spun-down mechanical drive) or a stalled network/FUSE mount could block the entire app for as long as that mount took to respond. Both are now handled off the UI thread via the existing async backend pattern. See `docs/audits/V1_1_P0_TRASH_FREEZE_REPORT.md` for the full investigation.
+* Hardened Restore/permanent-delete against a related race exposed by the fix above: acting on a Trash item before its metadata has finished loading now notifies instead of silently doing nothing.
+* Packaging: fixed `install-integrations.sh` assuming a per-user `$HOME/.local/share` install even when packaged system-wide (e.g. under `/usr`); the app's version is now exposed to QML from the single CMake-authoritative source instead of nowhere.
+
 ## [1.0.0] - 2026-08-17
 
 A forensic-audit-driven hardening release on top of v0.9.0's architecture: a full concurrency/security pass (verified with AddressSanitizer, not just code review), a round of architectural cleanup that kept the codebase's size in check instead of letting it grow, a new custom-keybindings system, and a much wider automated regression suite. No new user-facing features beyond custom keybindings and alternating row colors — this release is about correctness and stability on the foundation v0.9.0 already built.

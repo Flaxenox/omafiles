@@ -66,6 +66,16 @@ Item {
   // different paths at the same time, so they can't share a single
   // Process. entries/pathError/loaded are no longer bgPanel's own
   // properties -- they're read directly from dirLister throughout the file.
+  // Exposed via alias (V1.1) so the selfcheck suite can observe a specific
+  // panel's own listing state directly (loaded/entries) -- hostRoot.
+  // tabEntriesCache below is a bounded (8-entry) LRU shared across every
+  // background panel in the app, real activity from unrelated tabs can
+  // legitimately evict an entry within milliseconds, which made a test that
+  // polled the cache instead of the panel's own state genuinely flaky (not
+  // a bug in the panel or in the cache's eviction policy) -- see src/
+  // selfcheck/checks/CheckPanels.qml.
+  property alias dirLister: dirLister
+
   DirLister {
     id: dirLister
     trashDir: Paths.trashDir

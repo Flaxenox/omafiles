@@ -41,12 +41,16 @@ Item {
   BulkRenamePanel {
     anchors.fill: parent
     open: DialogsState.bulkRenameOpen
-    selectedCount: SelectionState.selectedIndices.length
+    entries: SelectionState.selectedEntries()
     pattern: DialogsState.bulkRenamePattern
+    find: DialogsState.bulkRenameFind
+    replace: DialogsState.bulkRenameReplace
     history: BookmarksState.bulkRenameHistory
     onCloseRequested: DialogsState.bulkRenameOpen = false
-    onRenameRequested: function (pattern) {
+    onRenameRequested: function (pattern, find, replace) {
       DialogsState.bulkRenamePattern = pattern
+      DialogsState.bulkRenameFind = find
+      DialogsState.bulkRenameReplace = replace
       if (controllers && controllers.actionEngine) controllers.actionEngine.commitBulkRename()
     }
     onFocusReturnRequested: list.forceActiveFocus()
@@ -64,11 +68,14 @@ Item {
     authRequested: DialogsState.networkAuthRequested
     authMessage: DialogsState.networkAuthMessage
     authUser: DialogsState.networkAuthUser
+    profiles: BookmarksState.networkProfiles
 
     onConnectRequested: function (uri) {
       DialogsState.connectServerUri = uri
       if (controllers && controllers.mountOps) controllers.mountOps.commitConnectToServer()
     }
+
+    onProfileRemoveRequested: function (uri) { BookmarksState.removeNetworkProfile(uri) }
 
     onAuthSubmitted: function (user, password, remember) {
       DialogsState.networkConnecting = true
@@ -118,69 +125,154 @@ Item {
     onRequestClose: DialogsState.shortcutsHelpOpen = false
   }
 
-  // ---------- Copy/move in progress ----------
-  BorderSurface {
-    id: actionBusyCard
+  // ---------- Recent notifications (V1.1) ----------
+  NotificationHistory {
+    anchors.fill: parent
+    open: DialogsState.notificationHistoryOpen
+    onRequestClose: DialogsState.notificationHistoryOpen = false
+  }
+
+  // ---------- Copy/move in progress + queued transfers (V1.1) ----------
+  // One compact row per queued transfer/archive job (logic/ActionEngine.qml
+  // _transferQueue), stacked above the active card so a queued paste/
+  // extract is visible as "Pending" instead of only the "Queued: ..."
+  // notification shown at the moment it was deferred (easy to miss/scroll
+  // past). No per-item cancel yet -- first increment, see ARCHITECTURE.md.
+  Column {
+    id: actionBusyStack
     visible: ActionState.actionBusy
     width: Math.min(parent.width - 80, 420)
-    height: actionBusyColumn.implicitHeight + contentTopInset + contentBottomInset
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom
     anchors.bottomMargin: Style.spacing.lg
-    radius: Style.cornerRadius
-    color: Color.menu.background
-    borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    padding: Style.spacing.sm
+    spacing: Style.spacing.xs
     z: 25
 
-    Column {
-      id: actionBusyColumn
-      anchors.fill: parent
-      anchors.topMargin: actionBusyCard.contentTopInset
-      anchors.rightMargin: actionBusyCard.contentRightInset
-      anchors.bottomMargin: actionBusyCard.contentBottomInset
-      anchors.leftMargin: actionBusyCard.contentLeftInset
-      spacing: Style.spacing.xs
+    Repeater {
+      model: controllers && controllers.actionEngine ? controllers.actionEngine._transferQueue : []
+      delegate: BorderSurface {
+        width: actionBusyStack.width
+        height: pendingLabel.implicitHeight + contentTopInset + contentBottomInset
+        radius: Style.cornerRadius
+        color: Color.menu.background
+        borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+        padding: Style.spacing.sm
+        opacity: 0.7
 
-      Row {
-        id: actionBusyRow
-        width: parent.width
-        spacing: Style.spacing.sm
+        Row {
+          anchors.fill: parent
+          anchors.topMargin: parent.contentTopInset
+          anchors.rightMargin: parent.contentRightInset
+          anchors.bottomMargin: parent.contentBottomInset
+          anchors.leftMargin: parent.contentLeftInset
+          spacing: Style.spacing.sm
 
-        Text {
-          anchors.verticalCenter: parent.verticalCenter
-          width: parent.width - cancelActionButton.width - parent.spacing
-          text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : (root ? root.actionBusyDots : ""))
-          font.pixelSize: Style.font.subtitle
-          font.family: Style.font.family
-          color: Color.menu.text
-          elide: Text.ElideRight
-        }
+          Text {
+            id: pendingLabel
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - pendingTag.width - cancelQueuedButton.width - 2 * parent.spacing
+            text: modelData.label
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            elide: Text.ElideMiddle
+          }
 
-        Button {
-          id: cancelActionButton
-          text: "Cancel"
-          bordered: true
-          anchors.verticalCenter: parent.verticalCenter
-          Accessible.role: Accessible.Button
-          Accessible.name: text
-          onClicked: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelAction()
+          Text {
+            id: pendingTag
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Pending"
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Qt.darker(Color.menu.text, 2)
+          }
+
+          Button {
+            id: cancelQueuedButton
+            text: "Cancel"
+            bordered: true
+            anchors.verticalCenter: parent.verticalCenter
+            Accessible.role: Accessible.Button
+            Accessible.name: "Cancel queued: " + modelData.label
+            onClicked: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelQueuedJob(index)
+          }
         }
       }
+    }
 
-      Rectangle {
-        visible: ActionState.actionProgressPct >= 0
-        width: parent.width
-        height: 3
-        radius: height / 2
-        color: Qt.darker(Color.menu.text, 2.5)
+    BorderSurface {
+      id: actionBusyCard
+      width: parent.width
+      height: actionBusyColumn.implicitHeight + contentTopInset + contentBottomInset
+      radius: Style.cornerRadius
+      color: Color.menu.background
+      borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
+      padding: Style.spacing.sm
+
+      Column {
+        id: actionBusyColumn
+        anchors.fill: parent
+        anchors.topMargin: actionBusyCard.contentTopInset
+        anchors.rightMargin: actionBusyCard.contentRightInset
+        anchors.bottomMargin: actionBusyCard.contentBottomInset
+        anchors.leftMargin: actionBusyCard.contentLeftInset
+        spacing: Style.spacing.xs
+
+        Row {
+          id: actionBusyRow
+          width: parent.width
+          spacing: Style.spacing.sm
+
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width - cancelActionButton.width - parent.spacing
+            text: ActionState.actionLabel + (ActionState.actionProgressPct >= 0 ? " " + Math.round(ActionState.actionProgressPct) + "%" : (root ? root.actionBusyDots : ""))
+            font.pixelSize: Style.font.subtitle
+            font.family: Style.font.family
+            color: Color.menu.text
+            // Middle-elide, not right-elide: a long/garbled filename (scene-
+            // release names, multi-part archives) loses its extension and
+            // any distinguishing tail entirely when cut from the right --
+            // the middle keeps both ends readable.
+            elide: Text.ElideMiddle
+          }
+
+          Button {
+            id: cancelActionButton
+            text: "Cancel"
+            bordered: true
+            anchors.verticalCenter: parent.verticalCenter
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            onClicked: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelAction()
+          }
+        }
 
         Rectangle {
-          width: parent.width * (ActionState.actionProgressPct / 100)
-          height: parent.height
+          visible: ActionState.actionProgressPct >= 0
+          width: parent.width
+          // Thicker (was 3px) and darkened much further (2.5x -> 7x) so the
+          // track reads as genuinely dark regardless of theme -- at 2.5x a
+          // light menu.text lands on a MID gray, which can end up close in
+          // perceived brightness to some accent colors. Distinguishing by
+          // hue alone doesn't work for every viewer (reported: not visibly
+          // moving, colorblind) -- contrast needs to hold on luminance too,
+          // not just color.
+          height: 6
           radius: height / 2
-          color: Color.accent
-          Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+          color: Qt.darker(Color.menu.text, 7)
+          border.width: 1
+          border.color: Qt.darker(Color.menu.text, 4)
+
+          Rectangle {
+            // Math.max(height, ...): a rounded nub is visible from the very
+            // first tick instead of an invisible sliver at low percentages.
+            width: Math.max(parent.height, parent.width * (ActionState.actionProgressPct / 100))
+            height: parent.height
+            radius: height / 2
+            color: Color.accent
+            Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+          }
         }
       }
     }

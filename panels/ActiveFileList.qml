@@ -292,6 +292,12 @@ Item {
                 var p = VideoThumbState.videoThumbReady[Utils.thumbKeyFor(PreviewContentState.previewEntry, NavState.currentPath)] || ""
                 return p ? Util.fileUrl(p) : ""
               }
+              // Real file path (not the thumbnail) fed straight to
+              // QtMultimedia's MediaPlayer for inline playback (V1.1).
+              videoSource: PreviewContentState.previewEntry && Utils.isVideo(PreviewContentState.previewEntry)
+                ? Util.fileUrl(Utils.entryPath(NavState.currentPath, PreviewContentState.previewEntry)) : ""
+              audioSource: PreviewContentState.previewEntry && Utils.isAudio(PreviewContentState.previewEntry)
+                ? Util.fileUrl(Utils.entryPath(NavState.currentPath, PreviewContentState.previewEntry)) : ""
               highlightedText: PreviewContentState.previewHighlighted
               plainText: PreviewContentState.previewText
               pdfImageSource: PreviewContentState.previewPdfImage ? Util.fileUrl(PreviewContentState.previewPdfImage) : ""

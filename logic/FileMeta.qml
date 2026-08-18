@@ -9,31 +9,6 @@ import "../shared/Utils.js" as Utils
 Item {
   property Item root: null
 
-  function parseAudioInfo(text) {
-    var out = []
-    var data
-    try { data = JSON.parse(text) } catch (e) { return out }
-    var fmt = (data && data.format) || {}
-    var stream = (data && data.streams && data.streams[0]) || {}
-    var dur = parseFloat(fmt.duration || stream.duration || 0)
-    if (dur > 0) {
-      var mins = Math.floor(dur / 60)
-      var secs = Math.round(dur % 60)
-      out.push({ label: "Duration", value: mins + ":" + (secs < 10 ? "0" : "") + secs })
-    }
-    if (stream.codec_name) out.push({ label: "Codec", value: String(stream.codec_name).toUpperCase() })
-    if (fmt.bit_rate) out.push({ label: "Bitrate", value: Math.round(fmt.bit_rate / 1000) + " kbps" })
-    if (stream.sample_rate) out.push({ label: "Sample rate", value: Math.round(stream.sample_rate / 1000) + " kHz" })
-    if (stream.channels) {
-      out.push({ label: "Channels", value: stream.channels === 1 ? "Mono" : stream.channels === 2 ? "Stereo" : String(stream.channels) })
-    }
-    var tags = fmt.tags || {}
-    if (tags.artist) out.push({ label: "Artist", value: tags.artist })
-    if (tags.title) out.push({ label: "Title", value: tags.title })
-    if (tags.album) out.push({ label: "Album", value: tags.album })
-    return out
-  }
-
   // Row subtitle -- size + relative date for files, only
   // date for folders (same spirit as the "Connected" of the real
   // composed-row examples of Omarchy: name + one line of context).

@@ -7,6 +7,19 @@ import "../../../shared/Utils.js" as Utils
 // Structural refactor only — behavior unchanged.
 QtObject {
   function register(sc) {
+        // Observes the panel's OWN DirLister (bg.dirLister.loaded/entries)
+        // directly, not hostRoot.tabEntriesCache (V1.1, root-caused via
+        // SelfCheckOut tracing after "give it more time" alone made things
+        // WORSE, not better -- see docs/architecture/ARCHITECTURE.md). That
+        // cache is a bounded (8-entry) LRU shared by every background panel
+        // in the app; deep in this suite, real background-panel activity
+        // from unrelated tests reliably evicted this test's own freshly-
+        // inserted entry within a handful of milliseconds -- genuine
+        // eviction, not slowness, confirmed directly: the value was correct
+        // right after being set, then gone by the very next poll tick, keys
+        // count already at the 8-entry cap. Not a bug in the panel or in
+        // the cache's eviction policy -- the cache was never the right
+        // thing for this test to observe in the first place.
         sc.add("Background panel refreshes on content change (non-active tab)", function (done) {
           var c = sc._content
           if (!c) { done(false, "no _content"); return }
@@ -31,19 +44,18 @@ QtObject {
             if (!bg) { panelsRow.destroy(); done(false, "BackgroundPanel null"); return }
 
             function cleanup() { bg.destroy(); panelsRow.destroy() }
-            function cache() { return c.tabEntriesCache[bgDir] }
 
-            // 1) wait for the initial listing (onCompleted -> refreshMe, a direct
-            //    call, not via the Connections) to populate the cache with the empty folder.
-            sc._poll(function () { return cache() !== undefined && cache().length === 0 }, function (ok0) {
+            // 1) wait for the initial listing (onCompleted -> refreshMe, a
+            //    direct call, not via the Connections) to complete.
+            sc._poll(function () { return bg.dirLister.loaded && bg.dirLister.entries.length === 0 }, function (ok0) {
               if (!ok0) { cleanup(); done(false, "the panel didn't list the initial empty folder"); return }
               // 2) mutate the folder and trigger the refresh ONLY via refreshTick.
               Backend.FileOperations.copy(sc.note, bgDir + "/appeared.txt")
               sc._fileOp(done, function () {
                 NavState.refreshTick += 1
                 // 3) the background panel must re-list and reflect the new file.
-                //    If the Connections is broken, the cache stays empty -> timeout.
-                sc._poll(function () { var e = cache(); return e && sc._has(e, "appeared.txt") }, function (ok) {
+                //    If the Connections is broken, entries stays empty -> timeout.
+                sc._poll(function () { return sc._has(bg.dirLister.entries, "appeared.txt") }, function (ok) {
                   // bgDir lives inside the harness's QTemporaryDir (main.cpp
                   // deletes it on exit); NO async remove is launched here -- a
                   // fire-and-forget in the last test runs concurrent with the

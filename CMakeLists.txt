@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(omafiles VERSION 1.0.0 LANGUAGES CXX)
+project(omafiles VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Pdf DBus Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Pdf DBus Network Multimedia)
 
 qt_standard_project_setup()
 
@@ -78,6 +78,8 @@ qt_add_qml_module(omafiles-backend
     backend/NetworkMounts.cpp
     backend/UDisksWatcher.h
     backend/UDisksWatcher.cpp
+    backend/GvfsWatcher.h
+    backend/GvfsWatcher.cpp
     backend/FolderCounter.h
     backend/FolderCounter.cpp
     backend/PathCompleter.h
@@ -93,6 +95,11 @@ qt_add_qml_module(omafiles-backend
 target_include_directories(omafiles-backend PRIVATE backend ${GIO_INCLUDE_DIRS})
 
 target_link_libraries(omafiles-backend PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Pdf Qt6::DBus Qt6::Network ${GIO_LIBRARIES})
+
+# Single authoritative version source: project(... VERSION ...) above. Exposed
+# to QML via Backend.Env.version() (backend/Env.h/.cpp) -- no second,
+# manually-maintained version string (V1_1_P1_PACKAGING).
+target_compile_definitions(omafiles-backend PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
 # ---------------------------------------------------------------------------
 # app : Qt6 frontend
@@ -111,6 +118,7 @@ target_link_libraries(omafiles-standalone PRIVATE
   Qt6::Quick
   Qt6::QuickControls2
   Qt6::Network
+  Qt6::Multimedia
 )
 
 # Paths that main.cpp needs to know at compile time (Phase 29, decoupling from the
@@ -131,6 +139,7 @@ target_compile_definitions(omafiles-standalone PRIVATE
   OMAFILES_QML_IMPORT_DIR="${CMAKE_BINARY_DIR}/qml"
   OMAFILES_QML_INSTALL_DIR="${OMAFILES_QML_INSTALL_DIR}"
   OMAFILES_DATA_INSTALL_DIR="${OMAFILES_DATA_INSTALL_DIR}"
+  APP_VERSION="${PROJECT_VERSION}"
 )
 
 # ---------------------------------------------------------------------------

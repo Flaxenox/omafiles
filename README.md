@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.0.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.1.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -47,14 +47,15 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 ### Preview (Quick Look with `Space`)
 
 - Press `Space` to toggle a quick preview of the selected item — the same "peek without opening" flow you'd expect from Quick Look.
-- Handles images, video thumbnails, native C++ syntax highlighting (C++, Python, QML, JSON, Shell), first-page PDF rendering (`QQuickPdfDocument`/`pdftoppm`), and native C++ audio/video metadata extraction (`MediaInfo`: duration, bitrate, sample rate, channels, codec).
+- Handles images, inline video/audio **playback** (Qt Multimedia, play/pause, auto-stops when you move to another item) with a video thumbnail fallback, native C++ syntax highlighting (C++, Python, QML, JSON, Shell), first-page PDF rendering (`QQuickPdfDocument`/`pdftoppm`), and native C++ audio/video metadata extraction (`MediaInfo`: duration, bitrate, sample rate, channels, codec).
 - Preview state is tracked per panel.
 
 ### File operations
 
 - Rename, new folder, new file, make link, delete (to trash), copy / cut / paste, drag-and-drop, compress, extract, and bulk rename.
 - Nothing silently clobbers an existing name: copy/cut/paste/drag show a real overwrite / skip / cancel dialog; extract/compress/bulk-rename show their own equivalent; rename asks to confirm an overwrite; new folder / new file / make link refuse with a clear error instead of failing quietly.
-- Copy/move show a "still working" indicator with **Cancel** and a real percentage + progress bar (estimated from source size vs. bytes landed — `cp`/`mv` don't report progress themselves), and a cancel leaves no half-written file or tree behind.
+- Copy/move show a "still working" indicator with **Cancel** and a real percentage + progress bar (estimated from source size vs. bytes landed — `cp`/`mv` don't report progress themselves), and a cancel leaves no half-written file or tree behind. A second copy/move/compress/extract issued while one is already running is **queued**, not rejected — it's shown as a dimmed "Pending" row (with its own Cancel) above the active one, and starts automatically once its turn comes.
+- Compress to `.zip`, `.tar.gz`, or `.7z`; extract `.zip`/`.7z`/`.rar`/the `.tar` family, including multi-volume archives — both directions show a live progress bar.
 - Copy/cut sync with the system clipboard (`wl-copy`, `text/uri-list`): paste files copied in Omafiles into another app, or files copied elsewhere into Omafiles (`Ctrl+V` falls back to the system clipboard when nothing's copied inside the app). "Copy path" puts the plain-text path(s) on the clipboard instead.
 - Rubber-band selection (drag over empty space; `Ctrl` adds to the selection), range selection with `Shift`+`↑`/`↓`, and drag-and-drop both out to and in from other apps.
 
@@ -79,11 +80,18 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 ### Network locations (GVfs)
 
 - SFTP / SMB / WebDAV / FTP via GVfs — "Connect…" from the sidebar or command palette; active connections are listed and browsable like any local folder.
-- Uses already-cached credentials (SSH key, saved keyring entry) — there's no in-app password prompt yet.
+- Uses already-cached credentials when available (SSH key, saved keyring entry); otherwise an in-app "Authentication Required" prompt asks for the username/password, with a session-only "remember" option.
+- Previously used server URIs are saved as one-click profiles (URI only — never a password) for reconnecting later.
+- A reactive watcher picks up mounts/unmounts made from *other* apps (e.g. mounting a share in Nautilus) without polling — the same live behavior local drives already had via UDisks2.
 
 ### Archives
 
 - Browse inside a zip / 7z / rar / tar-family archive without extracting it; opening a file inside extracts just that one file to a temp cache and opens it with your default app. Read-only view.
+
+### Notifications
+
+- Real desktop notifications (`org.freedesktop.Notifications` over D-Bus, not `notify-send`) for background events — action failures, finished operations, and the like.
+- `Alt+N` opens a recent-notifications panel (session-only history, cleared on restart) in case you missed one.
 
 ### Default file manager (`org.freedesktop.FileManager1`)
 
@@ -95,7 +103,7 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 ### Bulk rename
 
-- Rename a multi-selection with `{name}` / `{ext}` / `{n}` patterns; recent patterns are saved as one-click chips.
+- Rename a multi-selection with `{name}` / `{ext}` / `{n}` (or `{n:3}` to zero-pad) patterns, plus an optional regex Find/Replace applied to the name first; recent patterns are saved as one-click chips; a live preview shows every resulting name before confirming.
 
 ### Permissions (chmod)
 
@@ -125,7 +133,7 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 - A real tiled Wayland window (a Qt `ApplicationWindow`), not a modal overlay or layer-shell popup — it tiles alongside your terminal and editor like any other app.
 - A single instance is enforced: a second `omafiles [path]` navigates the running window (raising it) instead of opening a new one.
-- The active panel's folder refreshes live (via a native `QFileSystemWatcher`) instead of only on `F5`; drives and network locations are polled every few seconds.
+- The active panel's folder refreshes live (via a native `QFileSystemWatcher`) instead of only on `F5`; drives (UDisks2) and network locations (GVfs) both update reactively too, no polling.
 - Every icon is a verified Nerd Font glyph (checked against the installed font's cmap) — no emoji. Broken symlinks are flagged clearly (distinct icon, red name, "Broken link").
 - Basic screen-reader support (`Accessible.role`/`Accessible.name`) on the file list, sidebar, nav buttons, text inputs, and dialog buttons.
 
@@ -163,6 +171,7 @@ These are the **defaults**. Every one of them (except the five fixed shortcuts b
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |
 | `?` | Toggle keyboard shortcuts help |
+| `Alt+N` | Recent notifications |
 | `Escape` | Close search, then preview, then the active panel (with 2+ panels) |
 
 `gg` and `Escape` are handled structurally (a two-key chord and a context-sensitive close, respectively) rather than as single key bindings, so they're not in `keybindings.toml`. `SearchBar` and the command palette have their own independent `↑`/`↓` navigation, unaffected by `move_up`/`move_down` remapping — a known limitation, not a bug.
@@ -255,16 +264,17 @@ o.bind("SUPER + SHIFT + F", "Omafiles (file manager)", { launch = "omafiles" })
 
 ### Optional dependencies
 
-OmaFiles works fully without these packages. When installed, they enable additional integrations or faster backends.
+Everything below is truly optional in the sense that OmaFiles starts and runs fine without it — but **python-gobject** is the one exception in this table worth calling out on its own: it's not required to *build* or *launch* the app, yet `install-integrations.sh` (which runs automatically, unprompted, on first launch) needs it to self-register as the default file manager / `org.freedesktop.FileManager1` / the FileChooser portal, and that self-registration fails silently without it. Everything else below degrades gracefully or falls back to a different mechanism.
 
 | Tool | Enables |
 | --- | --- |
 | **tracker3** / **plocate** | Faster global filename search (otherwise falls back to the built-in recursive search engine) |
 | **ffmpegthumbnailer** | Video thumbnails |
 | **gvfs** / **gvfs-smb** | Network locations (SFTP, FTP, WebDAV, SMB) |
-| **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support (if using the Python service helpers) |
+| **python-gobject (Gio)** | D-Bus desktop integration and FileChooser portal support — see the note above, this one silently no-ops rather than degrading gracefully |
 | **zip** / **unzip** | Compress / extract `.zip` — unlike the rows above, there's no fallback: without these, Compress and extracting a `.zip` fail with an error notification instead of degrading gracefully |
-| **p7zip** / **unrar** | Extract `.7z` / `.rar` archives (browsing them, and `.tar`-family extraction, don't need these) |
+| **p7zip** | Extract `.7z` archives, and create them via the "Compress to .7z" option (browsing archives, and `.tar`-family extract/compress including `.tar.gz`, don't need this) |
+| **unrar** | Extract `.rar` archives |
 | **xdg-mime** | Registering Omafiles as the default file manager on first launch, and resolving the default app for "open with default" double-clicks (both best-effort, guarded by `command -v`) |
 
 **No longer required:** `xdg-terminal-exec`, `gio` (shell commands), `ffprobe`, `python-pygments`, `content-search.sh`, `empty-trash.sh`, and `inotifywait` have all been replaced by native C++ implementations.
@@ -293,7 +303,7 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
   - `PreviewProvider` & `ThumbnailProvider` — asynchronous image/video thumbnail caching and native text previews.
   - `SyntaxHighlighter` — in-process native syntax highlighting for C++, Python, QML, JSON, and Shell scripts.
   - `MediaInfo` — in-process native audio and video metadata extraction (WAV, MP3 ID3v1/ID3v2, FLAC, MP4/MOV, OGG, MKV/WebM) with $< 0.1\text{ ms}$ latency.
-  - `UDisksWatcher` & `NetworkMounts` — reactive drive monitoring and GVfs mount listings.
+  - `UDisksWatcher` & `GvfsWatcher` — reactive local-drive (UDisks2) and network-mount (GVfs, session D-Bus) monitoring, no polling for either; `NetworkMounts` lists the active GVfs mounts themselves.
   - `PathCompleter` — native `QDir`-based path completion for `Ctrl+L`.
   - `MimeResolver`, `TerminalResolver` & `NetworkResolver` — native association, terminal detection, and socket status checks without spawning shell subprocesses.
   - Plus `ProcessRunner`, `ProcessWatcher`, `Detached`, `FolderCounter`, `JsonStore`, `Env`, and `Notifier`.
@@ -302,12 +312,12 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
 
 Omafiles enforces strict automated quality and performance gates before every release:
 
-- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **124/124** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, keyboard dispatch, and UI instantiation.
+- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **146/146** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, keyboard dispatch, and UI instantiation.
 - **Performance Regression Gate:** `python3 bench/bench-gate.py --check-gate` validates cold startup, memory usage, large directory listings (up to 100k files), search latency, and I/O throughput against the canonical baseline (`bench/baseline.json`).
 
 ## Status
 
-Stable Release (`v1.0.0`) — ready for production use.
+Stable Release (`v1.1.0`) — ready for production use.
 
 ## License
 

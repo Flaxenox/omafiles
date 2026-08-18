@@ -27,7 +27,7 @@ list_raw() {
     # not needed as protection anyway: $archive is always an
     # absolute path built by Omafiles itself, never loose user
     # text that could start with "-".
-    tar|gz|tgz|bz2|tbz2|xz|txz) tar tf "$archive" 2>/dev/null ;;
+    tar|gz|tgz|bz2|tbz|tbz2|xz|txz|zst) tar tf "$archive" 2>/dev/null ;;
     *) exit 1 ;;
   esac
 }

@@ -86,6 +86,10 @@ Item {
       if (event.key === Qt.Key_Escape || event.key === Qt.Key_Question) { DialogsState.shortcutsHelpOpen = false; event.accepted = true }
       return
     }
+    if (DialogsState.notificationHistoryOpen) {
+      if (event.key === Qt.Key_Escape) { DialogsState.notificationHistoryOpen = false; event.accepted = true }
+      return
+    }
     if (DialogsState.bulkRenameOpen) {
       if (event.key === Qt.Key_Escape) { DialogsState.bulkRenameOpen = false; event.accepted = true }
       return
@@ -161,6 +165,9 @@ Item {
     case "toggle_help":
       DialogsState.shortcutsHelpOpen = true
       break
+    case "notification_history":
+      DialogsState.notificationHistoryOpen = true
+      break
     case "go_bottom":
       if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.goBottom()
       break
@@ -182,7 +189,7 @@ Item {
       SelectionState.selectNone()
       break
     case "select_all":
-      SelectionState.selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
+      SelectionState.selectAll()
       break
     case "invert_selection":
       SelectionState.invertSelection()

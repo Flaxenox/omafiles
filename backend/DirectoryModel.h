@@ -15,7 +15,7 @@ class QFileSystemWatcher;
 // Asynchronous directory listing and file system watching.
 // replacement for list-dir.sh + Utils.parseEntries: it scans with direct
 // readdir/stat/lstat, without a fork per file nor a NUL-delimited shell pipe.
-// See BACKEND_DESIGN.md 5.3.
+// See BACKEND_DESIGN.md.
 //
 // DATA PROVIDER, not a Qt model: the architectural
 // decision of AUDIT-V2 was Option B. The UI NEVER consumed this as

@@ -52,11 +52,17 @@ Item {
     cancelNetworkConnect()
   }
 
+  // Captured here (not re-read from DialogsState in onMountFinished) --
+  // same reasoning as mountProc.tabIndex above: the dialog may already be
+  // closed/cleared by the time the async mount actually finishes.
+  property string _lastConnectUri: ""
+
   function commitConnectToServer() {
     var uri = DialogsState.connectServerUri.trim()
     if (!uri) return
     DialogsState.connectServerError = ""
     DialogsState.networkConnecting = true
+    _lastConnectUri = uri
     Backend.NetworkResolver.mountUrl(uri)
   }
 
@@ -210,6 +216,11 @@ Item {
     function onMountFinished(success, errorMessage, localPath) {
       DialogsState.networkConnecting = false
       if (success) {
+        // Saved connection profiles (V1.1, headline #4): only the URI (no
+        // password, see BookmarksState.addNetworkProfile's doc comment),
+        // only on a REAL successful connect -- a failed/cancelled attempt
+        // never pollutes the saved list.
+        BookmarksState.addNetworkProfile(_lastConnectUri)
         DialogsState.connectServerOpen = false
         var before = MountsState.networkMounts.map(function (m) { return m.path })
         var parsed = Backend.NetworkMounts.list()

@@ -1,11 +1,17 @@
 # Maintainer: Josema <josema@example.com>
 pkgname=omafiles
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="A high-performance, native Qt6 file manager designed around the DHH philosophy"
 arch=('x86_64')
 url="https://github.com/Percius04/omafiles"
 license=('MIT')
+# qt6-base: Core/Gui/Qml/Quick/DBus/Network. qt6-declarative: Quick/
+# QuickControls2/the QML tooling (qmltyperegistrar/qmlcachegen) CMakeLists.txt
+# needs at build time too -- confirmed via `pacman -Qo` against every linked
+# Qt lib, not assumed (V1_1_P1_PACKAGING). qt6-5compat was listed here before
+# but is NOT used anywhere (no Qt5Compat/QtGraphicalEffects import in the QML
+# tree) -- dropped.
 # qt6-webengine provides Qt6::Pdf (libQt6Pdf.so) on Arch -- CMakeLists.txt's
 # `find_package(Qt6 REQUIRED COMPONENTS ... Pdf ...)` fails to configure
 # without it (P0-5, forensic audit 2026-08-16).
@@ -14,10 +20,46 @@ license=('MIT')
 # unzip for that same default format -- unlike p7zip/unrar (needed only for
 # the optional .7z/.rar cases, see README's Optional dependencies table),
 # there's no fallback for either of these (final release audit, 2026-08-17).
-depends=('qt6-base' 'qt6-declarative' 'qt6-5compat' 'qt6-webengine' 'glib2' 'zip' 'unzip')
-makedepends=('cmake' 'ninja' 'qt6-tools')
+# python-gobject: REQUIRED, not optional. scripts/install-integrations.sh
+# runs automatically on first launch (not user opt-in, see core/AppBindings.qml)
+# and installs+enables three D-Bus services (dbus-app-open.py,
+# dbus-filemanager1.py, dbus-filechooser.py) that all `from gi.repository
+# import Gio, GLib` -- without it, the app's self-registration as default
+# file manager / org.freedesktop.FileManager1 / the FileChooser portal
+# silently fails (V1_1_P1_PACKAGING, post-P0 sanity audit follow-up).
+depends=('qt6-base' 'qt6-declarative' 'qt6-webengine' 'glib2' 'zip' 'unzip' 'python-gobject')
+# Matches README's "Optional dependencies" table exactly -- each degrades
+# gracefully without it (see that table for the precise fallback behavior of
+# each; zip/unzip are NOT here because, unlike these, they have no fallback
+# and are therefore in `depends` above).
+optdepends=('tracker3: faster global filename search'
+            'plocate: faster global filename search (fallback when tracker3 is absent)'
+            'ffmpegthumbnailer: video thumbnails'
+            'gvfs: network locations (SFTP, FTP, WebDAV)'
+            'gvfs-smb: SMB network locations'
+            'p7zip: extract .7z archives'
+            'unrar: extract .rar archives'
+            'xdg-mime: registering as the default file manager / resolving "open with default"')
+# qt6-tools was listed here before but provides none of what this project's
+# build actually uses (assistant/designer/linguist/lrelease/lupdate/qdbus --
+# no LinguistTools/translations in CMakeLists.txt); the QML tooling it might
+# be confused for (qmltyperegistrar/qmlcachegen/qmllint) ships in
+# qt6-declarative, already in `depends` above (confirmed via `pacman -Qo`,
+# V1_1_P1_PACKAGING). Dropped.
+makedepends=('cmake' 'ninja')
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Percius04/omafiles/archive/v${pkgver}.tar.gz")
-sha256sums=('e45cc3b60b91b126f75c3ba821c5d29c356b599fe1bef2e086a324068ed8fc08') # FIXME: this is still the old 0.9.0 tarball's hash -- regenerate against the actual v1.0.0 tag's tarball once it's cut and pushed (release prep, 2026-08-17; can't compute the real hash of a tag that doesn't exist yet)
+# Real hash of the v1.0.1 tag's actual GitHub archive -- verified against
+# the EXACT source= URL above (https://github.com/Percius04/omafiles/archive/v1.0.1.tar.gz),
+# not the GitHub API's /tarball/ endpoint, which produces a byte-different
+# (but content-identical) archive under a different top-level dir naming --
+# confirmed empirically, not assumed (V1_1_RELEASE_1_0_1). Tag v1.0.1 points
+# at master's f98839b..8ecdb80 P0 trash-freeze hotfix commit (8ecdb80);
+# note this tarball's own CMakeLists.txt still says VERSION 1.0.0 internally
+# (a known, deliberately-accepted inconsistency -- the CMake/APP_VERSION/
+# install-integrations.sh packaging fixes from V1_1_P1_PACKAGING_REPORT.md
+# live on v1.1-dev, not in this 1.0.1 hotfix-only release; see
+# docs/audits/V1_1_RELEASE_1_0_1_REPORT.md).
+sha256sums=('97978f01887d412ca4b521fbe6001af80a73ba23bc00e05dadbad68b42c9af67')
 
 build() {
   cd "${pkgname}-${pkgver}"

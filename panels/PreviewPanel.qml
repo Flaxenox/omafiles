@@ -1,4 +1,5 @@
 import QtQuick
+import QtMultimedia
 import qs.Commons
 import qs.Ui
 import "../shared"
@@ -23,11 +24,21 @@ Item {
   property bool isAudioEntry: false
   property url imageSource: ""
   property url videoThumbSource: ""
+  property url videoSource: ""
+  property url audioSource: ""
   property string highlightedText: ""
   property string plainText: ""
   property url pdfImageSource: ""
   property var audioInfo: []
   property string fallbackSizeText: ""
+
+  // Stops any playback in flight when the previewed entry changes (arrow-
+  // key navigation to another file) -- without this, the previous video/
+  // audio's sound would keep going under the new file's preview.
+  onEntryNameChanged: {
+    videoPlayer.stop()
+    audioPlayer.stop()
+  }
 
   BorderSurface {
     id: previewPanel
@@ -73,14 +84,56 @@ Item {
         source: root.isImageEntry ? root.imageSource : ""
       }
 
-      Image {
+      // Inline video playback (V1.1, headline #3): the static thumbnail
+      // stays as the poster shown before playback starts (avoids decoding
+      // a stream just to open the preview panel); Video (QtMultimedia,
+      // MediaPlayer+VideoOutput+AudioOutput in one) takes over once
+      // "Play" is pressed. Reset on every entry change (onVideoSourceChanged
+      // below) so arrow-keying to another file doesn't keep the previous
+      // one's audio going. Deliberately basic (play/pause only) --
+      // scrubbing/waveform/playlists/subtitles are out of scope, see the
+      // v1.1 feature inventory's headline #3 MVP note.
+      Item {
+        id: videoBlock
         visible: root.isVideoEntry
         width: parent.width
         height: parent.height - 60
-        fillMode: Image.PreserveAspectFit
-        asynchronous: true
-        cache: true
-        source: root.isVideoEntry ? root.videoThumbSource : ""
+
+        Image {
+          id: videoPoster
+          visible: videoPlayer.playbackState !== MediaPlayer.PlayingState
+          anchors.fill: parent
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          cache: true
+          // No isVideoEntry guard needed here (cleanup pass): videoThumbSource
+          // is already "" whenever isVideoEntry is false (same Utils.isVideo()
+          // check computed once in panels/ActiveFileList.qml), so the ternary
+          // was checking a condition the source already encodes.
+          source: root.videoThumbSource
+        }
+
+        Video {
+          id: videoPlayer
+          visible: playbackState === MediaPlayer.PlayingState
+          anchors.fill: parent
+          fillMode: VideoOutput.PreserveAspectFit
+          source: root.videoSource
+        }
+
+        Button {
+          text: videoPlayer.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+          bordered: true
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.spacing.sm
+          Accessible.role: Accessible.Button
+          Accessible.name: text
+          onClicked: {
+            if (videoPlayer.playbackState === MediaPlayer.PlayingState) videoPlayer.pause()
+            else videoPlayer.play()
+          }
+        }
       }
 
       Flickable {
@@ -128,6 +181,34 @@ Item {
         source: root.isPdfEntry ? root.pdfImageSource : ""
       }
 
+      // Inline audio playback (V1.1, headline #3) -- same basic play/pause-
+      // only scope as the video block above, no VideoOutput needed (audio
+      // files have no video track to render).
+      Row {
+        visible: root.isAudioEntry
+        spacing: Style.spacing.sm
+
+        MediaPlayer {
+          id: audioPlayer
+          // No isAudioEntry guard needed (cleanup pass): audioSource is
+          // already "" whenever isAudioEntry is false, see the video
+          // block's comment above.
+          source: root.audioSource
+          audioOutput: AudioOutput {}
+        }
+
+        Button {
+          text: audioPlayer.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+          bordered: true
+          Accessible.role: Accessible.Button
+          Accessible.name: text
+          onClicked: {
+            if (audioPlayer.playbackState === MediaPlayer.PlayingState) audioPlayer.pause()
+            else audioPlayer.play()
+          }
+        }
+      }
+
       Column {
         visible: root.isAudioEntry && root.audioInfo.length > 0
         width: parent.width
@@ -169,9 +250,9 @@ Item {
 
       Column {
         visible: root.hasEntry && !root.isImageEntry && !root.isTextEntry
-          && !(root.isVideoEntry && root.videoThumbSource !== "")
+          && !root.isVideoEntry
           && !(root.isPdfEntry && root.pdfImageSource !== "")
-          && !(root.isAudioEntry && root.audioInfo.length > 0)
+          && !root.isAudioEntry
         width: parent.width
         spacing: Style.spacing.sm
 

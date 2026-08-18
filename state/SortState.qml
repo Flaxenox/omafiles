@@ -14,7 +14,15 @@ QtObject {
 
   readonly property bool isDefaultOrder: sortKey === "name" && !sortDesc
 
-  function compareEntries(a, b) {
+  // aKey/bKey: precomputed a.name.toLowerCase()/b.name.toLowerCase(), for
+  // sortEntries()'s hot path below (cleanup pass -- name is the tie-break
+  // for every sort key, and the ONLY comparison for the default "name"
+  // sort, so calling toLowerCase() twice per comparator invocation instead
+  // of once per entry was the same repeated-per-comparison cost the C++
+  // side already fixed once for the exact same reason, see
+  // backend/DirectoryModel.cpp's Schwartzian-transform comment). Optional
+  // so compareEntries(a, b) alone still works for any other caller.
+  function compareEntries(a, b, aKey, bKey) {
     var result = 0
     if (sortKey === "size") {
       result = a.size - b.size
@@ -25,17 +33,21 @@ QtObject {
       result = ea < eb ? -1 : (ea > eb ? 1 : 0)
     }
     if (result === 0) {
-      result = Utils.naturalCompare(a.name.toLowerCase(), b.name.toLowerCase())
+      result = Utils.naturalCompare(aKey !== undefined ? aKey : a.name.toLowerCase(),
+                                     bKey !== undefined ? bKey : b.name.toLowerCase())
     }
     return sortDesc ? -result : result
   }
 
   function sortEntries(list) {
-    var dirs = list.filter(function (e) { return e.type === "dir" })
-    var files = list.filter(function (e) { return e.type !== "dir" })
-    dirs.sort(compareEntries)
-    files.sort(compareEntries)
-    return dirs.concat(files)
+    function decorate(e) { return { e: e, k: e.name.toLowerCase() } }
+    function cmp(x, y) { return compareEntries(x.e, y.e, x.k, y.k) }
+    function undecorate(d) { return d.e }
+    var dirs = list.filter(function (e) { return e.type === "dir" }).map(decorate)
+    var files = list.filter(function (e) { return e.type !== "dir" }).map(decorate)
+    dirs.sort(cmp)
+    files.sort(cmp)
+    return dirs.map(undecorate).concat(files.map(undecorate))
   }
 
   function sortLabel() {

@@ -65,6 +65,13 @@ QtObject {
     selectOnly(-1)
   }
 
+  // Was duplicated verbatim in logic/KeyboardShortcuts.qml and
+  // core/CommandFacade.qml (cleanup pass) -- belongs here with its
+  // siblings, not repeated at each call site.
+  function selectAll() {
+    selectedIndices = Array.from({ length: NavState.visibleEntries.length }, function (_, i) { return i })
+  }
+
   function invertSelection() {
     var current = selectedIndices
     var next = []

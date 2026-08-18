@@ -36,9 +36,13 @@ QtObject {
   // basename). The CONTENT search (`content:`) is NOT filtered: its
   // results are matches inside files and their name does not contain the
   // prefix, so filtering would hide them all.
-  readonly property var visibleEntries: (searchQuery && searchQuery.indexOf("content:") !== 0)
-    ? entries.filter(function (e) { return e.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0 })
-    : entries
+  readonly property var visibleEntries: {
+    if (!searchQuery || searchQuery.indexOf("content:") === 0) return entries
+    // Hoisted out of the filter callback (cleanup pass) -- was recomputed
+    // once per entry instead of once for the whole filter.
+    var q = searchQuery.toLowerCase()
+    return entries.filter(function (e) { return e.name.toLowerCase().indexOf(q) >= 0 })
+  }
 
   // ---------- Runtime navigation/search state ----------
   // They were mutable properties of OmafilesContent that did not belong to the

@@ -161,8 +161,8 @@ QtObject {
           sc._fileOp(done, function () {
             var started = c.actionEngine.runNativeTrash([work], "", function () {
               c.actionEngine.pushUndo("delete test",
-                function () { return c.actionEngine.runNativeRestore([work], "") },
-                function () { return c.actionEngine.runNativeTrash([work], "") })
+                function (onSettled) { return c.actionEngine.runNativeRestore([work], "", onSettled) },
+                function (onSettled) { return c.actionEngine.runNativeTrash([work], "", onSettled) })
               sc._listOnce(sc.opsDir, function (e) {
                 if (sc._has(e, "runner-trash.txt")) { done(false, "wasn't sent to trash"); return }
                 sc._fileOp(done, function () {
@@ -580,6 +580,71 @@ QtObject {
             done(ok, ok
                 ? ("event loop kept ticking (" + ticks + " ticks) during a " + SLOW_MS + "ms simulated slow mount, " + ms + "ms elapsed")
                 : ("event loop appears to have blocked: only " + ticks + " ticks in " + ms + "ms (arrived=" + arrived + ")"))
+          })
+        })
+
+        // Post-P0 sanity-audit finding: TrashState.trashInfo is populated
+        // asynchronously now (requestTrashInfo), and NavState.currentPath
+        // flips to trashDir synchronously, ahead of it -- so there's a real
+        // window (e.g. rapidly re-entering Trash) where "are we in Trash"
+        // is already true but TrashState.trashInfo hasn't caught up yet for
+        // some or all items. restoreFromTrash()/confirmDelete() used to
+        // build their native call from TrashState.trashInfo[name] with no
+        // guard beyond "if missing, silently drop this name" -- with a
+        // missing entry that meant a silent no-op, no error, no feedback.
+        // Reproduces the missing-entry condition DETERMINISTICALLY (strip
+        // one real entry out of the shared map) rather than racing real
+        // async timing, and asserts the fixed behavior: no crash, and
+        // critically no effect -- the trashed file is still exactly where
+        // it was, proving the guard actually prevented the native call
+        // rather than merely swallowing an exception from a bad path.
+        sc.add("Restore/permanent-delete no-op safely when TrashState.trashInfo lacks the entry (post-P0 sanity audit)", function (done) {
+          var c = sc._content
+          if (!c || !c.actionEngine) { done(false, "no composition root"); return }
+          var prevPath = NavState.currentPath
+          var work = sc.opsDir + "/gap-race-" + Date.now() + ".txt"
+          var wname = work.substring(work.lastIndexOf("/") + 1)
+
+          Backend.FileOperations.copy(sc.note, work)
+          sc._fileOp(done, function () {
+            Backend.FileOperations.trash(work)
+            sc._fileOp(done, function () {
+              c.commandFacade.openBookmark({ path: Paths.trashDir, type: "dir" })
+              sc._poll(function () { return sc._has(NavState.visibleEntries, wname) && TrashState.trashInfo[wname] !== undefined },
+                function (ready) {
+                  if (!ready) { done(false, "trashed item never fully listed with its info"); return }
+
+                  var entries = NavState.visibleEntries
+                  var idx = -1
+                  for (var i = 0; i < entries.length; i++) if (entries[i].name === wname) idx = i
+                  if (idx < 0) { done(false, "couldn't find the item to select"); return }
+                  SelectionState.selectOnly(idx)
+
+                  var origInfo = TrashState.trashInfo[wname]
+                  var trashedFilePath = origInfo.trashRoot + "/files/" + wname
+                  var savedInfo = TrashState.trashInfo
+                  var stripped = {}
+                  for (var k in savedInfo) if (k !== wname) stripped[k] = savedInfo[k]
+                  TrashState.trashInfo = stripped // deterministically reproduce the missing-entry condition
+
+                  var threw = false
+                  try {
+                    c.actionEngine.restoreFromTrash()
+                    ActionState.pendingDeleteNames = [wname]
+                    c.actionEngine.confirmDelete()
+                  } catch (e) { threw = true }
+                  ActionState.pendingDeleteNames = []
+
+                  var untouched = Backend.FileOperations.existingPaths([trashedFilePath]).length === 1
+                  TrashState.trashInfo = savedInfo // restore for cleanup below
+                  NavState.currentPath = prevPath
+
+                  var ok = !threw && untouched
+                  done(ok, ok
+                      ? "guarded no-op: no exception, trashed file untouched"
+                      : "threw=" + threw + " untouched=" + untouched + " (guard failed to prevent acting on missing info)")
+                })
+            })
           })
         })
 

@@ -17,17 +17,6 @@ Item {
   property Item archiveBrowser: null
   property Item previewLoader: null
 
-  // Closes the tab/panel at `index`, whether or not it is the active one (the × of each
-  // panel may be in one that is not the one currently focused).
-  function closeTabAt(index) {
-    if (TabsState.tabs.length <= 1) { root.requestClose(); return }
-    if (index === TabsState.activeTabIndex) { closeTab(); return }
-    var next = TabsState.tabs.slice()
-    next.splice(index, 1)
-    TabsState.tabs = next
-    if (TabsState.activeTabIndex > index) TabsState.activeTabIndex -= 1
-  }
-
   // Navigate WITHIN a panel that is not the active one -- it doesn't touch
   // NavState.currentPath/NavState.entries (those belong only to the active panel), only the
   // tab's own object. It keeps its history just like
