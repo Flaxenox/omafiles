@@ -130,6 +130,33 @@ QtObject {
           })
         })
 
+        // Properties panel used to shell out to `stat`/`du` for a single
+        // entry (see logic/PropertiesLoader.qml); native statInfo()/
+        // requestDirSize() replaced them (v1.2-dev). This checks both
+        // against the values the codebase already trusts elsewhere:
+        // octalModes() for the mode, totalSize() for the recursive size.
+        sc.add("Backend.FileOperations.statInfo()/requestDirSize() match octalModes()/totalSize() (native Properties)", function (done) {
+          var info = Backend.FileOperations.statInfo(sc.note)
+          var expectedMode = Backend.FileOperations.octalModes([sc.note])[0]
+          if (!info.perms || info.perms.charAt(0) !== "-") { done(false, "statInfo perms doesn't look like a regular file: '" + info.perms + "'"); return }
+          if (info.perms.indexOf(expectedMode) < 0) { done(false, "statInfo perms '" + info.perms + "' doesn't contain octalModes mode '" + expectedMode + "'"); return }
+          if (!info.ownerGroup || info.ownerGroup.indexOf(":") < 0) { done(false, "statInfo ownerGroup malformed: '" + info.ownerGroup + "'"); return }
+          if (!info.mtime) { done(false, "statInfo mtime empty"); return }
+
+          var expectedBytes = Backend.FileOperations.totalSize([sc.opsDir])
+          var reqId = 424242
+          function onReady(id, bytes) {
+            if (id !== reqId) return
+            Backend.FileOperations.dirSizeReady.disconnect(onReady)
+            done(bytes === expectedBytes,
+                 bytes === expectedBytes
+                   ? ("statInfo perms=" + info.perms + " owner=" + info.ownerGroup + ", requestDirSize matched totalSize (" + bytes + " bytes)")
+                   : ("requestDirSize=" + bytes + " != totalSize=" + expectedBytes))
+          }
+          Backend.FileOperations.dirSizeReady.connect(onReady)
+          Backend.FileOperations.requestDirSize(reqId, sc.opsDir)
+        })
+
         // ======================= BUG-05 (Hardening-2) =======================
 
         // ArchiveActions opened an archive member with `tar xf A -O <member>`

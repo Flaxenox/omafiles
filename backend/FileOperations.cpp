@@ -1,7 +1,12 @@
 #include "FileOperations.h"
 #include "FileOpsPrivate.h"
+#include <QDateTime>
+#include <QMetaObject>
 #include <QThreadPool>
 #include <QRunnable>
+#include <grp.h>
+#include <pwd.h>
+#include <sys/stat.h>
 using namespace FileOpsPrivate;
 
 FileOperations::FileOperations(QObject *parent) : QObject(parent) {}
@@ -91,6 +96,53 @@ QStringList FileOperations::octalModes(const QStringList &paths) const {
       out << QString();
   }
   return out;
+}
+
+QVariantMap FileOperations::statInfo(const QString &path) const {
+  struct stat st;
+  if (::lstat(QFile::encodeName(path).constData(), &st) != 0)
+    return {};
+
+  QChar type = QLatin1Char('-');
+  if (S_ISDIR(st.st_mode)) type = QLatin1Char('d');
+  else if (S_ISLNK(st.st_mode)) type = QLatin1Char('l');
+
+  auto rwx = [](mode_t m, mode_t r, mode_t w, mode_t x) {
+    QString s;
+    s += (m & r) ? QLatin1Char('r') : QLatin1Char('-');
+    s += (m & w) ? QLatin1Char('w') : QLatin1Char('-');
+    s += (m & x) ? QLatin1Char('x') : QLatin1Char('-');
+    return s;
+  };
+  const QString perms = QString(type) + rwx(st.st_mode, S_IRUSR, S_IWUSR, S_IXUSR) +
+                        rwx(st.st_mode, S_IRGRP, S_IWGRP, S_IXGRP) +
+                        rwx(st.st_mode, S_IROTH, S_IWOTH, S_IXOTH);
+  const QString octal = QString::number(st.st_mode & 07777, 8);
+
+  struct passwd *pw = ::getpwuid(st.st_uid);
+  struct group *gr = ::getgrgid(st.st_gid);
+  const QString owner = pw ? QString::fromLocal8Bit(pw->pw_name) : QString::number(st.st_uid);
+  const QString grp = gr ? QString::fromLocal8Bit(gr->gr_name) : QString::number(st.st_gid);
+
+  const QDateTime mtime = QDateTime::fromSecsSinceEpoch(st.st_mtim.tv_sec).toLocalTime();
+
+  QVariantMap out;
+  out[QStringLiteral("perms")] = perms + QStringLiteral(" ") + octal;
+  out[QStringLiteral("ownerGroup")] = owner + QStringLiteral(":") + grp;
+  out[QStringLiteral("mtime")] = mtime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+  return out;
+}
+
+void FileOperations::requestDirSize(quint64 requestId, const QString &path) {
+  auto life = m_life; // same delivery pattern as run() -- see its own doc comment
+  QThreadPool::globalInstance()->start(QRunnable::create([this, life, requestId, path]() {
+    const qint64 bytes = treeSize(path);
+    std::lock_guard<std::mutex> lk(life->mtx);
+    if (!life->alive) return;
+    QMetaObject::invokeMethod(
+        this, [this, requestId, bytes]() { emit dirSizeReady(requestId, bytes); },
+        Qt::QueuedConnection);
+  }));
 }
 
 void FileOperations::rename(const QString &path, const QString &newName) {

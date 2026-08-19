@@ -6,6 +6,7 @@
 #include <QDBusObjectPath>
 #include <QDBusReply>
 #include <QFileInfo>
+#include <QStorageInfo>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -64,6 +65,19 @@ QVariantMap makeEntry(const QString &label, const QString &path,
   m[QStringLiteral("removable")] = removable;
   m[QStringLiteral("mounted")] = mounted;
   m[QStringLiteral("fstype")] = fstype;
+  // Fraction of the filesystem's total space that is used (0..1), for the
+  // sidebar's disk-usage bar. -1 when unknown (unmounted entries have no
+  // path to statvfs). QStorageInfo::bytesAvailable() is space available to
+  // the CALLING user (excludes the root-reserved margin), matching what
+  // "how full does this look" usually means to a user -- same convention
+  // GNOME Files' own usage bar uses, not `df`'s root-inclusive figure.
+  double usedFraction = -1.0;
+  if (mounted && !path.isEmpty()) {
+    QStorageInfo si(path);
+    if (si.isValid() && si.bytesTotal() > 0)
+      usedFraction = 1.0 - static_cast<double>(si.bytesAvailable()) / static_cast<double>(si.bytesTotal());
+  }
+  m[QStringLiteral("usedFraction")] = usedFraction;
   return m;
 }
 

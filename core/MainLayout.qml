@@ -37,7 +37,7 @@ Item {
       // ---------- Sidebar: pinned shortcuts ----------
       Sidebar {
         id: sidebar
-        width: 170
+        width: 185
         height: parent.height
         bookmarks: BookmarksState.bookmarks
         recentFiles: BookmarksState.recentFiles

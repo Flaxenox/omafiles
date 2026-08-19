@@ -43,7 +43,7 @@ Column {
     text: "RECENT"
     foreground: Color.menu.text
     fontFamily: Style.font.family
-    fontSize: Style.font.subtitle
+    fontSize: Style.font.subtitle + 1
   }
 
   Item {
@@ -71,11 +71,11 @@ Column {
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: parent.left
         anchors.leftMargin: Style.spacing.sm
-        width: Style.font.title
-        height: Style.font.title
+        width: Style.font.title + 1
+        height: Style.font.title + 1
         text: Utils.iconFor({ type: "file", name: parent.modelData.name })
         fontFamily: Style.font.family
-        fontSize: Style.font.icon
+        fontSize: Style.font.icon + 1
         color: Color.menu.text
       }
 
@@ -84,7 +84,7 @@ Column {
         anchors.left: recentIcon.right
         anchors.leftMargin: Style.spacing.xs
         text: parent.modelData.name
-        font.pixelSize: Style.font.title
+        font.pixelSize: Style.font.title + 1
         font.family: Style.font.family
         font.weight: Font.Medium
         color: Color.menu.text
