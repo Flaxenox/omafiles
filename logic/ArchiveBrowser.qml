@@ -87,7 +87,7 @@ Item {
 
   function refresh() {
     SelectionState.selectOnly(-1)
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     listProc.start([Paths.resourceDir + "/scripts/runtime/list-archive.sh", ArchiveState.archivePath, ArchiveState.archiveSubPath])
   }
 

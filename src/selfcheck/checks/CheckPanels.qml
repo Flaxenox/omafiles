@@ -69,6 +69,39 @@ QtObject {
           })
         })
 
+        // Real bug (josema, v1.2-dev): ViewState.mode is documented/
+        // confirmed as a GLOBAL toggle (not per-tab/per-folder), but the
+        // grid view was only ever wired into the ACTIVE panel -- switching
+        // tabs made the tab you left showed as a plain list regardless of
+        // the chosen mode, since BackgroundPanel.qml's bgList was the only
+        // view it ever rendered. bgGrid + bgActiveView (mirroring
+        // ActiveFileList.qml's own activeView) fix this.
+        sc.add("Background panel follows the global ViewState.mode, not just the active tab (v1.2 grid view)", function (done) {
+          var c = sc._content
+          if (!c) { done(false, "no _content"); return }
+          var savedMode = ViewState.mode
+          var panelsRow = sc._panelsRowStub.createObject(sc)
+          var bgC = Qt.createComponent(Qt.resolvedUrl("../../../panels/BackgroundPanel.qml"))
+          if (bgC.status !== Component.Ready) { ViewState.mode = savedMode; done(false, "BackgroundPanel: " + bgC.errorString()); return }
+          TabsState.activeTabIndex = 0
+          var bg = bgC.createObject(sc, {
+            modelData: { path: sc.dir }, index: 1, hostRoot: sc._content, hostPanelsRow: panelsRow,
+          })
+          if (!bg) { panelsRow.destroy(); ViewState.mode = savedMode; done(false, "BackgroundPanel null"); return }
+
+          ViewState.mode = "list"
+          var listOk = bg.bgActiveView === bg.bgList && bg.bgList.visible && !bg.bgGrid.visible
+          ViewState.mode = "grid"
+          var gridOk = bg.bgActiveView === bg.bgGrid && bg.bgGrid.visible && !bg.bgList.visible
+
+          bg.destroy()
+          panelsRow.destroy()
+          ViewState.mode = savedMode
+          var ok = listOk && gridOk
+          done(ok, ok ? "background panel's active view follows the global mode in both directions"
+                      : ("listOk=" + listOk + " gridOk=" + gridOk))
+        })
+
         // ======================= Alternating row colors (P2.4) =======================
 
         // Isolated instantiation is legitimate here (unlike KeyboardShortcuts.qml/

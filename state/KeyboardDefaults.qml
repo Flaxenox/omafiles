@@ -63,6 +63,13 @@ QtObject {
     { id: "go_bottom",           label: "Jump to bottom",                      fixed: false, keys: [{ key: "g", mod: "shift" }] },
     { id: "move_down",          label: "Move down",                           fixed: false, keys: [{ key: "down", mod: "any" }, { key: "j", mod: "none" }] },
     { id: "move_up",             label: "Move up",                             fixed: false, keys: [{ key: "up", mod: "any" }, { key: "k", mod: "none" }] },
+    // Grid view only (no-op in list mode, see KeyboardShortcuts.qml) --
+    // mod:"none" (not "any" like move_up/down) so a bare Left/Right steps
+    // a grid cell but Alt+Left/Alt+Right still resolves to nav_back/
+    // nav_forward below: "any" would shadow those (actionFor() returns the
+    // first array match, and this entry is declared earlier).
+    { id: "move_left",          label: "Move left (grid view)",               fixed: false, keys: [{ key: "left", mod: "none" }] },
+    { id: "move_right",         label: "Move right (grid view)",              fixed: false, keys: [{ key: "right", mod: "none" }] },
     { id: "select_none",        label: "Select none",                         fixed: false, keys: [{ key: "a", mod: "ctrl+shift" }] },
     { id: "select_all",         label: "Select all",                          fixed: false, keys: [{ key: "a", mod: "ctrl" }] },
     { id: "invert_selection",  label: "Invert selection",                    fixed: false, keys: [{ key: "i", mod: "ctrl" }] },
@@ -80,6 +87,7 @@ QtObject {
     { id: "close_tab",           label: "Close active panel",                  fixed: false, keys: [{ key: "w", mod: "ctrl" }] },
     { id: "next_tab",             label: "Next panel",                          fixed: true,  keys: [{ key: "tab", mod: "ctrl" }] },
     { id: "toggle_hidden",      label: "Toggle hidden files",                 fixed: false, keys: [{ key: "h", mod: "ctrl" }] },
+    { id: "toggle_view_mode",   label: "Toggle grid/list view",               fixed: false, keys: [{ key: "g", mod: "ctrl" }] },
     { id: "copy",                 label: "Copy",                                fixed: true,  keys: [{ key: "c", mod: "ctrl" }] },
     { id: "cut",                  label: "Cut",                                 fixed: true,  keys: [{ key: "x", mod: "ctrl" }] },
     { id: "paste",                label: "Paste",                               fixed: true,  keys: [{ key: "v", mod: "ctrl" }] },

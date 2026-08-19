@@ -60,6 +60,10 @@ QtObject {
   // never a password: NetworkResolver already asks for that separately via
   // its own auth flow, so the URI string saved here never contains one.
   readonly property string networkProfilesFile: stateDir + "/network-profiles.json"
+  // View-mode preference (list/grid, v1.2) -- its own small file rather
+  // than a field on sessionFile, matching the 1:1 file-per-concern
+  // convention every other persisted concern here already follows.
+  readonly property string uiPrefsFile: stateDir + "/ui-prefs.json"
 
   // Factory bookmarks (used when bookmarks.json doesn't exist yet).
   readonly property var defaultBookmarks: [

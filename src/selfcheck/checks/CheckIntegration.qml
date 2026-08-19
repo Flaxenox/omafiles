@@ -343,5 +343,159 @@ QtObject {
             })
           })
         })
+
+        // ======================= V1.2 grid view =======================
+
+        sc.add("ViewState.toggleMode() persists to ui-prefs.json (v1.2 grid view)", function (done) {
+          var original = ViewState.mode
+          var wasLoaded = ViewState.loaded
+          // Persistence.qml's auto-save Connections only fires once
+          // loadUiPrefs()'s async read has delivered (ViewState.loaded) --
+          // the selfcheck composition root is deliberately never open()'d
+          // (real load() calls live there, and selfcheck must not touch the
+          // user's real persisted state), so `loaded` never flips true on
+          // its own here. Forcing it true for this isolated check is the
+          // same precondition a real running app reaches after startup.
+          ViewState.loaded = true
+          ViewState.toggleMode()
+          var toggled = ViewState.mode
+          if (toggled === original) { ViewState.loaded = wasLoaded; done(false, "toggleMode() didn't change mode"); return }
+          // Backend.JsonStore.write() is synchronous (QSaveFile temp+rename)
+          // -- the file is already written by the time toggleMode() returns
+          // above, no polling/delay needed.
+          sc._sh(["cat", "--", Paths.uiPrefsFile], function (r) {
+            var ok = false
+            try { ok = JSON.parse(r.stdout).viewMode === toggled } catch (e) { ok = false }
+            ViewState.mode = original // restore regardless of outcome
+            ViewState.loaded = wasLoaded
+            done(ok, ok ? ("ui-prefs.json correctly saved viewMode=" + toggled)
+                        : ("ui-prefs.json did not reflect the toggle: " + r.stdout))
+          })
+        })
+
+        sc.add("SelectionState grid marquee selects a real row x column rectangle (v1.2 grid view)", function (done) {
+          // visibleEntries is derived (readonly) from NavState.entries --
+          // with no active searchQuery (the default) it's the SAME array,
+          // so setting entries is what actually controls it here.
+          var savedEntries = NavState.entries
+          var savedQuery = NavState.searchQuery
+          var savedMode = ViewState.mode
+          var savedCols = ViewState.columnsPerRow
+          var savedCW = ViewState.cellWidth
+          var savedCH = ViewState.cellHeight
+          function restore() {
+            NavState.entries = savedEntries
+            NavState.searchQuery = savedQuery
+            ViewState.mode = savedMode
+            ViewState.columnsPerRow = savedCols
+            ViewState.cellWidth = savedCW
+            ViewState.cellHeight = savedCH
+            SelectionState.selectNone()
+          }
+          // 40 synthetic entries -- generous enough that whatever
+          // columnsPerRow the REAL, live ActiveFileGrid instance settles on
+          // (sc._content's own composition root reactively recomputes it
+          // from ViewState.cellWidth, see ActiveFileGrid.qml's `cols`) still
+          // has entries to select from; the marquee area below is small
+          // enough it wouldn't cover all 40 regardless of column count.
+          var synthetic = []
+          for (var i = 0; i < 40; i++) synthetic.push({ name: "grid-fixture-" + i, type: "file" })
+          NavState.searchQuery = "" // guarantee visibleEntries === entries below
+          NavState.entries = synthetic
+          ViewState.mode = "grid"
+          ViewState.cellWidth = 100
+          ViewState.cellHeight = 100 // plain assignment (not setCellWidth()) -- nothing else reactively owns this one
+
+          SelectionState.startMarquee(50, 50, 50, false)
+          SelectionState.moveMarquee(250, 150, 150, 100)
+          var got = SelectionState.selectedIndices.slice().sort(function (a, b) { return a - b })
+          // Computed from whatever ViewState.columnsPerRow actually is
+          // right now (NOT a hardcoded 3): a live ActiveFileGrid instance
+          // in sc._content reactively owns this property from its own real
+          // width, same as it would in the running app -- this test
+          // verifies updateMarqueeSelection()'s row x column math is
+          // correct GIVEN the current columnsPerRow, not that
+          // columnsPerRow holds one specific value nothing else may touch.
+          var cols = Math.max(1, ViewState.columnsPerRow)
+          var rowFrom = Math.floor(50 / 100), rowTo = Math.floor(150 / 100)
+          var colFrom = Math.floor(50 / 100), colTo = Math.min(cols - 1, Math.floor(250 / 100))
+          var expected = []
+          for (var r = rowFrom; r <= rowTo; r++)
+            for (var c = colFrom; c <= colTo; c++) {
+              var idx = r * cols + c
+              if (idx < synthetic.length) expected.push(idx)
+            }
+          SelectionState.endMarquee()
+          var ok = got.length === expected.length && got.every(function (v, i) { return v === expected[i] })
+          restore()
+          done(ok, ok ? ("grid marquee selected " + JSON.stringify(got) + " as expected (cols=" + cols + ")")
+                      : ("grid marquee selected " + JSON.stringify(got) + ", expected " + JSON.stringify(expected) + " (cols=" + cols + ")"))
+        })
+
+        // Real bug (josema, v1.2-dev): opening the preview of a file with
+        // no matching content kind right after previewing one that DID
+        // (e.g. an image) showed "No preview available" overlapping the
+        // filename title. Root-caused empirically (dumped real y/height):
+        // the title/separator/content blocks used to be flat siblings in
+        // ONE Column, and Column's positioner does not reliably reflow
+        // when several children's `visible` flip in the SAME tick (which
+        // is exactly what happens here -- isImageEntry: true->false and
+        // the "no preview" Column's condition: false->true, together).
+        // Fixed by moving all the mutually-exclusive content kinds out of
+        // that Column into a plain Item (contentArea) that doesn't
+        // positioner-stack them at all. This test reproduces the EXACT
+        // transition that triggered it, not just a static end-state
+        // (earlier draft diagnostics that set every property once at
+        // creation never reproduced the bug).
+        sc.add("PreviewPanel: content area doesn't overlap the title after a mid-session content-kind transition (v1.2 regression)", function (done) {
+          var comp = Qt.createComponent(Qt.resolvedUrl("../../../panels/PreviewPanel.qml"))
+          if (comp.status === Component.Error) { done(false, comp.errorString()); return }
+          var pp = comp.createObject(sc, {
+            width: 400, height: 700, open: false, hasEntry: false,
+            entryName: "some-other-file.png",
+            isImageEntry: true, isVideoEntry: false, isTextEntry: false,
+            isPdfEntry: false, isAudioEntry: false
+          })
+          if (!pp) { done(false, "createObject null"); return }
+          var t = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
+          t.triggered.connect(function () {
+            // The transition itself: several isXEntry flags flip in the
+            // same tick, same as NavigationController/ActiveFileList.qml
+            // switching the previewed entry to one with no preview kind.
+            pp.open = true
+            pp.hasEntry = true
+            pp.entryName = "no-preview-file.WPE64"
+            pp.isImageEntry = false
+            var t2 = Qt.createQmlObject('import QtQuick; Timer { interval: 60; repeat: false }', sc)
+            t2.triggered.connect(function () {
+              var ok = pp.contentAreaItem.y >= pp.titleTextItem.y + pp.titleTextItem.height
+              var msg = ok
+                ? ("contentArea.y=" + pp.contentAreaItem.y + " correctly below title (y=" + pp.titleTextItem.y + " height=" + pp.titleTextItem.height + ")")
+                : ("contentArea.y=" + pp.contentAreaItem.y + " OVERLAPS title (y=" + pp.titleTextItem.y + " height=" + pp.titleTextItem.height + ")")
+              pp.destroy()
+              t.destroy()
+              t2.destroy()
+              done(ok, msg)
+            })
+            t2.start()
+          })
+          t.start()
+        })
+
+        sc.add("ViewState.setCellWidth() clamps to [minCellWidth, maxCellWidth] and keeps aspect ratio (v1.2 Ctrl+scroll zoom)", function (done) {
+          var savedW = ViewState.cellWidth
+          var savedH = ViewState.cellHeight
+          ViewState.setCellWidth(9999)
+          var clampedHigh = ViewState.cellWidth === ViewState.maxCellWidth
+          ViewState.setCellWidth(-9999)
+          var clampedLow = ViewState.cellWidth === ViewState.minCellWidth
+          ViewState.setCellWidth(140)
+          var aspectOk = ViewState.cellHeight === Math.round(140 * (128 / 112))
+          ViewState.cellWidth = savedW
+          ViewState.cellHeight = savedH
+          var ok = clampedHigh && clampedLow && aspectOk
+          done(ok, ok ? "clamps correctly at both ends and derives cellHeight from the original aspect ratio"
+                      : ("clampedHigh=" + clampedHigh + " clampedLow=" + clampedLow + " aspectOk=" + aspectOk))
+        })
   }
 }

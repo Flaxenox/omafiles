@@ -36,31 +36,46 @@ Item {
   property var dialogs: null
   property Timer gTimer: null
 
-  property alias contentY: listView.contentY
-  property alias originY: listView.originY
-  property alias contentHeight: listView.contentHeight
-  property alias contentItem: listView.contentItem
+  // Whichever view is live for ViewState.mode -- every reference below
+  // that used to hardcode `listView` for geometry/positioning now goes
+  // through this instead, so the surrounding chrome (marquee, wheel
+  // scroll, empty state, preview) works unchanged in both modes.
+  readonly property Item activeView: ViewState.mode === "grid" ? fileGrid : listView
+
+  // contentY can't stay a `property alias` (an alias needs a FIXED
+  // target, and activeView's target changes with ViewState.mode) but IS
+  // written from outside (TabOps.qml/NavigationController.qml/SearchOps.qml/
+  // ArchiveBrowser.qml all do `list.contentY = ...`) -- so it's a
+  // read-only forwarding property for reads, and setContentY() is the
+  // write path those call sites use instead. originY/contentHeight/
+  // contentItem are never written externally (confirmed by grep), so a
+  // plain forwarding property is enough for those three.
+  readonly property real contentY: activeView.contentY
+  readonly property real originY: activeView.originY
+  readonly property real contentHeight: activeView.contentHeight
+  readonly property Item contentItem: activeView.contentItem
   property alias keyboardShortcuts: keyboardShortcuts
-  function forceActiveFocus() { listView.forceActiveFocus() }
-  function positionViewAtBeginning() { listView.positionViewAtBeginning() }
-  function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
+  function setContentY(y) { activeView.contentY = y }
+  function forceActiveFocus() { activeView.forceActiveFocus() }
+  function positionViewAtBeginning() { activeView.positionViewAtBeginning() }
+  function positionViewAtIndex(index, mode) { activeView.positionViewAtIndex(index, mode) }
   // Index of the first visible row (to save/restore scroll by
   // index when switching tabs).
-  function firstVisibleIndex() { return listView.indexAt(listView.width / 2, listView.contentY + 4) }
+  function firstVisibleIndex() { return activeView.indexAt(activeView.width / 2, activeView.contentY + 4) }
   // SUB-ROW offset: how many pixels the top row is shifted up
   // relative to the viewport edge.
   function firstVisibleOffset() {
     var idx = firstVisibleIndex()
     if (idx < 0) return 0
-    var it = listView.itemAtIndex(idx)
-    return it ? (listView.contentY - it.y) : 0
+    var it = activeView.itemAtIndex(idx)
+    return it ? (activeView.contentY - it.y) : 0
   }
   // Positions row `idx` reproducing the EXACT sub-row offset.
   function positionAtIndexWithOffset(idx, offset) {
-    listView.forceLayout()
-    listView.positionViewAtIndex(idx, ListView.Beginning)
-    var it = listView.itemAtIndex(idx)
-    if (it) listView.contentY = it.y + offset
+    activeView.forceLayout()
+    activeView.positionViewAtIndex(idx, ListView.Beginning)
+    var it = activeView.itemAtIndex(idx)
+    if (it) activeView.contentY = it.y + offset
   }
 
   KeyboardShortcuts {
@@ -69,7 +84,7 @@ Item {
     hostControllers: controllers
     hostCommandFacade: commandFacade
     hostDialogs: dialogs
-    hostListView: listView
+    hostListView: activeView
     hostGTimer: gTimer
   }
 
@@ -123,26 +138,61 @@ Item {
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
               property real wheelAccumulator: 0
+              property real zoomAccumulator: 0
               onWheel: function (wheel) {
+                // Ctrl+scroll resizes grid cells (Nautilus/Finder-style
+                // icon zoom) instead of scrolling -- grid view only, plain
+                // scroll is unaffected and unchanged in list mode.
+                if ((wheel.modifiers & Qt.ControlModifier) && ViewState.mode === "grid") {
+                  var zoomStep = Util.wheelSteps(zoomAccumulator, wheel.angleDelta.y)
+                  zoomAccumulator = zoomStep.remainder
+                  if (zoomStep.steps !== 0) ViewState.setCellWidth(ViewState.cellWidth + zoomStep.steps * 8)
+                  return
+                }
                 var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
                 wheelAccumulator = step.remainder
                 if (step.steps === 0) return
-                var minY = listView.originY
-                var maxY = minY + Math.max(0, listView.contentHeight - listView.height)
-                listView.contentY = Math.max(minY, Math.min(maxY, listView.contentY - step.steps * 60))
+                var minY = activeView.originY
+                var maxY = minY + Math.max(0, activeView.contentHeight - activeView.height)
+                activeView.contentY = Math.max(minY, Math.min(maxY, activeView.contentY - step.steps * 60))
               }
             }
 
-            // Behind the ListView, top gap marquee catcher
+            // Behind the ListView/GridView, top gap marquee catcher
             MarqueeCatcher {
               id: marqueeArea
               anchors.top: parent.top
-              height: listView.y
+              height: activeView.y
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
-              catcherListView: listView
+              catcherListView: activeView
               measuredRowHeight: root.measuredRowHeight
               marqueeTarget: SelectionState
+            }
+
+            // Marquee/wheel auto-scroll during a lasso drag near the top/
+            // bottom edge -- a sibling of both views (not nested in
+            // listView like before ViewState existed) so the SAME timer
+            // drives auto-scroll for whichever view is active instead of
+            // needing a duplicate inside ActiveFileGrid.qml too.
+            Timer {
+              interval: 16
+              repeat: true
+              running: SelectionState.marqueeActive && activeView.contentHeight > activeView.height
+                && (SelectionState.marqueeViewportY < 32 || SelectionState.marqueeViewportY > activeView.height - 32)
+              onTriggered: {
+                var minY = activeView.originY
+                var maxY = minY + Math.max(0, activeView.contentHeight - activeView.height)
+                var step = 18
+                if (SelectionState.marqueeViewportY < 32) {
+                  activeView.contentY = Math.max(minY, activeView.contentY - step)
+                  SelectionState.marqueeCurrentY = activeView.contentY
+                } else {
+                  activeView.contentY = Math.min(maxY, activeView.contentY + step)
+                  SelectionState.marqueeCurrentY = activeView.contentY + activeView.height
+                }
+                SelectionState.updateMarqueeSelection(SelectionState.marqueeAdditive, SelectionState.marqueeBaseSelection)
+              }
             }
 
             ListView {
@@ -152,9 +202,10 @@ Item {
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
+              visible: ViewState.mode !== "grid"
               clip: true
               model: NavState.visibleEntries
-              focus: root && root.opened && !NavState.searching
+              focus: root && root.opened && !NavState.searching && ViewState.mode !== "grid"
               onModelChanged: {
                 if (root && root.suppressListFade) return
                 listRepopulateFade.restart()
@@ -184,26 +235,6 @@ Item {
                 }
               }
 
-              Timer {
-                interval: 16
-                repeat: true
-                running: SelectionState.marqueeActive && listView.contentHeight > listView.height
-                  && (SelectionState.marqueeViewportY < 32 || SelectionState.marqueeViewportY > listView.height - 32)
-                onTriggered: {
-                  var minY = listView.originY
-                  var maxY = minY + Math.max(0, listView.contentHeight - listView.height)
-                  var step = 18
-                  if (SelectionState.marqueeViewportY < 32) {
-                    listView.contentY = Math.max(minY, listView.contentY - step)
-                    SelectionState.marqueeCurrentY = listView.contentY
-                  } else {
-                    listView.contentY = Math.min(maxY, listView.contentY + step)
-                    SelectionState.marqueeCurrentY = listView.contentY + listView.height
-                  }
-                  if (true) SelectionState.updateMarqueeSelection(SelectionState.marqueeAdditive, SelectionState.marqueeBaseSelection)
-                }
-              }
-
               Keys.onPressed: function (event) { keyboardShortcuts.handlePress(event) }
 
               delegate: FileListRow {
@@ -217,6 +248,21 @@ Item {
                 hostFileMeta: controllers ? controllers.fileMeta : null
                 hostConflictActions: controllers ? controllers.actionEngine : null
               }
+            }
+
+            ActiveFileGrid {
+              id: fileGrid
+              anchors.top: listSep.bottom
+              anchors.topMargin: Style.spacing.md
+              anchors.bottom: parent.bottom
+              anchors.left: parent.left
+              width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
+              visible: ViewState.mode === "grid"
+              hostRoot: root
+              hostCard: card
+              hostControllers: controllers
+              hostCommandFacade: commandFacade
+              hostKeyboardShortcuts: keyboardShortcuts
             }
 
             // Notice when list-dir.sh could not list currentPath --
@@ -251,7 +297,7 @@ Item {
             }
             EmptyState {
               visible: root.loaded && NavState.currentPathError === "" && NavState.visibleEntries.length === 0
-              centerOn: listView
+              centerOn: activeView
               message: NavState.searchQuery
                 ? "No results for “" + NavState.searchQuery + "”"
                 : (NavState.currentPath === Paths.trashDir ? "Trash is empty" : "Folder is empty")
@@ -265,8 +311,12 @@ Item {
             // when the lasso grows over already-drawn rows).
             Rectangle {
               visible: SelectionState.marqueeActive
-              x: Math.min(SelectionState.marqueeStartX, SelectionState.marqueeCurrentX)
-              y: Math.min(SelectionState.marqueeStartY, SelectionState.marqueeCurrentY) - listView.contentY + listView.y
+              // activeView.xOffset only exists on ActiveFileGrid.qml (its
+              // GridView is centered, narrower than the panel) -- 0 for
+              // listView, which has no such property, so list mode is
+              // unaffected.
+              x: Math.min(SelectionState.marqueeStartX, SelectionState.marqueeCurrentX) + (activeView.xOffset || 0)
+              y: Math.min(SelectionState.marqueeStartY, SelectionState.marqueeCurrentY) - activeView.contentY + activeView.y
               width: Math.abs(SelectionState.marqueeCurrentX - SelectionState.marqueeStartX)
               height: Math.abs(SelectionState.marqueeCurrentY - SelectionState.marqueeStartY)
               color: Util.alpha(Color.accent, 0.12)

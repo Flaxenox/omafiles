@@ -124,16 +124,37 @@ QtObject {
     var fromY = Math.min(marqueeStartY, marqueeCurrentY)
     var toY = Math.max(marqueeStartY, marqueeCurrentY)
 
-    var firstVisible = Math.floor(fromY / measuredRowHeight)
-    var lastVisible = Math.floor(toY / measuredRowHeight)
-
-    if (firstVisible < 0) firstVisible = 0
-    if (lastVisible >= total) lastVisible = total - 1
-
     var next = additive ? base.slice() : []
-    for (var i = firstVisible; i <= lastVisible; i++) {
-      if (next.indexOf(i) < 0) next.push(i)
+
+    if (ViewState.mode === "grid") {
+      // Real 2-D (row x column) hit-test -- a single-column y/rowHeight
+      // range (the branch below) would miss/over-include cells depending
+      // on which column the lasso's x-span actually crosses.
+      var cols = Math.max(1, ViewState.columnsPerRow)
+      var fromX = Math.min(marqueeStartX, marqueeCurrentX)
+      var toX = Math.max(marqueeStartX, marqueeCurrentX)
+      var rowFrom = Math.max(0, Math.floor(fromY / ViewState.cellHeight))
+      var rowTo = Math.floor(toY / ViewState.cellHeight)
+      var colFrom = Math.max(0, Math.floor(fromX / ViewState.cellWidth))
+      var colTo = Math.min(cols - 1, Math.floor(toX / ViewState.cellWidth))
+      for (var r = rowFrom; r <= rowTo; r++) {
+        for (var c = colFrom; c <= colTo; c++) {
+          var gi = r * cols + c
+          if (gi >= 0 && gi < total && next.indexOf(gi) < 0) next.push(gi)
+        }
+      }
+    } else {
+      var firstVisible = Math.floor(fromY / measuredRowHeight)
+      var lastVisible = Math.floor(toY / measuredRowHeight)
+
+      if (firstVisible < 0) firstVisible = 0
+      if (lastVisible >= total) lastVisible = total - 1
+
+      for (var i = firstVisible; i <= lastVisible; i++) {
+        if (next.indexOf(i) < 0) next.push(i)
+      }
     }
+
     selectedIndices = next
     if (next.length > 0) {
       selectedIndex = next[next.length - 1]

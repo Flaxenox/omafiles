@@ -108,6 +108,12 @@ function iconFor(entry) {
   if (!entry) return "󰈤"
   var ext = extOf(entry.name)
   if (ext === "iso") return "󰗮"
+  // md-magnet, verified against the icon font's real cmap (rendered +
+  // visually checked before use) -- the standard "torrent" association
+  // (magnet links are the direct alternative to .torrent files for the
+  // same protocol), and closer to what other file managers use for this
+  // extension than a generic file glyph.
+  if (ext === "torrent") return "\u{F0347}"
   if (IMAGE_EXTS.indexOf(ext) >= 0) return "󰺰"
   if (VIDEO_EXTS.indexOf(ext) >= 0) return "󰸬"
   if (AUDIO_EXTS.indexOf(ext) >= 0) return "󰸪"

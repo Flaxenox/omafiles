@@ -154,7 +154,7 @@ Item {
       root._pendingScrollY = -1
     } else {
       var y = tab.scrollY || list.originY
-      list.contentY = y
+      list.setContentY(y)
       root._pendingScrollY = y
       root._pendingScrollIndex = -1
     }

@@ -172,17 +172,35 @@ Item {
       if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.goBottom()
       break
     case "move_down": {
-      var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
+      var vStep = ViewState.mode === "grid" ? ViewState.columnsPerRow : 1
+      var down = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + vStep)
       if (extend) SelectionState.selectRange(down)
       else SelectionState.selectOnly(down)
       hostListView.positionViewAtIndex(down, ListView.Contain)
       break
     }
     case "move_up": {
-      var up = Math.max(0, SelectionState.selectedIndex - 1)
+      var vStep2 = ViewState.mode === "grid" ? ViewState.columnsPerRow : 1
+      var up = Math.max(0, SelectionState.selectedIndex - vStep2)
       if (extend) SelectionState.selectRange(up)
       else SelectionState.selectOnly(up)
       hostListView.positionViewAtIndex(up, ListView.Contain)
+      break
+    }
+    case "move_left": {
+      if (ViewState.mode !== "grid") break
+      var left = Math.max(0, SelectionState.selectedIndex - 1)
+      if (extend) SelectionState.selectRange(left)
+      else SelectionState.selectOnly(left)
+      hostListView.positionViewAtIndex(left, ListView.Contain)
+      break
+    }
+    case "move_right": {
+      if (ViewState.mode !== "grid") break
+      var right = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
+      if (extend) SelectionState.selectRange(right)
+      else SelectionState.selectOnly(right)
+      hostListView.positionViewAtIndex(right, ListView.Contain)
       break
     }
     case "select_none":
@@ -235,6 +253,9 @@ Item {
       break
     case "toggle_hidden":
       if (hostControllers && hostControllers.searchOps) hostControllers.searchOps.toggleHidden()
+      break
+    case "toggle_view_mode":
+      ViewState.toggleMode()
       break
     case "copy":
       if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.copySelected()

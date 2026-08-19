@@ -36,6 +36,10 @@ Item {
   // below (V1.2 startup audit) -- nothing else reads these from outside.
   readonly property alias videoLoaderActive: videoLoader.active
   readonly property alias audioLoaderActive: audioLoader.active
+  // Exposed for the selfcheck regression guarding the title/content
+  // overlap fix below (P2.x, v1.2-dev): nothing else reads these.
+  readonly property alias titleTextItem: titleText
+  readonly property alias contentAreaItem: contentArea
 
   // Stops any playback in flight when the previewed entry changes (arrow-
   // key navigation to another file) -- without this, the previous video/
@@ -91,6 +95,7 @@ Item {
       spacing: Style.spacing.sm
 
       Text {
+        id: titleText
         width: parent.width
         text: root.entryName
         font.pixelSize: Style.font.title
@@ -102,30 +107,52 @@ Item {
 
       PanelSeparator { foreground: Color.menu.text; strength: 0.15 }
 
-      Image {
-        visible: root.isImageEntry
-        width: parent.width
-        height: parent.height - 60
-        fillMode: Image.PreserveAspectFit
-        asynchronous: true
-        cache: true
-        source: root.isImageEntry ? root.imageSource : ""
-      }
-
-      // Inline video playback (V1.1, headline #3): the static thumbnail
-      // stays as the poster shown before playback starts (avoids decoding
-      // a stream just to open the preview panel); Video (QtMultimedia,
-      // MediaPlayer+VideoOutput+AudioOutput in one) takes over once
-      // "Play" is pressed. Reset on every entry change (onVideoSourceChanged
-      // below) so arrow-keying to another file doesn't keep the previous
-      // one's audio going. Deliberately basic (play/pause only) --
-      // scrubbing/waveform/playlists/subtitles are out of scope, see the
-      // v1.1 feature inventory's headline #3 MVP note.
+      // Everything below is exactly ONE of several mutually-exclusive
+      // content kinds (image/video/text/pdf/audio/no-preview/empty),
+      // gated by root.isXEntry -- previously these were direct siblings of
+      // the title/separator INSIDE THE SAME Column above. That's the
+      // layout Column is meant for (each visible child stacked after the
+      // previous one), but that model breaks down for content that's
+      // mutually exclusive rather than always co-visible: opening the
+      // preview of a file with no matching kind flips several of these
+      // isXEntry flags in the SAME tick (the new kind's flag true, the
+      // OLD previewed entry's kind flag false), and Column's positioner
+      // does not reliably reflow when multiple children change visibility
+      // simultaneously -- confirmed empirically (dumped real y/height:
+      // the "No preview available" block landed at y=0, height=0,
+      // overlapping the title, while the now-hidden previous block stayed
+      // frozen at its old position instead of being removed from the
+      // flow). A plain Item (not a positioner) sidesteps the whole bug
+      // class: every content kind below anchors independently within it,
+      // with no inter-sibling stacking to get wrong since only one is
+      // ever visible at a time.
       Item {
-        id: videoBlock
-        visible: root.isVideoEntry
+        id: contentArea
         width: parent.width
         height: parent.height - 60
+
+        Image {
+          visible: root.isImageEntry
+          anchors.fill: parent
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          cache: true
+          source: root.isImageEntry ? root.imageSource : ""
+        }
+
+        // Inline video playback (V1.1, headline #3): the static thumbnail
+        // stays as the poster shown before playback starts (avoids decoding
+        // a stream just to open the preview panel); Video (QtMultimedia,
+        // MediaPlayer+VideoOutput+AudioOutput in one) takes over once
+        // "Play" is pressed. Reset on every entry change (onVideoSourceChanged
+        // below) so arrow-keying to another file doesn't keep the previous
+        // one's audio going. Deliberately basic (play/pause only) --
+        // scrubbing/waveform/playlists/subtitles are out of scope, see the
+        // v1.1 feature inventory's headline #3 MVP note.
+        Item {
+          id: videoBlock
+          visible: root.isVideoEntry
+          anchors.fill: parent
 
         Image {
           id: videoPoster
@@ -174,8 +201,7 @@ Item {
 
       Flickable {
         visible: root.isTextEntry
-        width: parent.width
-        height: parent.height - 60
+        anchors.fill: parent
         clip: true
         contentWidth: width
         contentHeight: (root.highlightedText.length > 0 ? previewHighlightedItem : previewTextItem).implicitHeight
@@ -209,8 +235,7 @@ Item {
 
       Image {
         visible: root.isPdfEntry
-        width: parent.width
-        height: parent.height - 60
+        anchors.fill: parent
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         cache: true
@@ -219,81 +244,94 @@ Item {
 
       // Inline audio playback (V1.1, headline #3) -- same basic play/pause-
       // only scope as the video block above, no VideoOutput needed (audio
-      // files have no video track to render).
-      Row {
-        visible: root.isAudioEntry
-        spacing: Style.spacing.sm
-
-        // Lazy: see root._audioTouched's doc comment above. Wrapped in an
-        // Item (rather than loading the bare MediaPlayer as the Loader's
-        // root) so `Loader.item` -- typed for the common Item case --
-        // reliably exposes the player via the alias regardless of Qt
-        // version quirks around loading a non-visual root type directly.
-        Loader {
-          id: audioLoader
-          active: root._audioTouched
-          sourceComponent: Component {
-            Item {
-              property alias player: audioPlayerInner
-              // No isAudioEntry guard needed (cleanup pass): audioSource is
-              // already "" whenever isAudioEntry is false, see the video
-              // block's comment above.
-              MediaPlayer {
-                id: audioPlayerInner
-                source: root.audioSource
-                audioOutput: AudioOutput {}
-              }
-            }
-          }
-        }
-
-        Button {
-          text: (audioLoader.item && audioLoader.item.player.playbackState === MediaPlayer.PlayingState) ? "Pause" : "Play"
-          bordered: true
-          Accessible.role: Accessible.Button
-          Accessible.name: text
-          onClicked: {
-            if (!audioLoader.item) return
-            if (audioLoader.item.player.playbackState === MediaPlayer.PlayingState) audioLoader.item.player.pause()
-            else audioLoader.item.player.play()
-          }
-        }
-      }
-
+      // files have no video track to render). The Row (play button) and
+      // the Column (metadata table) below are wrapped together in ONE
+      // Column instead of being two more top-level contentArea children,
+      // since -- unlike the mutually-exclusive content kinds around them
+      // -- these two are never independently toggled: both are driven by
+      // isAudioEntry (the table adds `&& audioInfo.length > 0` on top),
+      // so there's no multi-sibling-visibility-changing-at-once scenario
+      // here for Column's positioner to mishandle.
       Column {
-        visible: root.isAudioEntry && root.audioInfo.length > 0
+        visible: root.isAudioEntry
+        anchors.top: parent.top
         width: parent.width
         spacing: Style.spacing.sm
 
-        Repeater {
-          model: root.audioInfo
+        Row {
+          spacing: Style.spacing.sm
 
-          Row {
-            required property var modelData
-            width: parent.width
-            spacing: Style.spacing.sm
-
-            Text {
-              // 84 didn't reach "Sample rate" (it stuck to
-              // the value without a space, confirmed by measuring the
-              // font's real glyph) -- 120 leaves plenty of margin
-              // for any current label of this
-              // table at the app's real font size.
-              width: 120
-              text: parent.modelData.label
-              font.pixelSize: Style.font.subtitle
-              font.family: Style.font.family
-              color: Color.menu.text
-              opacity: Style.emphasis.secondary
+          // Lazy: see root._audioTouched's doc comment above. Wrapped in an
+          // Item (rather than loading the bare MediaPlayer as the Loader's
+          // root) so `Loader.item` -- typed for the common Item case --
+          // reliably exposes the player via the alias regardless of Qt
+          // version quirks around loading a non-visual root type directly.
+          Loader {
+            id: audioLoader
+            active: root._audioTouched
+            sourceComponent: Component {
+              Item {
+                property alias player: audioPlayerInner
+                // No isAudioEntry guard needed (cleanup pass): audioSource is
+                // already "" whenever isAudioEntry is false, see the video
+                // block's comment above.
+                MediaPlayer {
+                  id: audioPlayerInner
+                  source: root.audioSource
+                  audioOutput: AudioOutput {}
+                }
+              }
             }
+          }
 
-            Text {
-              width: parent.width - 120 - Style.spacing.sm
-              text: parent.modelData.value
-              font.pixelSize: Style.font.subtitle
-              font.family: Style.font.family
-              color: Color.menu.text
-              elide: Text.ElideRight
+          Button {
+            text: (audioLoader.item && audioLoader.item.player.playbackState === MediaPlayer.PlayingState) ? "Pause" : "Play"
+            bordered: true
+            Accessible.role: Accessible.Button
+            Accessible.name: text
+            onClicked: {
+              if (!audioLoader.item) return
+              if (audioLoader.item.player.playbackState === MediaPlayer.PlayingState) audioLoader.item.player.pause()
+              else audioLoader.item.player.play()
+            }
+          }
+        }
+
+        Column {
+          visible: root.audioInfo.length > 0
+          width: parent.width
+          spacing: Style.spacing.sm
+
+          Repeater {
+            model: root.audioInfo
+
+            Row {
+              required property var modelData
+              width: parent.width
+              spacing: Style.spacing.sm
+
+              Text {
+                // 84 didn't reach "Sample rate" (it stuck to
+                // the value without a space, confirmed by measuring the
+                // font's real glyph) -- 120 leaves plenty of margin
+                // for any current label of this
+                // table at the app's real font size.
+                width: 120
+                text: parent.modelData.label
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+                opacity: Style.emphasis.secondary
+              }
+
+              Text {
+                width: parent.width - 120 - Style.spacing.sm
+                text: parent.modelData.value
+                font.pixelSize: Style.font.subtitle
+                font.family: Style.font.family
+                color: Color.menu.text
+                elide: Text.ElideRight
+              }
             }
           }
         }
@@ -304,6 +342,7 @@ Item {
           && !root.isVideoEntry
           && !(root.isPdfEntry && root.pdfImageSource !== "")
           && !root.isAudioEntry
+        anchors.top: parent.top
         width: parent.width
         spacing: Style.spacing.sm
 
@@ -333,6 +372,7 @@ Item {
         centerOn: parent
         message: "No file selected"
         subMessage: "Select a file to preview its contents"
+      }
       }
     }
   }

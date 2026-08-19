@@ -34,6 +34,7 @@ Item {
       { label: "Select none", enabled: hasSelection, run: function () { SelectionState.selectNone() } },
       { label: "Invert selection", run: function () { SelectionState.invertSelection() } },
       { label: NavState.showHidden ? "Hide dotfiles" : "Show dotfiles", run: function () { searchOps.toggleHidden() } },
+      { label: ViewState.mode === "grid" ? "Switch to list view" : "Switch to grid view", run: function () { ViewState.toggleMode() } },
       { label: "Refresh", run: function () { if (navController) navController.refresh(); mountOps.refreshMounts(); mountOps.refreshNetworkMounts() } },
       { label: "Sort by name", run: function () { SortState.setSort("name") } },
       { label: "Sort by size", run: function () { SortState.setSort("size") } },
