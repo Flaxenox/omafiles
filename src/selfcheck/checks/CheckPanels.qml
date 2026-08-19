@@ -89,10 +89,16 @@ QtObject {
           })
           if (!bg) { panelsRow.destroy(); ViewState.mode = savedMode; done(false, "BackgroundPanel null"); return }
 
+          // Checks bgActiveView identity only, not .visible/.opacity: those
+          // now crossfade over 160ms (Behavior on opacity, Omarchy-style
+          // motion polish) instead of switching instantly, so asserting
+          // them synchronously right after the mode change would catch
+          // mid-transition state rather than testing what this check is
+          // actually about (does bgActiveView track the global mode).
           ViewState.mode = "list"
-          var listOk = bg.bgActiveView === bg.bgList && bg.bgList.visible && !bg.bgGrid.visible
+          var listOk = bg.bgActiveView === bg.bgList
           ViewState.mode = "grid"
-          var gridOk = bg.bgActiveView === bg.bgGrid && bg.bgGrid.visible && !bg.bgList.visible
+          var gridOk = bg.bgActiveView === bg.bgGrid
 
           bg.destroy()
           panelsRow.destroy()

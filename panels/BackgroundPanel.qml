@@ -301,7 +301,11 @@ Item {
     anchors.bottomMargin: Style.spacing.rowGap
     anchors.left: parent.left
     anchors.right: parent.right
-    visible: ViewState.mode !== "grid"
+    // Same crossfade as the active panel's listView/fileGrid (Ctrl+G
+    // toggles ViewState.mode for every panel at once, active or not).
+    opacity: ViewState.mode !== "grid" ? 1 : 0
+    visible: opacity > 0
+    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
     clip: true
     model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
     boundsBehavior: Flickable.StopAtBounds
@@ -352,7 +356,9 @@ Item {
     anchors.bottomMargin: Style.spacing.rowGap
     anchors.horizontalCenter: parent.horizontalCenter
     width: Math.min(parent.width, cols * cellWidth)
-    visible: ViewState.mode === "grid"
+    opacity: ViewState.mode === "grid" ? 1 : 0
+    visible: opacity > 0
+    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
     clip: true
     // Shared cell size with the active panel's grid (ViewState.cellWidth/
     // Height, the same Ctrl+scroll-resizable value) -- but does NOT write

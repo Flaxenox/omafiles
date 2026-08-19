@@ -40,7 +40,7 @@ Item {
   // that used to hardcode `listView` for geometry/positioning now goes
   // through this instead, so the surrounding chrome (marquee, wheel
   // scroll, empty state, preview) works unchanged in both modes.
-  readonly property Item activeView: ViewState.mode === "grid" ? fileGrid : listView
+  readonly property Item activeView: ViewState.mode === "grid" ? fileGrid : listModeWrapper
 
   // contentY can't stay a `property alias` (an alias needs a FIXED
   // target, and activeView's target changes with ViewState.mode) but IS
@@ -195,58 +195,97 @@ Item {
               }
             }
 
-            ListView {
-              id: listView
+            // Owns ONLY the list/grid mode crossfade (Ctrl+G) as a
+            // separate opacity from listView's own -- listView already
+            // animates ITS OWN opacity for listRepopulateFade below
+            // (content changed, not mode), and an imperative
+            // NumberAnimation targeting a property that also carries a
+            // declarative `opacity: ... ; Behavior on opacity` binding
+            // breaks that binding when it runs (QML property-assignment
+            // semantics), so the two fought over the same property and
+            // flickered. Splitting them onto two different Items removes
+            // the conflict instead of trying to reconcile it in one.
+            Item {
+              id: listModeWrapper
               anchors.top: listSep.bottom
               anchors.topMargin: Style.spacing.md
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
-              visible: ViewState.mode !== "grid"
-              clip: true
-              model: NavState.visibleEntries
-              focus: root && root.opened && !NavState.searching && ViewState.mode !== "grid"
-              onModelChanged: {
-                if (root && root.suppressListFade) return
-                listRepopulateFade.restart()
-              }
-              NumberAnimation {
-                id: listRepopulateFade
-                target: listView
-                property: "opacity"
-                from: 0
-                to: 1
-                duration: 140
-                easing.type: Easing.OutCubic
-              }
-              interactive: false
-              boundsBehavior: Flickable.StopAtBounds
+              // visible stays tied to opacity so the fading-out view stops
+              // taking hover/clicks partway through instead of sitting
+              // fully interactive-but-invisible underneath.
+              opacity: ViewState.mode !== "grid" ? 1 : 0
+              visible: opacity > 0
+              Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
-              footer: Item {
-                id: listFooter
-                width: listView.width
-                height: 400
+              // Same forwarding surface as ActiveFileGrid.qml's root, same
+              // reason: `activeView` (above) treats this wrapper and
+              // ActiveFileGrid interchangeably, so both need to answer the
+              // same geometry/positioning calls. Fixed target (listView),
+              // so plain aliases are safe here (no conditional-alias
+              // problem -- that only applies to ActiveFileList's OWN
+              // contentY/etc, which alternate between this wrapper and
+              // fileGrid).
+              property alias contentY: listView.contentY
+              property alias originY: listView.originY
+              property alias contentHeight: listView.contentHeight
+              property alias contentItem: listView.contentItem
+              function forceActiveFocus() { listView.forceActiveFocus() }
+              function positionViewAtBeginning() { listView.positionViewAtBeginning() }
+              function positionViewAtIndex(index, mode) { listView.positionViewAtIndex(index, mode) }
+              function forceLayout() { listView.forceLayout() }
+              function indexAt(x, y) { return listView.indexAt(x, y) }
+              function itemAtIndex(index) { return listView.itemAtIndex(index) }
 
-                MarqueeCatcher {
-                  anchors.fill: parent
-                  catcherListView: listView
-                  measuredRowHeight: root.measuredRowHeight
-                  marqueeTarget: SelectionState
+              ListView {
+                id: listView
+                anchors.fill: parent
+                clip: true
+                model: NavState.visibleEntries
+                focus: root && root.opened && !NavState.searching && ViewState.mode !== "grid"
+                onModelChanged: {
+                  if (root && root.suppressListFade) return
+                  listRepopulateFade.restart()
                 }
-              }
+                NumberAnimation {
+                  id: listRepopulateFade
+                  target: listView
+                  property: "opacity"
+                  from: 0
+                  to: 1
+                  duration: 140
+                  easing.type: Easing.OutCubic
+                }
+                interactive: false
+                boundsBehavior: Flickable.StopAtBounds
 
-              Keys.onPressed: function (event) { keyboardShortcuts.handlePress(event) }
+                footer: Item {
+                  id: listFooter
+                  width: listView.width
+                  height: 400
 
-              delegate: FileListRow {
-                hostRoot: root
-                hostListView: listView
-                hostCard: card
-                hostNavController: controllers ? controllers.navController : null
-                hostCommandFacade: commandFacade
-                hostDragDropOps: controllers ? controllers.actionEngine : null
-                hostVideoThumbs: controllers ? controllers.videoThumbs : null
-                hostFileMeta: controllers ? controllers.fileMeta : null
-                hostConflictActions: controllers ? controllers.actionEngine : null
+                  MarqueeCatcher {
+                    anchors.fill: parent
+                    catcherListView: listView
+                    measuredRowHeight: root.measuredRowHeight
+                    marqueeTarget: SelectionState
+                  }
+                }
+
+                Keys.onPressed: function (event) { keyboardShortcuts.handlePress(event) }
+
+                delegate: FileListRow {
+                  hostRoot: root
+                  hostListView: listView
+                  hostCard: card
+                  hostNavController: controllers ? controllers.navController : null
+                  hostCommandFacade: commandFacade
+                  hostDragDropOps: controllers ? controllers.actionEngine : null
+                  hostVideoThumbs: controllers ? controllers.videoThumbs : null
+                  hostFileMeta: controllers ? controllers.fileMeta : null
+                  hostConflictActions: controllers ? controllers.actionEngine : null
+                }
               }
             }
 
@@ -257,7 +296,9 @@ Item {
               anchors.bottom: parent.bottom
               anchors.left: parent.left
               width: PreviewState.previewOpen ? parent.width * 0.55 : parent.width
-              visible: ViewState.mode === "grid"
+              opacity: ViewState.mode === "grid" ? 1 : 0
+              visible: opacity > 0
+              Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
               hostRoot: root
               hostCard: card
               hostControllers: controllers
