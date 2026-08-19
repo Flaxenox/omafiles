@@ -1,5 +1,7 @@
 # OmaFiles Changelog
 
+## [Unreleased]
+
 ## [1.1.0] - 2026-08-19
 
 ### File transfers & archives
