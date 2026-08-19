@@ -76,6 +76,8 @@ qt_add_qml_module(omafiles-backend
     backend/MimeResolver.cpp
     backend/NetworkMounts.h
     backend/NetworkMounts.cpp
+    backend/LocalMounts.h
+    backend/LocalMounts.cpp
     backend/UDisksWatcher.h
     backend/UDisksWatcher.cpp
     backend/GvfsWatcher.h

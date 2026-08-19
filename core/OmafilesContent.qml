@@ -35,6 +35,7 @@ Item {
 
   // ---------- Lifecycle (open/close the host window) ----------
   function open(payload) {
+    if (typeof StartupTrace !== "undefined") StartupTrace.line("OmafilesContent.open() start")
     root.opened = true
 
     var nlIdx = payload ? payload.indexOf("\n") : -1

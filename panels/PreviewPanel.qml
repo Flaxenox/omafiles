@@ -32,12 +32,40 @@ Item {
   property var audioInfo: []
   property string fallbackSizeText: ""
 
+  // Read-only, for the selfcheck regression guarding the lazy-load fix
+  // below (V1.2 startup audit) -- nothing else reads these from outside.
+  readonly property alias videoLoaderActive: videoLoader.active
+  readonly property alias audioLoaderActive: audioLoader.active
+
   // Stops any playback in flight when the previewed entry changes (arrow-
   // key navigation to another file) -- without this, the previous video/
   // audio's sound would keep going under the new file's preview.
   onEntryNameChanged: {
-    videoPlayer.stop()
-    audioPlayer.stop()
+    if (videoLoader.item) videoLoader.item.stop()
+    if (audioLoader.item) audioLoader.item.player.stop()
+  }
+
+  // V1.2 startup audit (docs/audits/V1_2_STARTUP_PERFORMANCE_REPORT.md):
+  // QtMultimedia's MediaPlayer does expensive one-time backend init
+  // (measured ~900ms of the ~1050ms engine.load() spent constructing the
+  // WHOLE app QML tree) the first time ANY MediaPlayer-family object is
+  // constructed in the process -- and `Video`/`MediaPlayer` below used to
+  // be plain, always-present children, so every single launch paid that
+  // cost regardless of whether the user ever previews a video or audio
+  // file. videoLoader/audioLoader defer that construction to the first
+  // real need. "Touched" latches permanently once true (rather than
+  // tracking isVideoEntry/isAudioEntry directly) so browsing away to a
+  // non-media file doesn't tear the player down and re-pay the init cost
+  // on the NEXT video/audio preview -- same "stays alive for the rest of
+  // the session" lifetime the always-present objects had before, just
+  // deferred past startup.
+  property bool _videoTouched: false
+  property bool _audioTouched: false
+  onIsVideoEntryChanged: if (isVideoEntry) _videoTouched = true
+  onIsAudioEntryChanged: if (isAudioEntry) _audioTouched = true
+  Component.onCompleted: {
+    if (isVideoEntry) _videoTouched = true
+    if (isAudioEntry) _audioTouched = true
   }
 
   BorderSurface {
@@ -101,7 +129,7 @@ Item {
 
         Image {
           id: videoPoster
-          visible: videoPlayer.playbackState !== MediaPlayer.PlayingState
+          visible: !videoLoader.item || videoLoader.item.playbackState !== MediaPlayer.PlayingState
           anchors.fill: parent
           fillMode: Image.PreserveAspectFit
           asynchronous: true
@@ -113,16 +141,23 @@ Item {
           source: root.videoThumbSource
         }
 
-        Video {
-          id: videoPlayer
-          visible: playbackState === MediaPlayer.PlayingState
+        // Lazy: see root._videoTouched's doc comment above.
+        Loader {
+          id: videoLoader
           anchors.fill: parent
-          fillMode: VideoOutput.PreserveAspectFit
-          source: root.videoSource
+          active: root._videoTouched
+          sourceComponent: Component {
+            Video {
+              visible: playbackState === MediaPlayer.PlayingState
+              anchors.fill: parent
+              fillMode: VideoOutput.PreserveAspectFit
+              source: root.videoSource
+            }
+          }
         }
 
         Button {
-          text: videoPlayer.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+          text: (videoLoader.item && videoLoader.item.playbackState === MediaPlayer.PlayingState) ? "Pause" : "Play"
           bordered: true
           anchors.horizontalCenter: parent.horizontalCenter
           anchors.bottom: parent.bottom
@@ -130,8 +165,9 @@ Item {
           Accessible.role: Accessible.Button
           Accessible.name: text
           onClicked: {
-            if (videoPlayer.playbackState === MediaPlayer.PlayingState) videoPlayer.pause()
-            else videoPlayer.play()
+            if (!videoLoader.item) return
+            if (videoLoader.item.playbackState === MediaPlayer.PlayingState) videoLoader.item.pause()
+            else videoLoader.item.play()
           }
         }
       }
@@ -188,23 +224,38 @@ Item {
         visible: root.isAudioEntry
         spacing: Style.spacing.sm
 
-        MediaPlayer {
-          id: audioPlayer
-          // No isAudioEntry guard needed (cleanup pass): audioSource is
-          // already "" whenever isAudioEntry is false, see the video
-          // block's comment above.
-          source: root.audioSource
-          audioOutput: AudioOutput {}
+        // Lazy: see root._audioTouched's doc comment above. Wrapped in an
+        // Item (rather than loading the bare MediaPlayer as the Loader's
+        // root) so `Loader.item` -- typed for the common Item case --
+        // reliably exposes the player via the alias regardless of Qt
+        // version quirks around loading a non-visual root type directly.
+        Loader {
+          id: audioLoader
+          active: root._audioTouched
+          sourceComponent: Component {
+            Item {
+              property alias player: audioPlayerInner
+              // No isAudioEntry guard needed (cleanup pass): audioSource is
+              // already "" whenever isAudioEntry is false, see the video
+              // block's comment above.
+              MediaPlayer {
+                id: audioPlayerInner
+                source: root.audioSource
+                audioOutput: AudioOutput {}
+              }
+            }
+          }
         }
 
         Button {
-          text: audioPlayer.playbackState === MediaPlayer.PlayingState ? "Pause" : "Play"
+          text: (audioLoader.item && audioLoader.item.player.playbackState === MediaPlayer.PlayingState) ? "Pause" : "Play"
           bordered: true
           Accessible.role: Accessible.Button
           Accessible.name: text
           onClicked: {
-            if (audioPlayer.playbackState === MediaPlayer.PlayingState) audioPlayer.pause()
-            else audioPlayer.play()
+            if (!audioLoader.item) return
+            if (audioLoader.item.player.playbackState === MediaPlayer.PlayingState) audioLoader.item.player.pause()
+            else audioLoader.item.player.play()
           }
         }
       }

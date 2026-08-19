@@ -92,27 +92,6 @@ function entriesEqual(a, b) {
   return true
 }
 
-// Decodes a device label from findmnt raw format.
-function decodeDeviceLabel(s) {
-  var raw = String(s || "")
-  var pct = raw.replace(/\\x([0-9A-Fa-f]{2})/g, "%$1")
-  try {
-    return decodeURIComponent(pct)
-  } catch (e) {
-    return raw.replace(/\\x([0-9A-Fa-f]{2})/g, function (_, h) {
-      return String.fromCharCode(parseInt(h, 16))
-    })
-  }
-}
-
-function parseMounts(text) {
-  var lines = String(text || "").split("\n").filter(function (l) { return l.length > 0 })
-  return lines.map(function (l) {
-    var parts = l.split("\t")
-    return { label: decodeDeviceLabel(parts[0]), path: decodeDeviceLabel(parts[1]), device: parts[2] || "", removable: parts[3] === "1", mounted: parts[4] !== "0", fstype: parts[5] || "" }
-  })
-}
-
 // File type extension lists and glyph/type helpers
 var IMAGE_EXTS = ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
 var VIDEO_EXTS = ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v"]

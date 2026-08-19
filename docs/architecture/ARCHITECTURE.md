@@ -71,7 +71,7 @@ dialogs/                         Presentation: BulkRenamePanel, ChmodPanel, Comm
 shared/                          Reusable visual atoms/utilities: BreadcrumbSegments, EmptyState, FileRowVisual,
                                   MarqueeCatcher, ModalSurface, PanelNavButtons, Utils.js
 scripts/runtime/                 Justified external-system adapters (see contract below): list-archive.sh,
-                                  list-mounts.sh, mount-iso.sh, search-index.sh, thumbnail-video.sh
+                                  mount-iso.sh, search-index.sh, thumbnail-video.sh
 scripts/                         install-integrations.sh, open-path.sh, dbus-*.py (D-Bus portal/FileManager1 services)
 src/selfcheck/                   Headless regression suite (--selfcheck), 124 checks as of this writing
 ```
@@ -345,7 +345,6 @@ equivalent. Currently justified:
 | Script | Wraps | Why it's still a script, not C++ |
 |---|---|---|
 | `list-archive.sh` | `unzip`/`7z`/`unrar`/`tar` | 4 archive formats' listing conventions; native would mean linking libarchive or 4 separate format libraries for a browse-only feature |
-| `list-mounts.sh` | `lsblk`/`findmnt` | Enumerates **unmounted** removable devices too; `QStorageInfo` only sees already-mounted filesystems, the rest needs `libblkid`/`libudev` |
 | `mount-iso.sh` | `udisksctl`/loop devices | One-shot privileged-adjacent operation, already the "correct" system-level tool |
 | `search-index.sh` | `plocate`/`tracker3` | External index daemons; wrapping them is strictly better than reimplementing an index |
 | `thumbnail-video.sh` | `ffmpegthumbnailer` | Full video decode; would mean linking `libavformat`/`libavcodec` for one thumbnail type |

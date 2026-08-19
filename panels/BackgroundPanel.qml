@@ -134,8 +134,14 @@ Item {
     onHoveredChanged: if (hovered) hostTabOps.switchToTab(bgPanel.index)
   }
 
-  // Last path for which this specific panel launched a reload --
-  // see onModelDataChanged below.
+  // Last path for which this specific panel launched a reload -- used by
+  // refreshMe() below to dedup a same-path re-request (V1.2 code-quality
+  // pass: effectivePath and isBackground both derive from the SAME
+  // condition, index === TabsState.activeTabIndex, so switching tabs
+  // changed both in the same tick and fired refreshMe() from BOTH
+  // onEffectivePathChanged and onIsBackgroundChanged -- two real
+  // dirLister.list() scans for one tab switch. This property was already
+  // being written for exactly this purpose but nothing ever read it back.
   property string _lastRefreshedPath: ""
 
   // Path that this panel must list. For the ACTIVE tab it's NavState
@@ -157,8 +163,13 @@ Item {
   // dirLister refreshes it behind the scenes without resetting if the content didn't change.
   property var _content: []
 
-  function refreshMe() {
+  // force=true bypasses the dedup guard -- needed by the refreshTick
+  // handler below, which re-scans the SAME path on purpose (content
+  // changed on disk, not the target path), the one caller where
+  // effectivePath === _lastRefreshedPath is the expected, correct case.
+  function refreshMe(force) {
     if (bgPanel.effectivePath === "") return
+    if (!force && bgPanel._lastRefreshedPath === bgPanel.effectivePath) return
     bgPanel._lastRefreshedPath = bgPanel.effectivePath
     dirLister.list(bgPanel.effectivePath)
   }
@@ -184,7 +195,7 @@ Item {
   // 14.E audit: qmllint doesn't see it because hostRoot is an untyped Item).
   Connections {
     target: NavState
-    function onRefreshTickChanged() { bgPanel.refreshMe() }
+    function onRefreshTickChanged() { bgPanel.refreshMe(true) }
   }
   Component.onCompleted: bgPanel.refreshMe()
 
@@ -285,7 +296,28 @@ Item {
     onMovementEnded: bgPanel._saveScroll()
 
     delegate: BackgroundListDelegate {
-      panelPath: bgPanel.modelData.path || ""
+      // V1.2 general-perf audit (docs/audits/V1_2_GENERAL_PERFORMANCE_REPORT.md):
+      // was bgPanel.modelData.path (the tab's LAST SAVED path, only updated
+      // by TabOps.saveActiveTab() -- called at specific points like tab-
+      // switch/close, NOT on every navigateTo()). For the active-SLOT panel
+      // (index === TabsState.activeTabIndex, the opacity:0 "preload" panel),
+      // this went stale the instant the user navigated: `_content`/entries
+      // already reflect the NEW live path (dirLister scans effectivePath,
+      // which IS NavState.currentPath for this slot), but panelPath still
+      // named the OLD saved one -- so myPath (Utils.entryPath(panelPath,
+      // modelData) in BackgroundListDelegate.qml) combined a fresh entry
+      // name with a stale base path into a real but NONEXISTENT combined
+      // path, which FolderCounter.request()/FolderCountState.markPending()
+      // then requested a count for. Root-caused via a real, reproducible
+      // SEGFAULT (AddressSanitizer + gdb, QV4::Object::insertMember null-
+      // pointer write while inserting that bogus path as a brand-new
+      // _pending key) that traced back to exactly this mismatch. effectivePath
+      // is already the correct value for BOTH cases (identical to
+      // modelData.path for real background tabs; NavState.currentPath,
+      // live, for the active slot) -- using it here keeps panelPath and the
+      // panel's own listing target always in lockstep, eliminating the
+      // mismatch structurally rather than papering over one symptom of it.
+      panelPath: bgPanel.effectivePath
       bgSearching: bgPanel.bgSearching
       hostDragDropOps: bgPanel.hostDragDropOps
       hostVideoThumbs: bgPanel.hostVideoThumbs

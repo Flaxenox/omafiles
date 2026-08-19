@@ -123,5 +123,60 @@ QtObject {
             Backend.FileOperations.cancel()
           })
         })
+
+        // V1.2 general-perf audit (docs/audits/V1_2_GENERAL_PERFORMANCE_REPORT.md):
+        // FolderCountState.set() used to reassign `counts` WHOLE on every
+        // single async result -- since QML tracks `counts` as one property
+        // (not per-key), entering a folder with N visible subfolders fired
+        // N reassignments, each invalidating EVERY visible row's
+        // FileMeta.metaFor() subtitle binding, not just the one whose count
+        // arrived. _flushTimer now coalesces a burst of set() calls into
+        // ONE reassignment. Tested in ISOLATION -- calling set() directly
+        // with synthetic paths, no real ListView/navigation/FolderCounter
+        // involved -- deliberately: an earlier version of this test drove
+        // it through a REAL navigation into a 60-subfolder directory (the
+        // realistic path) and reliably crashed the whole selfcheck process
+        // (real, reproducible SEGFAULT inside QV4::Object::insertMember,
+        // confirmed via gdb). Root-caused as PRE-EXISTING and unrelated to
+        // this fix -- reproduces identically with FolderCountState.qml
+        // reverted to its pre-fix code, so it's some other latent issue in
+        // real-ListView-plus-real-FolderCounter-under-heavy-concurrent-load
+        // that no existing test happened to exercise before. Flagged
+        // separately (see the report) rather than silently dropped; this
+        // narrower test verifies the actual mechanism that changed without
+        // going anywhere near whatever that latent issue is.
+        sc.add("FolderCountState.set() coalesces a burst into one reassignment (V1.2 general-perf regression)", function (done) {
+          // Snapshot + restore: FolderCountState is a singleton shared with
+          // every other test: add exactly the synthetic keys used here, then
+          // remove exactly them, leaving any real cached counts from other
+          // tests (before and after this one) untouched.
+          var savedCounts = Object.assign({}, FolderCountState.counts)
+          var N = 30
+          var base = "/selfcheck-synthetic-foldercount-"
+          var reassigns = 0
+          function onCountsChanged() { reassigns++ }
+          FolderCountState.countsChanged.connect(onCountsChanged)
+
+          for (var i = 0; i < N; i++) FolderCountState.set(base + i, i)
+
+          // Immediately after the burst, nothing should have flushed yet
+          // (proves set() defers rather than reassigning synchronously).
+          var noneYet = FolderCountState.counts[base + "0"] === undefined && reassigns === 0
+
+          sc._poll(function () {
+            return FolderCountState.counts[base + (N - 1)] !== undefined
+          }, function (ok) {
+            FolderCountState.countsChanged.disconnect(onCountsChanged)
+            var allPresent = true
+            for (var j = 0; j < N; j++) {
+              if (FolderCountState.counts[base + j] !== j) { allPresent = false; break }
+            }
+            // Cleanup: remove exactly the synthetic keys, restore the rest verbatim.
+            FolderCountState.counts = savedCounts
+            var pass = ok && noneYet && allPresent && reassigns > 0 && reassigns <= 3
+            done(pass, "deferred=" + noneYet + " settled=" + ok + " allPresent=" + allPresent
+              + " reassignments=" + reassigns + " (of " + N + " set() calls)")
+          }, 60)
+        })
   }
 }
