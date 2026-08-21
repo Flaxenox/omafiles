@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-21
+
+### Grid & List view modes
+
+* **Centered Grid/Icon View (`Ctrl+G`)**: Seamlessly switch between the classic list and a centered grid view mode, with smooth 160ms crossfade animation. View preference is saved in `~/.local/state/omafiles/ui-prefs.json`.
+* **Dynamic Grid Zoom**: `Ctrl` + mouse wheel scales cell, icon, and thumbnail sizes dynamically without extra backend overhead.
+* **2D Grid Navigation & Selection**: Full keyboard navigation across columns and rows, plus 2D rectangular marquee selection in grid mode.
+
+### Duplicate file finder
+
+* **Native `DuplicateFinder`**: High-performance background duplicate detector using a two-stage *fdupes*-style pruning pipeline (exact byte size -> 64 KB SHA-256 pre-hash -> full SHA-256 validation).
+* **Duplicate Cleanup Dialog**: Interactive modal with live progress, "Select all but first per group" (retaining oldest copy by creation/mtime), and direct deletion to trash with full `Ctrl+Z` Undo support.
+* **Menu Integration**: Accessible from the command palette (`:`) and folder context menus ("Find duplicates here...").
+
+### Git status integration
+
+* **Asynchronous Git Badges**: Non-blocking background detection via `git rev-parse` and `git status --porcelain=v1 -z`.
+* **File & Directory Badges**: Color-coded badges for modified (`M`, amber), added (`A`, green), deleted (`D`, red), conflict (`U`, red), and untracked (`?`, muted) files, with aggregate status propagation on folder items in both List and Grid views.
+
+### Properties & sidebar polish
+
+* **Native `statInfo()` & `requestDirSize()`**: Eliminated shell subprocess invocations (`stat`/`du`) in the Properties panel in favor of native C++ implementations in `FileOperations`.
+* **Sidebar Disk Usage Bars**: Live storage usage bars for mounted drives powered by native `LocalMounts` (`QStorageInfo` `usedFraction`).
+* **Sidebar UI Polish**: Slightly widened sidebar, improved font sizes and icon hierarchy.
+
+### Performance & architectural improvements
+
+* **Instant Startup via Lazy Loading**: Deferred instantiation of video/audio playback loaders in `PreviewPanel`.
+* **Burst Coalescing in `FolderCountState`**: 16ms timer debounce for folder item counts, avoiding $O(N)$ cascading binding re-evaluations.
+* **Native Mount Enumeration (`LocalMounts`)**: Replaced `list-mounts.sh` shell pipeline with native C++ enumeration and 4-tier device sorting.
+* **Bounded Video Thumbnail Pool**: 3 concurrent thumbnailer slots to prevent CPU/IO saturation on video-heavy folders.
+
+### Bug fixes
+
+* **Search Bar Auto-Collapse**: Fixed search bar remaining open when clicking away with an empty search query.
+* **Preview Panel Layout Fix**: Fixed overlap between "No preview available" status text and the filename heading.
+* **Torrent Files**: Added dedicated magnet-glyph icon for `.torrent` files.
+* **Background Panel Deduping**: Avoided redundant rescans on already current paths.
+
+### Regression coverage
+
+* Headless `--selfcheck` suite expanded from 146 to **160** automated checks, covering duplicate discovery, cancellation, git status, grid navigation, and performance paths.
+
 ## [1.1.0] - 2026-08-19
 
 ### File transfers & archives
