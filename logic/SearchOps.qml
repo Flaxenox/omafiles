@@ -15,7 +15,7 @@ Item {
 
   function toggleHidden() {
     NavState.showHidden = !NavState.showHidden
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     navController.refresh()
     NavState.refreshTick += 1
   }
@@ -31,7 +31,7 @@ Item {
     NavState.searching = true
     NavState.searchQuery = ""
     NavState.searchTruncated = false
-    list.contentY = list.originY
+    list.setContentY(list.originY)
   }
 
   function exitSearch() {
@@ -39,7 +39,7 @@ Item {
     NavState.searching = false
     NavState.searchQuery = ""
     NavState.searchTruncated = false
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     navController.refresh()
     SelectionState.selectOnly(-1)
   }
@@ -50,7 +50,7 @@ Item {
     // by the SearchBar debounce).
     if (NavState.searchQuery.length < 2) return
     NavState.searchBusy = true
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     // Indexed GLOBAL search: SearchBackend queries the system
     // index (tracker3/plocate) and, if there is none, falls back to the
     // recursive SearchWorker from currentPath. Cancelable; a new search
@@ -64,7 +64,7 @@ Item {
     searchBackend.cancel()
     NavState.searchBusy = false
     NavState.searchTruncated = false
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     navController.refresh()
   }
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(omafiles VERSION 1.1.0 LANGUAGES CXX)
+project(omafiles VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,10 +72,14 @@ qt_add_qml_module(omafiles-backend
     backend/MediaInfo_Mp4.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
+    backend/DuplicateFinder.h
+    backend/DuplicateFinder.cpp
     backend/MimeResolver.h
     backend/MimeResolver.cpp
     backend/NetworkMounts.h
     backend/NetworkMounts.cpp
+    backend/LocalMounts.h
+    backend/LocalMounts.cpp
     backend/UDisksWatcher.h
     backend/UDisksWatcher.cpp
     backend/GvfsWatcher.h

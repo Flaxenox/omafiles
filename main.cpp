@@ -13,10 +13,15 @@
 #include <QQmlContext>
 #include <QObject>
 #include <QQuickStyle>
+#include <QQuickWindow>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <unistd.h>
+
+#include "backend/StartupTrace.h"
 
 // Selfcheck reporter: DETERMINISTIC output to stdout (does not depend on the
 // QML logging rules, which in release may silence console.log).
@@ -28,6 +33,20 @@ class SelfCheckReporter : public QObject {
   Q_INVOKABLE void line(const QString &text) {
     printf("%s\n", text.toLocal8Bit().constData());
     fflush(stdout);
+  }
+};
+
+// V1.2 startup audit: mirrors SelfCheckReporter's pattern (a deterministic,
+// QML-invokable sink) but routes through startupTrace() so QML-side marks
+// get the SAME elapsed-since-process-start timestamp as the C++ marks
+// scattered through main.cpp/DirectoryModel.cpp. Only constructed/exposed
+// when OMAFILES_STARTUP_TRACE=1 (see runNormal below).
+class StartupTraceReporter : public QObject {
+  Q_OBJECT
+ public:
+  using QObject::QObject;
+  Q_INVOKABLE void line(const QString &text) {
+    startupTrace(text.toLocal8Bit().constData());
   }
 };
 
@@ -367,7 +386,9 @@ int runSelfCheck(int argc, char *argv[]) {
 }
 
 int runNormal(int argc, char *argv[]) {
+  startupTrace("main() entry");
   QGuiApplication app(argc, argv);
+  startupTrace("QGuiApplication constructed");
   app.setApplicationName(QStringLiteral("omafiles"));
   app.setApplicationVersion(QStringLiteral(APP_VERSION));
   // Wayland app_id = "omafiles" (kept on purpose: any
@@ -402,18 +423,21 @@ int runNormal(int argc, char *argv[]) {
   // opening another window. If not, this invocation becomes the server instance.
   // Picker instances run independently as separate transient windows.
   if (!isPicker && SingleInstance::deliverToRunning(payload)) return 0;
+  startupTrace("single-instance check done (this is the primary instance)");
 
   // qs.Ui uses QtQuick.Controls (Button/TextField) -- Basic is the style that
   // does not depend on any extra native backend, the safest.
   QQuickStyle::setStyle("Basic");
 
   QQmlApplicationEngine engine;
+  startupTrace("QQmlApplicationEngine constructed");
   // Phase 29: resolved resource root (installed vs dev). It is published by env
   // so state/Paths.qml (resourceDir) locates the .sh scripts without knowing
   // the repo.
   const QString resourceDir = resolveResourceDir();
   qputenv("OMAFILES_RESOURCE_DIR", resourceDir.toLocal8Bit());
   addImportPaths(engine, resourceDir);
+  startupTrace("resourceDir resolved + import paths added");
 
   SingleInstance instance;
   instance.listen();  // if it fails (name taken by a race) it simply does not
@@ -421,20 +445,67 @@ int runNormal(int argc, char *argv[]) {
   engine.rootContext()->setContextProperty("SingleInstance", &instance);
   engine.rootContext()->setContextProperty("omafilesInitialPayload", payload);
 
+  // V1.2 startup audit: opt-in QML-side trace point, only registered when
+  // OMAFILES_STARTUP_TRACE=1 -- see backend/StartupTrace.h. QML call sites
+  // guard with `typeof StartupTrace !== "undefined"` so they're inert
+  // (a single cheap typeof check) on every normal launch.
+  StartupTraceReporter startupTraceReporter;
+  if (startupTraceEnabled())
+    engine.rootContext()->setContextProperty("StartupTrace", &startupTraceReporter);
+
   QObject::connect(
       &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
       []() { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
 
+  startupTrace("engine.load(Main.qml) starting");
   engine.load(
       QUrl::fromLocalFile(resourceDir + "/app/Main.qml"));
   if (engine.rootObjects().isEmpty()) return -1;
+  startupTrace("engine.load(Main.qml) returned (QML tree built, all Component.onCompleted ran)");
 
+  if (auto *win = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst())) {
+    // One-shot: the first real frameSwapped is the first moment actual
+    // pixels reached the compositor -- what the user perceives as "the
+    // window appeared", as opposed to `visible: true` merely being set.
+    auto *conn = new QMetaObject::Connection();
+    *conn = QObject::connect(win, &QQuickWindow::frameSwapped, win, [conn]() {
+      startupTrace("first frame swapped (window actually visible on screen)");
+      QObject::disconnect(*conn);
+      delete conn;
+    });
+  }
+
+  startupTrace("entering app.exec()");
   return app.exec();
 }
 
 }  // namespace
 
 int main(int argc, char *argv[]) {
+  // V1.2 startup audit: the very first thing main() does, before touching
+  // Qt at all -- OMAFILES_T0_NS is the reference every startupTrace() call
+  // (in this binary AND in the backend .so, across the process boundary,
+  // see backend/StartupTrace.h) measures itself against. Cost when
+  // OMAFILES_STARTUP_TRACE isn't set: one clock_gettime() + one setenv(),
+  // ~microseconds.
+  {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    const long long t0Ns = static_cast<long long>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%lld", t0Ns);
+    setenv("OMAFILES_T0_NS", buf, 1);
+    // Raw value (not a startupTrace()-style elapsed-ms line) so an external
+    // bench harness -- which reads its OWN CLOCK_MONOTONIC just before
+    // spawning this process -- can correlate the two clocks (CLOCK_MONOTONIC
+    // is the same clock domain machine-wide on Linux) and derive
+    // "process launch -> main() reached" i.e. exec+dynamic-linker overhead,
+    // which no timestamp taken from inside main() can ever see on its own.
+    if (startupTraceEnabled()) {
+      std::fprintf(stderr, "[startup-t0] %lld\n", t0Ns);
+      std::fflush(stderr);
+    }
+  }
   // Qt6 blocks, for security, file:// reads via XMLHttpRequest unless
   // they are explicitly enabled. The standalone's qs.Commons/ThemeSource
   // adapter reads Omarchy's live theme files this way

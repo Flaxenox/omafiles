@@ -37,7 +37,7 @@ Item {
       // ---------- Sidebar: pinned shortcuts ----------
       Sidebar {
         id: sidebar
-        width: 170
+        width: 185
         height: parent.height
         bookmarks: BookmarksState.bookmarks
         recentFiles: BookmarksState.recentFiles
@@ -158,7 +158,7 @@ Item {
           Item {
             id: pathArea
             readonly property int minPathW: 120
-            width: Math.max(minPathW, parent.width - navButtons.width - searchBar.width - 2 * Style.spacing.controlGap)
+            width: Math.max(minPathW, parent.width - navButtons.width - searchBar.width - viewModeButton.width - 3 * Style.spacing.controlGap)
             height: parent.height
 
             MouseArea {
@@ -189,10 +189,32 @@ Item {
           SearchBar {
             id: searchBar
             anchors.verticalCenter: parent.verticalCenter
-            maxWidth: navRow.width - navButtons.width - pathArea.minPathW - 2 * Style.spacing.controlGap
+            maxWidth: navRow.width - navButtons.width - viewModeButton.width - pathArea.minPathW - 3 * Style.spacing.controlGap
             list: list
             searchOps: controllers ? controllers.searchOps : null
             navController: controllers ? controllers.navController : null
+          }
+
+          Button {
+            id: viewModeButton
+            width: Style.spacing.controlHeight
+            height: Style.spacing.controlHeight
+            anchors.verticalCenter: parent.verticalCenter
+            foreground: Color.menu.text
+            onClicked: ViewState.toggleMode()
+            Accessible.role: Accessible.Button
+            Accessible.name: ViewState.mode === "grid" ? "Switch to list view" : "Switch to grid view"
+
+            OpticalGlyph {
+              anchors.centerIn: parent
+              // md-view_grid / md-format_list_bulleted, verified against
+              // the font's real cmap (rendered + visually checked before
+              // use, per this project's own glyph discipline).
+              text: ViewState.mode === "grid" ? "\u{F0279}" : "\u{F0570}"
+              fontFamily: Style.font.family
+              fontSize: Style.font.icon
+              color: parent.foreground
+            }
           }
         }
 

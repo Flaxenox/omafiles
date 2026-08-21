@@ -12,9 +12,11 @@
 // it emits devicesChanged(), COALESCED with a QTimer
 // so a burst of signals triggers a single refresh.
 //
-// It deliberately does NOT enumerate devices or build mount objects:
-// the single source of truth remains list-mounts.sh (findmnt+lsblk, a
-// "system adapter" that BACKEND_DESIGN.md keeps on purpose). This watcher
+// It deliberately does NOT enumerate devices or build mount objects: the
+// single source of truth for that is LocalMounts::list() (V1.2, its own
+// D-Bus calls to the same org.freedesktop.UDisks2 service -- see
+// backend/LocalMounts.h; retired the old list-mounts.sh script, which this
+// watcher used to be the sole justification for keeping). This watcher
 // only signals "something changed, list again", so there is no second
 // source that could desynchronize. No polling. No dependency on
 // Quickshell (QML singleton, like the rest of backend/).

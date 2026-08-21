@@ -1,6 +1,6 @@
 # Omafiles
 
-A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.1.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
+A keyboard-first **multi-panel** file manager for [Omarchy](https://omarchy.org), built as a **Qt6 standalone application** (`v1.2.0`). It is not a wrapper around Nautilus/Dolphin/Thunar, and not a layer-shell popup either — it's a real, tileable window that opens and behaves like any other app on your desktop, using Omarchy's own design system (`qs.Commons`/`qs.Ui`) end to end: same typography, same borders, same hover/selection chrome, same Nerd Font icons as the rest of the shell.
 
 ![Omafiles screenshot](preview.png)
 
@@ -23,6 +23,13 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 - Back/forward navigation history (`Alt+←`/`Alt+→`), tracked **per panel**.
 - Breadcrumb path bar; click any segment to jump there, or click the empty area to edit the path by hand.
 - Natural-order aware throughout: `file2.txt` sorts before `file10.txt`.
+
+### Grid & List view modes (`Ctrl+G`)
+
+- Seamlessly switch between the classic list view and a centered **grid/icon view** (`Ctrl+G`, command palette, or header button) with a smooth 160ms crossfade animation.
+- Dynamic cell zooming: hold `Ctrl` and scroll the mouse wheel to scale grid cells to your preferred size. Thumbnails and icons scale crisply, reusing the high-resolution cache.
+- Full 2D keyboard navigation (`h`/`l`/`←`/`→` in grid mode; `j`/`k`/`↓`/`↑` jump full rows) and 2D rectangular marquee (lasso) selection.
+- View mode preference is persisted globally across application restarts (`~/.local/state/omafiles/ui-prefs.json`).
 
 ### Multiple persistent panels
 
@@ -109,9 +116,24 @@ Under the hood it's a thin QML front-end over a shared **C++ backend** (`Omafile
 
 - chmod on a multi-selection, with an "Apply to subfolders" toggle for `chmod -R`; handles huge selections natively without hitting `ARG_MAX`.
 
-### Properties
+### Duplicate file finder
 
-- A read-only Properties panel: real folder size via `du`, permissions, owner, dates — or a combined item count + total size for a multi-selection.
+- Find and clean up redundant copies of files with a native, two-stage *fdupes*-style content hashing engine (`DuplicateFinder`).
+- Groups files first by exact byte size, then filters candidates with a fast 64 KB SHA-256 pre-hash before performing full SHA-256 validation on survivors — keeping large directory scans fast.
+- Runs entirely in the background without blocking the UI and supports instant cancellation.
+- Modal results dialog shows groups ordered with the oldest file first, featuring a one-click **"Select all but first per group"** action to keep originals and send duplicates to the system trash (with full `Ctrl+Z` Undo restoration).
+- Launch from the command palette (`:`) or by right-clicking any folder ("Find duplicates here...").
+
+### Git status indicators
+
+- Background Git repository detection and status resolution (`git status --porcelain=v1 -z`) via asynchronous workers.
+- Displays color-coded badges on modified (`M`, amber), added (`A`, green), deleted (`D`, red), conflicted (`U`, red), and untracked (`?`, muted) files across both List and Grid views.
+- Aggregated status on folders: folder badges reflect the highest-priority status among their contained files so you can spot modified subtrees at a glance.
+
+### Properties & disk usage
+
+- A read-only Properties panel powered by native C++ `statInfo()` (lstat/owner/permissions) and asynchronous directory size calculation (`requestDirSize()`) — completely eliminating shell `stat`/`du` subprocess overhead.
+- Mounted drives in the sidebar display a live visual **disk-usage capacity bar** based on native `QStorageInfo` metrics.
 
 ### Custom keybindings (`keybindings.toml`)
 
@@ -144,6 +166,7 @@ These are the **defaults**. Every one of them (except the five fixed shortcuts b
 | Key | Action |
 | --- | --- |
 | `j` / `k` / `↓` / `↑` | Move down / up |
+| `←` / `→` | Move left / right (in grid view) |
 | `Shift`+`↓` / `↑` | Extend selection down / up (arrow keys only — `Shift+j`/`Shift+k` are plain, unbound key presses) |
 | `h` / `Backspace` | Go up a directory |
 | `l` / `Enter` | Open (enter directory / launch file) |
@@ -168,6 +191,7 @@ These are the **defaults**. Every one of them (except the five fixed shortcuts b
 | `Ctrl+W` | Close active panel |
 | `Ctrl+Tab` *(fixed)* | Next panel |
 | `Ctrl+H` | Toggle hidden files |
+| `Ctrl+G` | Toggle grid/list view |
 | `Shift+Enter` | Open a terminal here |
 | `F5` | Refresh |
 | `?` | Toggle keyboard shortcuts help |
@@ -300,9 +324,11 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
   - `DirectoryModel` — asynchronous directory scanning (`readdir`/`stat`) exposing natural-sorted entries and a 64-bit FNV-1a content signature with in-process `QFileSystemWatcher` live reload.
   - `FileOperations` — copy, move, trash, restore, delete, and `emptyTrash` with byte-accurate progress, cancellation, and canonical multi-mount path normalization.
   - `SearchWorker` — native multithreaded recursive name search and in-process content search (`content:`) with binary auto-detection, line matching, and snippet extraction.
+  - `DuplicateFinder` — native multithreaded duplicate file detection with two-stage SHA-256 content hashing and cancellation.
   - `PreviewProvider` & `ThumbnailProvider` — asynchronous image/video thumbnail caching and native text previews.
   - `SyntaxHighlighter` — in-process native syntax highlighting for C++, Python, QML, JSON, and Shell scripts.
   - `MediaInfo` — in-process native audio and video metadata extraction (WAV, MP3 ID3v1/ID3v2, FLAC, MP4/MOV, OGG, MKV/WebM) with $< 0.1\text{ ms}$ latency.
+  - `LocalMounts` — native drive and partition enumeration with `QStorageInfo` capacity reporting and 4-tier sorting.
   - `UDisksWatcher` & `GvfsWatcher` — reactive local-drive (UDisks2) and network-mount (GVfs, session D-Bus) monitoring, no polling for either; `NetworkMounts` lists the active GVfs mounts themselves.
   - `PathCompleter` — native `QDir`-based path completion for `Ctrl+L`.
   - `MimeResolver`, `TerminalResolver` & `NetworkResolver` — native association, terminal detection, and socket status checks without spawning shell subprocesses.
@@ -312,12 +338,12 @@ Omafiles is a thin, declarative QML front-end over a shared high-performance nat
 
 Omafiles enforces strict automated quality and performance gates before every release:
 
-- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **146/146** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, keyboard dispatch, and UI instantiation.
+- **Headless Self-Check Suite:** `omafiles --selfcheck` runs an automated in-memory test suite verifying **160/160** checks across filesystem operations, undo/redo stacks, D-Bus interfaces, keyboard dispatch, duplicate scanning, and UI instantiation.
 - **Performance Regression Gate:** `python3 bench/bench-gate.py --check-gate` validates cold startup, memory usage, large directory listings (up to 100k files), search latency, and I/O throughput against the canonical baseline (`bench/baseline.json`).
 
 ## Status
 
-Stable Release (`v1.1.0`) — ready for production use.
+Stable Release (`v1.2.0`) — ready for production use.
 
 ## License
 

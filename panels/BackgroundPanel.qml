@@ -75,6 +75,10 @@ Item {
   // a bug in the panel or in the cache's eviction policy) -- see src/
   // selfcheck/checks/CheckPanels.qml.
   property alias dirLister: dirLister
+  // Exposed (V1.2, same rationale as dirLister above) so the selfcheck
+  // suite can verify bgActiveView actually switches between the two.
+  property alias bgList: bgList
+  property alias bgGrid: bgGrid
 
   DirLister {
     id: dirLister
@@ -134,8 +138,14 @@ Item {
     onHoveredChanged: if (hovered) hostTabOps.switchToTab(bgPanel.index)
   }
 
-  // Last path for which this specific panel launched a reload --
-  // see onModelDataChanged below.
+  // Last path for which this specific panel launched a reload -- used by
+  // refreshMe() below to dedup a same-path re-request (V1.2 code-quality
+  // pass: effectivePath and isBackground both derive from the SAME
+  // condition, index === TabsState.activeTabIndex, so switching tabs
+  // changed both in the same tick and fired refreshMe() from BOTH
+  // onEffectivePathChanged and onIsBackgroundChanged -- two real
+  // dirLister.list() scans for one tab switch. This property was already
+  // being written for exactly this purpose but nothing ever read it back.
   property string _lastRefreshedPath: ""
 
   // Path that this panel must list. For the ACTIVE tab it's NavState
@@ -157,8 +167,13 @@ Item {
   // dirLister refreshes it behind the scenes without resetting if the content didn't change.
   property var _content: []
 
-  function refreshMe() {
+  // force=true bypasses the dedup guard -- needed by the refreshTick
+  // handler below, which re-scans the SAME path on purpose (content
+  // changed on disk, not the target path), the one caller where
+  // effectivePath === _lastRefreshedPath is the expected, correct case.
+  function refreshMe(force) {
     if (bgPanel.effectivePath === "") return
+    if (!force && bgPanel._lastRefreshedPath === bgPanel.effectivePath) return
     bgPanel._lastRefreshedPath = bgPanel.effectivePath
     dirLister.list(bgPanel.effectivePath)
   }
@@ -184,7 +199,7 @@ Item {
   // 14.E audit: qmllint doesn't see it because hostRoot is an untyped Item).
   Connections {
     target: NavState
-    function onRefreshTickChanged() { bgPanel.refreshMe() }
+    function onRefreshTickChanged() { bgPanel.refreshMe(true) }
   }
   Component.onCompleted: bgPanel.refreshMe()
 
@@ -193,6 +208,13 @@ Item {
   // had as the active panel; otherwise, it jumped to the beginning. It's called from
   // dirLister.onListed (when the async re-listing is already set, otherwise that
   // re-listing would reset the contentY right after).
+  // Whichever view is live for ViewState.mode -- same pattern as
+  // panels/ActiveFileList.qml's activeView (v1.2 grid view, extended to
+  // background panels since ViewState.mode is a GLOBAL toggle: every tab,
+  // active or not, should render the same mode, not just the one you
+  // happen to be looking at).
+  readonly property Item bgActiveView: ViewState.mode === "grid" ? bgGrid : bgList
+
   function _restoreScroll() {
     // By INDEX (positionViewAtIndex), not by pixel: immune to the
     // contentHeight being estimated lazily. Fallback to contentY if there is no
@@ -205,12 +227,12 @@ Item {
       // positionViewAtIndex hits the mark on the first try, without a jump.
       // Anchored on the row's REAL y (same geometry as firstVisibleOffset
       // when saving), not on the contentY that positionViewAtIndex leaves -> no drift.
-      bgList.forceLayout()
-      bgList.positionViewAtIndex(idx, ListView.Beginning)
-      var it = bgList.itemAtIndex(idx)
-      if (it) bgList.contentY = it.y + (modelData.scrollOffset || 0)
+      bgActiveView.forceLayout()
+      bgActiveView.positionViewAtIndex(idx, ListView.Beginning)
+      var it = bgActiveView.itemAtIndex(idx)
+      if (it) bgActiveView.contentY = it.y + (modelData.scrollOffset || 0)
     } else {
-      bgList.contentY = modelData.scrollY || bgList.originY
+      bgActiveView.contentY = modelData.scrollY || bgActiveView.originY
     }
   }
   // And the other way around: if you scroll this background panel, it's saved in its tab
@@ -220,12 +242,12 @@ Item {
   function _saveScroll() {
     if (index < 0 || index >= TabsState.tabs.length) return
     var t = TabsState.tabs[index]
-    if (!t || t.scrollY === bgList.contentY) return
-    var idx = bgList.indexAt(bgList.width / 2, bgList.contentY + 4)
-    var it = idx >= 0 ? bgList.itemAtIndex(idx) : null
-    var off = it ? (bgList.contentY - it.y) : 0
+    if (!t || t.scrollY === bgActiveView.contentY) return
+    var idx = bgActiveView.indexAt(bgActiveView.width / 2, bgActiveView.contentY + 4)
+    var it = idx >= 0 ? bgActiveView.itemAtIndex(idx) : null
+    var off = it ? (bgActiveView.contentY - it.y) : 0
     var next = TabsState.tabs.slice()
-    next[index] = Object.assign({}, t, { "scrollY": bgList.contentY, "scrollIndex": idx, "scrollOffset": off })
+    next[index] = Object.assign({}, t, { "scrollY": bgActiveView.contentY, "scrollIndex": idx, "scrollOffset": off })
     TabsState.tabs = next
   }
 
@@ -279,13 +301,80 @@ Item {
     anchors.bottomMargin: Style.spacing.rowGap
     anchors.left: parent.left
     anchors.right: parent.right
+    // Same crossfade as the active panel's listView/fileGrid (Ctrl+G
+    // toggles ViewState.mode for every panel at once, active or not).
+    opacity: ViewState.mode !== "grid" ? 1 : 0
+    visible: opacity > 0
+    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
     clip: true
     model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
     boundsBehavior: Flickable.StopAtBounds
     onMovementEnded: bgPanel._saveScroll()
 
     delegate: BackgroundListDelegate {
-      panelPath: bgPanel.modelData.path || ""
+      // V1.2 general-perf audit (docs/audits/V1_2_GENERAL_PERFORMANCE_REPORT.md):
+      // was bgPanel.modelData.path (the tab's LAST SAVED path, only updated
+      // by TabOps.saveActiveTab() -- called at specific points like tab-
+      // switch/close, NOT on every navigateTo()). For the active-SLOT panel
+      // (index === TabsState.activeTabIndex, the opacity:0 "preload" panel),
+      // this went stale the instant the user navigated: `_content`/entries
+      // already reflect the NEW live path (dirLister scans effectivePath,
+      // which IS NavState.currentPath for this slot), but panelPath still
+      // named the OLD saved one -- so myPath (Utils.entryPath(panelPath,
+      // modelData) in BackgroundListDelegate.qml) combined a fresh entry
+      // name with a stale base path into a real but NONEXISTENT combined
+      // path, which FolderCounter.request()/FolderCountState.markPending()
+      // then requested a count for. Root-caused via a real, reproducible
+      // SEGFAULT (AddressSanitizer + gdb, QV4::Object::insertMember null-
+      // pointer write while inserting that bogus path as a brand-new
+      // _pending key) that traced back to exactly this mismatch. effectivePath
+      // is already the correct value for BOTH cases (identical to
+      // modelData.path for real background tabs; NavState.currentPath,
+      // live, for the active slot) -- using it here keeps panelPath and the
+      // panel's own listing target always in lockstep, eliminating the
+      // mismatch structurally rather than papering over one symptom of it.
+      panelPath: bgPanel.effectivePath
+      bgSearching: bgPanel.bgSearching
+      hostDragDropOps: bgPanel.hostDragDropOps
+      hostVideoThumbs: bgPanel.hostVideoThumbs
+      hostFileMeta: bgPanel.hostFileMeta
+      hostTabOps: bgPanel.hostTabOps
+      hostNavController: bgPanel.hostNavController
+      bgPanelIndex: bgPanel.index
+    }
+  }
+
+  GridView {
+    id: bgGrid
+    // Centered, not left+right-filled: a fixed-cellWidth grid packed to
+    // one edge dumps its whole leftover remainder as dead space on the
+    // other side (same fix as ActiveFileGrid.qml, same reason).
+    readonly property int cols: Math.max(1, Math.floor(parent.width / ViewState.cellWidth))
+    anchors.top: bgErrorText.visible ? bgErrorText.bottom : bgHeaderSep.bottom
+    anchors.topMargin: Style.spacing.md
+    anchors.bottom: bgStatusText.top
+    anchors.bottomMargin: Style.spacing.rowGap
+    anchors.horizontalCenter: parent.horizontalCenter
+    width: Math.min(parent.width, cols * cellWidth)
+    opacity: ViewState.mode === "grid" ? 1 : 0
+    visible: opacity > 0
+    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+    clip: true
+    // Shared cell size with the active panel's grid (ViewState.cellWidth/
+    // Height, the same Ctrl+scroll-resizable value) -- but does NOT write
+    // back to ViewState.columnsPerRow the way ActiveFileGrid.qml does:
+    // that property drives the ACTIVE panel's own keyboard up/down-by-row
+    // math, and several background panels can have different widths at
+    // once, so a background panel's own column count is purely local/
+    // visual, never shared.
+    cellWidth: ViewState.cellWidth
+    cellHeight: ViewState.cellHeight
+    model: bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content
+    boundsBehavior: Flickable.StopAtBounds
+    onMovementEnded: bgPanel._saveScroll()
+
+    delegate: BackgroundGridCell {
+      panelPath: bgPanel.effectivePath
       bgSearching: bgPanel.bgSearching
       hostDragDropOps: bgPanel.hostDragDropOps
       hostVideoThumbs: bgPanel.hostVideoThumbs
@@ -298,7 +387,7 @@ Item {
 
   EmptyState {
     visible: dirLister.loaded && dirLister.pathError === "" && ((bgPanel.bgSearching ? bgPanel.bgVisibleSearchEntries : bgPanel._content).length === 0)
-    centerOn: bgList
+    centerOn: bgActiveView
     message: bgPanel.bgSearching
       ? "No results for “" + bgPanel.bgSearchQuery + "”"
       : (bgPanel.modelData.path === Paths.trashDir ? "Trash is empty" : "Folder is empty")

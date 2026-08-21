@@ -27,7 +27,7 @@ Column {
     text: "BOOKMARKS"
     foreground: Color.menu.text
     fontFamily: Style.font.family
-    fontSize: Style.font.subtitle
+    fontSize: Style.font.subtitle + 1
   }
 
   Item {
@@ -73,11 +73,11 @@ Column {
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: parent.left
         anchors.leftMargin: Style.spacing.sm
-        width: Style.font.title
-        height: Style.font.title
+        width: Style.font.title + 1
+        height: Style.font.title + 1
         text: root.iconForBookmark ? root.iconForBookmark(parent.modelData) : ""
         fontFamily: Style.font.family
-        fontSize: Style.font.icon
+        fontSize: Style.font.icon + 1
         color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
       }
 
@@ -86,7 +86,7 @@ Column {
         anchors.left: bookmarkIcon.right
         anchors.leftMargin: Style.spacing.xs
         text: parent.modelData.label
-        font.pixelSize: Style.font.title
+        font.pixelSize: Style.font.title + 1
         font.family: Style.font.family
         font.weight: Font.Medium
         color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text

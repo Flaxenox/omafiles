@@ -17,6 +17,9 @@ Item {
 
   property Item root: null
   property Item navController: null
+
+  function pathFor(name) { return Utils.joinPath(NavState.currentPath, name) }
+
   property var _nativeMkdirPending: ({})
   // Native "new folder" REDOS in flight -> completion callback (see the
   // undo/redo "started vs finished" fix below, next to pushUndo()). Separate
@@ -657,7 +660,7 @@ Item {
       // absolute paths captured HERE (not inside the closures
       // below) -- NavState.currentPath may have changed by the time
       // the user presses undo, much later.
-      var origPaths = names.map(function (n) { return Utils.joinPath(NavState.currentPath, n) })
+      var origPaths = names.map(function (n) { return pathFor(n) })
       var label = names.length === 1 ? "delete \"" + names[0] + "\"" : "delete " + names.length + " items"
       runNativeTrash(origPaths, "", function (completed) {
         // The undo is only registered if the send confirmed success, and
@@ -680,6 +683,56 @@ Item {
         })
       })
     }
+  }
+
+  // --- DuplicateFinderOps ---
+
+  // DuplicateFinder is QML_ELEMENT (one scan owned by one caller), unlike
+  // the QML_SINGLETON backend services used elsewhere in this file --
+  // ActionEngine is the natural single owner (it already owns every other
+  // long-running native op).
+  Backend.DuplicateFinder {
+    id: duplicateFinder
+    onProgress: function (n) { DuplicatesState.filesScanned = n }
+    onFinished: function (groups) {
+      DuplicatesState.groups = groups
+      DuplicatesState.scanning = false
+    }
+  }
+
+  function startDuplicateFinder(path) {
+    if (!path) return
+    DuplicatesState.reset(path)
+    DialogsState.duplicateFinderOpen = true
+    duplicateFinder.scan(path, NavState.showHidden)
+  }
+
+  function cancelDuplicateFinder() {
+    duplicateFinder.cancel()
+    DuplicatesState.scanning = false
+    DialogsState.duplicateFinderOpen = false
+  }
+
+  function commitDuplicateTrash() {
+    var paths = Object.keys(DuplicatesState.selected)
+    if (paths.length === 0) return
+    var label = paths.length === 1 ? "delete 1 duplicate" : "delete " + paths.length + " duplicates"
+    DialogsState.duplicateFinderOpen = false
+    // Same native-trash + undo template as confirmDelete()'s "send to
+    // trash" branch above -- undo restores exactly the items that really
+    // finished, not the full requested batch (P1-1 pattern).
+    runNativeTrash(paths, "", function (completed) {
+      var donePaths = completed.map(function (p) { return p.src })
+      var doneLabel = donePaths.length === paths.length ? label
+        : (donePaths.length + " of " + paths.length + " duplicates deleted")
+      pushUndo(doneLabel, function (onSettled) {
+        return runNativeRestore(donePaths, "", onSettled)
+      }, function (onSettled) {
+        return runNativeTrash(donePaths, "", onSettled)
+      })
+      navController.refresh()
+      NavState.refreshTick += 1
+    })
   }
 
   // --- ClipboardOps ---
@@ -758,7 +811,7 @@ Item {
       var isCut = ClipboardState.clipboardMode === "cut"
       var pairs = sources.map(function (src) {
         var name = src.substring(src.lastIndexOf("/") + 1)
-        return { src: src, dest: Utils.joinPath(NavState.currentPath, name) }
+        return { src: src, dest: pathFor(name) }
       })
       var busyVerb = isCut ? "Moving " : "Copying "
       var busyLabel = pairs.length === 1
@@ -1024,7 +1077,7 @@ Item {
     // folders -- simpler than two different chainCmds branches.
     var flag = ChmodState.chmodRecursive ? "-R " : ""
     var cmds = ChmodState.chmodNames.map(function (n) {
-      return "chmod " + flag + mode + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
+      return "chmod " + flag + mode + " -- " + Util.shellQuote(pathFor(n))
     })
     var label = ChmodState.chmodNames.length === 1
       ? "Setting permissions for \"" + ChmodState.chmodNames[0] + "\"…"
@@ -1040,7 +1093,7 @@ Item {
       var undoLabel = names.length === 1 ? "permissions on \"" + names[0] + "\"" : "permissions on " + names.length + " items"
       pushUndo(undoLabel, function (onSettled) {
         var undoCmds = names.filter(function (n) { return !!originalModes[n] }).map(function (n) {
-          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(Utils.joinPath(NavState.currentPath, n))
+          return "chmod " + originalModes[n] + " -- " + Util.shellQuote(pathFor(n))
         })
         if (undoCmds.length === 0) return false
         return runAction(chainCmds(undoCmds), undefined, onSettled)
@@ -1063,9 +1116,9 @@ Item {
   function makeLinkFor(entry) {
     if (ArchiveState.inArchive) return
     if (!entry) return
-    var target = Utils.joinPath(NavState.currentPath, entry.name)
+    var target = pathFor(entry.name)
     var linkName = "Link to " + entry.name
-    var linkPath = Utils.joinPath(NavState.currentPath, linkName)
+    var linkPath = pathFor(linkName)
     // The undo is only registered if "ln -s" confirmed success -- before it was
     // registered blindly, so if a file with the name
     // "Link to X" already existed (ln without -f fails silently in that case), a later
@@ -1125,7 +1178,7 @@ Item {
     var indices = (SelectionState.isSelected(index) && SelectionState.selectedIndices.length > 1) ? SelectionState.selectedIndices : [index]
     var paths = indices
       .filter(function (i) { return i >= 0 && i < NavState.visibleEntries.length })
-      .map(function (i) { return Utils.joinPath(NavState.currentPath, NavState.visibleEntries[i].name) })
+      .map(function (i) { return pathFor(NavState.visibleEntries[i].name) })
     var data = {}
     data["text/uri-list"] = paths.map(function (p) { return Util.fileUrl(p) }).join("\r\n")
     return data
@@ -1169,7 +1222,7 @@ Item {
     }
     var destPaths = ClipboardState.clipboardPaths.map(function (src) {
       var name = src.substring(src.lastIndexOf("/") + 1)
-      return Utils.joinPath(NavState.currentPath, name)
+      return pathFor(name)
     })
     // NATIVE conflict detection: FileOperations.existingPaths
     // (synchronous stat) instead of a `test -e` via shell. Same observable
@@ -1259,7 +1312,7 @@ Item {
     }
     ConflictState.pendingCompress = { archiveName: archiveName, cmd: cmd, total: entries.length }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
-    if (Backend.FileOperations.existingPaths([Utils.joinPath(NavState.currentPath, archiveName)]).length > 0)
+    if (Backend.FileOperations.existingPaths([pathFor(archiveName)]).length > 0)
       ConflictState.compressConflictOpen = true
     else
       actionEngine.runPendingCompress()
@@ -1278,8 +1331,8 @@ Item {
     var pairs = Utils.bulkRenameNames(entries, pattern, DialogsState.bulkRenameFind, DialogsState.bulkRenameReplace).map(function (n) {
       return {
         oldName: n.oldName, newName: n.newName,
-        oldPath: Utils.joinPath(NavState.currentPath, n.oldName),
-        newPath: Utils.joinPath(NavState.currentPath, n.newName)
+        oldPath: pathFor(n.oldName),
+        newPath: pathFor(n.newName)
       }
     })
     // Validate the WHOLE batch upfront, before any conflict check or
@@ -1325,7 +1378,7 @@ Item {
 
   function extractHere(entry) {
     var ext = Utils.extOf(entry.name)
-    var path = Util.shellQuote(Utils.joinPath(NavState.currentPath, entry.name))
+    var path = Util.shellQuote(pathFor(entry.name))
     var dir = Util.shellQuote(NavState.currentPath)
     var cmd, listCmd
     // All force overwrite (-o/-y/-o+) -- needed so that
@@ -1380,8 +1433,8 @@ Item {
     var oldName = NavState.visibleEntries[index].name
     newName = newName.trim()
     if (!newName || newName === oldName) return
-    var oldPath = Utils.joinPath(NavState.currentPath, oldName)
-    var newPath = Utils.joinPath(NavState.currentPath, newName)
+    var oldPath = pathFor(oldName)
+    var newPath = pathFor(newName)
     ConflictState.pendingRename = { oldPath: oldPath, newPath: newPath }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (Backend.FileOperations.existingPaths([newPath]).length > 0) ConflictState.renameConflictOpen = true
@@ -1400,7 +1453,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = Utils.joinPath(NavState.currentPath, name)
+    var path = pathFor(name)
     ConflictState.pendingNewFile = { path: path, name: name }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (Backend.FileOperations.existingPaths([path]).length > 0) ConflictState.newFileConflictOpen = true
@@ -1412,7 +1465,7 @@ Item {
     EditModeState.creatingFile = false
     name = name.trim()
     if (!name) return
-    var path = Utils.joinPath(NavState.currentPath, name)
+    var path = pathFor(name)
     ConflictState.pendingNewFolder = { path: path, name: name }
     // NATIVE conflict (BUG-01): existingPaths instead of `test -e` via shell.
     if (Backend.FileOperations.existingPaths([path]).length > 0) ConflictState.newFolderConflictOpen = true
@@ -1466,7 +1519,7 @@ Item {
       // LISTING -- list_raw above -- is still shell: that is not conflict
       // detection and is out of BUG-01's scope.)
       var conflicts = Backend.FileOperations.existingPaths(names.map(function (n) {
-        return Utils.joinPath(NavState.currentPath, n)
+        return pathFor(n)
       })).map(function (p) { return p.substring(p.lastIndexOf("/") + 1) })
       if (conflicts.length === 0) {
         actionEngine.runPendingExtract()

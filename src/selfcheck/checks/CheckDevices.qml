@@ -59,5 +59,43 @@ QtObject {
           done(l !== undefined && l !== null && typeof l.length === "number",
                "Backend.NetworkMounts.list() -> " + (l ? l.length : "null") + " entries")
         })
+
+        // Native Backend.LocalMounts.list() (V1.2, replaces list-mounts.sh's
+        // findmnt+lsblk). Every real Linux machine running this has SOME
+        // root filesystem mounted at "/" -- unlike asserting a specific
+        // removable drive (machine-dependent), this is a real, portable
+        // assertion: the native UDisks2 path must find it, label it
+        // "System (/)" exactly like the retired script did, and report a
+        // real fstype.
+        sc.add("Native local mounts listing (LocalMounts, V1.2) includes the root filesystem", function (done) {
+          var l = Backend.LocalMounts.list()
+          if (!l || typeof l.length !== "number") { done(false, "LocalMounts.list() didn't return an array"); return }
+          var root = null
+          for (var i = 0; i < l.length; i++) if (l[i].path === "/") root = l[i]
+          var ok = !!root && root.mounted === true && root.label === "System (/)" && !!root.fstype
+          done(ok, ok ? "root fs found: " + JSON.stringify(root) : (l.length + " entries, root missing/wrong: " + JSON.stringify(l)))
+        })
+
+        // GetBlockDevices()'s enumeration order (UDisks2's own internal
+        // object order) has no relation to mount time -- a removable drive
+        // plugged in mid-session could register its D-Bus object before
+        // the system disk's, landing ABOVE "System (/)"/other fixed drives
+        // in the sidebar (reproduced live: josema plugged in a USB, it
+        // appeared first). LocalMounts.cpp's mountRank() sorts explicitly;
+        // this asserts the invariant that fix guards -- no removable entry
+        // may precede any fixed (non-removable) one. Vacuously true (and
+        // still meaningful to run) on a machine/CI with no removable drive
+        // attached; only a real violation of the ordering fails it.
+        sc.add("LocalMounts.list() orders fixed drives before removable ones (V1.2 ordering regression)", function (done) {
+          var l = Backend.LocalMounts.list()
+          if (!l || typeof l.length !== "number") { done(false, "LocalMounts.list() didn't return an array"); return }
+          var sawRemovable = false, ok = true, detail = ""
+          for (var i = 0; i < l.length; i++) {
+            if (l[i].removable) { sawRemovable = true }
+            else if (sawRemovable) { ok = false; detail = "fixed entry '" + l[i].label + "' appeared after a removable one: " + JSON.stringify(l); break }
+          }
+          done(ok, ok ? (l.length + " entries, order OK" + (sawRemovable ? " (includes a removable drive)" : " (no removable drive attached to test against)"))
+                      : detail)
+        })
   }
 }

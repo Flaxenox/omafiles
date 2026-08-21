@@ -18,7 +18,14 @@ Item {
   property Item tabOps: null
 
   function refreshMounts() {
-    mountsProc.start([Paths.resourceDir + "/scripts/runtime/list-mounts.sh"])
+    // NATIVE enumeration of local drives (V1.2 code-quality pass):
+    // LocalMounts.list() replaces list-mounts.sh's findmnt+lsblk (3
+    // subprocess forks) with UDisks2 D-Bus calls -- same synchronous
+    // contract as refreshNetworkMounts() below. See backend/LocalMounts.h
+    // for why this doesn't reintroduce the QStorageInfo limitation
+    // (unmounted removable devices) the script was originally kept for.
+    MountsState.mounts = Backend.LocalMounts.list()
+    _ensureCurrentPathMounted()
   }
 
   function refreshNetworkMounts() {
@@ -123,14 +130,6 @@ Item {
     }
     mountIsoProc.tabIndex = TabsState.activeTabIndex
     mountIsoProc.start(["bash", Paths.resourceDir + "/scripts/runtime/mount-iso.sh", Utils.joinPath(NavState.currentPath, entry.name)])
-  }
-
-  Backend.ProcessRunner {
-    id: mountsProc
-    onFinished: function (result) {
-      MountsState.mounts = Utils.parseMounts(result.stdout)
-      _ensureCurrentPathMounted()
-    }
   }
 
   // Req 4: if the removable/external drive you were browsing is

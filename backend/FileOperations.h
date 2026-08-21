@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
+#include <QVariantMap>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -73,6 +74,25 @@ public:
   // `stat -c%a -- ...` line that would blow up ARG_MAX (BUG-03, Hardening-2).
   // Follows symlinks, just as `stat -c%a` did. Synchronous.
   Q_INVOKABLE QStringList octalModes(const QStringList &paths) const;
+
+  // Native replacement for `stat -c "%A %a\t%U:%G\t%y" -- path` (Properties
+  // panel, single entry). lstat (does NOT follow symlinks -- verified
+  // against GNU stat's own default: a symlink argument reports the link's
+  // own type/mode, not the target's, unless -L is passed). Returns an
+  // empty map if the lstat fails. Synchronous: a single lstat +
+  // getpwuid/getgrgid, same class of cost as the already-synchronous
+  // octalModes()/existingPaths() above.
+  Q_INVOKABLE QVariantMap statInfo(const QString &path) const;
+
+  // Native replacement for `du -sh -- path` (Properties panel, single
+  // folder). ASYNC, unlike totalSize() above: a full recursive tree walk
+  // of a large folder or one on a slow disk can take real time, which is
+  // exactly why the Properties dialog for a single folder used to shell
+  // out here instead of calling totalSize() directly (see
+  // logic/PropertiesLoader.qml). `requestId` is echoed back on
+  // dirSizeReady so a stale reply for a folder the user has since
+  // navigated away from can be told apart from the current request.
+  Q_INVOKABLE void requestDirSize(quint64 requestId, const QString &path);
 
   // Moves `source` to `destination` (the FULL destination path). Tries an
   // atomic rename (same filesystem); if it crosses disks, copies +
@@ -159,6 +179,8 @@ signals:
   // shares this one singleton.
   void trashRootsReady(quint64 requestId, const QStringList &roots);
   void trashInfoReady(quint64 requestId, const QVariantList &info);
+  // Answer to requestDirSize() above.
+  void dirSizeReady(quint64 requestId, qint64 bytes);
   // Progress by BYTES of a copy/move in progress: `done`
   // = bytes copied of the current item, `total` = size of the item. The
   // consumer (ActionEngine) aggregates over the batch. It was a percentage before.

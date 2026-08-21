@@ -76,6 +76,14 @@ Item {
     Backend.JsonStore.read(Paths.networkProfilesFile)
   }
 
+  function loadUiPrefs() {
+    Backend.JsonStore.read(Paths.uiPrefsFile)
+  }
+
+  function saveUiPrefs() {
+    _saveJson(Paths.uiPrefsFile, { viewMode: ViewState.mode, cellWidth: ViewState.cellWidth })
+  }
+
   // A single delivery point for the four reads: JsonStore is a
   // singleton, so loaded() is dispatched by `path`. `data` already comes
   // parsed from C++ (JS object/array) or undefined if the file does not
@@ -118,7 +126,33 @@ Item {
       } else if (path === Paths.networkProfilesFile) {
         BookmarksState.networkProfilesLoaded = true
         BookmarksState.networkProfiles = Array.isArray(parsed) ? parsed : []
+      } else if (path === Paths.uiPrefsFile) {
+        if (parsed && (parsed.viewMode === "grid" || parsed.viewMode === "list"))
+          ViewState.mode = parsed.viewMode
+        if (parsed && typeof parsed.cellWidth === "number") ViewState.setCellWidth(parsed.cellWidth)
+        ViewState.loaded = true
       }
     }
+  }
+
+  // Saves any time the mode or cell size changes after the restored value
+  // has been delivered (the `loaded` guard keeps ViewState's own defaults
+  // from overwriting ui-prefs.json before loadUiPrefs()'s async read
+  // arrives). Centralized here rather than at each call site (keyboard
+  // shortcut / command palette / nav-bar button / Ctrl+scroll) so those
+  // all stay plain ViewState.toggleMode()/setCellWidth() one-liners.
+  Connections {
+    target: ViewState
+    function onModeChanged() { if (ViewState.loaded) saveUiPrefs() }
+    // Debounced (unlike mode, a rare toggle): Ctrl+scroll can fire this
+    // many times a second while the user is actively resizing, and each
+    // save is a synchronous disk write.
+    function onCellWidthChanged() { if (ViewState.loaded) _cellWidthSaveDebounce.restart() }
+  }
+
+  Timer {
+    id: _cellWidthSaveDebounce
+    interval: 400
+    onTriggered: saveUiPrefs()
   }
 }

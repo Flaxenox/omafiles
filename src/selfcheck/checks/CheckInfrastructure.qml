@@ -2,6 +2,7 @@ import QtQuick
 import QtMultimedia
 import Omafiles.Backend as Backend
 import "../../../state"
+import "../../../panels"
 import "../../../shared/Utils.js" as Utils
 
 // Domain checks extracted from app/SelfCheck.qml (_register).
@@ -326,6 +327,48 @@ QtObject {
                                  + " | audio: playing=" + audOk + " err='" + audErr + "'")
             })
           })
+        })
+
+        // V1.2 startup audit (docs/audits/V1_2_STARTUP_PERFORMANCE_REPORT.md):
+        // guards the fix itself, not just that playback still works (the
+        // test above already covers that). PreviewPanel.qml's Video/
+        // MediaPlayer used to be constructed unconditionally -- ~900ms of
+        // QtMultimedia backend init on EVERY launch, regardless of whether
+        // the user ever previews a video/audio file. videoLoader/
+        // audioLoader now defer that construction until isVideoEntry/
+        // isAudioEntry first go true, and latch active permanently once
+        // touched (so switching away to a non-media file doesn't tear the
+        // player down and re-pay the cost on the next preview). Isolated
+        // instantiation is legitimate here (no `required` properties, no
+        // host-injection id-chain -- same reasoning as the CursorSurface
+        // test in CheckPanels.qml).
+        sc.add("PreviewPanel: video/audio MediaPlayer loaders stay inactive until first touched, then latch (V1.2 startup regression)", function (done) {
+          var comp = Qt.createComponent(Qt.resolvedUrl("../../../panels/PreviewPanel.qml"))
+          if (comp.status === Component.Error) { done(false, comp.errorString()); return }
+          var obj = comp.createObject(sc)
+          if (!obj) { done(false, "createObject returned null"); return }
+
+          var neitherActiveAtStart = !obj.videoLoaderActive && !obj.audioLoaderActive
+
+          obj.isVideoEntry = true
+          var videoActivatesOnTouch = obj.videoLoaderActive === true
+          var audioStillInactive = obj.audioLoaderActive === false
+
+          obj.isVideoEntry = false
+          var videoStaysLatchedAfterLeaving = obj.videoLoaderActive === true
+
+          obj.isAudioEntry = true
+          var audioActivatesOnTouch = obj.audioLoaderActive === true
+
+          obj.destroy()
+
+          var pass = neitherActiveAtStart && videoActivatesOnTouch && audioStillInactive
+            && videoStaysLatchedAfterLeaving && audioActivatesOnTouch
+          done(pass, pass
+            ? "both loaders start inactive, activate only on first isXEntry=true, and latch active afterward"
+            : "neitherActiveAtStart=" + neitherActiveAtStart + " videoActivatesOnTouch=" + videoActivatesOnTouch
+              + " audioStillInactive=" + audioStillInactive + " videoStaysLatchedAfterLeaving=" + videoStaysLatchedAfterLeaving
+              + " audioActivatesOnTouch=" + audioActivatesOnTouch)
         })
   }
 }

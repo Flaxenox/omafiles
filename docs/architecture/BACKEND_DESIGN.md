@@ -121,8 +121,11 @@ justified list. The rule for adding backend types vs. keeping a script: if
 `QFileInfo`/`QMimeDatabase`/`QStorageInfo`/a small QProcess wrapper can do it
 without linking a large native library (`libarchive`, `libblkid`,
 `libavformat`, ...), it belongs in `backend/`, not in a new script.
-`MimeResolver` and `NetworkMounts` are the two most recent examples of
-scripts retired this way (`open-with-list.sh`, `list-network-mounts.sh`).
+`MimeResolver`, `NetworkMounts`, and `LocalMounts` are the most recent
+examples of scripts retired this way (`open-with-list.sh`,
+`list-network-mounts.sh`, `list-mounts.sh` -- the last one via UDisks2
+D-Bus calls, not `libblkid`/`libudev`, since the running UDisks2 service
+already exposes unmounted removable devices too).
 
 ---
 

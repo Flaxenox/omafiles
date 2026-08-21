@@ -83,46 +83,38 @@ Item {
     PropertiesState.propertiesEntry = entry
     PropertiesState.propertiesSize = entry.type === "dir" ? "" : Utils.formatSize(entry.size)
     PropertiesState.propertiesSizeLoading = entry.type === "dir"
-    PropertiesState.propertiesPerms = ""
-    PropertiesState.propertiesOwner = ""
-    PropertiesState.propertiesMtime = ""
     PropertiesState.propertiesOpen = true
-    PropertiesState._propertiesStatOwner = PropertiesState.propertiesRequestId
-    propertiesStatProc.start(["stat", "-c", "%A %a\t%U:%G\t%y", "--", path])
-    // Deliberately does NOT touch propertiesDuProc if entry is not a folder
-    // (the size is already known without a process). A previous "du" of a
-    // folder may keep running in that case -- that's why the
+
+    // NATIVE stat (BUG-03-style): a single lstat + getpwuid/getgrgid
+    // instead of shelling out to `stat`. Synchronous -- same cost class as
+    // octalModes()/existingPaths(), which this codebase already calls
+    // synchronously elsewhere.
+    var info = Backend.FileOperations.statInfo(path)
+    PropertiesState.propertiesPerms = info.perms || ""
+    PropertiesState.propertiesOwner = info.ownerGroup || ""
+    PropertiesState.propertiesMtime = info.mtime || ""
+
+    // Deliberately does NOT touch requestDirSize if entry is not a folder
+    // (the size is already known without a native call). A previous dir-size
+    // request may still be in flight in that case -- that's why the
     // _propertiesDuOwner guard below is essential, not only for
     // when it IS re-launched.
     if (entry.type === "dir") {
       PropertiesState._propertiesDuOwner = PropertiesState.propertiesRequestId
-      propertiesDuProc.start(["du", "-sh", "--", path])
+      Backend.FileOperations.requestDirSize(PropertiesState.propertiesRequestId, path)
     }
   }
 
-  Backend.ProcessRunner {
-    id: propertiesStatProc
-    onFinished: function (result) {
-      // Discards the response if the user already switched to another item
-      // while this "stat" was in flight (see propertiesRequestId).
-      if (PropertiesState._propertiesStatOwner !== PropertiesState.propertiesRequestId) return
-      var parts = String(result.stdout || "").trim().split("\t")
-      PropertiesState.propertiesPerms = parts[0] || ""
-      PropertiesState.propertiesOwner = parts[1] || ""
-      PropertiesState.propertiesMtime = parts[2] || ""
-    }
-  }
-
-  Backend.ProcessRunner {
-    id: propertiesDuProc
-    onFinished: function (result) {
-      // Same guard as propertiesStatProc -- this is the one that really
-      // matters: a "du" of a large folder can take seconds, and
-      // without this its late result would overwrite the size of the item the
-      // user is looking at now, even though it no longer has anything to do with
-      // the folder that was being measured.
-      if (PropertiesState._propertiesDuOwner !== PropertiesState.propertiesRequestId) return
-      PropertiesState.propertiesSize = String(result.stdout || "").split("\t")[0] || ""
+  Connections {
+    target: Backend.FileOperations
+    function onDirSizeReady(requestId, bytes) {
+      // Same guard the old propertiesDuProc had: a recursive size walk of a
+      // large folder can take real time, and without this its late result
+      // would overwrite the size of the item the user is looking at now,
+      // even though it no longer has anything to do with the folder that
+      // was being measured.
+      if (PropertiesState._propertiesDuOwner !== requestId) return
+      PropertiesState.propertiesSize = Utils.formatSize(bytes)
       PropertiesState.propertiesSizeLoading = false
     }
   }

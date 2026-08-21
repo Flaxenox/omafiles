@@ -46,6 +46,33 @@ Item {
     searchOps.exitSearch() // searching=false, cancels, clears, refreshes, deselects
   }
 
+  // Set around the field's OWN Up/Down handling below so the Connections
+  // just under this don't mistake the search field's own result
+  // navigation for "the user clicked something else."
+  property bool _selfSelect: false
+
+  // Real fix for "click something else with an empty search -> close it":
+  // onActiveFocusChanged further down only fires if Qt's keyboard focus
+  // actually MOVES away from the field, but clicking a file row, a sidebar
+  // bookmark/mount, or a breadcrumb segment never calls forceActiveFocus()
+  // on its own MouseArea, so the field keeps activeFocus regardless and
+  // that handler never fires. Selection changing (a row was clicked) or
+  // the path changing (navigated away) are the two concrete signals that
+  // "something else" actually happened, keyboard focus notwithstanding.
+  Connections {
+    target: SelectionState
+    function onSelectedIndexChanged() {
+      if (sb._selfSelect) return
+      if (NavState.searching && NavState.searchQuery.length === 0) sb.collapse()
+    }
+  }
+  Connections {
+    target: NavState
+    function onCurrentPathChanged() {
+      if (NavState.searching && NavState.searchQuery.length === 0) sb.collapse()
+    }
+  }
+
   // Field background -- only visible when expanded (at rest: only the magnifier).
   // Same radius as the rest of the app's controls (TextField/Button use
   // Style.cornerRadius = Hyprland's decoration:rounding), not a round
@@ -108,11 +135,21 @@ Item {
         event.accepted = true
       } else if (event.key === Qt.Key_Down) {
         var d = Math.min(NavState.visibleEntries.length - 1, SelectionState.selectedIndex + 1)
-        if (d >= 0) { sb.SelectionState.selectOnly(d); if (sb.list) sb.list.positionViewAtIndex(d, ListView.Contain) }
+        if (d >= 0) {
+          sb._selfSelect = true
+          sb.SelectionState.selectOnly(d)
+          sb._selfSelect = false
+          if (sb.list) sb.list.positionViewAtIndex(d, ListView.Contain)
+        }
         event.accepted = true
       } else if (event.key === Qt.Key_Up) {
         var u = Math.max(0, SelectionState.selectedIndex - 1)
-        if (NavState.visibleEntries.length > 0) { sb.SelectionState.selectOnly(u); if (sb.list) sb.list.positionViewAtIndex(u, ListView.Contain) }
+        if (NavState.visibleEntries.length > 0) {
+          sb._selfSelect = true
+          sb.SelectionState.selectOnly(u)
+          sb._selfSelect = false
+          if (sb.list) sb.list.positionViewAtIndex(u, ListView.Contain)
+        }
         event.accepted = true
       }
     }

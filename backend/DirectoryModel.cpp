@@ -5,6 +5,8 @@
 #include <QRunnable>
 #include <QThreadPool>
 
+#include "StartupTrace.h"
+
 #include <algorithm>
 
 #include <dirent.h>
@@ -350,6 +352,13 @@ void DirectoryModel::apply(Result result, quint64 generation) {
     m_error = result.error;
     emit errorChanged();
   }
+  // V1.2 startup audit: the FIRST of these to fire after launch is the
+  // initial directory listing becoming visible -- see
+  // docs/audits/V1_2_STARTUP_PERFORMANCE_REPORT.md. Every apply() logs (not
+  // just the first) since this instance serves every DirLister (active tab,
+  // background tabs, trash); OMAFILES_STARTUP_TRACE=1 runs are single-window
+  // fresh launches, so in practice the first line IS the initial listing.
+  startupTrace("DirectoryModel::apply (a listing became visible)");
   emit listed();
 }
 

@@ -92,7 +92,7 @@ Item {
       if (root._pendingScrollIndex >= 0) {
         list.positionAtIndexWithOffset(root._pendingScrollIndex, root._pendingScrollOffset)
       } else if (root._pendingScrollY >= 0) {
-        list.contentY = root._pendingScrollY
+        list.setContentY(root._pendingScrollY)
       }
     }
     root._pendingScrollY = -1
@@ -160,7 +160,7 @@ Item {
     // in the previous folder, that scroll position stays fixed even though
     // the new listing has nothing there -- it looks like an empty gap
     // at the very top instead of the first rows.
-    list.contentY = list.originY
+    list.setContentY(list.originY)
     // If this path was already loaded in a background panel (typical when
     // switching tabs by moving the cursor over it), it is painted with that data
     // instantly instead of waiting for listProc to start -- without this a

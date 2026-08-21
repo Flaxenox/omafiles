@@ -15,6 +15,7 @@ QtObject {
     "checks/CheckActions.qml",
     "checks/CheckPanels.qml",
     "checks/CheckSearch.qml",
+    "checks/CheckDuplicates.qml",
     "checks/CheckDevices.qml",
     "checks/CheckIntegration.qml",
     "checks/CheckKeybindings.qml"

@@ -45,7 +45,7 @@ Column {
     text: "DEVICES"
     foreground: Color.menu.text
     fontFamily: Style.font.family
-    fontSize: Style.font.subtitle
+    fontSize: Style.font.subtitle + 1
   }
 
   Item {
@@ -61,8 +61,14 @@ Column {
       OpacityAnimator on opacity { from: 0; to: 1; duration: 120; easing.type: Easing.OutCubic }
       required property var modelData
       readonly property bool isCurrent: root.currentPath === modelData.path
+      // usedFraction is -1 for unmounted entries (nothing to statvfs yet).
+      readonly property real usedFraction: modelData.usedFraction !== undefined ? modelData.usedFraction : -1
+      readonly property bool hasUsage: usedFraction >= 0
+      readonly property real _barHeight: 2
+      readonly property real _barGap: Style.spacing.xxs
+      readonly property real _extraHeight: hasUsage ? (_barHeight + _barGap) : 0
       width: root.width
-      implicitHeight: Style.spacing.controlHeight
+      implicitHeight: Style.spacing.controlHeight + _extraHeight
       foreground: Color.menu.text
       accent: Color.accent
       hasCursor: mountMouse.containsMouse
@@ -89,30 +95,32 @@ Column {
       OpticalGlyph {
         id: mountIcon
         anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: -parent._extraHeight / 2
         anchors.left: parent.left
         anchors.leftMargin: Style.spacing.sm
-        width: Style.font.title
-        height: Style.font.title
+        width: Style.font.title + 1
+        height: Style.font.title + 1
         opacity: parent.modelData.mounted ? 1.0 : 0.5
         text: root.iconForMount ? root.iconForMount(parent.modelData) : ""
         fontFamily: Style.font.family
-        fontSize: Style.font.icon
+        fontSize: Style.font.icon + 1
         color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
       }
 
       Text {
         anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: -parent._extraHeight / 2
         anchors.left: mountIcon.right
         anchors.leftMargin: Style.spacing.xs
         opacity: parent.modelData.mounted ? 1.0 : 0.5
         text: parent.modelData.label
-        font.pixelSize: Style.font.title
+        font.pixelSize: Style.font.title + 1
         font.family: Style.font.family
         font.weight: Font.Medium
         color: parent.isCurrent ? Color.menu.selectedText : Color.menu.text
         elide: Text.ElideRight
         width: root.width - Style.spacing.sm * 2 - mountIcon.width - Style.spacing.xs
-          - (parent.modelData.removable ? Style.font.title + Style.spacing.sm : 0)
+          - (parent.modelData.removable ? Style.font.title + 1 + Style.spacing.sm : 0)
       }
 
       PanelToolTip {
@@ -148,19 +156,20 @@ Column {
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.sm
         anchors.verticalCenter: parent.verticalCenter
-        width: Style.font.title
-        height: Style.font.title
+        anchors.verticalCenterOffset: -parent._extraHeight / 2
+        width: Style.font.title + 1
+        height: Style.font.title + 1
 
         OpticalGlyph {
           anchors.verticalCenter: parent.verticalCenter
           anchors.right: parent.right
           anchors.rightMargin: ejectSlot.hovered ? 0 : 3
-          width: Style.font.title
-          height: Style.font.title
+          width: Style.font.title + 1
+          height: Style.font.title + 1
           visible: !ejectSlot.ejecting
           text: "\u{F01EA}" // nf-md-eject
           fontFamily: Style.font.family
-          fontSize: Style.font.icon
+          fontSize: Style.font.icon + 1
           color: ejectSlot.isCurrent ? Color.menu.selectedText : Color.menu.text
           opacity: ejectSlot.hovered ? 0.95 : Style.emphasis.muted
           Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -170,8 +179,8 @@ Column {
         Item {
           id: ejectSpinner
           anchors.centerIn: parent
-          width: Style.font.icon
-          height: Style.font.icon
+          width: Style.font.icon + 1
+          height: Style.font.icon + 1
           visible: ejectSlot.ejecting
           Rectangle {
             width: 3; height: 3; radius: 1.5
@@ -193,6 +202,35 @@ Column {
           cursorShape: Qt.PointingHandCursor
           enabled: !ejectSlot.ejecting
           onClicked: root.mountEjectRequested(ejectSlot.mount)
+        }
+      }
+
+      // Disk-usage bar: only mounted entries have a real path to statvfs
+      // (see LocalMounts.cpp's usedFraction), so unmounted "click to mount"
+      // rows stay their original height with no bar.
+      Item {
+        id: usageBar
+        readonly property real fraction: Math.max(0, Math.min(1, parent.usedFraction))
+        visible: parent.hasUsage
+        anchors.left: mountIcon.left
+        anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.sm
+        anchors.bottom: parent.bottom
+        height: parent._barHeight
+
+        Rectangle {
+          anchors.fill: parent
+          radius: height / 2
+          color: Color.menu.text
+          opacity: Style.emphasis.muted
+        }
+        Rectangle {
+          anchors.left: parent.left
+          anchors.top: parent.top
+          anchors.bottom: parent.bottom
+          width: parent.width * usageBar.fraction
+          radius: height / 2
+          color: Color.accent
         }
       }
     }
