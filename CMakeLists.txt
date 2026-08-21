@@ -72,6 +72,8 @@ qt_add_qml_module(omafiles-backend
     backend/MediaInfo_Mp4.cpp
     backend/SearchWorker.h
     backend/SearchWorker.cpp
+    backend/DuplicateFinder.h
+    backend/DuplicateFinder.cpp
     backend/MimeResolver.h
     backend/MimeResolver.cpp
     backend/NetworkMounts.h

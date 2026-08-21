@@ -685,6 +685,56 @@ Item {
     }
   }
 
+  // --- DuplicateFinderOps ---
+
+  // DuplicateFinder is QML_ELEMENT (one scan owned by one caller), unlike
+  // the QML_SINGLETON backend services used elsewhere in this file --
+  // ActionEngine is the natural single owner (it already owns every other
+  // long-running native op).
+  Backend.DuplicateFinder {
+    id: duplicateFinder
+    onProgress: function (n) { DuplicatesState.filesScanned = n }
+    onFinished: function (groups) {
+      DuplicatesState.groups = groups
+      DuplicatesState.scanning = false
+    }
+  }
+
+  function startDuplicateFinder(path) {
+    if (!path) return
+    DuplicatesState.reset(path)
+    DialogsState.duplicateFinderOpen = true
+    duplicateFinder.scan(path, NavState.showHidden)
+  }
+
+  function cancelDuplicateFinder() {
+    duplicateFinder.cancel()
+    DuplicatesState.scanning = false
+    DialogsState.duplicateFinderOpen = false
+  }
+
+  function commitDuplicateTrash() {
+    var paths = Object.keys(DuplicatesState.selected)
+    if (paths.length === 0) return
+    var label = paths.length === 1 ? "delete 1 duplicate" : "delete " + paths.length + " duplicates"
+    DialogsState.duplicateFinderOpen = false
+    // Same native-trash + undo template as confirmDelete()'s "send to
+    // trash" branch above -- undo restores exactly the items that really
+    // finished, not the full requested batch (P1-1 pattern).
+    runNativeTrash(paths, "", function (completed) {
+      var donePaths = completed.map(function (p) { return p.src })
+      var doneLabel = donePaths.length === paths.length ? label
+        : (donePaths.length + " of " + paths.length + " duplicates deleted")
+      pushUndo(doneLabel, function (onSettled) {
+        return runNativeRestore(donePaths, "", onSettled)
+      }, function (onSettled) {
+        return runNativeTrash(donePaths, "", onSettled)
+      })
+      navController.refresh()
+      NavState.refreshTick += 1
+    })
+  }
+
   // --- ClipboardOps ---
 
   function copySelected() {

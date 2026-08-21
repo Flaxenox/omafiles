@@ -100,6 +100,8 @@ CursorSurface {
     // as loading the full image at 32px did. imgThumb is the path of the
     // cached thumbnail ("" until it's ready -> the glyph is shown).
     readonly property string myPath: Utils.entryPath(NavState.currentPath, modelData)
+    readonly property string gitStatus: modelData.type === "dir"
+      ? GitStatusState.statusForFolder(myPath) : GitStatusState.statusFor(myPath)
     readonly property bool wantsThumb: Utils.isImage(modelData) || Utils.isPdf(modelData)
       || modelData.name.toLowerCase().slice(-4) === ".svg"
     property string imgThumb: ""
@@ -156,6 +158,7 @@ CursorSurface {
         : (rowContent.vidThumb ? Util.fileUrl(rowContent.vidThumb) : "")
       metaText: hostFileMeta.metaFor(modelData)
       metaTooltip: hostFileMeta.metaTooltipFor(modelData)
+      gitStatus: rowContent.gitStatus
       showNameText: EditModeState.renamingIndex !== index
     }
 

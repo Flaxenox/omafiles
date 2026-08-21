@@ -19,6 +19,8 @@ QtObject {
 
   property bool shortcutsHelpOpen: false
 
+  property bool duplicateFinderOpen: false
+
   property bool notificationHistoryOpen: false
 
   property bool connectServerOpen: false

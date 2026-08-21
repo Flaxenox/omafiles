@@ -125,4 +125,12 @@ Item {
   KeybindingResolver {
     id: keybindingResolver
   }
+
+  // No root/list injection needed either -- fully self-contained (reacts
+  // to NavState.currentPath/refreshTick directly, writes into
+  // GitStatusState). FileRowVisual/FileGridCell read the cache straight
+  // from GitStatusState, no reference to this controller needed.
+  GitStatusBackend {
+    id: gitStatusBackend
+  }
 }

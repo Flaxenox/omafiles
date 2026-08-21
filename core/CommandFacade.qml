@@ -58,6 +58,7 @@ Item {
       { label: "Compress to .tar.gz", enabled: hasSelection, run: function () { actionEngine.compressSelected("tar.gz") } },
       { label: "Compress to .7z", enabled: hasSelection, run: function () { actionEngine.compressSelected("7z") } },
       { label: "Bulk rename...", enabled: SelectionState.selectedIndices.length > 1, run: function () { actionEngine.startBulkRename() } },
+      { label: "Find duplicates here...", run: function () { actionEngine.startDuplicateFinder(NavState.currentPath) } },
       { label: "Permissions...", enabled: hasSelection, run: function () { propertiesLoader.startChmod(SelectionState.selectedEntries()) } },
       { label: "Make link", enabled: !!entry, run: function () { if (entry) actionEngine.makeLinkFor(entry) } },
       { label: "Properties", enabled: hasSelection, run: function () { propertiesLoader.showPropertiesForSelection() } },
@@ -84,7 +85,7 @@ Item {
     }
     if (ArchiveState.inArchive) {
       var archiveBlocked = ["New folder", "New file", "Rename", "Copy", "Cut", "Copy path", "Paste", "Delete",
-        "Compress to .zip", "Compress to .tar.gz", "Compress to .7z", "Bulk rename...", "Permissions...", "Make link", "Properties",
+        "Compress to .zip", "Compress to .tar.gz", "Compress to .7z", "Bulk rename...", "Find duplicates here...", "Permissions...", "Make link", "Properties",
         "Search", "Add to bookmarks", "Open in new tab", "Extract here", "Mount ISO", "Empty trash", "Restore"]
       cmds = cmds.filter(function (c) { return archiveBlocked.indexOf(c.label) < 0 })
     }
@@ -153,6 +154,9 @@ Item {
         var dirFullPath = Utils.joinPath(NavState.currentPath, entries[0].name)
         actions.push({ label: "Open in new tab", action: function () {
           tabOps.openInNewTab(dirFullPath)
+        } })
+        actions.push({ label: "Find duplicates here...", action: function () {
+          actionEngine.startDuplicateFinder(dirFullPath)
         } })
       } else {
         actions.push({ label: "Open with...", action: function () { commandFacade.showOpenWith(entries[0]) } })

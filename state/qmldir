@@ -27,4 +27,6 @@ singleton FileTypeConfig 1.0 FileTypeConfig.qml
 singleton PickerState 1.0 PickerState.qml
 singleton KeyboardDefaults 1.0 KeyboardDefaults.qml
 singleton ViewState 1.0 ViewState.qml
+singleton GitStatusState 1.0 GitStatusState.qml
+singleton DuplicatesState 1.0 DuplicatesState.qml
 

@@ -56,6 +56,22 @@ Item {
     onFocusReturnRequested: list.forceActiveFocus()
   }
 
+  // ---------- Find duplicates ----------
+  DuplicateFinderPanel {
+    anchors.fill: parent
+    open: DialogsState.duplicateFinderOpen
+    scanning: DuplicatesState.scanning
+    filesScanned: DuplicatesState.filesScanned
+    groups: DuplicatesState.groups
+    selected: DuplicatesState.selected
+    selectedCount: DuplicatesState.selectedCount
+    onCloseRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelDuplicateFinder()
+    onCancelRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.cancelDuplicateFinder()
+    onToggleRequested: function (path) { DuplicatesState.toggle(path) }
+    onSelectAllButFirstRequested: DuplicatesState.selectAllButFirstPerGroup()
+    onTrashRequested: if (controllers && controllers.actionEngine) controllers.actionEngine.commitDuplicateTrash()
+  }
+
   // ---------- Connect to server ----------
   ConnectServer {
     id: connectServerDialog

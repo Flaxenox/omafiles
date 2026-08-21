@@ -77,6 +77,10 @@ QtObject {
   // recursive search test.
   property Component _searchFactory: Component { Backend.SearchWorker {} }
 
+  // DuplicateFinder factory (native backend, non-singleton), same role as
+  // _searchFactory above -- for the duplicate-file-finder tests.
+  property Component _dupFinderFactory: Component { Backend.DuplicateFinder {} }
+
   // hostPanelsRow stub for the background panel test: BackgroundPanel reads
   // slotX(index)/slotWidth/height for its geometry. slotWidth/height 0 => the
   // ListView doesn't instantiate delegates (no null visual dependencies).

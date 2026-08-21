@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "GitStatusColors.js" as GitStatusColors
 
 // Visual content of a file/folder row (icon/thumbnail +
 // name + subtitle) -- twelfth component extracted from core,
@@ -41,6 +42,10 @@ Item {
   // Exact value for the subtitle tooltip when the counter is
   // abbreviated (12.3k -> "12,347 items"); "" = no tooltip.
   property string metaTooltip: ""
+  // Git status letter ("M"/"A"/"D"/"U"/"?"), already resolved by the
+  // caller via state/GitStatusState.qml -- "" = clean or not a repo
+  // (no badge). See shared/GitStatusColors.js for the color mapping.
+  property string gitStatus: ""
   // The active panel's rename field occupies this same slot --
   // it hides the name/subtitle but leaves the icon visible, just as
   // "nameCol.visible: root.renamingIndex !== index" did before.
@@ -122,6 +127,23 @@ Item {
       fontFamily: Style.font.family
       fontSize: Style.font.iconLarge
       color: Color.urgent
+    }
+
+    // Git status badge (small colored dot, not a font glyph -- avoids
+    // any Nerd Font glyph-verification step entirely and reads cleanly
+    // at this size). Declared last so it paints on top of the
+    // Image/OpticalGlyph siblings above by declaration order, same
+    // z-order convention already used for the broken-symlink overlay.
+    Rectangle {
+      visible: root.gitStatus.length > 0
+      width: 8
+      height: 8
+      radius: width / 2
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      border.width: 1
+      border.color: Color.background
+      color: GitStatusColors.colorFor(root.gitStatus, Color.urgent, Color.muted)
     }
   }
 

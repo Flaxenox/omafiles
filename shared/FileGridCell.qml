@@ -5,6 +5,7 @@ import Omafiles.Backend as Backend
 import "../shared"
 import "../state"
 import "../shared/Utils.js" as Utils
+import "GitStatusColors.js" as GitStatusColors
 
 // Grid-view delegate (icon/thumbnail on top, name below) -- the grid
 // counterpart of panels/FileListRow.qml. Not a variant of FileRowVisual
@@ -84,6 +85,8 @@ CursorSurface {
     // displayed sourceSize differs (96 here vs 32 there), same
     // Backend.ThumbnailProvider cache, zero backend changes.
     readonly property string myPath: Utils.entryPath(NavState.currentPath, modelData)
+    readonly property string gitStatus: cellSurface.isDir
+      ? GitStatusState.statusForFolder(myPath) : GitStatusState.statusFor(myPath)
     readonly property bool wantsThumb: Utils.isImage(modelData) || Utils.isPdf(modelData)
       || modelData.name.toLowerCase().slice(-4) === ".svg"
     property string imgThumb: ""
@@ -164,6 +167,20 @@ CursorSurface {
         fontFamily: Style.font.family
         fontSize: cellSurface.thumbGlyphSize
         color: Color.urgent
+      }
+
+      // Same badge as FileRowVisual.qml (shared/GitStatusColors.js), scaled
+      // slightly with the cell so it stays legible at larger Ctrl+scroll sizes.
+      Rectangle {
+        visible: cellContent.gitStatus.length > 0
+        width: Math.max(8, cellSurface.thumbSlotSize * 0.12)
+        height: width
+        radius: width / 2
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        border.width: 1
+        border.color: Color.background
+        color: GitStatusColors.colorFor(cellContent.gitStatus, Color.urgent, Color.muted)
       }
     }
 
