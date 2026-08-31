@@ -64,7 +64,7 @@ Item {
           else { if (controllers) controllers.navController.navigateTo(mount.path) }
         }
         onMountEjectRequested: function (mount) { if (controllers) controllers.mountOps.ejectMount(mount) }
-        onNetworkMountOpened: function (mount) { if (controllers) controllers.navController.navigateTo(mount.path) }
+        onNetworkMountOpened: function (mount) { if (controllers) controllers.navController.navigateTo(mount.homePath || mount.path) }
         onConnectRequested: if (controllers) controllers.mountOps.startConnectToServer()
         onFilesDropped: function (drop, destPath) { if (controllers) controllers.actionEngine.handleFilesDropped(drop, destPath) }
         onDropHoverChanged: function (path) { DropHoverState.dropHoverPath = path }
@@ -290,6 +290,23 @@ Item {
             }
           } // end activePanel (Item)
         } // end panelsRow (Item)
+      }
+    }
+
+    // Mouse back/forward side buttons (Qt.BackButton/ForwardButton): the
+    // same history navigation as the nav-bar arrows, Nautilus/Finder-style.
+    // It accepts ONLY those two buttons, so left/right/middle clicks and
+    // the wheel pass straight through to the widgets below. Disabled while
+    // a blocking overlay is open (context menu / dialog / inline edit), so
+    // navigation can't fire behind one.
+    MouseArea {
+      anchors.fill: parent
+      z: 10000
+      enabled: root.opened && !root.hasBlockingOverlay
+      acceptedButtons: Qt.BackButton | Qt.ForwardButton
+      onClicked: function (mouse) {
+        if (mouse.button === Qt.BackButton && controllers) controllers.navController.navBack()
+        else if (mouse.button === Qt.ForwardButton && controllers) controllers.navController.navForward()
       }
     }
 

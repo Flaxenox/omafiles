@@ -55,6 +55,43 @@ QStringList parseMimeAssociations(const QString &filePath, const QStringList &mi
   return results;
 }
 
+// Reads the [Removed Associations] section of a mimeapps.list. Per the XDG
+// spec these desktop IDs must be filtered out of the final association list,
+// regardless of which mimeapps.list/mimeinfo.cache added them.
+QSet<QString> parseRemovedAssociations(const QString &filePath, const QStringList &mimeTypes) {
+  QSet<QString> removed;
+  QFile file(filePath);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    return removed;
+  }
+
+  QTextStream in(&file);
+  bool inRemovedSection = false;
+  while (!in.atEnd()) {
+    QString line = in.readLine().trimmed();
+    if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) continue;
+
+    if (line.startsWith(QLatin1Char('['))) {
+      inRemovedSection = (line == QLatin1String("[Removed Associations]"));
+      continue;
+    }
+
+    if (!inRemovedSection) continue;
+
+    int eqIdx = line.indexOf(QLatin1Char('='));
+    if (eqIdx == -1) continue;
+
+    QString mime = line.left(eqIdx).trimmed();
+    if (mimeTypes.contains(mime)) {
+      QString apps = line.mid(eqIdx + 1).trimmed();
+      const auto ids = apps.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+      for (const QString &id : ids) removed.insert(id);
+    }
+  }
+
+  return removed;
+}
+
 QString findDesktopFile(const QString &id) {
   QStringList dataDirs = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
   for (const QString &dir : dataDirs) {
@@ -122,9 +159,13 @@ QVariantList MimeResolver::getAppsForFile(const QString &path) {
     desktopIds.append(parseMimeAssociations(dir + QLatin1String("/mimeinfo.cache"), typesToCheck));
   }
 
+  // 3. XDG [Removed Associations] from the user mimeapps.list: these desktop
+  //    IDs are excluded no matter which of the sources above listed them.
+  const QSet<QString> removed = parseRemovedAssociations(userMimeApps, typesToCheck);
+
   QSet<QString> seen;
   for (const QString &id : desktopIds) {
-    if (id.isEmpty() || seen.contains(id)) continue;
+    if (id.isEmpty() || seen.contains(id) || removed.contains(id)) continue;
     seen.insert(id);
 
     QString desktopPath = findDesktopFile(id);
@@ -209,5 +250,8 @@ void MimeResolver::launchApp(const QString &desktopId, const QString &path) {
     return a.startsWith(QLatin1Char('%'));
   }), args.end());
 
-  QProcess::startDetached(program, args);
+  qint64 pid = 0;
+  if (!QProcess::startDetached(program, args, QString(), &pid)) {
+    qWarning("launchApp: could not start '%s'", qPrintable(program));
+  }
 }

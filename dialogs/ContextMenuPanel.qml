@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 
@@ -44,6 +45,7 @@ Item {
     z: 15
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     onClicked: root.closeRequested()
+    onWheel: function(wheel) { wheel.accepted = true }
   }
 
   BorderSurface {
@@ -51,67 +53,86 @@ Item {
     visible: root.open
     x: root.menuX
     y: root.menuY
-    // Minimum width 200 (like before) so a menu with few short
-    // actions ("Open"/"Delete"...) does not look scrawny, but
-    // it grows with the real content -- previously it was a fixed 200, and a
-    // long label ("Open (extracts a temp copy)", the "Open" of a
-    // file inside an archive) overflowed the box.
     width: Math.max(200, root.maxLabelWidth + Style.spacing.sm * 2 + contentLeftInset + contentRightInset)
-    height: contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset
+    height: Math.min(contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset, root.height - root.menuY - Style.spacing.lg)
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
-    // popupPadding (14): the token dedicated to popups, like the rest of the
-    // system surfaces, instead of the sm (4) that stuck the items to the
-    // edge and made the menu look tighter than the others.
     padding: Style.spacing.popupPadding
     z: 20
 
-    Column {
-      id: contextMenuColumn
-      anchors.fill: parent
-      anchors.topMargin: contextMenu.contentTopInset
-      anchors.rightMargin: contextMenu.contentRightInset
-      anchors.bottomMargin: contextMenu.contentBottomInset
-      anchors.leftMargin: contextMenu.contentLeftInset
-      spacing: Style.spacing.sm
+      Flickable {
+        id: menuFlickable
+        anchors.fill: parent
+        anchors.topMargin: contextMenu.contentTopInset
+        anchors.rightMargin: contextMenu.contentRightInset
+        anchors.bottomMargin: contextMenu.contentBottomInset
+        anchors.leftMargin: contextMenu.contentLeftInset
+        clip: true
+        contentHeight: contextMenuColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
 
-      Repeater {
-        model: root.actions
+        Column {
+          id: contextMenuColumn
+          width: parent.width
+          spacing: Style.spacing.sm
 
-        CursorSurface {
-          required property var modelData
-          readonly property bool actionEnabled: modelData.enabled !== false
-          width: contextMenuColumn.width
-          implicitHeight: Style.spacing.controlHeight
-          foreground: Color.menu.text
-          accent: Color.accent
-          hasCursor: itemMouse.containsMouse && actionEnabled
+          Repeater {
+            model: root.actions
 
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.left: parent.left
-            anchors.leftMargin: Style.spacing.sm
-            text: parent.modelData.label
-            font.pixelSize: Style.font.title
-            font.family: Style.font.family
-            font.weight: Font.Medium
-            color: parent.modelData.destructive ? Color.urgent : (parent.actionEnabled ? Color.menu.text : Qt.darker(Color.menu.text, 1.8))
-          }
+            CursorSurface {
+              required property var modelData
+              readonly property bool actionEnabled: modelData.enabled !== false
+              width: contextMenuColumn.width
+              implicitHeight: Style.spacing.controlHeight
+              foreground: Color.menu.text
+              accent: Color.accent
+              hasCursor: itemMouse.containsMouse && actionEnabled
 
-          MouseArea {
-            id: itemMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            enabled: parent.actionEnabled
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-              root.closeRequested()
-              parent.modelData.action()
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.left: parent.left
+                anchors.leftMargin: Style.spacing.sm
+                text: parent.modelData.label
+                font.pixelSize: Style.font.title
+                font.family: Style.font.family
+                font.weight: Font.Medium
+                color: parent.modelData.destructive ? Color.urgent : (parent.actionEnabled ? Color.menu.text : Qt.darker(Color.menu.text, 1.8))
+              }
+
+              MouseArea {
+                id: itemMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: parent.actionEnabled
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.closeRequested()
+                  parent.modelData.action()
+                }
+              }
             }
           }
         }
       }
+
+      Rectangle {
+        visible: root.open && contextMenuColumn.implicitHeight > menuFlickable.height
+        anchors.top: menuFlickable.top
+        anchors.bottom: menuFlickable.bottom
+        anchors.right: menuFlickable.right
+        width: Style.space(8)
+        color: "transparent"
+
+        Rectangle {
+          readonly property real trackLen: parent.height
+          readonly property real handleLen: Math.max(26, trackLen * (menuFlickable.height / contextMenuColumn.implicitHeight))
+          y: Math.max(0, Math.min(trackLen - handleLen, (trackLen - handleLen) * (menuFlickable.contentY / Math.max(1, contextMenuColumn.implicitHeight - menuFlickable.height))))
+          width: parent.width
+          height: handleLen
+          radius: width / 2
+          color: Util.alpha(Color.foreground, 0.28)
+        }
+      }
     }
   }
-}
