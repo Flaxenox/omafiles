@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Omafiles TUI installer
+# Omafiles — interactive TUI installer (dotfiles/AI-installer style)
 #
-# An interactive, terminal-based installer for Arch Linux (Hyprland / Omarchy):
-#  1. Installs the required packages (pacman).
+#  1. Installs required packages (pacman, optional).
 #  2. Builds Omafiles from source (cmake + ninja).
-#  3. Installs it to ~/.local (no root needed for the app itself).
-#  4. Prompts whether to add the SUPER+SHIFT+F launcher keybinding to the
-#     Omarchy Hyprland keybindings.
+#  3. Installs it to ~/.local.
+#  4. Registers the default file-manager / FileChooser integrations.
+#  5. Asks (arrow-key Yes/No) whether to add the SUPER+SHIFT+F keybinding.
 #
 # Usage:
-#   ./install.sh               interactive (asks before privileged steps)
-#   ./install.sh --yes         non-interactive, accept every default
-#   ./install.sh --skip-build  re-run only the integration/keybinding steps
-#   ./install.sh --uninstall / --uninstall --purge   remove Omafiles (and deps)
+#   ./install.sh                interactive, arrow-key Yes/No controls
+#   ./install.sh --yes          non-interactive, accept every default
+#   ./install.sh --skip-build   reuse an existing build/
+#   ./install.sh --uninstall       remove Omafiles (+ keybinding)
+#   ./install.sh --uninstall --purge   also remove the dependency packages
 #
 # Safe to re-run: every step is idempotent.
 # ---------------------------------------------------------------------------
 set -Eeuo pipefail
 
-RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; CYAN=$'\033[36m'; BOLD=$'\033[1m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+# ── styling ────────────────────────────────────────────────────────────────
+BOLD=$'\033[1m'; DIM=$'\033[2m'; ITAL=$'\033[3m'; REV=$'\033[7m'
+RED=$'\033[31m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; CYAN=$'\033[36m'; MAG=$'\033[35m'; RESET=$'\033[0m'
+CHECK=$'\033[32m✓\033[0m'; CROSS=$'\033[31m✗\033[0m'; SKIP=$'\033[90m–\033[0m'; ARROW=$'\033[36m❯\033[0m'
+
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${REPO_DIR}/build"
 BIN_DIR="${HOME}/.local/bin"
@@ -30,233 +34,228 @@ SKIP_BUILD=0
 UNINSTALL=0
 PURGE_DEPS=0
 
-# ---------------------------------------------------------------------------
-# TUI helpers
-# ---------------------------------------------------------------------------
+# Cursor hide/show (ANSI) so the TUI renders cleanly.
+hide_cursor(){ printf '\033[?25l'; }
+show_cursor(){ printf '\033[?25h'; }
+trap show_cursor EXIT
+
+# ── message helpers ────────────────────────────────────────────────────────
+bark()  { printf '%s\n' "$*"; }
 info()  { printf '%s\n' "${CYAN}==>${RESET} $*"; }
-step()  { printf '\n%s\n' "${BOLD}${CYAN}── $* ──${RESET}"; }
-ok()    { printf '%s\n' "    ${GREEN}✓${RESET} $*"; }
-warn()  { printf '%s\n' "    ${YELLOW}!${RESET} $*" >&2; }
-fail()  { printf '%s\n' "    ${RED}✗${RESET} $*" >&2; }
+ok()    { printf '  %s %s\n' "$CHECK" "$*"; }
+warn()  { printf '  %s %s\n' "${YELLOW}!${RESET}" "$*"; }
+fail()  { printf '  %s %s\n' "$CROSS" "$*"; }
+die()   { printf '%s\n' "${RED}Error:${RESET} $*" >&2; exit 1; }
+have_cmd(){ command -v "$1" >/dev/null 2>&1; }
 
-die() { printf '%s\n' "${RED}Error:${RESET} $*" >&2; exit 1; }
+banner() {
+  hide_cursor
+  printf '%s\n' \
+    "${MAG}   OOOO   M     M      A     FFFFF      I     L      EEEE   SSSS${RESET}" \
+    "${MAG}  O    O  MM   MM     A A    F         I     L     E      S    ${RESET}" \
+    "${MAG}  O    O  M M M M    A   A   FFFF      I     L      EEE    SSS ${RESET}" \
+    "${MAG}  O    O  M  M  M   AAAAAAA  F         I     L     E          S${RESET}" \
+    "${MAG}   OOOO   M     M  A       A F        III    LLLL   EEEE   SSSS${RESET}"
+  printf '%s\n' ""
+  printf '%s\n' "    ${BOLD}${CYAN}Omafiles${RESET} ${DIM}— interactive installer${RESET}"
+  printf '    %s\n' "${DIM}repo:${RESET}    ${BOLD}$REPO_DIR${RESET}"
+  printf '    %s\n' "${DIM}build:${RESET}   ${BOLD}$BUILD_DIR${RESET}"
+  printf '%s\n' ""
+  show_cursor
+}
 
-# Ask a yes/no question with an arrow-key Yes/No selector. Returns 0=yes, 1=no.
-#   confirm "<prompt>" [default]    default is "y" or "n"
+# ── step tracker ───────────────────────────────────────────────────────────
+declare -a _steps=()
+begin_step(){ _steps+=("$1"); }
+run_step(){  # run_step <label> <cmd...>   (uses _run_function / return codes)
+  local label="$1"; shift
+  local idx=$(( ${#_steps_done[@]} + 1 ))
+  printf '%s %s[%s/%s]%s %s%s%s\n' "$ARROW" "$CYAN" "$idx" "${#_steps[@]}" "$RESET" "$BOLD" \
+    "$(printf '%s' "$label" | tr 'A-Z' 'a-z' | sed 's/^./\U&/')" "$RESET" 
+  local start=$SECONDS
+  if "$@"; then
+    printf '\r\033[1A\033[K  %s %s[%s/%s]%s %s %s(%ss)%s\n' "$CHECK" "$CYAN" "$idx" \
+      "${#_steps[@]}" "$RESET" "$label" "${DIM}" "$(( SECONDS-start ))" "$RESET"
+    _steps_done+=("$label")
+  else
+    printf '\r\033[1A\033[K  %s %s[%s/%s]%s %s %s(failed)%s\n' "$CROSS" "$CYAN" "$idx" \
+      "${#_steps[@]}" "$RESET" "$label" "${DIM}" "$RESET"
+    _steps_done+=("$label")
+    return 1
+  fi
+}
+declare -a _steps_done=()
+
+# ── arrow-key Yes/No selector ──────────────────────────────────────────────
+# Prints the prompt and a highlighted [ Yes ] / [ No ] pair. Arrow keys toggle,
+# Enter confirms, y/n are shortcuts. Returns 0=yes, 1=no.
 confirm() {
   local prompt="$1" default="${2:-y}"
-  # Non-interactive: resolve to the default immediately.
   if [[ "$ASSUME_YES" == 1 ]]; then
-    printf '%s → %s\n' "$prompt" "$([ "$default" == y ] && echo Yes || echo No)"
+    printf '  %s %s\n' "$([ "$default" == y ] && printf '%s' "$CHECK" || printf '%s' "$SKIP")" "${DIM}→ $prompt → $([ "$default" == y ] && echo yes || echo no)${RESET}"
     [[ "$default" == [yY] ]] && return 0
     return 1
   fi
 
-  local sel=1   # 0 = No, 1 = Yes
-  [[ "$default" == [nN] ]] && sel=0
-
-  local key reply
-  # Interactive only when stdin is a terminal; otherwise read a line.
+  local sel=1; [[ "$default" == [nN] ]] && sel=0
+  local key dir
+  hide_cursor
+  printf '  %s  ' "$prompt"
+  render_choice "$sel"
   if [[ -t 0 ]]; then
     stty raw -echo 2>/dev/null || stty -icanon -echo 2>/dev/null
-    printf '\r\033[2K%s  ' "$prompt"
-    render_choice "$sel"
     while :; do
-      key=""
-      IFS= read -r -n1 key 2>/dev/null || continue
-      if [[ "$key" == $'\x1b' ]]; then
-        # Escape sequence (arrow keys are ESC [ A/B/C/D).
-        IFS= read -r -n1 _b 2>/dev/null || true   # '['
+      key=""; IFS= read -r -n1 key 2>/dev/null || continue
+      if [[ "$key" == $'\x1b' ]]; then            # ESC [ A/B/C/D arrow keys
+        IFS= read -r -n1 _b 2>/dev/null || true
         IFS= read -r -n1 dir 2>/dev/null || true
-        case "$dir" in
-          C|B) sel=1 ;;   # Right / Down -> Yes
-          A|D) sel=0 ;;   # Left  / Up   -> No
-        esac
+        case "$dir" in C|B) sel=1;; A|D) sel=0;; esac
       elif [[ "$key" == $'\x0a' || "$key" == $'\x0d' || -z "$key" ]]; then
-        break   # Enter (LF/CR) confirms
-      elif [[ "$key" == [yY] ]]; then
-        sel=1
-      elif [[ "$key" == [nN] ]]; then
-        sel=0
+        break                                     # Enter confirms
+      elif [[ "$key" == [yY] ]]; then sel=1
+      elif [[ "$key" == [nN] ]]; then sel=0
       fi
-      printf '\r\033[2K%s  ' "$prompt"
-      render_choice "$sel"
+      printf '\r\033[2K  %s  ' "$prompt"; render_choice "$sel"
     done
     stty sane 2>/dev/null || stty echo icanon 2>/dev/null
-    printf '\r\033[2K■ %s  %s\n' "$prompt" "$([ "$sel" == 1 ] && echo "${GREEN}Yes${RESET}" || echo "${DIM}No${RESET}")"
-  else
+  else                                            # non-TTY: plain line input
+    local ans
     while :; do
-      read -r -p "$prompt [y/N] " reply
-      case "$(printf '%s' "${reply:-$default}" | tr '[:upper:]' '[:lower:]')" in
-        y|yes) sel=1; break ;;
-        n|no)  sel=0; break ;;
-        *) printf '%s\n' "    ${YELLOW}Please answer y or n.${RESET}" ;;
+      read -r -p "" ans
+      case "$(printf '%s' "${ans:-$default}" | tr '[:upper:]' '[:lower:]')" in
+        y|yes) sel=1; break;; n|no) sel=0; break;;
+        *) printf '  %s\n' "${YELLOW}Please answer y or n.${RESET}";;
       esac
     done
   fi
-
+  show_cursor
+  printf '\r\033[2K  %s  %s\n' "$prompt" "$([ "$sel" == 1 ] && printf '%s' "${GREEN}Yes${RESET}" || printf '%s' "${DIM}No${RESET}")"
   [[ "$sel" == 1 ]] && return 0
   return 1
 }
 
-# Draw a Yes/No pair with the selected option highlighted.
 render_choice() {
-  local sel="$1"
-  local yes_txt no_txt
-  if [[ "$sel" == 1 ]]; then
-    yes_txt="\033[7;1m Yes \033[0m"; no_txt="  No  "
-  else
-    yes_txt="  Yes  "; no_txt="\033[7;1m  No  \033[0m"
-  fi
-  printf '%b   %b' "$yes_txt" "$no_txt"
+  local sel="$1" y n
+  if [[ "$sel" == 1 ]]; then y="\033[7;1m Yes \033[0m"; n="  No  "; else y="  Yes  "; n="\033[7;1m  No  \033[0m"; fi
+  printf '%b   %b' "$(printf '%b' "$y")" "$(printf '%b' "$n")"
 }
 
-have_cmd() { command -v "$1" >/dev/null 2>&1; }
-
-# ---------------------------------------------------------------------------
-# Step 1 — dependencies
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Dependency install
+# ──────────────────────────────────────────────────────────────────────────
 install_deps() {
-  step "Step 1: Dependencies"
   if ! have_cmd pacman; then
-    fail "pacman not found — this installer targets Arch Linux. Install the packages"
-    fail "listed in README.md's Dependencies section manually, then re-run."
-    return 1
+    warn "pacman not found — this targets Arch Linux. Install the deps from the README manually."
+    return 0
   fi
-  info "Checking required packages…"
-  local pkgs=(
-    qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject
-    cmake ninja
-  )
+  local pkgs=(qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject cmake ninja)
   local missing=()
-  for p in "${pkgs[@]}"; do
-    pacman -Qi "$p" >/dev/null 2>&1 || missing+=("$p")
-  done
+  for p in "${pkgs[@]}"; do pacman -Qi "$p" >/dev/null 2>&1 || missing+=("$p"); done
   if (( ${#missing[@]} == 0 )); then
-    ok "All required packages already installed."
+    ok "All required packages already installed"
     return 0
   fi
-  printf '%s' "    Missing: ${YELLOW}${missing[*]}${RESET}\n"
-  if ! confirm "Install missing packages with sudo pacman?" "y"; then
-    warn "Skipping dependency install — building may fail without them."
+  printf '  %s Missing packages: %s\n' "${YELLOW}!${RESET}" "${YELLOW}${missing[*]}${RESET}"
+  if ! confirm "Install the missing packages with pacman?" y; then
+    warn "Skipped dependency install — a build may still work."
     return 0
   fi
-  info "Running: sudo pacman -S --needed ${missing[*]}"
-  sudo pacman -S --needed "${missing[@]}" || fail "pacman install failed."
-  ok "Dependencies installed."
+  info "Running: ${DIM}sudo pacman -S --needed ${missing[*]}${RESET}"
+  sudo pacman -S --needed "${missing[@]}" && ok "Dependencies installed"
 }
 
-# ---------------------------------------------------------------------------
-# Step 2 — build
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Build
+# ──────────────────────────────────────────────────────────────────────────
 build() {
-  step "Step 2: Build"
   if [[ "$SKIP_BUILD" == 1 ]]; then
-    info "--skip-build given; assuming an existing build."
-    [[ -f "${BUILD_DIR}/omafiles-standalone" ]] || warn "No binary found at build/. Consider building."
+    [[ -f "$BUILD_DIR/omafiles-standalone" ]] || warn "No binary in build/ (nothing to reuse)."
     return 0
   fi
-  for t in cmake ninja; do
-    have_cmd "$t" || die "Build tool '$t' not found. Install cmake and ninja."
-  done
-  if [[ ! -f "$BUILD_DIR/build.ninja" ]]; then
-    info "Configuring with cmake (Ninja, Release)…"
+  have_cmd cmake || die "cmake not found — install cmake and ninja."
+  have_cmd ninja || die "ninja not found — install cmake and ninja."
+  [[ -f "$BUILD_DIR/build.ninja" ]] || {
+    info "Configuring…"
     cmake -S "$REPO_DIR" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release
-  else
-    info "Build directory already configured."
-  fi
-  info "Compiling… (this may take a few minutes)"
+  }
+  info "Compiling… (may take a few minutes)"
   cmake --build "$BUILD_DIR"
-  ok "Build finished."
+  ok "Build finished"
 }
 
-# ---------------------------------------------------------------------------
-# Step 3 — install
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Install
+# ──────────────────────────────────────────────────────────────────────────
 install_app() {
-  step "Step 3: Install to ~/.local"
-  info "Running: cmake --install ${BUILD_DIR}"
-  cmake --install "$BUILD_DIR" || die "Install failed."
-  if [[ -x "$BIN_DIR/omafiles" ]]; then
-    ok "Installed: $BIN_DIR/omafiles"
-  else
-    warn "Binary not found at expected $BIN_DIR/omafiles — check OMAFILES_BIN_INSTALL_DIR."
-  fi
+  info "Running: ${DIM}cmake --install ${BUILD_DIR}${RESET}"
+  cmake --install "$BUILD_DIR"
+  ok "Installed to ~/.local (${BIN_DIR}/omafiles)"
 }
 
-# ---------------------------------------------------------------------------
-# Step 4 — self-registration integrations
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Integrations (default file manager / FileChooser portal)
+# ──────────────────────────────────────────────────────────────────────────
 integrations() {
-  step "Step 4: Default file-manager integrations"
   local script="${REPO_DIR}/scripts/install-integrations.sh"
   if [[ -x "$script" ]]; then
     info "Registering default file manager, FileManager1 & FileChooser portal…"
-    "$script" "$@" && ok "Integrations set up." || fail "Integration script reported an error."
+    "$script" && ok "Integrations set" || warn "Integration script reported an error."
   else
-    warn "scripts/install-integrations.sh not found — skipping (the app runs it on first launch anyway)."
+    warn "scripts/install-integrations.sh not found — the app runs it on first launch anyway."
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Step 5 — optional Omarchy keybinding
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Keybinding (always interactive)
+# ──────────────────────────────────────────────────────────────────────────
 add_keybinding() {
-  step "Step 5: Omarchy keybinding"
   local bind_file="${HOME}/.config/hypr/bindings.lua"
   local combo="SUPER + SHIFT + F"
   local cmd="omafiles --new-window"
 
   if [[ ! -f "$bind_file" ]]; then
-    warn "No $bind_file (Omarchy bindings) found — not a Hyprland/Omarchy setup? Skipping."
+    info "No Hyprland bindings file found (${bind_file}) — skipping keybinding."
     return 0
   fi
 
   if grep -qF "$combo" "$bind_file" 2>/dev/null; then
-    ok "Keybinding ${combo} is already present in $bind_file."
+    ok "Keybinding ${combo} already present in ${bind_file}"
     return 0
   fi
 
-  if ! confirm "Add a ${combo} keybinding to launch Omafiles in $bind_file?" "y"; then
-    info "Skipping keybinding."
+  info "Optional: bind ${BOLD}${combo}${RESET} → ${DIM}${cmd}${RESET}"
+  if ! confirm "Add the ${combo} launcher keybinding?" y; then
+    info "OK — skipping the keybinding (add it later in ${bind_file})."
     return 0
   fi
 
-  # Prepend an unbind if the combo is already used for something else, so the
-  # new binding overrides it cleanly (hyprland.md rule: unbind before rebind).
+  # Unbind an existing conflicting binding first (hyprland.md rule).
   if grep -qE "SUPER[^,;]*SHIFT[^,;]*F|SHIFT[^,;]*SUPER[^,;]*F" "$bind_file" 2>/dev/null; then
-    printf '\n%s\n' "hl.unbind(\"$combo\")  -- was already bound; overridden for Omafiles" >> "$bind_file"
+    printf '\n%s\n' "hl.unbind(\"$combo\")  -- previously used elsewhere; overridden for Omafiles" >> "$bind_file"
   fi
-
   {
     printf '\n-- Omafiles (added by install.sh)\n'
     printf 'o.bind("%s", "OmaFiles", "%s")\n' "$combo" "$cmd"
   } >> "$bind_file"
-  ok "Appended ${combo} → ${cmd} to $bind_file."
+  ok "Keybinding ${combo} added to ${bind_file}"
 
-  # Apply & validate.
   if have_cmd hyprctl; then
     if hyprctl reload >/dev/null 2>&1; then
-      local errs
-      errs="$(hyprctl configerrors 2>/dev/null | tr -d '\r')"
-      if [[ -z "$errs" || "$errs" =~ ^$ || "$errs" == "config file is good" ]]; then
-        ok "Hyprland reloaded with no config errors."
+      local errs; errs="$(hyprctl configerrors 2>/dev/null | tr -d '\r')"
+      if [[ -z "$errs" || "$errs" =~ ^$ || "$errs" == *"config file is good"* ]]; then
+        ok "Hyprland reloaded clean"
       else
-        warn "Hyprland reported config errors after reload:\n$errs"
+        warn "Hyprland config errors:\n$errs"
       fi
     else
       warn "hyprctl reload failed — is a Hyprland session running?"
     fi
-  else
-    info "hyprctl not found — keybinding will apply on next Hyprland reload/login."
   fi
 }
-
-# ---------------------------------------------------------------------------
-# Uninstall — remove the app, its data, and optionally the dependencies
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Uninstall
+# ──────────────────────────────────────────────────────────────────────────
 uninstall() {
-  step "Uninstall Omafiles"
   local data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
   local state_root="${XDG_STATE_HOME:-$HOME/.local/state}"
   local qml_root="${OMAFILES_QML_INSTALL_DIR:-$HOME/.local/lib/qt6/qml}"
@@ -264,143 +263,131 @@ uninstall() {
   local bind_file="${HOME}/.config/hypr/bindings.lua"
 
   info "Removing the binary, resource tree, icons and integrations…"
-
-  rm -f "${BIN_DIR}/omafiles"
-  rm -rf "${data_root}/omafiles"
-  rm -rf "${state_root}/omafiles"
-  rm -rf "${qml_root}/Omafiles"
+  rm -f  "${BIN_DIR}/omafiles"
+  rm -rf "${data_root}/omafiles" "${state_root}/omafiles" "${qml_root}/Omafiles"
   find "${data_root}/applications" -name "omafiles*.desktop" -delete 2>/dev/null
-  find "${data_root}/dbus-1/services" \( -name "${app_id}.service" -o -name "org.freedesktop.FileManager1.service" -o -name "org.freedesktop.impl.portal.desktop.omafiles.service" \) -delete 2>/dev/null
-  rm -f "${data_root}/xdg-desktop-portal/portals/omafiles.portal"
-  rm -f "${data_root}/icons/hicolor/scalable/apps/omafiles.svg" \
-        "${data_root}/icons/hicolor/scalable/apps/omafiles-symbolic.svg"
+  find "${data_root}/dbus-1/services" \( -name "${app_id}.service" -o \
+    -name "org.freedesktop.FileManager1.service" -o \
+    -name "org.freedesktop.impl.portal.desktop.omafiles.service" \) -delete 2>/dev/null
+  rm -f  "${data_root}/xdg-desktop-portal/portals/omafiles.portal"
+  rm -f  "${data_root}/icons/hicolor/scalable/apps/omafiles.svg" \
+         "${data_root}/icons/hicolor/scalable/apps/omafiles-symbolic.svg"
   for sz in 32 48 64 128 256; do
     rm -f "${data_root}/icons/hicolor/${sz}x${sz}/apps/omafiles.png"
   done
-
-  # Drop the FileChooser portal preference lines this project adds.
+  # Drop the FileChooser portal lines this project adds.
   for conf in "${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/hyprland-portals.conf" \
               "${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/portals.conf"; do
     [[ -f "$conf" ]] && sed -i '/org.freedesktop.impl.portal.FileChooser=omafiles/d' "$conf" 2>/dev/null
   done
+  ok "Application and data removed"
 
-  ok "Application and data removed."
-
-  # Remove the keybinding added for SUPER+SHIFT+F, if present. Only the block
-  # THIS installer wrote is removed -- a binding the user added by hand (with a
-  # different comment/marker) is left alone.
-  local oma_marker='-- Omafiles (added by install.sh)'
-  local combo_line='o.bind("SUPER + SHIFT + F"'
-  if [[ -f "$bind_file" ]] && grep -qF "$oma_marker" "$bind_file" 2>/dev/null; then
-    if confirm "Remove the SUPER + SHIFT + F keybinding from $bind_file?" "y"; then
-      sed -i "/^$oma_marker$/,/^o\.bind(\"SUPER + SHIFT + F\"/d" "$bind_file" 2>/dev/null
-      sed -i '/hl\.unbind("SUPER + SHIFT + F")  -- was already bound; overridden for Omafiles/d' "$bind_file" 2>/dev/null
-      ok "Removed SUPER + SHIFT + F binding."
-      if have_cmd hyprctl; then
-        hyprctl reload >/dev/null 2>&1 && ok "Hyprland reloaded."
-      fi
+  # Keybinding: only remove the block THIS installer added.
+  local marker='-- Omafiles (added by install.sh)'
+  if [[ -f "$bind_file" ]] && grep -qF "$marker" "$bind_file" 2>/dev/null; then
+    if confirm "Remove the ${BOLD}SUPER + SHIFT + F${RESET} keybinding?" y; then
+      sed -i "/^$marker$/,/^o\.bind(\"SUPER + SHIFT + F\"/d" "$bind_file" 2>/dev/null
+      sed -i '/hl\.unbind("SUPER + SHIFT + F")  -- previously used elsewhere/d' "$bind_file" 2>/dev/null
+      ok "Keybinding removed"
+      have_cmd hyprctl && hyprctl reload >/dev/null 2>&1 && ok "Hyprland reloaded"
     fi
-  elif [[ -f "$bind_file" ]] && grep -qF "$combo_line" "$bind_file" 2>/dev/null; then
-    info "A SUPER + SHIFT + F binding exists but wasn't added by this installer — leaving it as-is."
   fi
 
-  # Optionally remove the dependencies the installer brought in.
+  # Dependencies (only if asked).
   if [[ "$PURGE_DEPS" == 1 ]]; then
-    remove_deps_via_pacman
-  elif ! have_cmd pacman; then
-    warn "pacman not found — dependency removal skipped."
-  elif confirm "Also remove the packages this installer depends on (qt6, etc.)?" "n"; then
-    remove_deps_via_pacman
-  else
-    info "Leaving system packages in place."
+    purge_deps
+  elif have_cmd pacman && confirm "Also remove the dependency packages (qt6, etc.)?" n; then
+    purge_deps
   fi
-
-  step "Uninstall complete"
 }
 
-remove_deps_via_pacman() {
-  local pkgs=(
-    qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject
-  )
-  info "Running: sudo pacman -Rns ${pkgs[*]}"
-  sudo pacman -Rns "${pkgs[@]}" || warn "pacman removal reported issues."
-  ok "Dependencies removed."
+purge_deps() {
+  local pkgs=(qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject)
+  info "Running: ${DIM}sudo pacman -Rns ${pkgs[*]}${RESET}"
+  sudo pacman -Rns "${pkgs[@]}" && ok "Dependency packages removed" || warn "pacman reported issues."
 }
 
-# ---------------------------------------------------------------------------
-# Step 6 — summary
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Summary
+# ──────────────────────────────────────────────────────────────────────────
 summary() {
-  step "Done"
-  local bin="${BIN_DIR}/omafiles"
-  if [[ -x "$bin" ]]; then
-    ok "Omafiles installed. Launch it with:  ${GREEN}${BOLD}omafiles${RESET}"
-    if [[ "$ASSUME_YES" == 0 ]] && grep -q "SUPER + SHIFT + F" "${HOME}/.config/hypr/bindings.lua" 2>/dev/null; then
+  printf '\n' && info "All done"
+  if [[ -x "${BIN_DIR}/omafiles" ]]; then
+    ok "Launch Omafiles with:  ${BOLD}${GREEN}omafiles${RESET}"
+    if grep -q "SUPER + SHIFT + F" "${HOME}/.config/hypr/bindings.lua" 2>/dev/null; then
       ok "Launcher keybinding ready:  ${BOLD}SUPER + SHIFT + F${RESET}"
     fi
   else
-    warn "Install did not complete — review the messages above."
+    warn "Install did not finish — review the output above."
   fi
 }
 
-# ---------------------------------------------------------------------------
-# Argument parsing
-# ---------------------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────
+# Arguments
+# ──────────────────────────────────────────────────────────────────────────
 usage() {
   cat <<EOF
-Omafiles TUI installer
+Omafiles interactive installer
 
 Usage: ./install.sh [options]
 
 Options:
-  --yes            Non-interactive: accept every default choice.
-  --skip-build     Skip the cmake build (assume an existing build/).
-  --uninstall      Remove Omafiles, its data and the keybinding. Asks whether
-                   to also remove the dependencies it needs.
-  --purge          With --uninstall: also remove the dependencies without asking.
-  -h, --help       Show this help.
+  --yes          Non-interactive: accept every default choice.
+  --skip-build   Reuse an existing build/ (skip the cmake build).
+  --uninstall    Remove Omafiles, its data and the keybinding (asks about deps).
+  --purge        With --uninstall: also remove the dependency packages, no prompt.
+  -h, --help     Show this help.
 EOF
+  exit 0
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --yes)             ASSUME_YES=1 ;;
-    --skip-build)      SKIP_BUILD=1 ;;
-    --uninstall)       UNINSTALL=1 ;;
-    --purge)           PURGE_DEPS=1 ;;
-    -h|--help)         usage; exit 0 ;;
-    *)                 warn "Unknown option: $1"; usage; exit 1 ;;
+    --yes)           ASSUME_YES=1 ;;
+    --skip-build)    SKIP_BUILD=1 ;;
+    --uninstall)     UNINSTALL=1 ;;
+    --purge)         PURGE_DEPS=1 ;;
+    -h|--help)       usage ;;
+    *) warn "Unknown option: $1"; usage ;;
   esac
   shift
 done
 
-# ---------------------------------------------------------------------------
-# Banner + run
-# ---------------------------------------------------------------------------
-step "Omafiles installer"
-info "Repo:    ${BOLD}$REPO_DIR${RESET}"
-info "Build:   ${BOLD}$BUILD_DIR${RESET}"
+# ──────────────────────────────────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────────────────────────────────
+banner
 
 if [[ "$UNINSTALL" == 1 ]]; then
-  if [[ "$ASSUME_YES" == 0 ]] && ! confirm "Remove Omafiles and its data from this system?" "n"; then
-    echo "Aborted."; exit 0
+  if [[ "$ASSUME_YES" == 0 ]] && ! confirm "Remove Omafiles from this system?" n; then
+    echo "  Aborted."; exit 0
   fi
-  uninstall
+  begin_step "Uninstall"
+  if uninstall; then
+    _steps_done+=("Uninstall")
+    ok "Uninstall complete"
+  else
+    _steps_done+=("Uninstall")
+    warn "Uninstall had issues"
+  fi
   exit 0
 fi
 
-if [[ "$ASSUME_YES" == 0 && "$SKIP_BUILD" == 0 ]]; then
-  printf '\n'
-  if ! confirm "This will build and install Omafiles. Continue?" "y"; then
-    echo "Aborted."; exit 0
-  fi
+if [[ "$ASSUME_YES" == 0 ]] && ! confirm "Install Omafiles to $HOME/.local?" y; then
+  echo "  Aborted."; exit 0
 fi
 
 [[ -d "$BUILD_DIR" ]] || mkdir -p "$BUILD_DIR"
+printf '\n'
 
-install_deps
-build
-install_app
-integrations
-add_keybinding
+begin_step "Dependencies"
+begin_step "Build"
+begin_step "Install"
+begin_step "Integrations"
+begin_step "Keybinding"
+run_step "Dependencies" install_deps   || true
+run_step "Build"        build          || true
+run_step "Install"      install_app    || true
+run_step "Integrations" integrations   || true
+run_step "Keybinding"   add_keybinding || true
 summary
