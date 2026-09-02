@@ -55,29 +55,48 @@ have_cmd(){ command -v "$1" >/dev/null 2>&1; }
 
 banner() {
   enter_alt; SCREEN_INIT=1; hide_cursor
-  local lines=(
-    "██████╗ ███╗   ███╗ █████╗ ███████╗██╗██╗     ███████╗███████╗"
-    "██╔══██╗████╗ ████║██╔══██╗██╔════╝██║██║     ██╔════╝██╔════╝"
-    "██████╔╝██╔████╔██║███████║█████╗  ██║██║     █████╗  ███████╗"
-    "██╔══██╗██║╚██╔╝██║██╔══██║██╔══╝  ██║██║     ██╔══╝  ╚════██║"
-    "██████╔╝██║ ╚═╝ ██║██║  ██║██║     ██║███████╗███████╗███████║"
-    "╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝"
-  )
-  local grad=(36 33 32 33 36 33)   # cyan → yellow → green gradient per line
-  # top border
-  printf '  %s\n' "$(printf '═%.0s' $(seq 1 56))"
-  for ((i=0;i<${#lines[@]};i++)); do
-    printf '  %s%s%s%s%s\n' "${BOLD}" "$(printf '\033[9%sm' "${grad[i]}")" \
-      "${lines[i]}" "${RESET}" ""
+  local hi=$'\033[38;5;45m' mid=$'\033[38;5;39m' lo=$'\033[38;5;32m'
+  local words=(O M A " " F I L E S)
+  local row line g gx
+  # Each letter is a 5-row glyph; render row-by-row with a cyan gradient.
+  local glyph
+  letter_row() {
+    case "$g" in
+      O) local GL=( "█████ " "██   ██" "██   ██" "██   ██" "█████ " );;
+      M) local GL=( "██   ██" "███████" "███ ███" "██   ██" "██   ██" );;
+      A) local GL=( "█████ " "██   ██" "███████" "██   ██" "██   ██" );;
+      F) local GL=( "███████" "██     " "█████  " "██     " "██     " );;
+      I) local GL=( "███████" "  ██   " "  ██   " "  ██   " "███████" );;
+      L) local GL=( "██     " "██     " "██     " "██     " "███████" );;
+      E) local GL=( "███████" "██     " "█████  " "██     " "███████" );;
+      S) local GL=( "█████ " "██     " "█████ " "    ██ " "█████ " );;
+    esac
+    printf '%s' "${GL[$row]}"
+  }
+  for ((row=0; row<5; row++)); do
+    local grad
+    (($row==0)) && grad=$hi; (($row==1)) && grad=$hi
+    (($row==2)) && grad=$mid; (($row==3)) && grad=$mid; (($row==4)) && grad=$lo
+    line="   "
+    for g in "${words[@]}"; do
+      [[ "$g" == " " ]] && { line+="    "; continue; }
+      line+="${grad}${BOLD}$(letter_row)${RESET}  "
+    done
+    printf '%s\n' "$line"
   done
-  # bottom border + subtitle
-  printf '  %s\n' "$(printf '═%.0s' $(seq 1 56))"
   printf '\n  %s%sOmafiles%s  %s— interactive installer%s\n' \
-    "${BOLD}${CYAN}" "${RESET}" "${DIM}" "${RESET}"
-  printf '  %s\n' "${DIM}┌──────────────────────────────────────────────┐${RESET}"
-  printf '  %s\n' "${DIM}│${RESET}  repo:   ${BOLD}$REPO_DIR${RESET}"
-  printf '  %s\n' "${DIM}│${RESET}  build:  ${BOLD}$BUILD_DIR${RESET}"
-  printf '  %s\n' "${DIM}└──────────────────────────────────────────────┘${RESET}"
+    "${BOLD}${hi}" "${RESET}" "${DIM}" "${RESET}"
+
+  # An info box whose width fits the longest line (paths can be long).
+  local W=24 n c_repo c_build
+  c_repo="  repo:  $REPO_DIR  "; c_build="  build: $BUILD_DIR  "
+  (( ${#c_repo} > W )) && W=${#c_repo}
+  (( ${#c_build} > W )) && W=${#c_build}
+  pad_to(){ printf '%-*s' "$W" "$1"; }
+  printf '  %s\n' "${DIM}┌$(printf '─%.0s' $(seq 1 $W))┐${RESET}"
+  printf '  %s\n' "${DIM}│${RESET}$(pad_to "$c_repo")${DIM}│${RESET}"
+  printf '  %s\n' "${DIM}│${RESET}$(pad_to "$c_build")${DIM}│${RESET}"
+  printf '  %s\n' "${DIM}└$(printf '─%.0s' $(seq 1 $W))┘${RESET}"
   printf '\n'
   show_cursor
 }
@@ -119,7 +138,7 @@ confirm() {
   local key dir
   hide_cursor
   printf '  %s  ' "$prompt"
-  render_choice "$sel"
+  render_choice "$sel" "$default"
   if [[ -t 0 ]]; then
     stty raw -echo 2>/dev/null || stty -icanon -echo 2>/dev/null
     while :; do
@@ -133,7 +152,7 @@ confirm() {
       elif [[ "$key" == [yY] ]]; then sel=1
       elif [[ "$key" == [nN] ]]; then sel=0
       fi
-      printf '\r\033[2K  %s  ' "$prompt"; render_choice "$sel"
+      printf '\r\033[2K  %s  ' "$prompt"; render_choice "$sel" "$default"
     done
     stty sane 2>/dev/null || stty echo icanon 2>/dev/null
   else                                            # non-TTY: plain line input
@@ -153,12 +172,18 @@ confirm() {
 }
 
 render_choice() {
-  local sel="$1" no yes
-  # Layout: [ No ][ Yes ] — Yes sits on the right (the common "default on the
-  # right" convention), so Left/Up → No and Right/Down → Yes move intuitively.
-  if [[ "$sel" == 1 ]]; then no="  No  "; yes="\033[7;1m Yes \033[0m"; else no="\033[7;1m No  \033[0m"; yes="  Yes  "; fi
-  local no_txt=$(printf '%b' "$no") yes_txt=$(printf '%b' "$yes")
-  printf '%s   %s' "$no_txt" "$yes_txt"
+  local sel="$1" default="$2"
+  local yes_sel yes_un no_sel no_un
+  local default_tag=$'\033[2m(default)\033[0m'   # DIM "(default)"
+  if [[ "$default" == [yY] ]]; then
+    yes_un="${GREEN}Yes ${default_tag}"
+    no_un="No"
+  else
+    no_un="${RED}No ${default_tag}"
+    yes_un="Yes"
+  fi
+  if [[ "$sel" == 1 ]]; then yes_sel="\033[7;1m${yes_un}\033[0m"; no_sel="$no_un"; else no_sel="\033[7;1m${no_un}\033[0m"; yes_sel="$yes_un"; fi
+  printf ' %b  %b ' "$(printf '%b' "$no_sel")" "$(printf '%b' "$yes_sel")"
 }
 
 # ──────────────────────────────────────────────────────────────────────────
