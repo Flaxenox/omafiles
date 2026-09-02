@@ -56,7 +56,7 @@ have_cmd(){ command -v "$1" >/dev/null 2>&1; }
 banner() {
   enter_alt; SCREEN_INIT=1; hide_cursor
   local hi=$'\033[38;5;45m' mid=$'\033[38;5;39m' lo=$'\033[38;5;32m'
-  local words=(O M A " " F I L E S)
+  local words=(O M A F I L E S)
   local row line g gx
   # Each letter is a 5-row glyph; render row-by-row with a cyan gradient.
   local glyph
@@ -79,8 +79,7 @@ banner() {
     (($row==2)) && grad=$mid; (($row==3)) && grad=$mid; (($row==4)) && grad=$lo
     line="   "
     for g in "${words[@]}"; do
-      [[ "$g" == " " ]] && { line+="    "; continue; }
-      line+="${grad}${BOLD}$(letter_row)${RESET}  "
+      line+="${grad}${BOLD}$(letter_row)${RESET} "
     done
     printf '%s\n' "$line"
   done
@@ -264,8 +263,22 @@ add_keybinding() {
     return 0
   fi
 
+  # There is always a choice: absent → ask to add; already present → ask to keep.
   if grep -qF "$combo" "$bind_file" 2>/dev/null; then
-    ok "Keybinding ${combo} already present in ${bind_file}"
+    ok "Keybinding ${combo} is already set."
+    if confirm "Keep the existing ${combo} launcher keybinding?" y; then
+      ok "Keeping ${combo}."
+    else
+      # Remove only the block THIS installer wrote; leave hand-written ones alone.
+      local marker='-- Omafiles (added by install.sh)'
+      if grep -qF "$marker" "$bind_file" 2>/dev/null; then
+        sed -i "/^$marker$/,/^o\.bind(\"SUPER + SHIFT + F\"/d" "$bind_file" 2>/dev/null
+        ok "Removed the installer-added ${combo} keybinding."
+        have_cmd hyprctl && hyprctl reload >/dev/null 2>&1 && ok "Hyprland reloaded"
+      else
+        warn "That binding wasn't added by this installer — leaving it as-is."
+      fi
+    fi
     return 0
   fi
 
