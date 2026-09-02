@@ -255,6 +255,21 @@ Item {
             gTimer: mainLayout.gTimer
           }
 
+          // While the path is being edited, a double click anywhere in the
+          // listing area cancels editing and brings back the breadcrumb
+          // (instead of being stuck until Enter/Escape). Only present while
+          // editingPath is on, so it never otherwise steals clicks.
+          MouseArea {
+            anchors.fill: parent
+            z: 100
+            enabled: EditModeState.editingPath
+            cursorShape: Qt.IBeamCursor
+            onDoubleClicked: {
+              EditModeState.editingPath = false
+              list.forceActiveFocus()
+            }
+          }
+
         }
         } // end activeTop (Column)
 
