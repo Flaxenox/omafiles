@@ -267,13 +267,13 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
 
                 ScrollBar.vertical: ScrollBar {
-                  policy: (listView.contentHeight - 400) > listView.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                  policy: listView.contentHeight > listView.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                   width: Style.space(8)
                   anchors.right: parent.right
 
                   contentItem: Rectangle {
                     implicitWidth: parent.width
-                    implicitHeight: 26
+                    implicitHeight: Math.max(26, parent.height * (listView.height / listView.contentHeight))
                     radius: parent.width / 2
                     color: Util.alpha(Color.foreground, 0.28)
                   }
