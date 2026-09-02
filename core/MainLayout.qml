@@ -149,10 +149,8 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             canGoBack: TabsState.navHistoryIndex > 0
             canGoForward: TabsState.navHistoryIndex < TabsState.navHistory.length - 1
-            canGoUp: NavState.currentPath !== "/"
             onBackRequested: if (controllers) controllers.navController.navBack()
             onForwardRequested: if (controllers) controllers.navController.navForward()
-            onUpRequested: if (controllers) controllers.navController.goUp()
           }
 
           Item {
@@ -165,7 +163,21 @@ Item {
               anchors.fill: parent
               visible: !EditModeState.editingPath
               cursorShape: Qt.IBeamCursor
-              onClicked: if (controllers) controllers.searchOps.startEditPath()
+              // A plain single click navigates to the segment under the pointer.
+              // A double click on a segment opens the editor instead: Qt emits
+              // onClicked for the FIRST click of a pair, then onDoubleClicked for
+              // the second -- so we always navigate on the single click, and the
+              // (higher-priority) double-click still gets through via
+              // onDoubleClicked to switch into editing. A double click on empty
+              // path space is left as just a navigate (no editor).
+              onClicked: function (mouse) {
+                var p = breadcrumbRow.pathAt(mouse.x)
+                if (p && controllers && controllers.navController) controllers.navController.navigateTo(p)
+              }
+              onDoubleClicked: function (mouse) {
+                if (breadcrumbRow.pathAt(mouse.x) === "") return
+                if (controllers) controllers.searchOps.startEditPath()
+              }
             }
 
             BreadcrumbSegments {
