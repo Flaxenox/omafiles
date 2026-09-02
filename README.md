@@ -11,6 +11,28 @@ stability fixes on top of the upstream project (see [Fixes included](#-fixes-inc
 
 ---
 
+## 🚀 Quick install (TUI installer)
+
+The repo ships an interactive terminal installer that installs the dependencies,
+builds the app, and (optionally) wires a `SUPER + SHIFT + F` launch keybinding.
+
+```bash
+git clone https://github.com/Flaxenox/omafiles.git
+cd omafiles
+./install.sh
+```
+
+It asks before any privileged (sudo/pacman) step and is safe to re-run:
+
+- `./install.sh --yes` — non-interactive, accept every default.
+- `./install.sh --no-keybinding` — never touch the Hyprland keybindings.
+- `./install.sh --skip-build` — reuse an existing `build/` and just re-run
+  the install + integration + keybinding steps.
+
+Power users can skip the TUI and follow [Option A](#option-a--manual-build--per-user-install-recommended-no-root) below.
+
+---
+
 ## ✨ Features
 
 - **Tabs & split preview** — open folders in tabs and preview files side-by-side.
@@ -123,6 +145,19 @@ All changes in this fork live in the working tree and are covered by one commit.
 
 ## 🚀 Installation
 
+### Option 0 — TUI installer (recommended)
+
+The easiest, all-in-one way to get Omafiles running and optional `SUPER + SHIFT + F`
+keybinding set up:
+
+```bash
+git clone https://github.com/Flaxenox/omafiles.git
+cd omafiles
+./install.sh
+```
+
+See [Quick install](#-quick-install-tui-installer) above for the available flags.
+
 ### Option A — Manual build & per-user install (recommended, no root)
 
 ```bash
@@ -146,6 +181,13 @@ omafiles
 
 The app registers itself as the default file manager and the FileChooser portal
 automatically on first launch (via `scripts/install-integrations.sh`) — no manual step.
+
+> Optional: to launch Omafiles with `SUPER + SHIFT + F` on Hyprland/Omarchy, add to
+> `~/.config/hypr/bindings.lua`:
+> ```lua
+> o.bind("SUPER + SHIFT + F", "OmaFiles", "omafiles --new-window")
+> ```
+> The TUI installer (Option 0) does this for you if you ask it to.
 
 ### Option B — Rebuild after pulling changes
 
