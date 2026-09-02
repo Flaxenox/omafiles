@@ -34,10 +34,15 @@ SKIP_BUILD=0
 UNINSTALL=0
 PURGE_DEPS=0
 
-# Cursor hide/show (ANSI) so the TUI renders cleanly.
+# Cursor hide/show + alternate screen buffer (ANSI) so the TUI takes over the
+# whole terminal and restores it cleanly on exit.
 hide_cursor(){ printf '\033[?25l'; }
 show_cursor(){ printf '\033[?25h'; }
-trap show_cursor EXIT
+enter_alt(){ printf '\033[?1049h\033[2J\033[H'; }
+leave_alt(){ printf '\033[?1049l'; }
+SCREEN_INIT=0
+cleanup(){ show_cursor; [[ "$SCREEN_INIT" == 1 ]] && leave_alt; }
+trap cleanup EXIT
 
 # ── message helpers ────────────────────────────────────────────────────────
 bark()  { printf '%s\n' "$*"; }
@@ -49,18 +54,31 @@ die()   { printf '%s\n' "${RED}Error:${RESET} $*" >&2; exit 1; }
 have_cmd(){ command -v "$1" >/dev/null 2>&1; }
 
 banner() {
-  hide_cursor
-  printf '%s\n' \
-    "${MAG}   OOOO   M     M      A     FFFFF      I     L      EEEE   SSSS${RESET}" \
-    "${MAG}  O    O  MM   MM     A A    F         I     L     E      S    ${RESET}" \
-    "${MAG}  O    O  M M M M    A   A   FFFF      I     L      EEE    SSS ${RESET}" \
-    "${MAG}  O    O  M  M  M   AAAAAAA  F         I     L     E          S${RESET}" \
-    "${MAG}   OOOO   M     M  A       A F        III    LLLL   EEEE   SSSS${RESET}"
-  printf '%s\n' ""
-  printf '%s\n' "    ${BOLD}${CYAN}Omafiles${RESET} ${DIM}— interactive installer${RESET}"
-  printf '    %s\n' "${DIM}repo:${RESET}    ${BOLD}$REPO_DIR${RESET}"
-  printf '    %s\n' "${DIM}build:${RESET}   ${BOLD}$BUILD_DIR${RESET}"
-  printf '%s\n' ""
+  enter_alt; SCREEN_INIT=1; hide_cursor
+  local lines=(
+    "██████╗ ███╗   ███╗ █████╗ ███████╗██╗██╗     ███████╗███████╗"
+    "██╔══██╗████╗ ████║██╔══██╗██╔════╝██║██║     ██╔════╝██╔════╝"
+    "██████╔╝██╔████╔██║███████║█████╗  ██║██║     █████╗  ███████╗"
+    "██╔══██╗██║╚██╔╝██║██╔══██║██╔══╝  ██║██║     ██╔══╝  ╚════██║"
+    "██████╔╝██║ ╚═╝ ██║██║  ██║██║     ██║███████╗███████╗███████║"
+    "╚═════╝ ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝╚══════╝"
+  )
+  local grad=(36 33 32 33 36 33)   # cyan → yellow → green gradient per line
+  # top border
+  printf '  %s\n' "$(printf '═%.0s' $(seq 1 56))"
+  for ((i=0;i<${#lines[@]};i++)); do
+    printf '  %s%s%s%s%s\n' "${BOLD}" "$(printf '\033[9%sm' "${grad[i]}")" \
+      "${lines[i]}" "${RESET}" ""
+  done
+  # bottom border + subtitle
+  printf '  %s\n' "$(printf '═%.0s' $(seq 1 56))"
+  printf '\n  %s%sOmafiles%s  %s— interactive installer%s\n' \
+    "${BOLD}${CYAN}" "${RESET}" "${DIM}" "${RESET}"
+  printf '  %s\n' "${DIM}┌──────────────────────────────────────────────┐${RESET}"
+  printf '  %s\n' "${DIM}│${RESET}  repo:   ${BOLD}$REPO_DIR${RESET}"
+  printf '  %s\n' "${DIM}│${RESET}  build:  ${BOLD}$BUILD_DIR${RESET}"
+  printf '  %s\n' "${DIM}└──────────────────────────────────────────────┘${RESET}"
+  printf '\n'
   show_cursor
 }
 
@@ -135,9 +153,12 @@ confirm() {
 }
 
 render_choice() {
-  local sel="$1" y n
-  if [[ "$sel" == 1 ]]; then y="\033[7;1m Yes \033[0m"; n="  No  "; else y="  Yes  "; n="\033[7;1m  No  \033[0m"; fi
-  printf '%b   %b' "$(printf '%b' "$y")" "$(printf '%b' "$n")"
+  local sel="$1" no yes
+  # Layout: [ No ][ Yes ] — Yes sits on the right (the common "default on the
+  # right" convention), so Left/Up → No and Right/Down → Yes move intuitively.
+  if [[ "$sel" == 1 ]]; then no="  No  "; yes="\033[7;1m Yes \033[0m"; else no="\033[7;1m No  \033[0m"; yes="  Yes  "; fi
+  local no_txt=$(printf '%b' "$no") yes_txt=$(printf '%b' "$yes")
+  printf '%s   %s' "$no_txt" "$yes_txt"
 }
 
 # ──────────────────────────────────────────────────────────────────────────
