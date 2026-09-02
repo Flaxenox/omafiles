@@ -13,7 +13,7 @@
 #   ./install.sh               interactive (asks before privileged steps)
 #   ./install.sh --yes         non-interactive, accept every default
 #   ./install.sh --skip-build  re-run only the integration/keybinding steps
-#   ./install.sh --no-keybinding   never touch the Hyprland keybindings
+#   ./install.sh --uninstall / --uninstall --purge   remove Omafiles (and deps)
 #
 # Safe to re-run: every step is idempotent.
 # ---------------------------------------------------------------------------
@@ -27,7 +27,6 @@ BIN_DIR="${HOME}/.local/bin"
 # Installer options
 ASSUME_YES=0
 SKIP_BUILD=0
-NO_KEYBINDING=0
 UNINSTALL=0
 PURGE_DEPS=0
 
@@ -153,10 +152,6 @@ integrations() {
 # ---------------------------------------------------------------------------
 add_keybinding() {
   step "Step 5: Omarchy keybinding"
-  if [[ "$NO_KEYBINDING" == 1 ]]; then
-    info "--no-keybinding given; leaving Hyprland bindings untouched."
-    return 0
-  fi
   local bind_file="${HOME}/.config/hypr/bindings.lua"
   local combo="SUPER + SHIFT + F"
   local cmd="omafiles --new-window"
@@ -289,7 +284,7 @@ summary() {
   local bin="${BIN_DIR}/omafiles"
   if [[ -x "$bin" ]]; then
     ok "Omafiles installed. Launch it with:  ${GREEN}${BOLD}omafiles${RESET}"
-    if [[ "$NO_KEYBINDING" == 0 ]] && grep -q "SUPER + SHIFT + F" "${HOME}/.config/hypr/bindings.lua" 2>/dev/null; then
+    if [[ "$ASSUME_YES" == 0 ]] && grep -q "SUPER + SHIFT + F" "${HOME}/.config/hypr/bindings.lua" 2>/dev/null; then
       ok "Launcher keybinding ready:  ${BOLD}SUPER + SHIFT + F${RESET}"
     fi
   else
@@ -309,7 +304,6 @@ Usage: ./install.sh [options]
 Options:
   --yes            Non-interactive: accept every default choice.
   --skip-build     Skip the cmake build (assume an existing build/).
-  --no-keybinding  Never modify the Omarchy Hyprland keybindings.
   --uninstall      Remove Omafiles, its data and the keybinding. Asks whether
                    to also remove the dependencies it needs.
   --purge          With --uninstall: also remove the dependencies without asking.
@@ -321,7 +315,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes)             ASSUME_YES=1 ;;
     --skip-build)      SKIP_BUILD=1 ;;
-    --no-keybinding)   NO_KEYBINDING=1 ;;
     --uninstall)       UNINSTALL=1 ;;
     --purge)           PURGE_DEPS=1 ;;
     -h|--help)         usage; exit 0 ;;

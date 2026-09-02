@@ -22,10 +22,10 @@ cd omafiles
 ./install.sh
 ```
 
-It asks before any privileged (sudo/pacman) step and is safe to re-run:
+It asks before any privileged (sudo/pacman) step — including a yes/no prompt for the
+optional `SUPER + SHIFT + F` Hyprland keybinding — and is safe to re-run:
 
-- `./install.sh --yes` — non-interactive, accept every default.
-- `./install.sh --no-keybinding` — never touch the Hyprland keybindings.
+- `./install.sh --yes` — non-interactive, accept every default choice.
 - `./install.sh --skip-build` — reuse an existing `build/` and just re-run
   the install + integration + keybinding steps.
 - `./install.sh --uninstall` — remove Omafiles, its data and the keybinding
