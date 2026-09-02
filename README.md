@@ -28,6 +28,10 @@ It asks before any privileged (sudo/pacman) step and is safe to re-run:
 - `./install.sh --no-keybinding` — never touch the Hyprland keybindings.
 - `./install.sh --skip-build` — reuse an existing `build/` and just re-run
   the install + integration + keybinding steps.
+- `./install.sh --uninstall` — remove Omafiles, its data and the keybinding
+  again (asks whether to also remove the dependencies).
+- `./install.sh --uninstall --purge` — also uninstalls the packages Omafiles
+  needs, without asking.
 
 Power users can skip the TUI and follow [Option A](#option-a--manual-build--per-user-install-recommended-no-root) below.
 

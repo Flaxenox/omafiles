@@ -28,6 +28,8 @@ BIN_DIR="${HOME}/.local/bin"
 ASSUME_YES=0
 SKIP_BUILD=0
 NO_KEYBINDING=0
+UNINSTALL=0
+PURGE_DEPS=0
 
 # ---------------------------------------------------------------------------
 # TUI helpers
@@ -205,6 +207,81 @@ add_keybinding() {
 }
 
 # ---------------------------------------------------------------------------
+# Uninstall — remove the app, its data, and optionally the dependencies
+# ---------------------------------------------------------------------------
+uninstall() {
+  step "Uninstall Omafiles"
+  local data_root="${XDG_DATA_HOME:-$HOME/.local/share}"
+  local state_root="${XDG_STATE_HOME:-$HOME/.local/state}"
+  local qml_root="${OMAFILES_QML_INSTALL_DIR:-$HOME/.local/lib/qt6/qml}"
+  local app_id="io.github.percius04.omafiles"
+  local bind_file="${HOME}/.config/hypr/bindings.lua"
+
+  info "Removing the binary, resource tree, icons and integrations…"
+
+  rm -f "${BIN_DIR}/omafiles"
+  rm -rf "${data_root}/omafiles"
+  rm -rf "${state_root}/omafiles"
+  rm -rf "${qml_root}/Omafiles"
+  find "${data_root}/applications" -name "omafiles*.desktop" -delete 2>/dev/null
+  find "${data_root}/dbus-1/services" \( -name "${app_id}.service" -o -name "org.freedesktop.FileManager1.service" -o -name "org.freedesktop.impl.portal.desktop.omafiles.service" \) -delete 2>/dev/null
+  rm -f "${data_root}/xdg-desktop-portal/portals/omafiles.portal"
+  rm -f "${data_root}/icons/hicolor/scalable/apps/omafiles.svg" \
+        "${data_root}/icons/hicolor/scalable/apps/omafiles-symbolic.svg"
+  for sz in 32 48 64 128 256; do
+    rm -f "${data_root}/icons/hicolor/${sz}x${sz}/apps/omafiles.png"
+  done
+
+  # Drop the FileChooser portal preference lines this project adds.
+  for conf in "${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/hyprland-portals.conf" \
+              "${XDG_CONFIG_HOME:-$HOME/.config}/xdg-desktop-portal/portals.conf"; do
+    [[ -f "$conf" ]] && sed -i '/org.freedesktop.impl.portal.FileChooser=omafiles/d' "$conf" 2>/dev/null
+  done
+
+  ok "Application and data removed."
+
+  # Remove the keybinding added for SUPER+SHIFT+F, if present. Only the block
+  # THIS installer wrote is removed -- a binding the user added by hand (with a
+  # different comment/marker) is left alone.
+  local oma_marker='-- Omafiles (added by install.sh)'
+  local combo_line='o.bind("SUPER + SHIFT + F"'
+  if [[ -f "$bind_file" ]] && grep -qF "$oma_marker" "$bind_file" 2>/dev/null; then
+    if confirm "Remove the SUPER + SHIFT + F keybinding from $bind_file?" "y"; then
+      sed -i "/^$oma_marker$/,/^o\.bind(\"SUPER + SHIFT + F\"/d" "$bind_file" 2>/dev/null
+      sed -i '/hl\.unbind("SUPER + SHIFT + F")  -- was already bound; overridden for Omafiles/d' "$bind_file" 2>/dev/null
+      ok "Removed SUPER + SHIFT + F binding."
+      if have_cmd hyprctl; then
+        hyprctl reload >/dev/null 2>&1 && ok "Hyprland reloaded."
+      fi
+    fi
+  elif [[ -f "$bind_file" ]] && grep -qF "$combo_line" "$bind_file" 2>/dev/null; then
+    info "A SUPER + SHIFT + F binding exists but wasn't added by this installer — leaving it as-is."
+  fi
+
+  # Optionally remove the dependencies the installer brought in.
+  if [[ "$PURGE_DEPS" == 1 ]]; then
+    remove_deps_via_pacman
+  elif ! have_cmd pacman; then
+    warn "pacman not found — dependency removal skipped."
+  elif confirm "Also remove the packages this installer depends on (qt6, etc.)?" "n"; then
+    remove_deps_via_pacman
+  else
+    info "Leaving system packages in place."
+  fi
+
+  step "Uninstall complete"
+}
+
+remove_deps_via_pacman() {
+  local pkgs=(
+    qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject
+  )
+  info "Running: sudo pacman -Rns ${pkgs[*]}"
+  sudo pacman -Rns "${pkgs[@]}" || warn "pacman removal reported issues."
+  ok "Dependencies removed."
+}
+
+# ---------------------------------------------------------------------------
 # Step 6 — summary
 # ---------------------------------------------------------------------------
 summary() {
@@ -233,6 +310,9 @@ Options:
   --yes            Non-interactive: accept every default choice.
   --skip-build     Skip the cmake build (assume an existing build/).
   --no-keybinding  Never modify the Omarchy Hyprland keybindings.
+  --uninstall      Remove Omafiles, its data and the keybinding. Asks whether
+                   to also remove the dependencies it needs.
+  --purge          With --uninstall: also remove the dependencies without asking.
   -h, --help       Show this help.
 EOF
 }
@@ -242,6 +322,8 @@ while [[ $# -gt 0 ]]; do
     --yes)             ASSUME_YES=1 ;;
     --skip-build)      SKIP_BUILD=1 ;;
     --no-keybinding)   NO_KEYBINDING=1 ;;
+    --uninstall)       UNINSTALL=1 ;;
+    --purge)           PURGE_DEPS=1 ;;
     -h|--help)         usage; exit 0 ;;
     *)                 warn "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -254,6 +336,15 @@ done
 step "Omafiles installer"
 info "Repo:    ${BOLD}$REPO_DIR${RESET}"
 info "Build:   ${BOLD}$BUILD_DIR${RESET}"
+
+if [[ "$UNINSTALL" == 1 ]]; then
+  if [[ "$ASSUME_YES" == 0 ]] && ! confirm "Remove Omafiles and its data from this system?" "n"; then
+    echo "Aborted."; exit 0
+  fi
+  uninstall
+  exit 0
+fi
+
 if [[ "$ASSUME_YES" == 0 && "$SKIP_BUILD" == 0 ]]; then
   printf '\n'
   if ! confirm "This will build and install Omafiles. Continue?" "y"; then
