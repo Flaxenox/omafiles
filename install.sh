@@ -26,7 +26,8 @@ CHECK=$'\033[32m✓\033[0m'; CROSS=$'\033[31m✗\033[0m'; SKIP=$'\033[90m–\033
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${REPO_DIR}/build"
-BIN_DIR="${HOME}/.local/bin"
+INSTALL_PREFIX="${INSTALL_PREFIX:-$HOME/.local}"
+BIN_DIR="${INSTALL_PREFIX}/bin"
 
 # Installer options
 ASSUME_YES=0
@@ -89,7 +90,7 @@ banner() {
     done
     center "$line"
   done
-  center "  ${BOLD}${hi}○${RESET}${DIM}mafiles — interactive installer${RESET}  "
+  center "  ${BOLD}${hi}Omafiles${RESET} ${DIM}— interactive installer${RESET}  "
 
   # A centered info box whose width fits the longest line.
   local W=24 c_repo c_build
@@ -224,7 +225,10 @@ build() {
   have_cmd ninja || die "ninja not found — install cmake and ninja."
   [[ -f "$BUILD_DIR/build.ninja" ]] || {
     info "Configuring…"
-    cmake -S "$REPO_DIR" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake -S "$REPO_DIR" -B "$BUILD_DIR" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DOMAFILES_BIN_INSTALL_DIR="${INSTALL_PREFIX}/bin" \
+      -DOMAFILES_QML_INSTALL_DIR="${INSTALL_PREFIX}/lib/qt6/qml" \
+      -DOMAFILES_DATA_INSTALL_DIR="${INSTALL_PREFIX}/share"
   }
   info "Compiling… (may take a few minutes)"
   cmake --build "$BUILD_DIR"
@@ -236,8 +240,11 @@ build() {
 # ──────────────────────────────────────────────────────────────────────────
 install_app() {
   info "Running: ${DIM}cmake --install ${BUILD_DIR}${RESET}"
-  cmake --install "$BUILD_DIR"
-  ok "Installed to ~/.local (${BIN_DIR}/omafiles)"
+  cmake --install "$BUILD_DIR" \
+    -DOMAFILES_BIN_INSTALL_DIR="${INSTALL_PREFIX}/bin" \
+    -DOMAFILES_QML_INSTALL_DIR="${INSTALL_PREFIX}/lib/qt6/qml" \
+    -DOMAFILES_DATA_INSTALL_DIR="${INSTALL_PREFIX}/share"
+  ok "Installed to ${INSTALL_PREFIX} (${BIN_DIR}/omafiles)"
 }
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -256,50 +263,18 @@ integrations() {
 # ──────────────────────────────────────────────────────────────────────────
 # Keybinding (always interactive)
 # ──────────────────────────────────────────────────────────────────────────
-add_keybinding() {
-  local bind_file="${HOME}/.config/hypr/bindings.lua"
-  local combo="SUPER + SHIFT + F"
-  local cmd="omafiles --new-window"
-
-  if [[ ! -f "$bind_file" ]]; then
-    info "No Hyprland bindings file found (${bind_file}) — skipping keybinding."
-    return 0
-  fi
-
-  # There is always a choice: absent → ask to add; already present → ask to keep.
-  if grep -qF "$combo" "$bind_file" 2>/dev/null; then
-    ok "Keybinding ${combo} is already set."
-    if confirm "Keep the existing ${combo} launcher keybinding?" y; then
-      ok "Keeping ${combo}."
-    else
-      # Remove only the block THIS installer wrote; leave hand-written ones alone.
-      local marker='-- Omafiles (added by install.sh)'
-      if grep -qF "$marker" "$bind_file" 2>/dev/null; then
-        sed -i "/^$marker$/,/^o\.bind(\"SUPER + SHIFT + F\"/d" "$bind_file" 2>/dev/null
-        ok "Removed the installer-added ${combo} keybinding."
-        have_cmd hyprctl && hyprctl reload >/dev/null 2>&1 && ok "Hyprland reloaded"
-      else
-        warn "That binding wasn't added by this installer — leaving it as-is."
-      fi
-    fi
-    return 0
-  fi
-
-  info "Optional: bind ${BOLD}${combo}${RESET} → ${DIM}${cmd}${RESET}"
-  if ! confirm "Add the ${combo} launcher keybinding?" y; then
-    info "OK — skipping the keybinding (add it later in ${bind_file})."
-    return 0
-  fi
-
-  # Unbind an existing conflicting binding first (hyprland.md rule).
-  if grep -qE "SUPER[^,;]*SHIFT[^,;]*F|SHIFT[^,;]*SUPER[^,;]*F" "$bind_file" 2>/dev/null; then
-    printf '\n%s\n' "hl.unbind(\"$combo\")  -- previously used elsewhere; overridden for Omafiles" >> "$bind_file"
+# Write a binding for $1 (a combo string) into $BIND_FILE, unbinding conflicts.
+# $BIND_FILE and $BIND_CMD are globals set by add_keybinding().
+bind_keybinding() {
+  local combo="$1"
+  if grep -qE "${combo//+/.*}" "$BIND_FILE" 2>/dev/null; then
+    printf '\n%s\n' "hl.unbind(\"$combo\")  -- previously used elsewhere; overridden for Omafiles" >> "$BIND_FILE"
   fi
   {
     printf '\n-- Omafiles (added by install.sh)\n'
-    printf 'o.bind("%s", "OmaFiles", "%s")\n' "$combo" "$cmd"
-  } >> "$bind_file"
-  ok "Keybinding ${combo} added to ${bind_file}"
+    printf 'o.bind("%s", "OmaFiles", "%s")\n' "$combo" "$BIND_CMD"
+  } >> "$BIND_FILE"
+  ok "Keybinding ${combo} added to ${BIND_FILE}"
 
   if have_cmd hyprctl; then
     if hyprctl reload >/dev/null 2>&1; then
@@ -312,6 +287,95 @@ add_keybinding() {
     else
       warn "hyprctl reload failed — is a Hyprland session running?"
     fi
+  fi
+}
+
+# Ask which keybinding to use. Reads the top-5 free combos (not already bound in
+# BIND_FILE) plus a "define your own" option. Sets $combo. Returns 1 if skipped.
+pick_keybinding() {
+  # Candidate combos, most ergonomic first. Only the free ones are offered.
+  local candidates=(
+    "SUPER + F"   "SUPER + E"   "SUPER + O"   "SUPER + M"
+    "SUPER + D"   "ALT + F"     "ALT + E"     "SUPER + RETURN"
+    "SUPER + SLASH" "SUPER + SPACE"
+  )
+  local free=() i c
+  for c in "${candidates[@]}"; do
+    grep -qF "$c" "$BIND_FILE" 2>/dev/null || free+=("$c")
+    (( ${#free[@]} == 5 )) && break
+  done
+  local n=${#free[@]}
+
+  printf '\n  %s Choose a launcher keybinding:\n' "${CYAN}==>${RESET}"
+  if (( n == 0 )); then
+    warn "No free candidate keybindings found — you can define a custom one."
+  else
+    for ((i=0; i<n; i++)); do
+      printf '    %s[%s]%s  %s\n' "${GREEN}" "$i" "${RESET}" "${free[i]}"
+    done
+  fi
+  printf '    %s[c]%s  define your own\n' "${GREEN}" "${RESET}"
+  printf '    %s[s]%s  skip\n' "${GREEN}" "${RESET}"
+
+  local choice
+  while :; do
+    printf '  Pick [0-%s, c=custom, s=skip]: ' "$(( n-1 ))"
+    IFS= read -r -p "" choice
+    case "$choice" in
+      s|S) return 1 ;;
+      c|C) break ;;
+      *) if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 0 && choice < n )); then
+           combo="${free[choice]}"; return 0
+         fi
+         printf '    %s Invalid choice — try again.%s\n' "${YELLOW}" "${RESET}" ;;
+    esac
+  done
+
+  # Define your own.
+  while :; do
+    printf '  Type your keybinding (e.g. SUPER + CTRL + O): '
+    IFS= read -r -p "" combo
+    [[ -n "$combo" ]] && break
+  done
+  return 0
+}
+
+add_keybinding() {
+  BIND_FILE="${HOME}/.config/hypr/bindings.lua"
+  BIND_CMD="omafiles --new-window"
+  local combo="SUPER + SHIFT + F"
+
+  if [[ ! -f "$BIND_FILE" ]]; then
+    info "No Hyprland bindings file found (${BIND_FILE}) — skipping keybinding."
+    return 0
+  fi
+
+  # There is always a choice: absent → ask to add; already present → ask to keep.
+  if grep -qF "$combo" "$BIND_FILE" 2>/dev/null; then
+    ok "Keybinding ${combo} is already set."
+    if confirm "Keep the existing ${combo} launcher keybinding?" y; then
+      ok "Keeping ${combo}."
+      return 0
+    fi
+    # User said no to the existing one → offer to pick a different keybinding.
+  else
+    info "Optional: bind ${BOLD}${combo}${RESET} → ${DIM}${BIND_CMD}${RESET}"
+    if confirm "Add the ${combo} launcher keybinding?" y; then
+      bind_keybinding "$combo"
+      return 0
+    fi
+    # User said no to the default → offer to pick a different keybinding.
+  fi
+
+  if confirm "Set a different launcher keybinding instead?" y; then
+    combo=""
+    if pick_keybinding; then
+      bind_keybinding "$combo"
+    else
+      info "OK — skipping the keybinding (add one later in ${BIND_FILE})."
+    fi
+  else
+    info "OK — leaving ${BIND_FILE} untouched."
   fi
 }
 # ──────────────────────────────────────────────────────────────────────────
@@ -435,8 +499,21 @@ if [[ "$UNINSTALL" == 1 ]]; then
   exit 0
 fi
 
-if [[ "$ASSUME_YES" == 0 ]] && ! confirm "Install Omafiles to $HOME/.local?" y; then
-  echo "  Aborted."; exit 0
+if [[ "$ASSUME_YES" == 0 ]]; then
+  if ! confirm "Install Omafiles to ${INSTALL_PREFIX}?" y; then
+    if confirm "Install to a different directory instead?" y; then
+      while :; do
+        read -r -p "  Enter install prefix (e.g. /opt/omafiles or ~/apps): " INSTALL_PREFIX
+        INSTALL_PREFIX="${INSTALL_PREFIX/#\~/$HOME}"
+        INSTALL_PREFIX="${INSTALL_PREFIX%/}"
+        [[ -n "$INSTALL_PREFIX" ]] && break
+      done
+      BIN_DIR="${INSTALL_PREFIX}/bin"
+      printf '  %s Using install prefix:  %s\n' "${CYAN}==>${RESET}" "${BOLD}${INSTALL_PREFIX}${RESET}"
+    else
+      echo "  Aborted."; exit 0
+    fi
+  fi
 fi
 
 [[ -d "$BUILD_DIR" ]] || mkdir -p "$BUILD_DIR"
