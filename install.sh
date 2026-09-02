@@ -55,47 +55,52 @@ have_cmd(){ command -v "$1" >/dev/null 2>&1; }
 
 banner() {
   enter_alt; SCREEN_INIT=1; hide_cursor
+  local cols
+  cols=$(tput cols 2>/dev/null || echo 80)
+  (( cols < 60 )) && cols=60
   local hi=$'\033[38;5;45m' mid=$'\033[38;5;39m' lo=$'\033[38;5;32m'
+  center(){  # center <text>  -> prints text padded to terminal width
+    local vis=$(printf '%s' "$1" | sed -r 's/\x1b\[[0-9;]*m//g')
+    local len=${#vis}; local pad=$(( (cols - len) / 2 )); (( pad < 0 )) && pad=0
+    printf '%*s%s\n' "$pad" "" "$1"
+  }
+  # 5-row block letters, each 7 columns wide, unambiguous.
   local words=(O M A F I L E S)
-  local row line g gx
-  # Each letter is a 5-row glyph; render row-by-row with a cyan gradient.
-  local glyph
   letter_row() {
-    case "$g" in
-      O) local GL=( "█████ " "██   ██" "██   ██" "██   ██" "█████ " );;
-      M) local GL=( "██   ██" "███████" "███ ███" "██   ██" "██   ██" );;
-      A) local GL=( "█████ " "██   ██" "███████" "██   ██" "██   ██" );;
-      F) local GL=( "███████" "██     " "█████  " "██     " "██     " );;
-      I) local GL=( "███████" "  ██   " "  ██   " "  ██   " "███████" );;
-      L) local GL=( "██     " "██     " "██     " "██     " "███████" );;
-      E) local GL=( "███████" "██     " "█████  " "██     " "███████" );;
-      S) local GL=( "█████ " "██     " "█████ " "    ██ " "█████ " );;
+    case "$g:$row" in
+      O:0) printf ' █████ ';; O:1) printf '██   ██';; O:2) printf '██   ██';; O:3) printf '██   ██';; O:4) printf ' █████ ';;
+      M:0) printf '██   ██';; M:1) printf '███████';; M:2) printf '██ █ ██';; M:3) printf '██   ██';; M:4) printf '██   ██' ;;
+      A:0) printf ' █████ ';; A:1) printf '██   ██';; A:2) printf '███████';; A:3) printf '██   ██';; A:4) printf '██   ██' ;;
+      F:0) printf '███████';; F:1) printf '██     ';; F:2) printf '█████  ';; F:3) printf '██     ';; F:4) printf '██     ' ;;
+      I:0) printf '███████';; I:1) printf '  ██   ';; I:2) printf '  ██   ';; I:3) printf '  ██   ';; I:4) printf '███████' ;;
+      L:0) printf '██     ';; L:1) printf '██     ';; L:2) printf '██     ';; L:3) printf '██     ';; L:4) printf '███████' ;;
+      E:0) printf '███████';; E:1) printf '██     ';; E:2) printf '█████  ';; E:3) printf '██     ';; E:4) printf '███████' ;;
+      S:0) printf ' █████ ';; S:1) printf '██     ';; S:2) printf ' █████ ';; S:3) printf '    ██ ';; S:4) printf ' █████ ' ;;
     esac
-    printf '%s' "${GL[$row]}"
   }
   for ((row=0; row<5; row++)); do
     local grad
     (($row==0)) && grad=$hi; (($row==1)) && grad=$hi
     (($row==2)) && grad=$mid; (($row==3)) && grad=$mid; (($row==4)) && grad=$lo
-    line="   "
+    local line=""
+    local g
     for g in "${words[@]}"; do
       line+="${grad}${BOLD}$(letter_row)${RESET} "
     done
-    printf '%s\n' "$line"
+    center "$line"
   done
-  printf '\n  %s%sOmafiles%s  %s— interactive installer%s\n' \
-    "${BOLD}${hi}" "${RESET}" "${DIM}" "${RESET}"
+  center "  ${BOLD}${hi}○${RESET}${DIM}mafiles — interactive installer${RESET}  "
 
-  # An info box whose width fits the longest line (paths can be long).
-  local W=24 n c_repo c_build
+  # A centered info box whose width fits the longest line.
+  local W=24 c_repo c_build
   c_repo="  repo:  $REPO_DIR  "; c_build="  build: $BUILD_DIR  "
   (( ${#c_repo} > W )) && W=${#c_repo}
   (( ${#c_build} > W )) && W=${#c_build}
   pad_to(){ printf '%-*s' "$W" "$1"; }
-  printf '  %s\n' "${DIM}┌$(printf '─%.0s' $(seq 1 $W))┐${RESET}"
-  printf '  %s\n' "${DIM}│${RESET}$(pad_to "$c_repo")${DIM}│${RESET}"
-  printf '  %s\n' "${DIM}│${RESET}$(pad_to "$c_build")${DIM}│${RESET}"
-  printf '  %s\n' "${DIM}└$(printf '─%.0s' $(seq 1 $W))┘${RESET}"
+  center "${DIM}┌$(printf '─%.0s' $(seq 1 $W))┐${RESET}"
+  center "${DIM}│${RESET}$(pad_to "$c_repo")${DIM}│${RESET}"
+  center "${DIM}│${RESET}$(pad_to "$c_build")${DIM}│${RESET}"
+  center "${DIM}└$(printf '─%.0s' $(seq 1 $W))┘${RESET}"
   printf '\n'
   show_cursor
 }
@@ -145,7 +150,7 @@ confirm() {
       if [[ "$key" == $'\x1b' ]]; then            # ESC [ A/B/C/D arrow keys
         IFS= read -r -n1 _b 2>/dev/null || true
         IFS= read -r -n1 dir 2>/dev/null || true
-        case "$dir" in C|B) sel=1;; A|D) sel=0;; esac
+        case "$dir" in A|D) sel=1;; C|B) sel=0;; esac   # Left/Up → Yes, Right/Down → No
       elif [[ "$key" == $'\x0a' || "$key" == $'\x0d' || -z "$key" ]]; then
         break                                     # Enter confirms
       elif [[ "$key" == [yY] ]]; then sel=1
@@ -172,17 +177,15 @@ confirm() {
 
 render_choice() {
   local sel="$1" default="$2"
-  local yes_sel yes_un no_sel no_un
-  local default_tag=$'\033[2m(default)\033[0m'   # DIM "(default)"
-  if [[ "$default" == [yY] ]]; then
-    yes_un="${GREEN}Yes ${default_tag}"
-    no_un="No"
+  local y n
+  # [ Yes ][ No ] — Yes on the left. Left/Up → Yes, Right/Down → No.
+  if [[ "$sel" == 1 ]]; then
+    y="\033[7;1m Yes \033[0m"; n="  No  "
   else
-    no_un="${RED}No ${default_tag}"
-    yes_un="Yes"
+    y="  Yes  "; n="\033[7;1m  No  \033[0m"
   fi
-  if [[ "$sel" == 1 ]]; then yes_sel="\033[7;1m${yes_un}\033[0m"; no_sel="$no_un"; else no_sel="\033[7;1m${no_un}\033[0m"; yes_sel="$yes_un"; fi
-  printf ' %b  %b ' "$(printf '%b' "$no_sel")" "$(printf '%b' "$yes_sel")"
+  local yt=$(printf '%b' "$y") nt=$(printf '%b' "$n")
+  printf '%b%b' "$yt" "$nt"
 }
 
 # ──────────────────────────────────────────────────────────────────────────
