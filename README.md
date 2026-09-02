@@ -22,8 +22,9 @@ cd omafiles
 ./install.sh
 ```
 
-It asks before any privileged (sudo/pacman) step — including a yes/no prompt for the
-optional `SUPER + SHIFT + F` Hyprland keybinding — and is safe to re-run:
+It asks before any privileged (sudo/pacman) step — including an arrow-key
+**Yes/No selector** for the optional `SUPER + SHIFT + F` Hyprland keybinding —
+and is safe to re-run:
 
 - `./install.sh --yes` — non-interactive, accept every default choice.
 - `./install.sh --skip-build` — reuse an existing `build/` and just re-run

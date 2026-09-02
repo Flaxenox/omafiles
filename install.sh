@@ -41,23 +41,74 @@ fail()  { printf '%s\n' "    ${RED}✗${RESET} $*" >&2; }
 
 die() { printf '%s\n' "${RED}Error:${RESET} $*" >&2; exit 1; }
 
-# Ask a yes/no question, defaulting to $1. Returns 0=yes, 1=no.
+# Ask a yes/no question with an arrow-key Yes/No selector. Returns 0=yes, 1=no.
+#   confirm "<prompt>" [default]    default is "y" or "n"
 confirm() {
-  local prompt="$1" default="$2" ans
+  local prompt="$1" default="${2:-y}"
+  # Non-interactive: resolve to the default immediately.
   if [[ "$ASSUME_YES" == 1 ]]; then
-    printf '%s (y/N) → %s\n' "$prompt" "$default"
-    [[ "$default" == "y" || "$default" == "Y" ]] && return 0
+    printf '%s → %s\n' "$prompt" "$([ "$default" == y ] && echo Yes || echo No)"
+    [[ "$default" == [yY] ]] && return 0
     return 1
   fi
-  while true; do
-    read -r -p "$prompt [y/N] " ans
-    answer="$(printf '%s' "${ans:-$default}" | tr '[:upper:]' '[:lower:]')"
-    case "$answer" in
-      y|yes) return 0 ;;
-      n|no)  return 1 ;;
-      *) printf '%s\n' "    ${YELLOW}Please answer y or n.${RESET}" ;;
-    esac
-  done
+
+  local sel=1   # 0 = No, 1 = Yes
+  [[ "$default" == [nN] ]] && sel=0
+
+  local key reply
+  # Interactive only when stdin is a terminal; otherwise read a line.
+  if [[ -t 0 ]]; then
+    stty raw -echo 2>/dev/null || stty -icanon -echo 2>/dev/null
+    printf '\r\033[2K%s  ' "$prompt"
+    render_choice "$sel"
+    while :; do
+      key=""
+      IFS= read -r -n1 key 2>/dev/null || continue
+      if [[ "$key" == $'\x1b' ]]; then
+        # Escape sequence (arrow keys are ESC [ A/B/C/D).
+        IFS= read -r -n1 _b 2>/dev/null || true   # '['
+        IFS= read -r -n1 dir 2>/dev/null || true
+        case "$dir" in
+          C|B) sel=1 ;;   # Right / Down -> Yes
+          A|D) sel=0 ;;   # Left  / Up   -> No
+        esac
+      elif [[ "$key" == $'\x0a' || "$key" == $'\x0d' || -z "$key" ]]; then
+        break   # Enter (LF/CR) confirms
+      elif [[ "$key" == [yY] ]]; then
+        sel=1
+      elif [[ "$key" == [nN] ]]; then
+        sel=0
+      fi
+      printf '\r\033[2K%s  ' "$prompt"
+      render_choice "$sel"
+    done
+    stty sane 2>/dev/null || stty echo icanon 2>/dev/null
+    printf '\r\033[2K■ %s  %s\n' "$prompt" "$([ "$sel" == 1 ] && echo "${GREEN}Yes${RESET}" || echo "${DIM}No${RESET}")"
+  else
+    while :; do
+      read -r -p "$prompt [y/N] " reply
+      case "$(printf '%s' "${reply:-$default}" | tr '[:upper:]' '[:lower:]')" in
+        y|yes) sel=1; break ;;
+        n|no)  sel=0; break ;;
+        *) printf '%s\n' "    ${YELLOW}Please answer y or n.${RESET}" ;;
+      esac
+    done
+  fi
+
+  [[ "$sel" == 1 ]] && return 0
+  return 1
+}
+
+# Draw a Yes/No pair with the selected option highlighted.
+render_choice() {
+  local sel="$1"
+  local yes_txt no_txt
+  if [[ "$sel" == 1 ]]; then
+    yes_txt="\033[7;1m Yes \033[0m"; no_txt="  No  "
+  else
+    yes_txt="  Yes  "; no_txt="\033[7;1m  No  \033[0m"
+  fi
+  printf '%b   %b' "$yes_txt" "$no_txt"
 }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
