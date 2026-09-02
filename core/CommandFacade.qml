@@ -1,5 +1,6 @@
 import "../shared/Utils.js" as Utils
 import QtQuick
+import qs.Commons
 import "../state"
 import Omafiles.Backend as Backend
 
@@ -81,6 +82,11 @@ Item {
       }
       if (entry.type === "dir") {
         cmds.push({ label: "Open in new tab", run: function () { tabOps.openInNewTab(fullPath) } })
+      } else {
+        var pext = Utils.extOf(entry.name)
+        if (pext === "sh" || pext === "py") {
+          cmds.push({ label: "Run " + entry.name, run: function () { commandFacade.runScriptFile(entry) } })
+        }
       }
     }
     if (ArchiveState.inArchive) {
@@ -160,6 +166,10 @@ Item {
         } })
       } else {
         actions.push({ label: "Open with...", action: function () { commandFacade.showOpenWith(entries[0]) } })
+        var ext = Utils.extOf(entries[0].name)
+        if (ext === "sh" || ext === "py") {
+          actions.push({ label: "Run", action: function () { commandFacade.runScriptFile(entries[0]) } })
+        }
       }
     }
 
@@ -267,6 +277,20 @@ Item {
     var openPath = Utils.entryPath(NavState.currentPath, entry)
     PreviewState.openWithApps = Backend.MimeResolver.getAppsForFile(openPath)
     PreviewState.openWithOpen = true
+  }
+
+  // Runs a .sh / .py script in the background (working directory set to the
+  // script's own folder, mirroring CustomActions so relative paths in the
+  // script resolve where the user expects). Fire-and-forget: no window.
+  function runScriptFile(entry) {
+    if (!entry) return
+    var ext = Utils.extOf(entry.name)
+    if (ext !== "sh" && ext !== "py") return
+    var fullPath = Utils.entryPath(NavState.currentPath, entry)
+    var interp = ext === "py" ? "python3" : "bash"
+    Backend.Detached.run(["bash", "-lc", "cd -- " + Util.shellQuote(NavState.currentPath) + " && " + interp + " " + Util.shellQuote(fullPath)])
+    BookmarksState.addRecent(fullPath, entry.name)
+    Backend.Notifier.notify("Running: " + entry.name)
   }
 
   function launchWith(desktopId) {
