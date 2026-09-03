@@ -190,6 +190,7 @@ void MimeResolver::launchApp(const QString &desktopId, const QString &path) {
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
 
   QString execCmd;
+  bool needsTerminal = false;
   QTextStream in(&file);
   bool inDesktopEntry = false;
   while (!in.atEnd()) {
@@ -200,7 +201,8 @@ void MimeResolver::launchApp(const QString &desktopId, const QString &path) {
       inDesktopEntry = false;
     } else if (inDesktopEntry && line.startsWith(QLatin1String("Exec="))) {
       execCmd = line.mid(5).trimmed();
-      break;
+    } else if (inDesktopEntry && line.startsWith(QLatin1String("Terminal="))) {
+      needsTerminal = line.mid(9).trimmed().compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
     }
   }
 
@@ -250,8 +252,78 @@ void MimeResolver::launchApp(const QString &desktopId, const QString &path) {
     return a.startsWith(QLatin1Char('%'));
   }), args.end());
 
+  // Terminal=true apps (nvim, vim, htop, ...) have NO GUI and expect a real TTY:
+  // launching them detached leaves them with no terminal and they refuse to start.
+  // Wrap the command in the user's terminal emulator (same resolution order as
+  // TerminalResolver::launchTerminal, minus the /tmp-directory duty).
+  if (needsTerminal) {
+    startInTerminal(program, args);
+    return;
+  }
+
   qint64 pid = 0;
   if (!QProcess::startDetached(program, args, QString(), &pid)) {
     qWarning("launchApp: could not start '%s'", qPrintable(program));
   }
+}
+
+// Launches `program` + `args` inside the user's terminal emulator so TTY-only
+// apps (Terminal=true) get a working terminal. Resolution matches
+// TerminalResolver: $TERMINAL first, then the known modern ones.
+void MimeResolver::startInTerminal(const QString &program, const QStringList &args) {
+  if (qEnvironmentVariable("OMAFILES_SELFCHECK") == "1") return;
+
+  // 1. User's explicit choice, 2. known terminal emulators.
+  QStringList candidates;
+  const QByteArray termEnv = qgetenv("TERMINAL");
+  if (!termEnv.isEmpty()) {
+    candidates << QString::fromLocal8Bit(termEnv);
+  }
+  candidates << QStringLiteral("kitty")
+             << QStringLiteral("foot")
+             << QStringLiteral("alacritty")
+             << QStringLiteral("wezterm")
+             << QStringLiteral("ghostty")
+             << QStringLiteral("gnome-terminal")
+             << QStringLiteral("konsole")
+             << QStringLiteral("xfce4-terminal")
+             << QStringLiteral("xterm");
+
+  QStringList run;
+  for (const QString &term : candidates) {
+    const QString exe = QStandardPaths::findExecutable(term);
+    if (!exe.isEmpty()) {
+      run << exe;
+      if (term == QLatin1String("xdg-terminal-exec")) {
+        // freedesktop executor: takes the command directly, no -e/-- flag.
+      } else if (term == QLatin1String("wezterm")) {
+        run << QStringLiteral("start") << QStringLiteral("--");
+      } else if (term == QLatin1String("gnome-terminal")) {
+        run << QStringLiteral("--");
+      } else {
+        run << QStringLiteral("-e");
+      }
+      break;
+    }
+  }
+
+  // 'gnome-terminal -- CMD args' passes CMD+args as ONE shell string, not as
+  // separate argv entries; the '-e' family runs them as argv. Normalize for both.
+  if (!run.isEmpty()) {
+    QString termExe = run.takeFirst();
+    // xdg-terminal-exec mirrors the -e/argv family: it gets program+args as-is.
+    if (run.contains(QStringLiteral("--"))) {
+      // gnome-terminal/wezterm: '-- "cmd arg" ' executes a shell line.
+      QStringList line = args;
+      line.prepend(program);
+      run << line.join(QLatin1Char(' '));
+    } else {
+      run << program << args;
+    }
+    if (QProcess::startDetached(termExe, run))
+      return;
+  }
+
+  qWarning("launchApp: Terminal=true but no usable terminal emulator found for '%s'",
+           qPrintable(program));
 }
