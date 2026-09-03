@@ -9,6 +9,7 @@ class NetworkResolver::Private {
 public:
   NetworkResolver *q;
   GMountOperation *currentOp = nullptr;
+  GMountOperation *pendingOp = nullptr; // kept alive until onMountDone
 
   static void onAskPassword(GMountOperation *op, const gchar *message, const gchar *defaultUser, const gchar *defaultDomain, GAskPasswordFlags flags, gpointer userData) {
     auto *self = static_cast<NetworkResolver::Private *>(userData);
@@ -16,11 +17,19 @@ public:
     emit self->q->authRequested(QString::fromUtf8(message), QString::fromUtf8(defaultUser));
   }
 
+  // Handle SSH host key verification (and other yes/no questions from GIO).
+  // Auto-accept: the user explicitly asked to connect to this server.
+  static void onAskQuestion(GMountOperation *op, const gchar *message, const gchar **choices, gpointer userData) {
+    Q_UNUSED(message) Q_UNUSED(choices) Q_UNUSED(userData)
+    g_mount_operation_set_choice(op, 0);
+    g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
+  }
+
   static void onMountDone(GObject *source, GAsyncResult *res, gpointer userData) {
     auto *self = static_cast<NetworkResolver::Private *>(userData);
     GError *error = nullptr;
     gboolean success = g_file_mount_enclosing_volume_finish(G_FILE(source), res, &error);
-    
+
     QString localPath;
     QString homePath;
     if (success) {
@@ -59,6 +68,7 @@ public:
     if (error) g_error_free(error);
 
     self->currentOp = nullptr;
+    if (self->pendingOp) { g_object_unref(self->pendingOp); self->pendingOp = nullptr; }
     emit self->q->mountFinished(success, errorMsg, localPath, homePath);
     
     // Clean up
@@ -90,17 +100,19 @@ void NetworkResolver::mountUrl(const QString &url) {
   if (parsed.scheme().isEmpty()) {
     // If user typed "10.0.0.1/share", default to smb
     parsed.setScheme(QStringLiteral("smb"));
+  } else if (parsed.scheme() == QLatin1String("ssh")) {
+    // ssh:// is not a valid GIO scheme -- map to sftp
+    parsed.setScheme(QStringLiteral("sftp"));
   }
 
   GFile *file = g_file_new_for_uri(parsed.toString().toUtf8().constData());
   GMountOperation *op = g_mount_operation_new();
   
   g_signal_connect(op, "ask-password", G_CALLBACK(Private::onAskPassword), d);
+  g_signal_connect(op, "ask-question", G_CALLBACK(Private::onAskQuestion), d);
 
+  d->pendingOp = op;
   g_file_mount_enclosing_volume(file, G_MOUNT_MOUNT_NONE, op, nullptr, Private::onMountDone, d);
-  
-  g_object_unref(op);
-  // GFile is unref'd in onMountDone
 }
 
 void NetworkResolver::submitAuth(const QString &username, const QString &password, bool rememberSession) {
