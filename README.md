@@ -11,33 +11,6 @@ stability fixes on top of the upstream project (see [Fixes included](#-fixes-inc
 
 ---
 
-## 🚀 Quick install (TUI installer)
-
-The repo ships an interactive terminal installer that installs the dependencies,
-builds the app, and (optionally) wires a `SUPER + SHIFT + F` launch keybinding.
-
-```bash
-git clone https://github.com/Flaxenox/omafiles.git
-cd omafiles
-./install.sh
-```
-
-It asks before any privileged (sudo/pacman) step — including an arrow-key
-**Yes/No selector** for the optional `SUPER + SHIFT + F` Hyprland keybinding —
-and is safe to re-run:
-
-- `./install.sh --yes` — non-interactive, accept every default choice.
-- `./install.sh --skip-build` — reuse an existing `build/` and just re-run
-  the install + integration + keybinding steps.
-- `./install.sh --uninstall` — remove Omafiles, its data and the keybinding
-  again (asks whether to also remove the dependencies).
-- `./install.sh --uninstall --purge` — also uninstalls the packages Omafiles
-  needs, without asking.
-
-Power users can skip the TUI and follow [Option A](#option-a--manual-build--per-user-install-recommended-no-root) below.
-
----
-
 ## ✨ Features
 
 - **Tabs & split preview** — open folders in tabs and preview files side-by-side.
@@ -55,7 +28,7 @@ Power users can skip the TUI and follow [Option A](#option-a--manual-build--per-
 
 ## 🔧 Fixes included
 
-All changes in this fork live in the working tree and are covered by one commit.
+All changes in this fork are tracked as commits on `master` (see the git history).
 
 ### 1. Startup crash — use-after-free (fixed)
 - **`main.cpp`**: replaced the manual `QMetaObject::Connection` + `disconnect`/`delete` pattern
@@ -72,6 +45,12 @@ All changes in this fork live in the working tree and are covered by one commit.
 - **`core/DialogLayer.qml`**: `OpenWithPanel.onAppSelected` previously checked
   `controllers.commandFacade`, which does not exist on `ControllerRegistry` — the guard was always
   false and nothing launched. Now it calls `commandFacade.launchWith(appId)` directly.
+
+### 3b. Terminal-only apps (nvim, vim, …) launch inside a terminal
+- **`backend/MimeResolver.cpp`**: `launchApp` now reads `Terminal=true` from a `.desktop` file and,
+  when set, runs the command inside the user's terminal emulator (`$TERMINAL` → `xdg-terminal-exec`,
+  kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole, xfce4-terminal, xterm) instead of
+  launching it detached with no TTY — where TUI apps such as Neovim silently refuse to start.
 
 ### 4. `--new-window` flag
 - **`main.cpp`**: added `--new-window` / `-new-window` so you can open a second/Nth window (e.g. on
@@ -117,6 +96,18 @@ All changes in this fork live in the working tree and are covered by one commit.
 - **`core/ControllerRegistry.qml`**: dropped a stale `navController` injection in the persistence
   controller.
 
+### 11. Background-pane navigation no longer drops saved tab state
+- **`logic/TabOps.qml`**: `navigateTabTo`, `navTabBack` and `navTabForward` rebuilt the tab object as a
+  fresh literal, silently discarding every other saved field (scroll position, open search, preview,
+  archive state). They now `Object.assign({}, tab, {...})` — merging onto what `saveActiveTab()`
+  stored, so back/forward/up on a background panel keeps its scroll, search, preview and archive
+  context.
+
+### 12. Preview panel no longer ghosts a stale file's text into a directory listing
+- **`logic/PreviewLoader.qml`**: `loadPreview()` bailed immediately for a directory without clearing
+  the previous file's `previewIsText` / `previewText` / `previewHighlighted`, so a directory's brief
+  preview could keep painting the old file's text behind it. It now resets that state.
+
 > Removed debug/instrumentation hooks are also cleaned out, so there are no leftover
 > `ReferenceError`-throwing dev hooks in the deployed panels.
 
@@ -150,19 +141,6 @@ All changes in this fork live in the working tree and are covered by one commit.
 
 ## 🚀 Installation
 
-### Option 0 — TUI installer (recommended)
-
-The easiest, all-in-one way to get Omafiles running and optional `SUPER + SHIFT + F`
-keybinding set up:
-
-```bash
-git clone https://github.com/Flaxenox/omafiles.git
-cd omafiles
-./install.sh
-```
-
-See [Quick install](#-quick-install-tui-installer) above for the available flags.
-
 ### Option A — Manual build & per-user install (recommended, no root)
 
 ```bash
@@ -192,7 +170,6 @@ automatically on first launch (via `scripts/install-integrations.sh`) — no man
 > ```lua
 > o.bind("SUPER + SHIFT + F", "OmaFiles", "omafiles --new-window")
 > ```
-> The TUI installer (Option 0) does this for you if you ask it to.
 
 ### Option B — Rebuild after pulling changes
 
