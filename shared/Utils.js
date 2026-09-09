@@ -68,6 +68,20 @@ function joinPath(base, name) {
   return base === "/" ? "/" + name : base + "/" + name
 }
 
+// Inverse of qs.Commons Util.fileUrl: "file://" + path segments each
+// percent-encoded -> back to the plain absolute path. Non-file URLs return "".
+function urlToPath(url) {
+  var s = String(url)
+  if (s.indexOf("file://") !== 0) return ""
+  s = s.substring("file://".length)
+  if (s.length === 0) return ""
+  try {
+    return s.split("/").map(decodeURIComponent).join("/")
+  } catch (e) {
+    return ""
+  }
+}
+
 // Absolute path of an entry. In a normal listing (or recursive search)
 // the entry carries `name` relative to `base`. In indexed global search
 // the entry carries an absolute `path`.

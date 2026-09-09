@@ -60,6 +60,19 @@ QtObject {
     Backend.JsonStore.write(Paths.bulkRenameHistoryFile, next)
   }
 
+  // Moves the bookmark at `from` so it sits at `to` in the NEW array
+  // (post-removal index, i.e. splice(from,1) then splice(to,0,item)).
+  function reorderBookmark(from, to) {
+    if (from === to) return
+    if (from < 0 || to < 0) return
+    if (from >= bookmarks.length || to > bookmarks.length) return
+    var next = bookmarks.slice()
+    var item = next.splice(from, 1)[0]
+    next.splice(to, 0, item)
+    bookmarks = next
+    Backend.JsonStore.write(Paths.bookmarksFile, next)
+  }
+
   function removeBookmark(path) {
     if (path === Paths.trashDir) return
     var next = bookmarks.filter(function (b) { return b.path !== path })

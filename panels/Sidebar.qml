@@ -96,6 +96,10 @@ Item {
         onBookmarkOpened: function(b) { root.bookmarkOpened(b) }
         onDropHoverChanged: function(p) { root.dropHoverChanged(p) }
         onFilesDropped: function(d, p) { root.filesDropped(d, p) }
+        onReorderActiveChanged: function (active) {
+          // Reorder drag must not double as a sidebar scroll gesture.
+          sidebarFlickable.interactive = !active
+        }
       }
 
       SidebarMounts {
