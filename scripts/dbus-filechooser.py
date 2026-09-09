@@ -3,8 +3,10 @@
 
 import sys
 import json
+import time
 import shutil
 from pathlib import Path
+from urllib.parse import unquote
 
 import gi
 gi.require_version("Gio", "2.0")
@@ -84,6 +86,54 @@ def cleanup_request(handle):
         except Exception as e:
             print(f"omafiles FileChooser: failed to unregister request object at {handle}: {e}", file=sys.stderr)
 
+# "Re-open window" for the FileChooser portal: the picker remembers the last
+# folder it was in, and when opened again within this many seconds it jumps
+# straight back to that folder instead of resetting to $HOME (the portal
+# default for apps that don't suggest a current_folder, e.g. Brave).
+REOPEN_WINDOW_SEC = 4
+PICKER_STATE_FILE = Path.home() / ".local" / "state" / "omafiles" / "filechooser.json"
+
+def load_state():
+    try:
+        with open(PICKER_STATE_FILE) as _f:
+            data = json.load(_f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def save_state(state):
+    try:
+        PICKER_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(PICKER_STATE_FILE, "w") as _f:
+            json.dump(state, _f)
+    except Exception as e:
+        print(f"omafiles FileChooser: failed to write picker state: {e}", file=sys.stderr)
+
+def resolve_folder(folder_path, state):
+    """Folder to open: an existing suggested path as-is; else the picker's
+    last-used folder if it was used within REOPEN_WINDOW_SEC; else $HOME."""
+    if folder_path and Path(folder_path).exists():
+        return folder_path
+    now = time.time()
+    last_folder = state.get("last_folder")
+    last_opened = state.get("last_opened", 0)
+    if (last_folder and Path(last_folder).exists()
+            and isinstance(last_opened, (int, float))
+            and (now - float(last_opened)) < REOPEN_WINDOW_SEC):
+        return last_folder
+    return str(Path.home())
+
+def uri_folder(uri):
+    """Parent folder of a file:// URI ("" -> "/"), or None if not a file URI."""
+    try:
+        decoded = unquote(str(uri))
+    except Exception:
+        return None
+    if not decoded.startswith("file://"):
+        return None
+    parent = decoded[len("file://"):].rsplit("/", 1)[0]
+    return parent or "/"
+
 def request_method_call(connection, sender, object_path, interface_name, method_name, parameters, invocation):
     if method_name == "Close":
         req = active_requests.get(object_path)
@@ -110,9 +160,12 @@ def on_filechooser_method_call(connection, sender, object_path, interface_name, 
         except Exception:
             pass
 
-    # Fallback to home if path not found or empty
-    if not folder_path or not Path(folder_path).exists():
-        folder_path = str(Path.home())
+    # Resolve the folder to show: an existing suggested path wins; but when
+    # none is given (or it no longer exists), a quick re-open of the picker
+    # (within REOPEN_WINDOW_SEC) jumps back to the last-used folder instead of
+    # resetting to $HOME.
+    state = load_state()
+    folder_path = resolve_folder(folder_path, state)
 
     suggested_name = get_opt(options, 'current_name', '')
     if not suggested_name:
@@ -126,6 +179,9 @@ def on_filechooser_method_call(connection, sender, object_path, interface_name, 
                     folder_path = str(cf.parent)
             except Exception:
                 pass
+
+    # Remember the folder being shown so a quick re-open can come back here.
+    save_state({"last_folder": folder_path, "last_opened": time.time()})
 
     # Resolve picker mode
     mode = "open-file"
@@ -196,6 +252,16 @@ def on_submission_method_call(connection, sender, object_path, interface_name, m
             # Strict single-selection guarantee when multiple is False
             if not req.get('multiple', False) and len(uris) > 1:
                 uris = [uris[0]]
+
+            # A file being picked means the user worked in its folder --
+            # remember it so a quick re-open of the picker lands there too.
+            if response_code == 0 and uris:
+                folder = uri_folder(uris[0])
+                if folder:
+                    state = load_state()
+                    state["last_folder"] = folder
+                    state["last_opened"] = time.time()
+                    save_state(state)
 
             results = {
                 'uris': GLib.Variant('as', uris)

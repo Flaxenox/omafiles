@@ -30,9 +30,11 @@ trap on_error ERR
 # icon + its symbolic variant; v6 adds StartupWMClass=omafiles (so that the
 # dock/taskbar matches the window with this .desktop and paints the icon); v7
 # fixes D-Bus service section headers and system python shebangs; v8 adds the
-# org.freedesktop.impl.portal.FileChooser integration. Bumping the version
+# org.freedesktop.impl.portal.FileChooser integration; v9 makes the FileChooser
+# portal remember the last-used folder: a re-open of the picker within a few
+# seconds jumps back there instead of resetting to $HOME. Bumping the version
 # forces the rewrite and re-copy in earlier installations.
-INTEGRATION_VERSION=8
+INTEGRATION_VERSION=9
 
 # SELF_RES: the resource root where THIS script actually lives (BASH_SOURCE[0]
 # is the exact path it was invoked with -- core/AppBindings.qml launches it as

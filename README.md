@@ -1,13 +1,10 @@
 # Omafiles
 
-A high-performance, native **Qt6 / QML** file manager for **Arch Linux (Hyprland/Wayland)**.
+A fast, keyboard-first **Qt6 / QML** file manager for **Arch Linux (Hyprland/Wayland)** — tabs, split
+preview, list & grid views, network mounts, archives, a file-chooser portal, and a Nautilus-style
+sidebar, all on a lightweight C++ backend.
 
-Omafiles is a fast, keyboard-first file manager with modern expectations: tabs, split
-preview, list & grid views, network mounts, archives, a file picker portal, and a
-Nautilus-style sidebar — all rendered with Qt Quick and a lightweight C++ backend.
-
-This fork is maintained by **Flaxenox** and adds several reliability, usability, and
-stability fixes on top of the upstream project (see [Fixes included](#-fixes-included)).
+Maintained by **Flaxenox** as a fork of [Percius04/omafiles](https://github.com/Percius04/omafiles).
 
 ---
 
@@ -15,101 +12,33 @@ stability fixes on top of the upstream project (see [Fixes included](#-fixes-inc
 
 - **Tabs & split preview** — open folders in tabs and preview files side-by-side.
 - **Dual view modes** — dense *list* view and thumbnailed *grid* view, with a crossfade animation.
-- **Sidebar** — bookmarks, recent files, drives/mounts (USB, partitions), and network locations.
+- **Sidebar** — bookmarks (reorder by drag, drop folders/files to add), drives/mounts, network locations.
 - **Network mounts** — SFTP, FTP, WebDAV, SMB via GVfs, with a Nautilus-like connect flow.
-- **Native properties** — real `stat`/`du` sizing and a disk-usage bar (no shelling out).
-- **Archives** — compress to `.zip`, extract `.zip`/`.7z`/`.rar` (opt-in backends).
-- **Duplicate finder** — locate duplicate files by content.
+- **Native properties** — real `stat`/`du` sizing and a disk-usage bar, no shelling out.
+- **Archives** — compress to `.zip`; extract `.zip`/`.7z`/`.rar` (opt-in backends).
+- **Duplicate finder** — find duplicate files by content.
 - **Global search** — fast filename search via `tracker3` / `plocate` when installed.
-- **File Chooser portal** — integrates as `org.freedesktop.impl.portal.FileChooser` on Hyprland.
-- **Mouse side-button navigation** — back/forward history (Nautilus/Finder style).
+- **File chooser portal** — integrates as `org.freedesktop.impl.portal.FileChooser` on Hyprland.
+- **Mouse back/forward buttons** — history navigation, Nautilus-style.
 
 ---
 
-## 🔧 Fixes included
+## 🔧 What this fork changes
 
-All changes in this fork are tracked as commits on `master` (see the git history).
+- Fixes a startup **crash** (use-after-free) and always starts on `$HOME` by default.
+- **"Open With"** now actually launches apps; `Terminal=true` apps (`nvim`, `vim`, …) run inside a terminal.
+- `--new-window` flag for opening a second window (e.g. on another Hyprland workspace).
+- Network mounts (SFTP/FTP/WebDAV/SMB) **mount and unmount reliably**, and connect to the mount's home.
+- Mouse **back/forward** buttons drive history.
+- Sidebar, file list, and **context menus scroll instead of running off-screen** — no cut-off menus at
+  quarter/half splits.
+- XDG `[Removed Associations]` respected — no duplicate "Open With" entries.
+- Background-tab back/forward no longer drops saved tab state; previews no longer ghost a stale file's
+  text into a directory listing.
+- Bookmarks: drag to **reorder**, drop folders/files to **add**, file bookmarks **open with their
+  default app** (plus "Reveal in folder"), and **remove** via right-click.
 
-### 1. Startup crash — use-after-free (fixed)
-- **`main.cpp`**: replaced the manual `QMetaObject::Connection` + `disconnect`/`delete` pattern
-  (used to log the first rendered frame) with `Qt::SingleShotConnection`, which detaches cleanly
-  after the first emission instead of freeing memory mid-dispatch. Fixes the crash on first launch.
-
-### 2. Play it safe by default — always start on `$HOME`
-- **`core/OmafilesContent.qml`**: a plain launch now opens a **single tab on `$HOME`** instead of
-  restoring the previous session's tabs.
-- **`logic/Persistence.qml`** / **`state/TabsState.qml`**: removed the now-unused `loadSession()`
-  restore branch (session file is still written for compatibility, just never restored on startup).
-
-### 3. "Open With" actually launches the app
-- **`core/DialogLayer.qml`**: `OpenWithPanel.onAppSelected` previously checked
-  `controllers.commandFacade`, which does not exist on `ControllerRegistry` — the guard was always
-  false and nothing launched. Now it calls `commandFacade.launchWith(appId)` directly.
-
-### 3b. Terminal-only apps (nvim, vim, …) launch inside a terminal
-- **`backend/MimeResolver.cpp`**: `launchApp` now reads `Terminal=true` from a `.desktop` file and,
-  when set, runs the command inside the user's terminal emulator (`$TERMINAL` → `xdg-terminal-exec`,
-  kitty, foot, alacritty, wezterm, ghostty, gnome-terminal, konsole, xfce4-terminal, xterm) instead of
-  launching it detached with no TTY — where TUI apps such as Neovim silently refuse to start.
-
-### 4. `--new-window` flag
-- **`main.cpp`**: added `--new-window` / `-new-window` so you can open a second/Nth window (e.g. on
-  another Hyprland workspace). Such instances skip the single-instance hand-off and skip owning the
-  summon socket, keeping "open folder" requests with the primary window.
-
-### 5. XDG `[Removed Associations]` support — no duplicate "Open With" entries
-- **`backend/MimeResolver.cpp`**: added `parseRemovedAssociations()` and applied it in
-  `getAppsForFile()`, so desktop IDs listed under `[Removed Associations]` in `mimeapps.list`
-  are correctly filtered out. Fixes duplicate entries (e.g. two "Zathura" rows).
-
-### 6. Robust app launch
-- **`backend/MimeResolver.cpp`**: `launchApp` now checks the `QProcess::startDetached` return value
-  and logs a warning if the app could not be started.
-
-### 7. Network mount fixes (SFTP/FTP/WebDAV/SMB)
-- **`backend/NetworkMounts.cpp`**: each mount now surfaces a real `uri` (`scheme://host/share`) so
-  unmounting works — unmounting by the local gvfs FUSE path failed with "Containing mount doesn't
-  exist". Also added a Nautilus-like `homePath` (the mount's default location).
-- **`backend/NetworkResolver.cpp` / `.h`**: `mountFinished` now reports a `homePath` (remote `$HOME`
-  for SFTP, the reachable root for others), mirroring what a fresh connect opens.
-- **`logic/MountActions.qml`**: disconnect uses `mount.uri`; a successful connect navigates to the
-  mount's `homePath`.
-- **`core/MainLayout.qml`**: opening a network mount from the sidebar goes to `homePath`.
-
-### 8. Mouse back/forward buttons
-- **`core/MainLayout.qml`**: added a `MouseArea` (full-window, `z=10000`) that accepts only
-  `Qt.BackButton`/`Qt.ForwardButton` and drives the history — disabled while a blocking overlay
-  (context menu / dialog / inline edit) is open.
-
-### 9. Scrollable that can't go off-screen (list & sidebar)
-- **`panels/Sidebar.qml`**: the left sidebar now scrolls inside a `Flickable` when its sections
-  overflow a short/tiled window, with an auto-showing `ScrollBar.vertical`.
-- **`panels/ActiveFileList.qml`**: the right file pane gets an auto-showing `ScrollBar.vertical`
-  (right-aligned, appears only when rows actually overflow).
-- **`dialogs/ContextMenuPanel.qml`**: the right-click context menu is height-capped so it never goes
-  off-screen at 1/4 or 1/2 splits, scrolls via a `Flickable` + scrollbar when needed, and the
-  backdrop consumes wheel events so scrolling the menu doesn't also scroll the file list behind it.
-
-### 10. Misc reliability
-- **`core/MainLayout.qml`**: the wheel-handling `MouseArea` now uses `acceptedButtons: Qt.NoButton`
-  and a higher `z` so it reliably receives wheel events without swallowing clicks/drags.
-- **`core/ControllerRegistry.qml`**: dropped a stale `navController` injection in the persistence
-  controller.
-
-### 11. Background-pane navigation no longer drops saved tab state
-- **`logic/TabOps.qml`**: `navigateTabTo`, `navTabBack` and `navTabForward` rebuilt the tab object as a
-  fresh literal, silently discarding every other saved field (scroll position, open search, preview,
-  archive state). They now `Object.assign({}, tab, {...})` — merging onto what `saveActiveTab()`
-  stored, so back/forward/up on a background panel keeps its scroll, search, preview and archive
-  context.
-
-### 12. Preview panel no longer ghosts a stale file's text into a directory listing
-- **`logic/PreviewLoader.qml`**: `loadPreview()` bailed immediately for a directory without clearing
-  the previous file's `previewIsText` / `previewText` / `previewHighlighted`, so a directory's brief
-  preview could keep painting the old file's text behind it. It now resets that state.
-
-> Removed debug/instrumentation hooks are also cleaned out, so there are no leftover
-> `ReferenceError`-throwing dev hooks in the deployed panels.
+Full per-file detail lives in the git history (`master`).
 
 ---
 
@@ -147,46 +76,36 @@ All changes in this fork are tracked as commits on `master` (see the git history
 # 1. Install dependencies (Arch)
 sudo pacman -S --needed qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject cmake ninja
 
-# 2. Clone this fork
+# 2. Clone, configure, build
 git clone https://github.com/Flaxenox/omafiles.git
 cd omafiles
-
-# 3. Configure & build
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-# 4. Install (to ~/.local — no root needed)
+# 3. Install (to ~/.local — no root needed) and run
 cmake --install build
-
-# 5. Run
 omafiles
 ```
 
-The app registers itself as the default file manager and the FileChooser portal
-automatically on first launch (via `scripts/install-integrations.sh`) — no manual step.
+On first launch the app registers itself as the default file manager and the FileChooser portal
+automatically (via `scripts/install-integrations.sh`).
 
-> Optional: to launch Omafiles with `SUPER + SHIFT + F` on Hyprland/Omarchy, add to
-> `~/.config/hypr/bindings.lua`:
+> Optional: bind it on Hyprland/Omarchy with `SUPER + SHIFT + F` in `~/.config/hypr/bindings.lua`:
 > ```lua
 > o.bind("SUPER + SHIFT + F", "OmaFiles", "omafiles --new-window")
 > ```
 
-### Option B — Rebuild after pulling changes
+### Rebuilding after pulling changes
 
 ```bash
-cd omafiles
 cmake --build build
 cmake --install build     # re-syncs ~/.local/bin/omafiles + backend .so + QML resources
 ```
 
-> **Note**: QML files are loaded live from the source tree at runtime (when present), so
-> `Sidebar.qml`, `ActiveFileList.qml`, `ContextMenuPanel.qml` and other QML fixes take effect on the
-> next launch even without a rebuild. C++ changes (e.g. `MimeResolver.cpp`, `main.cpp`,
-> `NetworkResolver.cpp`) require the rebuild above.
+> QML files load live from the source tree at runtime, so `.qml` changes apply on next launch without
+> a rebuild. C++ changes (`main.cpp`, `backend/*`) do require the rebuild above.
 
-### Option C — Arch package (PKGBUILD)
-
-A `PKGBUILD` is provided at `packaging/arch/PKGBUILD`:
+### Option B — Arch package
 
 ```bash
 cd packaging/arch
@@ -213,5 +132,4 @@ Press `/` for the command palette to browse all shortcuts.
 
 ## 📝 License
 
-MIT — see `LICENSE`. This is a fork of the upstream
-[Percius04/omafiles](https://github.com/Percius04/omafiles) project.
+MIT — see `LICENSE`, a fork of the upstream Percius04/omafiles project.
