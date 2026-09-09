@@ -58,6 +58,16 @@ QtObject {
   }
 
   // --- surfaces (the ones Omafiles and its components use) --------------
+  readonly property QtObject bar: QtObject {
+    property color background: root.composed("bar.background", "bar.background-alpha", root.background, 1.0)
+    property color text: root.pick("bar.text", root.foreground)
+    property color active: root.pick("bar.active", root.urgent)
+  }
+  readonly property QtObject popups: QtObject {
+    property color background: root.composed("popups.background", "popups.background-alpha", root.background, 1.0)
+    property color text: root.pick("popups.text", root.foreground)
+    property color border: root.composed("popups.border", "popups.border-alpha", root.accent, 1.0)
+  }
   readonly property QtObject tooltip: QtObject {
     property color background: root.composed("tooltip.background", "tooltip.background-alpha", root.background, 1.0)
     property color text: root.pick("tooltip.text", root.foreground)
@@ -71,5 +81,11 @@ QtObject {
     property color selectedBackground: root.composed("menu.selected-background", "menu.selected-background-alpha", root.foreground, 0.08)
     property color selectedText: root.pick("menu.selected-text", root.accent)
     property color selectedBorder: root.composed("menu.selected-border", "menu.selected-border-alpha", root.foreground, 0.0)
+  }
+  readonly property QtObject notifications: QtObject {
+    property color background: root.composed("notifications.background", "notifications.background-alpha", root.background, 1.0)
+    property color text: root.pick("notifications.text", root.foreground)
+    property color border: root.composed("notifications.border", "notifications.border-alpha", root.accent, 1.0)
+    property color countdown: root.pick("notifications.countdown", root.accent)
   }
 }

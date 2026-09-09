@@ -14,6 +14,9 @@ import Omafiles.Backend as Backend
 // Quickshell.Io doesn't exist here; a synchronous XMLHttpRequest reads the
 // local files (they're ~KB, polled every 1.5 s: negligible cost).
 //
+// cornerRadius and gapsOut mirror Hyprland's decoration:rounding and
+// general:gaps_out, read via hyprctl -j (async, same as the real shell).
+//
 // Color.qml and Style.qml (the stubs) DERIVE from this singleton; they fix nothing.
 QtObject {
   id: src
@@ -30,6 +33,11 @@ QtObject {
   property color accent: "#cacccc"
   property color urgent: "#a55555"
   property color muted: "#707880"
+
+  // Hyprland decoration:rounding and general:gaps_out, read via hyprctl -j.
+  // cornerRadius mirrors Style.cornerRadius; gapsOut = hypr gaps_out / 2.
+  property int cornerRadius: 0
+  property int gapsOut: 5
 
   // Dict "section.key" -> raw string (theme shell.toml + user override
   // merged). Reassigning it whole is what makes the Color/Style
@@ -109,6 +117,50 @@ QtObject {
     for (var tk in themeDict) merged[tk] = themeDict[tk]
     for (var uk in userDict) merged[uk] = userDict[uk]
     shellValues = merged // whole reassignment -> re-evaluates bindings
+    // Theme changed — re-read Hyprland rounding (hyprland.lua applies live).
+    _refreshRounding()
+  }
+
+  // --- Hyprland rounding/gaps via hyprctl -j (async, same as the real shell).
+  // Two sequential queries: decoration:rounding first, then general:gaps_out.
+  property string _hyprStage: "" // "" | "rounding" | "gaps"
+
+  function _parseHyprInt(raw) {
+    try {
+      var json = JSON.parse(String(raw || "{}"))
+      var n = Number(json.int)
+      return isFinite(n) ? n : null
+    } catch (e) {
+      return null
+    }
+  }
+
+  function _refreshRounding() {
+    if (hyprProc.busy) return
+    _hyprStage = "rounding"
+    hyprProc.start(["hyprctl", "-j", "getoption", "decoration:rounding"])
+  }
+
+  readonly property Backend.ProcessRunner hyprProc: Backend.ProcessRunner {
+    onFinished: function (result) {
+      if (result.cancelled) { src._hyprStage = ""; return }
+      if (src._hyprStage === "rounding") {
+        if (result.exitCode === 0) {
+          var n = src._parseHyprInt(result.stdout)
+          if (n !== null) src.cornerRadius = n
+        }
+        src._hyprStage = "gaps"
+        hyprProc.start(["hyprctl", "-j", "getoption", "general:gaps_out"])
+        return
+      }
+      if (src._hyprStage === "gaps") {
+        if (result.exitCode === 0) {
+          var n2 = src._parseHyprInt(result.stdout)
+          if (n2 !== null) src.gapsOut = Math.max(0, Math.round(n2 / 2))
+        }
+        src._hyprStage = ""
+      }
+    }
   }
 
   // Polling of the active theme: on switching theme in Omarchy (or running
@@ -120,5 +172,5 @@ QtObject {
     onTriggered: src._reload()
   }
 
-  Component.onCompleted: _reload()
+  Component.onCompleted: { _reload(); _refreshRounding() }
 }

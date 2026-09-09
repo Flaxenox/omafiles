@@ -26,8 +26,10 @@ import QtQuick
 QtObject {
   id: root
 
-  property int cornerRadius: 0
-  property int gapsOut: 5
+  // Hyprland decoration:rounding and general:gaps_out — read live by
+  // ThemeSource via hyprctl -j and mirrored here for consumers.
+  readonly property int cornerRadius: ThemeSource.cornerRadius
+  readonly property int gapsOut: ThemeSource.gapsOut
 
   // ---------------------------------------------------------- state tokens
   //
