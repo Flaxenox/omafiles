@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import Omafiles.Backend as Backend
 import "../shared/Utils.js" as Utils
 import "../state"
 
@@ -72,14 +73,17 @@ Item {
   }
 
   // Adds every file:// URL of the drop as a bookmark (no-op for non-local
-  // URLs; duplicates are ignored by BookmarksState.addBookmark).
+  // URLs; duplicates are ignored by BookmarksState.addBookmark). Directories
+  // become folder bookmarks, anything else (files, symlinks, unknown) becomes
+  // a file bookmark.
   function addBookmarksFromDrop(drop) {
     var urls = drop.urls || []
     for (var i = 0; i < urls.length; ++i) {
       var path = Utils.urlToPath(urls[i])
       if (!path) continue
       var name = path.substring(path.lastIndexOf("/") + 1)
-      BookmarksState.addBookmark(path, name, "dir")
+      var isDir = Backend.PreviewProvider.info(path).mime === "inode/directory"
+      BookmarksState.addBookmark(path, name, isDir ? "dir" : "file")
     }
   }
 

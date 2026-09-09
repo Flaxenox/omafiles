@@ -228,12 +228,21 @@ Item {
 
   function openBookmark(bookmark) {
     if (bookmark.type === "file") {
-      var slash = bookmark.path.lastIndexOf("/")
-      NavState.pendingSelectNames = [bookmark.path.substring(slash + 1)]
-      if (navController) navController.navigateTo(slash > 0 ? bookmark.path.substring(0, slash) : "/")
+      // A file bookmark opens the file itself (default app), mirroring how a
+      // file's "Open" works in a listing. Revealing it in its folder is a
+      // separate, explicit action (see revealBookmarkFile).
+      if (navController) navController.openWithDefault(bookmark.path)
     } else {
       if (navController) navController.navigateTo(bookmark.path)
     }
+  }
+
+  // The old file-bookmark behavior, kept as an explicit choice: go to the
+  // file's parent folder and leave it selected.
+  function revealBookmarkFile(bookmark) {
+    var slash = bookmark.path.lastIndexOf("/")
+    NavState.pendingSelectNames = [bookmark.path.substring(slash + 1)]
+    if (navController) navController.navigateTo(slash > 0 ? bookmark.path.substring(0, slash) : "/")
   }
 
   function openRecent(item) {
@@ -251,7 +260,9 @@ Item {
     var actions = [
       { label: "Open", action: function () { openBookmark(bookmark) } }
     ]
-    if (bookmark.type !== "file") {
+    if (bookmark.type === "file") {
+      actions.push({ label: "Reveal in folder", action: function () { revealBookmarkFile(bookmark) } })
+    } else {
       actions.push({ label: "Open in new tab", action: function () { tabOps.openInNewTab(bookmark.path) } })
     }
     if (bookmark.path === Paths.trashDir) {
