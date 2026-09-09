@@ -40,7 +40,6 @@ Item {
         width: 185
         height: parent.height
         bookmarks: BookmarksState.bookmarks
-        recentFiles: BookmarksState.recentFiles
         mounts: MountsState.mounts
         networkMounts: MountsState.networkMounts
         currentPath: NavState.currentPath
@@ -55,10 +54,6 @@ Item {
         mountActionsFor: commandFacade ? commandFacade.mountActions : null
         networkMountActionsFor: commandFacade ? commandFacade.networkMountActions : null
         onBookmarkOpened: function (bookmark) { if (commandFacade) commandFacade.openBookmark(bookmark) }
-        onRecentOpened: function (item) { if (commandFacade) commandFacade.openRecent(item) }
-        onRecentLaunched: function (item) { if (commandFacade) commandFacade.launchRecent(item) }
-        onRecentRemoveRequested: function (path) { if (controllers) controllers.BookmarksState.removeRecent(path) }
-        onRecentClearRequested: if (controllers) controllers.BookmarksState.clearRecent()
         onMountActivated: function (mount) {
           if (!mount.mounted) { if (controllers) controllers.mountOps.mountDevice(mount) }
           else { if (controllers) controllers.navController.navigateTo(mount.path) }

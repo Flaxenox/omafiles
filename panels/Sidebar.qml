@@ -4,12 +4,11 @@ import qs.Commons
 import qs.Ui
 import "../shared/Utils.js" as Utils
 
-// Sidebar (bookmarks/recents/drives/network).
+// Sidebar (bookmarks/drives/network).
 Item {
   id: root
 
   property var bookmarks: []
-  property var recentFiles: []
   property var mounts: []
   property var networkMounts: []
   property string currentPath: ""
@@ -28,10 +27,6 @@ Item {
   property var networkMountActionsFor: null
 
   signal bookmarkOpened(var bookmark)
-  signal recentOpened(var item)
-  signal recentLaunched(var item)
-  signal recentRemoveRequested(string path)
-  signal recentClearRequested()
   signal mountActivated(var mount)
   signal mountEjectRequested(var mount)
   signal networkMountOpened(var mount)
@@ -77,17 +72,6 @@ Item {
         onBookmarkOpened: function(b) { root.bookmarkOpened(b) }
         onDropHoverChanged: function(p) { root.dropHoverChanged(p) }
         onFilesDropped: function(d, p) { root.filesDropped(d, p) }
-      }
-
-      SidebarRecent {
-        recentFiles: root.recentFiles
-        positionRelativeTo: root.positionRelativeTo
-        openContextMenu: root.openContextMenu
-
-        onRecentOpened: function(i) { root.recentOpened(i) }
-        onRecentLaunched: function(i) { root.recentLaunched(i) }
-        onRecentRemoveRequested: function(p) { root.recentRemoveRequested(p) }
-        onRecentClearRequested: function() { root.recentClearRequested() }
       }
 
       SidebarMounts {
