@@ -309,7 +309,13 @@ Item {
                 footer: Item {
                   id: listFooter
                   width: listView.width
-                  height: 400
+                  // Fill only the viewport space the rows leave empty.
+                  // A fixed 400px gutter made the area below the last row
+                  // scrollable dead space in short windows; now a short
+                  // directory stretches the catcher to the bottom edge
+                  // (contentHeight == viewport, so nothing scrolls) and a
+                  // full directory collapses the gutter to zero.
+                  height: Math.max(0, listView.height - listView.count * root.measuredRowHeight)
 
                   MarqueeCatcher {
                     anchors.fill: parent

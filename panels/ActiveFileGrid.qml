@@ -86,7 +86,10 @@ Item {
 
     footer: Item {
       width: gridView.width
-      height: 200
+      // Same rationale as the list-view footer: fill only the leftover
+      // viewport space so a short directory never exposes dead scrollable
+      // space below the last cell row (a fixed 200px gutter used to).
+      height: Math.max(0, gridView.height - Math.ceil(gridView.count / Math.max(1, root.cols)) * ViewState.cellHeight)
 
       MarqueeCatcher {
         anchors.fill: parent
