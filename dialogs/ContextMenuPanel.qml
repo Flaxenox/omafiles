@@ -112,6 +112,28 @@ Item {
     return m
   }
 
+  // The main menu opens at the cursor and is REPOSITIONED when it would
+  // overflow the panel: it flips up when it would run past the bottom edge
+  // and flips left when it would run past the right edge, keeping its full
+  // natural size (instead of shrinking to a sliver -- which read exactly
+  // like the menu being cut off at the screen border). It only shrinks and
+  // scrolls when it is taller than the panel itself.
+  readonly property real menuW: Math.max(200, root.maxLabelWidth + Style.spacing.sm * 2 + contextMenu.contentLeftInset + contextMenu.contentRightInset)
+  readonly property real menuNatH: contextMenuColumn.implicitHeight + contextMenu.contentTopInset + contextMenu.contentBottomInset
+  readonly property real menuH: Math.min(menuNatH, Math.max(Style.spacing.controlHeight, root.height - Style.spacing.lg * 2))
+  readonly property real menuXPos: {
+    var x0 = root.menuX
+    var maxX = root.width - Style.spacing.lg - menuW
+    if (x0 > maxX) x0 = maxX
+    return Math.max(Style.spacing.lg, x0)
+  }
+  readonly property real menuYPos: {
+    var y0 = root.menuY
+    var maxY = root.height - Style.spacing.lg - menuH
+    if (y0 > maxY) y0 = maxY
+    return Math.max(Style.spacing.lg, y0)
+  }
+
   MouseArea {
     anchors.fill: parent
     visible: root.open
@@ -124,10 +146,10 @@ Item {
   BorderSurface {
     id: contextMenu
     visible: root.open
-    x: root.menuX
-    y: root.menuY
-    width: Math.max(200, root.maxLabelWidth + Style.spacing.sm * 2 + contentLeftInset + contentRightInset)
-    height: Math.min(contextMenuColumn.implicitHeight + contentTopInset + contentBottomInset, root.height - root.menuY - Style.spacing.lg)
+    x: root.menuXPos
+    y: root.menuYPos
+    width: root.menuW
+    height: root.menuH
     radius: Style.cornerRadius
     color: Color.menu.background
     borderSpec: Border.flat(Color.menu.border, Style.normalBorderWidth)
