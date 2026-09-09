@@ -43,9 +43,33 @@ Item {
     interactive: sidebarColumn.implicitHeight > height
 
     ScrollBar.vertical: ScrollBar {
+      id: sideScroll
       policy: sidebarColumn.implicitHeight > sidebarFlickable.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
       width: Style.space(8)
       anchors.left: parent.left
+
+      // Hidden at rest (invisible + non-interactive); fades in while the
+      // sidebar is scrolled (wheel/drag) and fades out shortly after the
+      // movement stops (or while being dragged, stays until release).
+      opacity: sideScroll.showBar ? 1 : 0
+      visible: opacity > 0
+      Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+      property bool showBar: false
+      Timer {
+        id: sideScrollHide
+        interval: 700
+        onTriggered: sideScroll.showBar = false
+      }
+      Connections {
+        target: sidebarFlickable
+        function onMovingChanged() {
+          if (sidebarFlickable.moving) { sideScroll.showBar = true; sideScrollHide.restart() }
+        }
+      }
+      onPressedChanged: {
+        if (sideScroll.pressed) { sideScroll.showBar = true; sideScrollHide.restart() }
+        else sideScrollHide.restart()
+      }
 
       contentItem: Rectangle {
         implicitWidth: parent.width

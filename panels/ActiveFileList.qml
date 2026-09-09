@@ -158,6 +158,7 @@ Item {
                 var step = Util.wheelSteps(wheelAccumulator, wheel.angleDelta.y)
                 wheelAccumulator = step.remainder
                 if (step.steps === 0) return
+                listScroll.noteScroll()
                 var minY = activeView.originY
                 var maxY = minY + Math.max(0, activeView.contentHeight - activeView.height)
                 activeView.contentY = Math.max(minY, Math.min(maxY, activeView.contentY - step.steps * 60))
@@ -190,6 +191,7 @@ Item {
                 var minY = activeView.originY
                 var maxY = minY + Math.max(0, activeView.contentHeight - activeView.height)
                 var step = 18
+                listScroll.noteScroll()
                 if (SelectionState.marqueeViewportY < 32) {
                   activeView.contentY = Math.max(minY, activeView.contentY - step)
                   SelectionState.marqueeCurrentY = activeView.contentY
@@ -267,9 +269,34 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
 
                 ScrollBar.vertical: ScrollBar {
+                  id: listScroll
                   policy: listView.contentHeight > listView.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                   width: Style.space(8)
                   anchors.right: parent.right
+
+                  // Hidden at rest (invisible + non-interactive); fades in
+                  // while the list is scrolled (wheel / marquee auto-scroll /
+                  // Flickable movement) and fades out shortly after. The
+                  // list is `interactive: false`, so wheel scrolling happens
+                  // in the wrapper's onWheel handler and calls noteScroll().
+                  opacity: listScroll.showBar ? 1 : 0
+                  visible: opacity > 0
+                  Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                  property bool showBar: false
+                  function noteScroll() { showBar = true; hideTimer.restart() }
+                  Timer {
+                    id: hideTimer
+                    interval: 700
+                    onTriggered: listScroll.showBar = false
+                  }
+                  Connections {
+                    target: listView
+                    function onMovingChanged() { if (listView.moving) listScroll.noteScroll() }
+                  }
+                  onPressedChanged: {
+                    if (listScroll.pressed) listScroll.noteScroll()
+                    else hideTimer.restart()
+                  }
 
                   contentItem: Rectangle {
                     implicitWidth: parent.width

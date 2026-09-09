@@ -28,6 +28,13 @@ Item {
     activeSubmenuItems = []
     _suppressSubmenuClose = false
     _submenuTimer.stop()
+    menuScroll.showBar = false
+    menuScrollHide.stop()
+  }
+
+  onSubmenuOpenChanged: {
+    subScroll.showBar = false
+    subScrollHide.stop()
   }
 
   // --- hover flyout submenu state ---
@@ -212,7 +219,22 @@ Item {
       }
 
       Rectangle {
+        id: menuScroll
         visible: root.open && contextMenuColumn.implicitHeight > menuFlickable.height
+        // Hidden at rest; fades in while the menu is scrolled and fades out
+        // shortly after the movement stops.
+        opacity: menuScroll.showBar ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        property bool showBar: false
+        Timer {
+          id: menuScrollHide
+          interval: 700
+          onTriggered: menuScroll.showBar = false
+        }
+        Connections {
+          target: menuFlickable
+          function onMovingChanged() { if (menuFlickable.moving) { menuScroll.showBar = true; menuScrollHide.restart() } }
+        }
         anchors.top: menuFlickable.top
         anchors.bottom: menuFlickable.bottom
         anchors.right: menuFlickable.right
@@ -321,7 +343,22 @@ Item {
       }
 
       Rectangle {
+        id: subScroll
         visible: root.submenuOpen && submenuColumn.implicitHeight > submenuFlickable.height
+        // Hidden at rest; fades in while the flyout is scrolled and fades
+        // out shortly after the movement stops.
+        opacity: subScroll.showBar ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        property bool showBar: false
+        Timer {
+          id: subScrollHide
+          interval: 700
+          onTriggered: subScroll.showBar = false
+        }
+        Connections {
+          target: submenuFlickable
+          function onMovingChanged() { if (submenuFlickable.moving) { subScroll.showBar = true; subScrollHide.restart() } }
+        }
         anchors.top: submenuFlickable.top
         anchors.bottom: submenuFlickable.bottom
         anchors.right: submenuFlickable.right
