@@ -74,7 +74,7 @@ QtObject {
     { id: "select_all",         label: "Select all",                          fixed: false, keys: [{ key: "a", mod: "ctrl" }] },
     { id: "invert_selection",  label: "Invert selection",                    fixed: false, keys: [{ key: "i", mod: "ctrl" }] },
     { id: "rename",              label: "Rename",                              fixed: false, keys: [{ key: "f2", mod: "any" }] },
-    { id: "delete",              label: "Delete (to trash)",                   fixed: false, keys: [{ key: "delete", mod: "any" }] },
+    { id: "delete",              label: "Delete (trash; Shift+Delete = permanently)", fixed: false, keys: [{ key: "delete", mod: "any" }] },
     { id: "refresh",             label: "Refresh",                             fixed: false, keys: [{ key: "f5", mod: "any" }] },
     { id: "reverse_sort",       label: "Reverse sort order",                  fixed: false, keys: [{ key: "s", mod: "shift" }] },
     { id: "cycle_sort",         label: "Cycle sort field",                    fixed: false, keys: [{ key: "s", mod: "none" }] },

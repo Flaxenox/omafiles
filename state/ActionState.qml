@@ -31,4 +31,10 @@ QtObject {
   // singleton directly (ConflictState.*ConflictOpen etc.), this was the
   // only one going through `root` instead.
   property var pendingDeleteNames: []
+  // What the armed confirm dialog will do once confirmed: "trash" (move to
+  // trash -- plain Delete / Ctrl+Delete / menu Delete) or "permanent"
+  // (delete for good -- Shift+Delete, or anything inside the Trash itself).
+  // Wired in ActionEngine.requestDelete()/requestPermanentDelete(), read by
+  // confirmDelete() and DialogLayer.qml's deleteConfirm.
+  property string pendingDeleteMode: "trash"
 }

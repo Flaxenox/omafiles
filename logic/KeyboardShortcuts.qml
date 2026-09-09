@@ -216,7 +216,14 @@ Item {
       if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.startRename(SelectionState.selectedIndex)
       break
     case "delete":
-      if (hostControllers && hostControllers.actionEngine) hostControllers.actionEngine.requestDelete()
+      // Shift+Delete permanently deletes (bypasses the trash, works on
+      // mounted network drives too); plain Delete / Ctrl+Delete send to
+      // trash. The resolver binding is `mod: "any"`, so the modifier is
+      // only distinguishable here on the raw event.
+      if (hostControllers && hostControllers.actionEngine) {
+        if (event.modifiers & Qt.ShiftModifier) hostControllers.actionEngine.requestPermanentDelete()
+        else hostControllers.actionEngine.requestDelete()
+      }
       break
     case "refresh":
       if (hostControllers && hostControllers.navController) hostControllers.navController.refresh()

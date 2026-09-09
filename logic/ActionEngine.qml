@@ -622,13 +622,29 @@ Item {
     var names = SelectionState.selectedEntries().map(function (e) { return e.name })
     if (names.length === 0) return
     ActionState.pendingDeleteNames = names
+    // Inside the Trash there is nothing to send to trash -- deletion there
+    // is always permanent, so arm the dialog for it outright.
+    ActionState.pendingDeleteMode = NavState.currentPath === Paths.trashDir ? "permanent" : "trash"
+  }
+
+  // Shift+Delete: permanent delete, bypassing the trash entirely. Uses the
+  // native remove path (works on any writable mount -- including mounted
+  // network drives, where QFile::moveToTrash can't set up an XDG trash).
+  function requestPermanentDelete() {
+    if (ArchiveState.inArchive) return
+    var names = SelectionState.selectedEntries().map(function (e) { return e.name })
+    if (names.length === 0) return
+    ActionState.pendingDeleteNames = names
+    ActionState.pendingDeleteMode = "permanent"
   }
 
   function confirmDelete() {
     var names = ActionState.pendingDeleteNames
+    var permanent = ActionState.pendingDeleteMode === "permanent"
     ActionState.pendingDeleteNames = []
+    ActionState.pendingDeleteMode = "trash"
     if (names.length === 0) return
-    if (NavState.currentPath === Paths.trashDir) {
+    if (permanent || NavState.currentPath === Paths.trashDir) {
       // NATIVE permanent delete: FileOperations.remove instead
       // of `rm -rf`/`rm -f`. No undo possible. TrashState.trashInfo (see
       // trash-info.sh) knows the real physical root of each item -- it can be the
@@ -636,16 +652,24 @@ Item {
       // be assumed outright. For each item the file at
       // <root>/files/<n> (recursive) and its <root>/info/<n>.trashinfo are deleted, both
       // with ignoreMissing (= `rm -f`: it being missing is not an error).
+      // Outside the trash (Shift+Delete) the selected items are removed
+      // directly at their own paths -- plain filesystem deletion, which works
+      // even on mounted network drives (where trashing would need disk-local
+      // .Trash support).
       var paths = []
-      names.forEach(function (n) {
-        var info = TrashState.trashInfo[n]
-        if (!info) return
-        paths.push(info.trashRoot + "/files/" + n)
-        paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
-      })
+      if (NavState.currentPath === Paths.trashDir) {
+        names.forEach(function (n) {
+          var info = TrashState.trashInfo[n]
+          if (!info) return
+          paths.push(info.trashRoot + "/files/" + n)
+          paths.push(info.trashRoot + "/info/" + n + ".trashinfo")
+        })
+      } else {
+        names.forEach(function (n) { paths.push(pathFor(n)) })
+      }
       if (paths.length > 0) {
         runNativeRemove(paths, "", true)
-      } else {
+      } else if (NavState.currentPath === Paths.trashDir) {
         // TrashState.trashInfo can genuinely lag the file listing now that
         // requestTrashInfo() is async (V1_1_P0_TRASH_FREEZE, post-fix
         // sanity audit): on a slow mount the names can already be visible
