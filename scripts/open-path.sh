@@ -4,7 +4,15 @@
 # $1 = absolute path or file:// URI (whatever the mimetype handler sends);
 # empty for the normal launch from the applications menu.
 
-arg="$1"
+# Parse leading flags (e.g. --new-window from the .desktop Exec) and forward
+# them to the binary; the first non-flag argument, if any, is the path/URI.
+flags=()
+while (( $# > 0 )) && [[ "$1" == -* ]]; do
+  flags+=("$1")
+  shift
+done
+
+arg="${1:-}"
 path=""
 
 if [[ -n "$arg" ]]; then
@@ -37,5 +45,6 @@ fi
 # Launches the standalone Qt6 binary. If Omafiles is already open, its
 # single instance receives the path and navigates to it in a new tab
 # bringing the window to the front; if not, it opens it. Empty path = normal
-# startup (restores the previous session).
-exec "$HOME/.local/bin/omafiles" "$path"
+# startup (restores the previous session). A --new-window flag skips the
+# single-instance delivery and opens its own window.
+exec "$HOME/.local/bin/omafiles" "${flags[@]}" "$path"

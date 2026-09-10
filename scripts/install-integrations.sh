@@ -34,9 +34,10 @@ trap on_error ERR
 # portal remember the last-used folder: a re-open of the picker within a few
 # seconds jumps back there instead of resetting to $HOME; v10 renames the desktop
 # entry to OmaFiles.desktop and drops the reverse-DNS id that embedded the
-# upstream owner's name (see the desktop block below for the D-Bus tradeoff).
+# upstream owner's name (see the desktop block below for the D-Bus tradeoff);
+# v11 makes the .desktop launch with --new-window (a fresh window every time).
 # Bumping the version forces the rewrite and re-copy in earlier installations.
-INTEGRATION_VERSION=10
+INTEGRATION_VERSION=11
 
 # SELF_RES: the resource root where THIS script actually lives (BASH_SOURCE[0]
 # is the exact path it was invoked with -- core/AppBindings.qml launches it as
@@ -121,7 +122,7 @@ Type=Application
 Name=OmaFiles
 GenericName=File manager
 Comment=Custom Qt6 file manager
-Exec=$RES_DIR/scripts/open-path.sh %u
+Exec=$RES_DIR/scripts/open-path.sh --new-window %u
 Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
