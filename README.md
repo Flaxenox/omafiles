@@ -93,18 +93,76 @@ changes apply on next launch without a rebuild; C++ changes (`main.cpp`,
 
 ---
 
+## Keybindings
+
+Defaults below — every non-`fixed` binding can be remapped in
+`~/.config/omafiles/keybindings.toml` (see `docs/audits/P2_5_CUSTOM_KEYBINDINGS_AUDIT.md`).
+`Shift+↑/↓` extends the selection; `Shift+Delete` deletes permanently instead of trashing.
+
+### Navigation & open
+
+| Key | Action |
+|---|---|
+| `Return` / `l` | Open — enter folder / launch file |
+| `Backspace` / `h` | Go up a directory |
+| `Alt+←` / `Alt+→` | Back / forward through history |
+| `Space` | Toggle preview (Quick Look) |
+| `Shift+Return` | Open a terminal here |
+| `Ctrl+L` | Edit current path |
+| `Esc` | Escapes in order: exit search → close preview → cancel picker → close panel |
+
+### Selection & view
+
+| Key | Action |
+|---|---|
+| `Arrow keys` / `j` `k` | Move selection (arrows step grid cells) |
+| `g` `g` (chord) | Jump to top |
+| `Shift+G` | Jump to bottom |
+| `Ctrl+A` / `Ctrl+Shift+A` | Select all / select none |
+| `Ctrl+I` | Invert selection |
+| `Ctrl+G` | Toggle grid / list view |
+| `S` / `Shift+S` | Cycle sort field / reverse sort order |
+| `Ctrl+H` | Toggle hidden files |
+| `F5` | Refresh |
+
+### File actions
+
+| Key | Action |
+|---|---|
+| `F2` | Rename |
+| `Delete` | Move to trash (`Shift+Delete` = permanent) |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste |
+| `Ctrl+N` / `Ctrl+Shift+N` | New file / new folder |
+| `Ctrl+Z` — `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo / redo |
+
+### Panels & tools
+
+| Key | Action |
+|---|---|
+| `Ctrl+T` / `Ctrl+\` | New panel (tab) |
+| `Ctrl+Tab` | Next panel |
+| `Ctrl+W` | Close active panel |
+| `/` / `Ctrl+F` | Search files |
+| `:` / `Ctrl+P` | Command palette |
+| `?` | Toggle this help |
+| `Alt+N` | Recent notifications |
+
+### Mouse
+
+| Input | Action |
+|---|---|
+| Side buttons | Back / forward |
+| Right-click | Context menu (Open With, Compress, Properties…) |
+| Drag onto the sidebar | Add bookmark (folders or files) |
+
+---
+
 ## Usage
 
-| Action | How |
+| Task | How |
 |---|---|
-| Navigate | click / arrows / mouse back-forward buttons |
-| New tab | `Ctrl+T` |
-| Preview | select a file — preview opens beside it |
-| Toggle view | list ↔ grid |
-| Compress | select → right-click → Compress |
+| Compress | select → right-click → **Compress** |
 | Connect to a server | sidebar **Connect** (SFTP/FTP/WebDAV/SMB) |
-| Open with | right-click a file → **Open With** |
-| Summit the command palette | `/` |
 
 ---
 
