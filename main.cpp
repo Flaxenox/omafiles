@@ -393,10 +393,9 @@ int runNormal(int argc, char *argv[]) {
   app.setApplicationVersion(QStringLiteral(APP_VERSION));
   // Wayland app_id = "omafiles" (kept on purpose: any
   // Hyprland windowrule with class:omafiles keeps working). The installed
-  // .desktop has a different basename (io.github.percius04.omafiles, mandatory
-  // for D-Bus activation), so it is matched to this window via
-  // StartupWMClass=omafiles in the .desktop itself -> the dock/taskbar resolves
-  // Icon=omafiles without changing the app_id.
+  // .desktop (OmaFiles.desktop) has a different basename, so it is matched to
+  // this window via StartupWMClass=omafiles in the .desktop itself -> the dock
+  // /taskbar resolves Icon=omafiles without changing the app_id.
 
 
   // First positional argument = path/URI/payload to open (empty = normal

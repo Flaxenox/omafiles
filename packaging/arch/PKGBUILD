@@ -4,7 +4,7 @@ pkgver=1.0.1
 pkgrel=1
 pkgdesc="A high-performance, native Qt6 file manager designed around the DHH philosophy"
 arch=('x86_64')
-url="https://github.com/Percius04/omafiles"
+url="https://github.com/Flaxenox/omafiles"
 license=('MIT')
 # qt6-base: Core/Gui/Qml/Quick/DBus/Network. qt6-declarative: Quick/
 # QuickControls2/the QML tooling (qmltyperegistrar/qmlcachegen) CMakeLists.txt
@@ -47,9 +47,11 @@ optdepends=('tracker3: faster global filename search'
 # qt6-declarative, already in `depends` above (confirmed via `pacman -Qo`,
 # V1_1_P1_PACKAGING). Dropped.
 makedepends=('cmake' 'ninja')
-source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Percius04/omafiles/archive/v${pkgver}.tar.gz")
-# Real hash of the v1.0.1 tag's actual GitHub archive -- verified against
-# the EXACT source= URL above (https://github.com/Percius04/omafiles/archive/v1.0.1.tar.gz),
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Flaxenox/omafiles/archive/v${pkgver}.tar.gz")
+# NOTE: the v1.0.1 tag referenced below exists on the upstream (Percius04)
+# repository; update pkgver/tag and the sha256sums below if packaging a fork
+# tag. Real hash of the v1.0.1 tag's actual GitHub archive -- verified against
+# the EXACT source= URL above (https://github.com/Flaxenox/omafiles/archive/v1.0.1.tar.gz),
 # not the GitHub API's /tarball/ endpoint, which produces a byte-different
 # (but content-identical) archive under a different top-level dir naming --
 # confirmed empirically, not assumed (V1_1_RELEASE_1_0_1). Tag v1.0.1 points

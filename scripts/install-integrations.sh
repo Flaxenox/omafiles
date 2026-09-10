@@ -32,9 +32,11 @@ trap on_error ERR
 # fixes D-Bus service section headers and system python shebangs; v8 adds the
 # org.freedesktop.impl.portal.FileChooser integration; v9 makes the FileChooser
 # portal remember the last-used folder: a re-open of the picker within a few
-# seconds jumps back there instead of resetting to $HOME. Bumping the version
-# forces the rewrite and re-copy in earlier installations.
-INTEGRATION_VERSION=9
+# seconds jumps back there instead of resetting to $HOME; v10 renames the desktop
+# entry to OmaFiles.desktop and drops the reverse-DNS id that embedded the
+# upstream owner's name (see the desktop block below for the D-Bus tradeoff).
+# Bumping the version forces the rewrite and re-copy in earlier installations.
+INTEGRATION_VERSION=10
 
 # SELF_RES: the resource root where THIS script actually lives (BASH_SOURCE[0]
 # is the exact path it was invoked with -- core/AppBindings.qml launches it as
@@ -103,21 +105,20 @@ for _ic in omafiles.svg omafiles-symbolic.svg; do
   [[ -f "$SELF_RES/assets/$_ic" ]] && cp -f "$SELF_RES/assets/$_ic" "$ICON_DIR/$_ic"
 done
 
-# reverse-DNS ID: mandatory for the D-Bus activation of the .desktop (a valid
-# bus name needs dots; plain "omafiles" won't do).
-APP_ID=io.github.percius04.omafiles
-
-# .desktop DBusActivatable (v3). Firefox/Zen "open containing folder" does NOT use
-# xdg-mime nor org.freedesktop.FileManager1: it activates the default manager via
-# org.freedesktop.Application.Open, and only does so with DBusActivatable managers
-# (Nautilus is one by being a GApplication). Without this, Zen resolved the default
-# (omafiles) but couldn't activate it over D-Bus and fell back to Nautilus. It replaces the
-# old omafiles.desktop (not activatable).
+# The desktop entry is named OmaFiles.desktop (v10: no more reverse-DNS id that
+# embeds the upstream owner's name). Note: "open containing folder" from
+# Firefox/Zen (org.freedesktop.Application activation) needs a dotted desktop
+# id to activate over D-Bus, which "OmaFiles" cannot provide -- those apps fall
+# back to another DBusActivatable manager, while xdg-open/"Show in file
+# manager" keep working through MimeType/FileManager1 below.
 rm -f "$APPS_DIR/omafiles.desktop"
-cat >"$APPS_DIR/$APP_ID.desktop" <<EOF
+rm -f "$APPS_DIR/io.github.percius04.omafiles.desktop"
+rm -f "$DBUS_SERVICES_DIR/io.github.percius04.omafiles.service"
+rm -f "$RES_DIR/scripts/dbus-app-open.py"
+cat >"$APPS_DIR/OmaFiles.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Omafiles
+Name=OmaFiles
 GenericName=File manager
 Comment=Custom Qt6 file manager
 Exec=$RES_DIR/scripts/open-path.sh %u
@@ -125,16 +126,7 @@ Icon=omafiles
 Terminal=false
 Categories=System;FileManager;
 MimeType=inode/directory;
-DBusActivatable=true
 StartupWMClass=omafiles
-EOF
-
-# D-Bus service of org.freedesktop.Application (the interface that activates the
-# DBusActivatable .desktop). The Name MUST be the same id as the .desktop.
-cat >"$DBUS_SERVICES_DIR/$APP_ID.service" <<EOF
-[D-BUS Service]
-Name=$APP_ID
-Exec=$RES_DIR/scripts/dbus-app-open.py
 EOF
 
 # D-Bus service org.freedesktop.FileManager1 ("Show in file manager" of
@@ -188,7 +180,7 @@ ensure_filechooser_portal "$USER_HYPRLAND_PORTALS_CONF" "[preferred]\ndefault=hy
 ensure_filechooser_portal "$USER_PORTALS_CONF" "[preferred]\ndefault=gtk"
 
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS_DIR" >/dev/null 2>&1
-command -v xdg-mime >/dev/null 2>&1 && xdg-mime default "$APP_ID.desktop" inode/directory >/dev/null 2>&1
+command -v xdg-mime >/dev/null 2>&1 && xdg-mime default "OmaFiles.desktop" inode/directory >/dev/null 2>&1
 
 # If something (typically Nautilus) already activated and took the bus name before
 # our .service existed, we force a rescan so that the next

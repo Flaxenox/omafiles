@@ -4,7 +4,7 @@ A fast, keyboard-first **Qt6 / QML** file manager for **Arch Linux (Hyprland/Way
 preview, list & grid views, network mounts, archives, a file-chooser portal, and a Nautilus-style
 sidebar, all on a lightweight C++ backend.
 
-Maintained by **Flaxenox** as a fork of [Percius04/omafiles](https://github.com/Percius04/omafiles).
+Maintained by **Flaxenox**.
 
 ---
 
@@ -132,4 +132,4 @@ Press `/` for the command palette to browse all shortcuts.
 
 ## 📝 License
 
-MIT — see `LICENSE`, a fork of the upstream Percius04/omafiles project.
+MIT — see `LICENSE`.
