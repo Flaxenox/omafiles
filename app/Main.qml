@@ -26,7 +26,7 @@ ApplicationWindow {
   height: 900
   minimumWidth: 560
   minimumHeight: 380
-  title: "Omafiles"
+  title: "OmaFiles"
   color: Color.menu.background
 
   HostAdapter {

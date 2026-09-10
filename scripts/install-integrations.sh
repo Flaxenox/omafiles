@@ -21,7 +21,7 @@ set -euo pipefail
 # mute failure repeating on every startup without anyone noticing.
 on_error() {
   command -v notify-send >/dev/null 2>&1 && notify-send \
-    "Omafiles" "Failed to set up default-file-manager integrations. Will retry on next launch." >/dev/null 2>&1
+    "OmaFiles" "Failed to set up default-file-manager integrations. Will retry on next launch." >/dev/null 2>&1
 }
 trap on_error ERR
 
@@ -197,6 +197,6 @@ echo -n "$INTEGRATION_VERSION" >"$STATE_FILE"
 # Standard notify-send (freedesktop), independent. The icon is the
 # app's own (Icon=omafiles already installed in hicolor).
 command -v notify-send >/dev/null 2>&1 && notify-send -i omafiles \
-  "Omafiles" "Set as the default file manager and FileChooser portal." >/dev/null 2>&1
+  "OmaFiles" "Set as the default file manager and FileChooser portal." >/dev/null 2>&1
 
 exit 0

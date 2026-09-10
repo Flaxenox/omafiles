@@ -1,50 +1,53 @@
-# Omafiles
+# OmaFiles
 
-A fast, keyboard-first **Qt6 / QML** file manager for **Arch Linux (Hyprland/Wayland)** — tabs, split
-preview, list & grid views, network mounts, archives, a file-chooser portal, and a Nautilus-style
-sidebar, all on a lightweight C++ backend.
+**A fast, keyboard-first file manager for Arch Linux on Hyprland/Wayland.**
 
-Maintained by **Flaxenox**.
-
----
-
-## ✨ Features
-
-- **Tabs & split preview** — open folders in tabs and preview files side-by-side.
-- **Dual view modes** — dense *list* view and thumbnailed *grid* view, with a crossfade animation.
-- **Sidebar** — bookmarks (reorder by drag, drop folders/files to add), drives/mounts, network locations.
-- **Network mounts** — SFTP, FTP, WebDAV, SMB via GVfs, with a Nautilus-like connect flow.
-- **Native properties** — real `stat`/`du` sizing and a disk-usage bar, no shelling out.
-- **Archives** — compress to `.zip`; extract `.zip`/`.7z`/`.rar` (opt-in backends).
-- **Duplicate finder** — find duplicate files by content.
-- **Global search** — fast filename search via `tracker3` / `plocate` when installed.
-- **File chooser portal** — integrates as `org.freedesktop.impl.portal.FileChooser` on Hyprland.
-- **Mouse back/forward buttons** — history navigation, Nautilus-style.
+Built on Qt6 / QML with a lightweight C++ core. Tabs, split preview, grid and
+list views, network mounts, archives, ratings-grade search, a file-chooser
+portal, and a Nautilus-style sidebar — without the bloat or the wait.
 
 ---
 
-## 🔧 What this fork changes
+## Why OmaFiles
 
-- Fixes a startup **crash** (use-after-free) and always starts on `$HOME` by default.
-- **"Open With"** now actually launches apps; `Terminal=true` apps (`nvim`, `vim`, …) run inside a terminal.
-- `--new-window` flag for opening a second window (e.g. on another Hyprland workspace).
-- Network mounts (SFTP/FTP/WebDAV/SMB) **mount and unmount reliably**, and connect to the mount's home.
-- Mouse **back/forward** buttons drive history.
-- Sidebar, file list, and **context menus scroll instead of running off-screen** — no cut-off menus at
-  quarter/half splits.
-- XDG `[Removed Associations]` respected — no duplicate "Open With" entries.
-- Background-tab back/forward no longer drops saved tab state; previews no longer ghost a stale file's
-  text into a directory listing.
-- Bookmarks: drag to **reorder**, drop folders/files to **add**, file bookmarks **open with their
-  default app** (plus "Reveal in folder"), and **remove** via right-click.
+File managers should be fast enough that you forget they exist. OmaFiles is:
 
-Full per-file detail lives in the git history (`master`).
+- **Native** — Qt Quick rendering with a C++ backend; property dialogs use
+  real `stat(2)`/`du` data, no shelling out.
+- **Keyboard-first** — every action has a key or a palette entry; press `/`
+  anywhere to search every command.
+- **Built for a tiling desktop** — works beautifully in quarter and half
+  splits, scrolls its own chrome instead of running off-screen, and plays
+  nice with Hyprland rules.
+
+It's the file manager I wanted: mine, on my terms, tuned to my workflow.
 
 ---
 
-## 🛠 Dependencies
+## Features
 
-**Required:**
+- **Tabs & split preview** — folders in tabs, files previewed side-by-side,
+  with text highlighting and media metadata.
+- **Grid & list views** — crossfading thumbnailed grid or dense list; Ctrl+scroll
+  zooms grid cells.
+- **Sidebar** — bookmarks (drag to reorder, drop folders *or* files to add,
+  file bookmarks open with their default app), drives, and network locations.
+- **Network mounts** — SFTP, FTP, WebDAV, SMB over GVfs with a Nautilus-like
+  connect flow.
+- **Native properties** — file sizes, types, disk usage from the kernel, not
+  from a shell pipeline.
+- **Archives** — compress to `.zip`; extract `.zip`/`.7z`/`.rar` via opt-in
+  backends.
+- **Duplicate finder** — content-based duplicate detection in any folder.
+- **Global search** — instant filename search over `tracker3`/`plocate` when
+  installed.
+- **File-chooser portal** — replaces the GTK picker in every app, and
+  *remembers* the last folder you used for quick re-opens.
+- **Mouse side buttons** — back/forward history, Nautilus style.
+
+---
+
+## Requirements
 
 | Package | Purpose |
 |---|---|
@@ -52,84 +55,59 @@ Full per-file detail lives in the git history (`master`).
 | `qt6-declarative` | Quick/QuickControls2 + QML tooling |
 | `qt6-webengine` | Provides `Qt6::Pdf` |
 | `glib2` | GIO (GVfs mounting, network) |
-| `zip` `unzip` | Compress/Extract (`.zip`, no fallback) |
+| `zip` `unzip` | Compress/Extract (`.zip`) |
 | `python-gobject` | D-Bus integration scripts |
-| `cmake` `ninja` | Build system (build-time) |
+| `cmake` `ninja` | Build time |
 
-**Optional** (each degrades gracefully without it):
-
-| Package | Purpose |
-|---|---|
-| `tracker3` / `plocate` | faster global filename search |
-| `ffmpegthumbnailer` | video thumbnails |
-| `gvfs` / `gvfs-smb` | network locations (SFTP/FTP/WebDAV/SMB) |
-| `p7zip` / `unrar` | extract `.7z` / `.rar` |
-| `xdg-mime` | register as default file manager / resolve "open with default" |
+**Optional** (graceful without): `tracker3`/`plocate` (global search),
+`ffmpegthumbnailer` (video thumbnails), `gvfs`/`gvfs-smb` (network mounts),
+`p7zip`/`unrar` (extra archive formats), `xdg-mime` (default-file-manager
+registration).
 
 ---
 
-## 🚀 Installation
-
-### Option A — Manual build & per-user install (recommended, no root)
+## Install
 
 ```bash
-# 1. Install dependencies (Arch)
+# Dependencies (Arch)
 sudo pacman -S --needed qt6-base qt6-declarative qt6-webengine glib2 zip unzip python-gobject cmake ninja
 
-# 2. Clone, configure, build
+# Clone, configure, build
 git clone https://github.com/Flaxenox/omafiles.git
 cd omafiles
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 
-# 3. Install (to ~/.local — no root needed) and run
+# Per-user install (no root) and launch
 cmake --install build
 omafiles
 ```
 
-On first launch the app registers itself as the default file manager and the FileChooser portal
-automatically (via `scripts/install-integrations.sh`).
+On first launch the app registers itself as the default file manager and the
+file-chooser portal. To fire it from Hyprland or Omarchy: bind
+`SUPER + SHIFT + F` → `omafiles --new-window`.
 
-> Optional: bind it on Hyprland/Omarchy with `SUPER + SHIFT + F` in `~/.config/hypr/bindings.lua`:
-> ```lua
-> o.bind("SUPER + SHIFT + F", "OmaFiles", "omafiles --new-window")
-> ```
-
-### Rebuilding after pulling changes
-
-```bash
-cmake --build build
-cmake --install build     # re-syncs ~/.local/bin/omafiles + backend .so + QML resources
-```
-
-> QML files load live from the source tree at runtime, so `.qml` changes apply on next launch without
-> a rebuild. C++ changes (`main.cpp`, `backend/*`) do require the rebuild above.
-
-### Option B — Arch package
-
-```bash
-cd packaging/arch
-makepkg -si
-```
+Rebuilding after a pull: `cmake --build build && cmake --install build`. QML
+changes apply on next launch without a rebuild; C++ changes (`main.cpp`,
+`backend/`) need one. An Arch `PKGBUILD` lives in `packaging/arch/`.
 
 ---
 
-## 🧭 Usage
+## Usage
 
 | Action | How |
 |---|---|
-| Navigate | click / arrow keys / mouse back–forward buttons |
+| Navigate | click / arrows / mouse back-forward buttons |
 | New tab | `Ctrl+T` |
-| Preview | select a file, preview opens beside it |
+| Preview | select a file — preview opens beside it |
 | Toggle view | list ↔ grid |
-| Compress | select items → right-click → Compress |
-| Connect to server | sidebar **Connect** (SFTP/FTP/WebDAV/SMB) |
+| Compress | select → right-click → Compress |
+| Connect to a server | sidebar **Connect** (SFTP/FTP/WebDAV/SMB) |
 | Open with | right-click a file → **Open With** |
-
-Press `/` for the command palette to browse all shortcuts.
+| Summit the command palette | `/` |
 
 ---
 
-## 📝 License
+## License
 
-MIT — see `LICENSE`.
+MIT — see [LICENSE](LICENSE).

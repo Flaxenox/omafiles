@@ -26,7 +26,7 @@ void Notifier::notify(const QString &text) {
     return;
   }
 
-  // "Omafiles" as the title/app_name centralized here (previously it was
+  // "OmaFiles" as the title/app_name centralized here (previously it was
   // repeated in each of the 16+ call sites). app_icon "omafiles" resolves
   // via the user's hicolor icon theme (installed by
   // scripts/install-integrations.sh) -- notify-send's call never passed one.
@@ -37,10 +37,10 @@ void Notifier::notify(const QString &text) {
   QVariantMap hints;
   hints.insert(QStringLiteral("urgency"), QVariant::fromValue(static_cast<uchar>(1))); // normal
   iface.call(QDBus::NoBlock, QStringLiteral("Notify"),
-             QStringLiteral("Omafiles"),         // app_name
+             QStringLiteral("OmaFiles"),         // app_name
              quint32(0),                         // replaces_id: always a new toast
              QStringLiteral("omafiles"),          // app_icon (hicolor theme name)
-             QStringLiteral("Omafiles"),          // summary
+             QStringLiteral("OmaFiles"),          // summary
              text,                                // body
              QStringList(),                       // actions: none (explicitly out of scope)
              hints,
